@@ -79,7 +79,15 @@ export function ChatFolder({ name, folder, missing, workspace, showFolder = true
 
     return (
         <MenuTrigger>
-            <ChipTrigger icon={icon} label={label} aria-label={ariaLabel} tooltip={title} missing={gone} />
+            <ChipTrigger
+                icon={icon}
+                folder={showFolder && place ? name : undefined}
+                lead={workspace ? 'Worktree' : undefined}
+                label={branch ?? (workspace ? '' : name)}
+                aria-label={ariaLabel}
+                tooltip={title}
+                missing={gone}
+            />
             <Popover placement="bottom start" spacing="xs">
                 <OpenWithMenu
                     target={target}

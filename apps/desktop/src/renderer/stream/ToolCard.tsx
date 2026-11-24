@@ -53,25 +53,12 @@ function Section({ label, text, danger }: { label: string; text: string; danger?
 }
 
 /** What the call is called: shimmering while it runs, struck through with the reason on hover when it failed. */
-function Title({
-    verb,
-    state,
-    reason,
-    shrinks,
-}: {
-    verb: string;
-    state: ToolBody['state'];
-    reason?: string;
-    shrinks?: boolean;
-}) {
+function Title({ verb, state, reason }: { verb: string; state: ToolBody['state']; reason?: string }) {
     if (!verb) return null;
-
-    // A verb is a word or two and keeps its width; what an agent says a command does has no such limit, so it gives way before the row overflows.
-    const className = cn(styles.label, shrinks && styles.shrinks);
 
     if (state === 'running')
         return (
-            <Shimmer as="span" className={className} duration={1}>
+            <Shimmer as="span" className={styles.label} duration={1}>
                 {verb}
             </Shimmer>
         );
@@ -79,14 +66,14 @@ function Title({
     if (state === 'error') {
         return (
             <Tooltip content={reason?.trim() || 'This action failed'} wrapTrigger>
-                <Text decoration="line-through" color="secondary" className={className}>
+                <Text decoration="line-through" color="secondary" className={styles.label}>
                     {verb}
                 </Text>
             </Tooltip>
         );
     }
 
-    return <Text className={className}>{verb}</Text>;
+    return <Text className={styles.label}>{verb}</Text>;
 }
 
 function Header({ call }: { call: ToolBody }) {
@@ -99,8 +86,12 @@ function Header({ call }: { call: ToolBody }) {
             <span className={cn(styles.icon, call.state === 'error' && styles.failedIcon)} aria-hidden>
                 <Icon />
             </span>
-            <Title verb={view.verb} state={call.state} reason={call.error} shrinks={view.icon === 'terminal'} />
-            {view.target && <code className={styles.chip}>{view.target}</code>}
+            {(view.verb || view.target) && (
+                <span className={styles.headerText}>
+                    <Title verb={view.verb} state={call.state} reason={call.error} />
+                    {view.target && <code className={styles.chip}>{view.target}</code>}
+                </span>
+            )}
             {view.diff && (
                 <span className={styles.diff}>
                     <span className={styles.added}>{`+${view.diff.added}`}</span>

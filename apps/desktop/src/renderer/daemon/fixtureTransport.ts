@@ -75,6 +75,8 @@ import type {
     FolderGit,
     FolderId,
     FolderWorktrees,
+    GitBranchDeleteRequest,
+    GitBranchDeleteResult,
     GitBranches,
     GitBranchMergePreview,
     GitBranchMergeRequest,
@@ -93,6 +95,9 @@ import type {
     GitStatus,
     GitSwitchRequest,
     GitSwitchResult,
+    GitSyncProgress,
+    GitSyncResult,
+    GitSyncTarget,
     GitViewedMark,
     Health,
     Project,
@@ -294,8 +299,14 @@ export class FixtureTransport implements Transport {
         this.#branches = new FixtureGitBranches(branches);
 
         // `&branches=idle`: no run is working, so nothing but the tree stands in the way of a switch.
-        if (this.#branches.idle)
-            for (const run of data.runs) if (!isTerminalRunStatus(run.status)) run.status = 'succeeded';
+        if (this.#branches.idle) {
+            for (const run of data.runs) {
+                if (isTerminalRunStatus(run.status)) continue;
+
+                run.status = 'succeeded';
+                delete run.activeSince;
+            }
+        }
 
         this.#tasks = new FixtureTasks(data, {
             emit: (projectId, event) => this.#emit(projectId, event),
@@ -383,7 +394,8 @@ export class FixtureTransport implements Transport {
     async getGitStatus(projectId: ProjectId, place: PlaceRef): Promise<GitStatus> {
         const { head, workspace } = this.#gitPlace(projectId, place);
 
-        const upstream = this.#gitRemote.upstreamOf(this.#remotePlace(head, workspace, place));
+        const remotePlace = this.#remotePlace(head, workspace, place);
+        const upstream = this.#gitRemote.upstreamOf(remotePlace);
         const { lastFetchedAt, hasOrigin, head: script } = this.#gitRemote;
 
         const status = fixtureGitStatus(head, workspace, this.#gitWrites.settledOf(place.workspaceId ?? ''), {
@@ -394,6 +406,11 @@ export class FixtureTransport implements Transport {
         });
 
         if (status.isRepository && status.head.kind === 'branch') {
+            const updated = this.#gitRemote.updatedHeadOf(remotePlace);
+            if (updated) {
+                status.head.commit = updated.commit;
+                if (status.base.state === 'ready') status.base.behind = 0;
+            }
             const key = `${projectId}/${place.folderId}/${status.head.name}`;
             const merged = this.#branchMerges.get(key);
             const pending = this.#mergeConflicts.get(key);
@@ -445,6 +462,37 @@ export class FixtureTransport implements Transport {
 
     fetchGit(projectId: ProjectId, place: PlaceRef): Promise<GitRemoteResult> {
         return this.#remote('fetch', projectId, place);
+    }
+
+    async syncGit(
+        projectId: ProjectId,
+        place: PlaceRef,
+        target: GitSyncTarget,
+        onProgress?: (progress: GitSyncProgress) => void
+    ): Promise<GitSyncResult> {
+        const { folder, head, workspace } = this.#gitPlace(projectId, place);
+        let remotePlace = this.#remotePlace(head, workspace, place);
+        const { branch, commit } = target;
+
+        if (target.destination && branch !== remotePlace.branch) {
+            const listing = this.#branches.list(this.#branchPlace(projectId, folder, head, workspace));
+            const holder = listing.local.find(local => local.name === branch)?.heldBy;
+            if (!holder) throw new TransportError(`Check out ${branch} before syncing it`, 409);
+
+            remotePlace = {
+                branch,
+                key:
+                    holder.workspaceId !== undefined || holder.main
+                        ? `${folder.id}/${holder.workspaceId ?? ''}`
+                        : `${projectId}/${folder.id}/${branch}`,
+                worktree: holder.workspaceId !== undefined,
+            };
+        }
+
+        if (remotePlace.branch !== branch || this.#gitRemote.head !== undefined)
+            throw new TransportError(`Switch to ${branch} to sync it`, 409);
+
+        return this.#gitRemote.sync(remotePlace, branch, commit ?? 'a'.repeat(40), onProgress);
     }
 
     pullGit(projectId: ProjectId, place: PlaceRef): Promise<GitRemoteResult> {
@@ -505,6 +553,25 @@ export class FixtureTransport implements Transport {
         if (!head?.branch) return { isRepository: false };
 
         return structuredClone(this.#branches.list(this.#branchPlace(projectId, folder, head, workspace)));
+    }
+
+    async deleteGitBranch(
+        projectId: ProjectId,
+        place: PlaceRef,
+        request: GitBranchDeleteRequest
+    ): Promise<GitBranchDeleteResult> {
+        const { folder, head, workspace } = this.#gitPlace(projectId, place);
+        if (!head?.branch) throw new TransportError('The folder is not the root of a git repository', 400);
+
+        const branchPlace = this.#branchPlace(projectId, folder, head, workspace);
+        if (workspace) {
+            const status = await this.getGitStatus(projectId, place);
+            if (status.isRepository) branchPlace.changes = status.entries.length;
+        }
+
+        return this.#branches.deleteBranch(branchPlace, request, branch =>
+            this.switchGitBranch(projectId, place, branch)
+        );
     }
 
     async branchMergeGit(
@@ -1440,6 +1507,9 @@ export class FixtureTransport implements Transport {
     }
 
     #saveRun(run: Run): void {
+        if (isTerminalRunStatus(run.status)) delete run.activeSince;
+        else if (run.status === 'running') run.activeSince ??= Date.now();
+
         this.#emit(run.projectId, { type: 'run.upserted', run });
     }
 

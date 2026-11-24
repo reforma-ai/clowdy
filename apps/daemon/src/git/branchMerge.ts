@@ -8,7 +8,7 @@ import { exclusive } from '../domain/workspaces';
 import { conflict, invalid, unavailable } from '../errors';
 import { writeLine } from './commit';
 import { checkGitWrite, runGitWrite } from './remote';
-import { countChanges, parseWorktrees, placeOf, workingTreeRoot } from './state';
+import { checkoutOf, countChanges, placeOf, workingTreeRoot } from './state';
 import { operationUnderWay, switchRepositoryKey } from './switch';
 import { WriteEnvironment } from './writeEnv';
 
@@ -70,29 +70,6 @@ async function checkName(cwd: string, name: string): Promise<void> {
 
         throw invalid('Choose a branch');
     }
-}
-
-/** Find the checkout using Git records, which preserve paths containing spaces and line breaks. */
-async function checkoutOf(cwd: string, branch: string): Promise<string | undefined> {
-    const read = await gitRead(cwd, ['worktree', 'list', '--porcelain', '-z']);
-
-    if (!read.ok) throw unavailable('git did not list the worktrees');
-
-    const holders = parseWorktrees(read.stdout).filter(entry => entry.branch === branch && !entry.bare);
-
-    if (holders.length > 1) throw conflict(`${branch} is checked out in more than one worktree`);
-
-    const holder = holders[0];
-
-    if (!holder) return undefined;
-
-    if (holder.prunable || holder.locked !== undefined) throw conflict(`The checkout of ${branch} is unavailable`);
-
-    const path = await placeOf(holder.path);
-
-    if (!path) throw conflict(`The checkout of ${branch} is missing`);
-
-    return path;
 }
 
 async function preview(cwd: string, selection: GitBranchMergeSelection): Promise<GitBranchMergePreview> {
@@ -157,7 +134,17 @@ async function preview(cwd: string, selection: GitBranchMergeSelection): Promise
 function needsConflictCheck(plan: GitBranchMergePreview, selection: GitBranchMergeSelection): boolean {
     return (
         plan.mode === 'squash' ||
-        (selection.direction === 'into' && plan.mode === 'merge-commit' && selection.strategy !== 'fast-forward-only')
+        (selection.direction === 'into' &&
+            plan.mode === 'merge-commit' &&
+            selection.strategy !== 'fast-forward-only' &&
+            !plan.fastForwardOnly)
+    );
+}
+
+function usesMergePolicy(plan: GitBranchMergePreview, { strategy }: GitBranchMergeSelection): boolean {
+    return (
+        (strategy === undefined || strategy === 'merge') &&
+        (plan.mode === 'fast-forward' || plan.mode === 'merge-commit')
     );
 }
 
@@ -304,13 +291,16 @@ export class GitBranchMerge {
         if (!(await workingTreeRoot(cwd))) throw invalid('The folder is not the root of a git repository');
 
         if (request.action === 'preview') {
-            const plan = await preview(cwd, request);
-            const targetPath = await checkoutOf(cwd, plan.target);
+            const tips = await preview(cwd, request);
+            const targetPath = await checkoutOf(cwd, tips.target);
 
-            if (targetPath === undefined) return plan;
+            if (targetPath === undefined) return tips;
+            if (!usesMergePolicy(tips, request) && !needsConflictCheck(tips, request)) return { ...tips, targetPath };
 
+            const env = await this.#environment.of(targetPath);
+            const plan = await this.#mergePolicy(targetPath, tips, request, env);
             const checked = needsConflictCheck(plan, request)
-                ? await this.#checkMerge(targetPath, plan, await this.#environment.of(targetPath))
+                ? await this.#checkMerge(targetPath, plan, env)
                 : undefined;
 
             if (checked?.state === 'unchanged') return { ...plan, targetPath, mode: 'up-to-date', commits: 0 };
@@ -359,6 +349,37 @@ export class GitBranchMerge {
               );
     }
 
+    /** Read the destination's fast-forward preference and pin it in the plan before writing. */
+    async #mergePolicy(
+        path: string,
+        plan: GitBranchMergePreview,
+        selection: GitBranchMergeSelection,
+        env: Record<string, string>
+    ): Promise<GitBranchMergePreview> {
+        if (!usesMergePolicy(plan, selection)) return plan;
+
+        const config = (type?: string) =>
+            runGitWrite(
+                path,
+                ['config', ...(type ? [type] : []), '--get', 'merge.ff'],
+                env,
+                this.#stopper.signal,
+                5000
+            );
+        const raw = await config();
+        if (raw.code === 1 && !raw.timedOut && raw.error === undefined && raw.stderr.trim() === '') return plan;
+
+        checkGitWrite(raw, this.#environment, 'merge configuration read', 'read the merge configuration');
+        if (raw.stdout.replace(/\r?\n$/, '') === 'only') return { ...plan, fastForwardOnly: true };
+        if (plan.mode === 'merge-commit') return plan;
+
+        // Let Git handle boolean aliases and the difference between unset and an empty value.
+        const ff = await config('--type=bool');
+        checkGitWrite(ff, this.#environment, 'merge configuration read', 'read the merge configuration');
+
+        return ff.stdout.trim() === 'false' ? { ...plan, mode: 'merge-commit' } : plan;
+    }
+
     /** Check the pinned tips without touching the destination's files or index. A Git error is not a clean result. */
     async #checkMerge(
         path: string,
@@ -391,22 +412,30 @@ export class GitBranchMerge {
         repo: string,
         request: Extract<GitBranchMergeRequest, { action: 'merge' }>
     ): Promise<GitBranchMergeResult> {
-        const plan = await preview(cwd, request);
-        const { source, target, sourceCommit, targetCommit, mode } = plan;
+        const tips = await preview(cwd, request);
+        const { source, target, sourceCommit, targetCommit } = tips;
 
         if (sourceCommit !== request.sourceCommit || targetCommit !== request.targetCommit)
             throw conflict('A branch changed since the preview. Select the branch again to review the merge');
 
-        if (mode === 'up-to-date') return { state: 'done', target, commit: targetCommit, canPush: false };
-        if (request.strategy === 'fast-forward-only' && mode !== 'fast-forward')
+        if (tips.mode === 'up-to-date') return { state: 'done', target, commit: targetCommit, canPush: false };
+        if (request.strategy === 'fast-forward-only' && tips.mode !== 'fast-forward')
             throw conflict(`Can't fast-forward ${target} because the branches have diverged`);
 
         if (targetPath === undefined) throw conflict(`Check out ${target} before merging into it`);
 
         const path = targetPath;
         const env = await this.#environment.of(path);
+        const plan = await this.#mergePolicy(path, tips, request, env);
+        const { mode } = plan;
+
+        if (plan.fastForwardOnly && mode !== 'fast-forward')
+            throw conflict(`Can't fast-forward ${target} because the branches have diverged`);
 
         const checked = needsConflictCheck(plan, request) ? await this.#checkMerge(path, plan, env) : undefined;
+        const currentMode = checked?.state === 'unchanged' ? 'up-to-date' : mode;
+        if (request.expectedMode !== undefined && currentMode !== request.expectedMode)
+            throw conflict('The merge result changed since the preview. Select the branch again to review the merge');
         if (checked?.state === 'conflicts') throw mode === 'squash' ? squashConflict(plan) : outgoingConflict(plan);
         if (checked?.state === 'unchanged') return { state: 'done', target, commit: targetCommit, canPush: false };
 
@@ -508,7 +537,7 @@ export class GitBranchMerge {
         }
 
         const args =
-            mode === 'merge-commit' ? ['--ff', '-m', `Merge branch '${source}' into ${target}`] : ['--ff-only'];
+            mode === 'merge-commit' ? ['--no-ff', '-m', `Merge branch '${source}' into ${target}`] : ['--ff-only'];
         const run = await runGitWrite(
             path,
             [

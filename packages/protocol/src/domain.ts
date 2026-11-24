@@ -625,6 +625,8 @@ export interface Run {
     awaitingUser?: boolean;
     createdAt: number;
     startedAt?: number;
+    /** When the current uninterrupted period of work began, including subsequent waits. Cleared when the run ends. */
+    activeSince?: number;
     finishedAt?: number;
 }
 

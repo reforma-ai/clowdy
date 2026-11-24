@@ -47,6 +47,22 @@ describe('HttpTransport git branches and the switch', () => {
         ]);
     });
 
+    it('posts the exact branch deletion preview and confirmed refs', async () => {
+        const localCommit = 'a'.repeat(40);
+        const originCommit = 'b'.repeat(40);
+        const answer = { state: 'preview', branch: 'feature/x', localCommit, originCommit };
+        const { sent, transport } = transportFor(answer);
+        const place = { folderId: 'fld/b', workspaceId: 'wks 1' };
+        const preview = { action: 'preview', branch: 'feature/x' } as const;
+        const remove = { action: 'delete', branch: 'feature/x', localCommit, originCommit } as const;
+        expect(await transport.deleteGitBranch('prj a', place, preview)).toEqual(answer);
+        await transport.deleteGitBranch('prj a', place, remove);
+        expect(sent.map(request => [request.url, request.method, request.body])).toEqual([
+            ['http://127.0.0.1:4310/v1/projects/prj%20a/git/branch-delete', 'POST', { ...place, ...preview }],
+            ['http://127.0.0.1:4310/v1/projects/prj%20a/git/branch-delete', 'POST', { ...place, ...remove }],
+        ]);
+    });
+
     it('posts the branch, and for a new one where it starts, to the switch route, and gives the new head', async () => {
         const answer = { head: { kind: 'branch', name: 'feature/new', commit: 'a'.repeat(40) }, created: true };
         const { sent, transport } = transportFor(answer);

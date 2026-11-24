@@ -126,21 +126,21 @@ describe('Settings', () => {
         }
     });
 
-    it('enables automatic push by default and remembers when it is turned off', async () => {
+    it('enables automatic sync by default and remembers when it is turned off', async () => {
         store.ui.openSettings('source-control');
         await draw();
 
-        const toggle = container.querySelector<HTMLInputElement>('input[aria-label="Push after commit and merge"]')!;
+        const toggle = container.querySelector<HTMLInputElement>('input[aria-label="Sync after commit and merge"]')!;
 
-        expect(new SourceControlPreferences().autoPush).toBe(true);
+        expect(new SourceControlPreferences().autoSync).toBe(true);
         expect(toggle.checked).toBe(true);
 
         try {
             await press(toggle);
             expect(toggle.checked).toBe(false);
-            expect(new SourceControlPreferences(window.localStorage).autoPush).toBe(false);
+            expect(new SourceControlPreferences(window.localStorage).autoSync).toBe(false);
         } finally {
-            act(() => sourceControlPreferences.setAutoPush(true));
+            act(() => sourceControlPreferences.setAutoSync(true));
         }
     });
 

@@ -3,8 +3,8 @@
  * one of them, and the pull request of its branch. A place is a folder's own checkout or a worktree of it (`resolvePlace`), named by `folderId` and an optional
  * `workspaceId` as the file routes name it. The reads (status, changes, file, pull request) write nothing to a repository and take no index lock, and only the pull request
  * goes to the network, through the person's own `gh` (no token is kept or read by the daemon). The writes (`POST .../git/commit`, `.../git/fetch`, `.../git/pull` and `.../git/push`) run the
- * person's own `git` with their configuration, signing included, one at a time for a place; fetch, pull and push are the only routes that reach `origin`. `POST .../git/switch` changes the
- * branch of the folder's own checkout and nothing else.
+ * person's own `git` with their configuration, signing included, one at a time for a place. `POST .../git/switch` changes the checkout's branch.
+ * An explicitly confirmed branch deletion can also reach `origin`.
  *
  * GET  /v1/projects/:id/git/status?folderId=&workspaceId=
  *                                      -> GitStatus. The branch (or the detached or unborn HEAD), its upstream with ahead and behind and when the repository last
@@ -104,6 +104,8 @@
  *                                         (`create`) and a folder that is not a repository are `invalid`; a refusal that is the repository's state and a switch git refused are `conflict`
  *                                         with a short reason as the message (and, for a change count or a way out, `details.hint`); one that did not end in time is `unavailable`.
  *
+ * POST /v1/projects/:id/git/branch-delete -> GitBranchDeleteResult. Body: the place and a GitBranchDeleteRequest. Preview reports local and fetched origin tips, unmerged commits
+ *                                         and a necessary checkout switch. Delete rechecks the confirmed tips, base and worktree protections. An origin deletion uses an explicit lease.
  * POST /v1/projects/:id/git/merge    -> GitBranchMergeResult. Body: the place and a GitBranchMergeRequest. Preview compares the selected source and local destination. Merge
  *                                         checks the previewed commits again, fast-forwards when possible, and otherwise merges in the destination checkout. A conflict identifies
  *                                         that checkout for resolution or abort. A separate push action sends the named destination and verifies its commit before sending.
@@ -476,6 +478,26 @@ export interface GitPushRequest extends GitRemoteRequest {
     expectedHead?: { branch: string; commit: string };
 }
 
+/** Sync uses the current checkout unless a completed merge names its destination checkout and tip. */
+export type GitSyncTarget =
+    | { branch: string; commit?: string; destination?: false }
+    | { branch: string; commit: string; destination: true };
+
+export type GitSyncRequest = GitRemoteRequest & GitSyncTarget;
+
+/** The push phase identifies the tip after any incoming commits have been integrated. */
+export type GitSyncProgress = { phase: 'fetch' | 'merge' } | { phase: 'push'; commit: string };
+
+export type GitSyncResult =
+    | { state: 'done'; branch: string; pulled: number; pushed: boolean }
+    | { state: 'conflicts'; branch: string; path: string; conflicts: number };
+
+/** SSE messages from POST .../git/sync in the order the operation reaches them. */
+export type GitSyncEvent =
+    | ({ type: 'phase' } & GitSyncProgress)
+    | { type: 'result'; result: GitSyncResult }
+    | { type: 'error'; status: number; message: string; hint?: string };
+
 /**
  * What a remote action did, so the client reads what it changed again. `upstream` is the branch's upstream as the action left it, with how far apart the two are (a push leaves 0
  * and 0); absent when the branch has none (a fetch on a branch that tracks nothing, a detached HEAD).
@@ -488,6 +510,8 @@ export interface GitRemoteDone {
     pulled?: number;
     /** `pull` and `update`: a merge commit was made, because the branch had commits of its own. Absent for a fast-forward. */
     merged?: true;
+    /** `update`: the updated branch and its new tip, for a guarded follow-up sync. Absent when the base was already integrated. */
+    updatedHead?: { branch: string; commit: string };
     /** `push`: the branch was not on origin under its own name (no upstream, a gone one, or another branch's), so it was published and now tracks `origin/<name>`. */
     published?: true;
 }
@@ -566,6 +590,40 @@ export type GitBranches =
           truncated?: true;
       };
 
+/** The branch name is unqualified. A remote-only choice is previewed with remote: true. */
+export type GitBranchDeleteRequest =
+    | { action: 'preview'; branch: string; remote?: true }
+    | {
+          action: 'delete';
+          branch: string;
+          /** Delete only the local ref shown at this commit. */
+          localCommit?: string;
+          /** The confirmation showed a warning about unmerged local commits. */
+          localUnmerged?: true;
+          /** Delete the same-named branch on origin only if its tip is still this commit. */
+          originCommit?: string;
+          /** The confirmation showed a warning about unmerged commits on origin. */
+          originUnmerged?: true;
+          /** Switch away from the current branch to this destination before deleting. */
+          switchTo?: string;
+      };
+
+export interface GitBranchDeletePreview {
+    state: 'preview';
+    branch: string;
+    localCommit?: string;
+    originCommit?: string;
+    localUnmerged?: boolean;
+    originUnmerged?: boolean;
+    switchTo?: string;
+    /** A reason the requested deletion cannot proceed. */
+    blocked?: string;
+}
+
+export type GitBranchDeleteResult =
+    | GitBranchDeletePreview
+    | { state: 'done'; localDeleted: boolean; originDeleted: boolean; switchedTo?: string; warning?: string };
+
 export const GIT_BRANCH_MERGE_STRATEGIES = ['merge', 'fast-forward-only', 'squash', 'rebase'] as const;
 export type GitBranchMergeStrategy = (typeof GIT_BRANCH_MERGE_STRATEGIES)[number];
 
@@ -576,14 +634,19 @@ export interface GitBranchMergeSelection {
     branch: string;
     /** The selected source is a ref on origin. The destination is always local. */
     remote?: true;
-    /** Defaults to a regular merge with fast-forward when possible. */
+    /** Defaults to a regular merge with the destination's fast-forward policy. */
     strategy?: GitBranchMergeStrategy;
 }
 
 /** The body of POST /v1/projects/:id/git/merge, together with the place. */
 export type GitBranchMergeRequest =
     | (GitBranchMergeSelection & { action: 'preview' })
-    | (GitBranchMergeSelection & { action: 'merge'; sourceCommit: string; targetCommit: string })
+    | (GitBranchMergeSelection & {
+          action: 'merge';
+          sourceCommit: string;
+          targetCommit: string;
+          expectedMode?: GitBranchMergePreview['mode'];
+      })
     | { action: 'push'; target: string; commit: string }
     | { action: 'abort'; target: string; commit: string; sourceCommit: string; operation?: 'rebase' };
 
@@ -595,6 +658,8 @@ export interface GitBranchMergePreview {
     targetCommit: string;
     commits: number;
     mode: 'up-to-date' | 'fast-forward' | 'merge-commit' | 'squash' | 'rebase';
+    /** The destination's Git configuration allows only fast-forward merges. */
+    fastForwardOnly?: true;
     /** Destination commits that would be replayed in a rebase. */
     replayCommits?: number;
     /** Existing checkout of the destination, when there is one. */

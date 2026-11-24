@@ -1,16 +1,36 @@
 import { resolve } from 'node:path';
 
+import { listWorkspacesOfProject } from '../db/workspaces';
 import { gitAnswer, gitRead } from '../domain/git';
 import { chatsWorkingIn } from '../domain/places';
 import { exclusive, pathKey } from '../domain/workspaces';
-import { conflict, invalid, unavailable } from '../errors';
+import { CommandError, conflict, errorMessage, invalid, unavailable } from '../errors';
 import { LEFTOVER_GRACE_MS, runProgram } from '../providers/exec';
 import { failureLine, printedLines, shownLine, writeLine } from './commit';
-import { baseOf, countChanges, isMerged, isOnDisk, parseWorktrees, placeOf, workingTreeRoot } from './state';
+import {
+    baseOf,
+    commitOf,
+    countChanges,
+    defaultBranchOf,
+    isMerged,
+    isOnDisk,
+    parseWorktrees,
+    placeOf,
+    workingTreeRoot,
+} from './state';
 import { parseStatus, resolveRef } from './status';
 import { WriteEnvironment } from './writeEnv';
 
-import type { GitErrorDetails, GitHead, GitSwitchResult, GitSwitchStart, Project } from '@clowdy/protocol';
+import type {
+    GitBranchDeletePreview,
+    GitBranchDeleteRequest,
+    GitBranchDeleteResult,
+    GitErrorDetails,
+    GitHead,
+    GitSwitchResult,
+    GitSwitchStart,
+    Project,
+} from '@clowdy/protocol';
 import type { Place } from '../domain/places';
 import type { Store } from '../store';
 import type { GitWritesOptions } from './commit';
@@ -114,25 +134,217 @@ export class GitSwitch {
         });
     }
 
+    /** Preview or delete the named branch on the same write lines as a switch, including any switch needed to leave it. */
+    async deleteBranch(
+        project: Project,
+        place: Place,
+        request: GitBranchDeleteRequest
+    ): Promise<GitBranchDeleteResult> {
+        const name = await this.#nameOf(place, request.branch);
+
+        if (request.action === 'delete' && request.localCommit === undefined && request.originCommit === undefined)
+            throw invalid('Select a branch to delete');
+
+        return exclusive(this.#store, writeLine(place), this.#stopper.signal, async () => {
+            const cwd = place.path;
+            if (!(await workingTreeRoot(cwd))) throw invalid('The folder is not the root of a git repository');
+
+            const repo = await switchRepositoryKey(cwd);
+            return exclusive(this.#store, repo, this.#stopper.signal, () =>
+                request.action === 'preview'
+                    ? this.#deletionPreview(project, place, name, request.remote === true)
+                    : this.#deleteLocked(project, place, name, request)
+            );
+        });
+    }
+
+    async #deletionPreview(
+        project: Project,
+        place: Place,
+        branch: string,
+        remoteOnly: boolean
+    ): Promise<GitBranchDeletePreview> {
+        const cwd = place.path;
+        const folder = { ...place.folder, path: cwd };
+        const [localCommit, originTip, origin, base, fallback, current, holder] = await Promise.all([
+            branchTip(cwd, `refs/heads/${branch}`),
+            branchTip(cwd, `refs/remotes/${ORIGIN}/${branch}`),
+            gitRead(cwd, ['remote', 'get-url', ORIGIN]),
+            baseOf(folder),
+            defaultBranchOf(cwd),
+            gitAnswer(cwd, ['symbolic-ref', '--quiet', 'HEAD']),
+            heldBy(cwd, branch),
+        ]);
+        if (!origin.ok && origin.reason === 'unavailable') throw unavailable('git did not answer');
+        const originCommit = origin.ok ? originTip : undefined;
+        const preview: GitBranchDeletePreview = {
+            state: 'preview',
+            branch,
+            ...(!remoteOnly && localCommit && { localCommit }),
+            ...(originCommit && { originCommit }),
+        };
+
+        if (remoteOnly && localCommit) return { ...preview, blocked: 'A local branch of this name now exists' };
+        if (remoteOnly ? !originCommit : !localCommit)
+            return { ...preview, blocked: `${remoteOnly ? `${ORIGIN}/` : ''}${branch} no longer exists` };
+
+        // Protect the repository default as well as configured bases, including the base recorded for a linked worktree.
+        if (
+            [base, fallback, place.folder.settings?.baseBranch, place.workspace?.base].some(
+                ref => ref === branch || ref === `${ORIGIN}/${branch}`
+            )
+        )
+            return { ...preview, blocked: `${branch} is a base or default branch` };
+        if (holder !== undefined) return { ...preview, blocked: `Checked out in ${holder}` };
+        // A saved base is needed even before its chat's worktree exists, and after the chat merges for removal checks.
+        const usedAsBase = listWorkspacesOfProject(this.#store.db, project.id).some(
+            record =>
+                record.folderId === place.folder.id && (record.base === branch || record.base === `${ORIGIN}/${branch}`)
+        );
+        if (usedAsBase) return { ...preview, blocked: `${branch} is the base of a chat worktree` };
+
+        const comparisonName = place.workspace?.base ?? base;
+        const comparison = comparisonName === undefined ? undefined : await resolveRef(cwd, comparisonName);
+        if (preview.localCommit)
+            preview.localUnmerged = !comparison || !(await isMerged(cwd, preview.localCommit, comparison.commit));
+        if (originCommit)
+            preview.originUnmerged = !comparison || !(await isMerged(cwd, originCommit, comparison.commit));
+
+        if (localCommit && current === `refs/heads/${branch}`) {
+            const destination = await branchOfBase(cwd, base ?? fallback);
+            if (!destination) return { ...preview, blocked: 'The repository has no default branch to switch to' };
+
+            try {
+                await this.#plan(place, destination, undefined, localCommit);
+                await this.#refuseWhileUnsettled(project, place);
+                preview.switchTo = destination;
+            } catch (error) {
+                if (!(error instanceof CommandError)) throw error;
+
+                return { ...preview, blocked: error.message };
+            }
+        }
+
+        return preview;
+    }
+
+    async #deleteLocked(
+        project: Project,
+        place: Place,
+        branch: string,
+        request: Extract<GitBranchDeleteRequest, { action: 'delete' }>
+    ): Promise<GitBranchDeleteResult> {
+        const cwd = place.path;
+        const env = await this.environment.of(cwd);
+        const plan = await this.#deletionPreview(project, place, branch, request.localCommit === undefined);
+        requireDeletion(plan, request, request.switchTo);
+
+        let switchedTo: string | undefined;
+        let warning: string | undefined;
+        let localDeleted = false;
+
+        try {
+            if (plan.switchTo !== undefined && request.localCommit !== undefined) {
+                const switched = await this.#switchLocked(project, place, plan.switchTo, undefined, {
+                    branch,
+                    commit: request.localCommit,
+                });
+                switchedTo = switched.head.kind === 'branch' ? switched.head.name : undefined;
+                warning = switched.warning;
+                if (switchedTo !== plan.switchTo) throw conflict(`The checkout did not switch to ${plan.switchTo}`);
+
+                // The checkout hook may have changed refs, so the confirmed branch must still match after the switch.
+                const after = await this.#deletionPreview(project, place, branch, false);
+                requireDeletion(after, request, undefined);
+            }
+
+            if (request.localCommit !== undefined) {
+                // Git's native branch deletion refuses branches that are checked out, including in other worktrees.
+                // Check the confirmed tip immediately before it runs. The daemon's repository lock serializes its
+                // own writes, but external git commands are not covered by that lock.
+                await requireBranchTip(cwd, `refs/heads/${branch}`, request.localCommit);
+                await this.#runDeletion(cwd, env, ['branch', '-D', '--', branch], `delete ${branch}`);
+                localDeleted = true;
+            }
+
+            if (request.originCommit !== undefined) {
+                await requireBranchTip(cwd, `refs/remotes/${ORIGIN}/${branch}`, request.originCommit);
+                const ref = `refs/heads/${branch}`;
+                await this.#runDeletion(
+                    cwd,
+                    env,
+                    [
+                        'push',
+                        '--no-follow-tags',
+                        '--no-recurse-submodules',
+                        `--force-with-lease=${ref}:${request.originCommit}`,
+                        ORIGIN,
+                        `:${ref}`,
+                    ],
+                    `delete ${branch} on ${ORIGIN}`
+                );
+            }
+        } catch (error) {
+            if (localDeleted)
+                throw conflict(
+                    `Deleted ${branch} locally, but could not delete it on ${ORIGIN}: ${errorMessage(error)}`
+                );
+            if (switchedTo !== undefined)
+                throw conflict(`Switched to ${switchedTo}, but could not delete ${branch}: ${errorMessage(error)}`);
+
+            throw error;
+        }
+
+        return {
+            state: 'done',
+            localDeleted,
+            originDeleted: request.originCommit !== undefined,
+            ...(switchedTo && { switchedTo }),
+            ...(warning && { warning }),
+        };
+    }
+
+    async #runDeletion(cwd: string, env: Record<string, string>, args: string[], action: string): Promise<void> {
+        const run = await runProgram('git', args, {
+            env,
+            cwd,
+            timeoutMs: this.#timeoutMs,
+            maxChars: MAX_PRINTED_CHARS,
+            signal: this.#stopper.signal,
+            stopSignal: 'SIGTERM',
+        });
+
+        if (run.error === 'stopped') throw unavailable('The daemon is stopping');
+        if (run.timedOut) throw unavailable(`git did not finish in time to ${action}`);
+        if (run.error !== undefined) throw unavailable('git is not installed or not on PATH');
+        if (run.code !== 0) {
+            const rejected = printedLines(run.stderr).find(line => /^!\s*\[rejected\]/i.test(line));
+            throw conflict(
+                rejected ? shownLine(rejected) : failureLine(run.stderr, run.stdout, `git could not ${action}`)
+            );
+        }
+    }
+
     async #switchLocked(
         project: Project,
         place: Place,
         name: string,
-        start: GitSwitchStart | undefined
+        start: GitSwitchStart | undefined,
+        leaving?: { branch: string; commit: string }
     ): Promise<GitSwitchResult> {
         const cwd = place.path;
         const head = await gitAnswer(cwd, ['rev-parse', '--verify', '--quiet', 'HEAD']);
 
         if (head === undefined) throw invalid('The repository has no commits yet');
 
-        const plan = await this.#plan(place, name, start, head);
+        const plan = await this.#plan(place, name, start, head, leaving !== undefined);
 
         if (plan === undefined) return await this.#where(cwd);
 
         // Prepare the environment first so the final safety checks happen just before git runs.
         const env = await this.environment.of(cwd);
 
-        await this.#refuseWhileUnsettled(project, place);
+        await this.#refuseWhileUnsettled(project, place, leaving);
 
         return await this.#run(cwd, plan, env);
     }
@@ -169,7 +381,8 @@ export class GitSwitch {
         place: Place,
         name: string,
         start: GitSwitchStart | undefined,
-        head: string
+        head: string,
+        protectIgnored = false
     ): Promise<Plan | undefined> {
         const cwd = place.path;
         const [local, remote, current] = await Promise.all([
@@ -177,7 +390,7 @@ export class GitSwitch {
             refExists(cwd, `refs/remotes/${ORIGIN}/${name}`),
             gitAnswer(cwd, ['symbolic-ref', '--quiet', '--short', 'HEAD']),
         ]);
-        const switchArgs = place.workspace ? ['switch', '--no-overwrite-ignore'] : ['switch'];
+        const switchArgs = place.workspace || protectIgnored ? ['switch', '--no-overwrite-ignore'] : ['switch'];
 
         if (start !== undefined) {
             if (local) throw invalid(`A branch called ${name} exists already`);
@@ -223,11 +436,21 @@ export class GitSwitch {
      * The runs are read **last** (the reasons are still told in this order: a chat that is working is what leaves the tree changed, and is the better thing to say), since a message
      * that starts a run while git looks at the tree is the one thing nothing else holds back; nothing is awaited between this read and the start of git.
      */
-    async #refuseWhileUnsettled(project: Project, place: Place): Promise<void> {
+    async #refuseWhileUnsettled(
+        project: Project,
+        place: Place,
+        leaving?: { branch: string; commit: string }
+    ): Promise<void> {
         const cwd = place.path;
         const worktreeBlock = place.workspace ? await worktreeSwitchBlock(place) : undefined;
         const underWay = await operationUnderWay(cwd);
         const changes = await countChanges(cwd);
+        if (leaving !== undefined) {
+            const current = await gitAnswer(cwd, ['symbolic-ref', '--quiet', 'HEAD']);
+            if (current !== `refs/heads/${leaving.branch}`)
+                throw conflict('The checkout changed since the preview, review it again');
+            await requireBranchTip(cwd, current, leaving.commit);
+        }
         const working = chatsWorkingIn(this.#store, project, cwd);
 
         if (working > 0)
@@ -320,6 +543,47 @@ export class GitSwitch {
 
         return { head, ...(upstream && { upstream }) };
     }
+}
+
+/** A branch's exact tip, or no such branch. A failed read is never taken for absence. */
+async function branchTip(cwd: string, ref: string): Promise<string | undefined> {
+    const tip = await commitOf(cwd, ref);
+
+    if (tip === undefined) throw unavailable('git did not answer');
+
+    return tip ?? undefined;
+}
+
+async function requireBranchTip(cwd: string, ref: string, expected: string): Promise<void> {
+    if ((await branchTip(cwd, ref)) !== expected)
+        throw conflict('The branch changed since the preview, review it again');
+}
+
+/** A base is written as main or origin/main. Preserve a real local name, including one with an origin/ prefix. */
+async function branchOfBase(cwd: string, base: string | undefined): Promise<string | undefined> {
+    if (base === undefined) return undefined;
+    if (await branchTip(cwd, `refs/heads/${base}`)) return base;
+
+    return base.startsWith(`${ORIGIN}/`) ? base.slice(ORIGIN.length + 1) : undefined;
+}
+
+function requireDeletion(
+    plan: GitBranchDeletePreview,
+    request: Extract<GitBranchDeleteRequest, { action: 'delete' }>,
+    switchTo: string | undefined
+): void {
+    if (plan.blocked) throw conflict(plan.blocked);
+    if (
+        plan.localCommit !== request.localCommit ||
+        (request.originCommit !== undefined && plan.originCommit !== request.originCommit) ||
+        plan.switchTo !== switchTo
+    )
+        throw conflict('The branch changed since the preview, review it again');
+    if (
+        (request.localCommit !== undefined && plan.localUnmerged && request.localUnmerged !== true) ||
+        (request.originCommit !== undefined && plan.originUnmerged && request.originUnmerged !== true)
+    )
+        throw conflict('The branch has unmerged commits, review it again');
 }
 
 /** Two worktrees share a checkout lock even when they belong to different projects or have different path aliases. */
@@ -415,13 +679,9 @@ async function refExists(cwd: string, ref: string): Promise<boolean> {
 
 /** The place of the worktree that has `branch` checked out, when it is not `cwd`'s own. */
 async function heldBy(cwd: string, branch: string): Promise<string | undefined> {
-    const read = await gitRead(cwd, ['worktree', 'list', '--porcelain']);
+    const read = await gitRead(cwd, ['worktree', 'list', '--porcelain', '-z']);
 
-    if (!read.ok) {
-        if (read.reason === 'unavailable') throw unavailable('git did not answer');
-
-        return undefined;
-    }
+    if (!read.ok) throw unavailable('git did not answer');
 
     const own = await placeOf(cwd);
 

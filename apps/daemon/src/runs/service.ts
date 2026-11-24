@@ -228,6 +228,7 @@ export class RunService {
     ): Run {
         return this.store.tx(() => {
             const id = newId('run');
+            const now = Date.now();
             const run: Run = {
                 id,
                 projectId: parent.projectId,
@@ -243,8 +244,9 @@ export class RunService {
                 engine: parent.engine,
                 ...(parent.model && { model: parent.model }),
                 ...(parent.effort && { effort: parent.effort }),
-                createdAt: Date.now(),
-                startedAt: Date.now(),
+                createdAt: now,
+                startedAt: now,
+                activeSince: now,
             };
 
             upsertRun(this.store.db, run);
@@ -290,12 +292,14 @@ export class RunService {
                 delete next.statusReason;
             }
 
-            if (status === 'running' && next.startedAt === undefined) {
-                next.startedAt = now;
+            if (status === 'running') {
+                next.startedAt ??= now;
+                next.activeSince ??= now;
             }
 
             if (isTerminalRunStatus(status)) {
                 next.finishedAt = now;
+                delete next.activeSince;
                 // A run that ended has nothing open: its session is gone, and so is what it had running in the background and what it asked the person.
                 delete next.background;
                 delete next.awaitingUser;

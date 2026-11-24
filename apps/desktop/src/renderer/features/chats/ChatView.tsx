@@ -5,7 +5,7 @@ import { Loader } from '@clowdy/components/Loader';
 import { Text } from '@clowdy/components/Text';
 import { AttentionCircle, Split } from '@clowdy/icons/14';
 import { shownRunStatus } from '@clowdy/protocol';
-import { useMemo, useRef } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { useAgents, useChatStream, useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { type ForkAgent, StreamView, type StreamViewHandle } from '../../stream';
@@ -66,6 +66,26 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
     };
     const { fork, forking } = useFork(chat);
     const composer = useRef<ComposerHandle>(null);
+    const overlay = useRef<HTMLDivElement>(null);
+    const overlayContent = useRef<HTMLDivElement>(null);
+    const overlayAtBottom = useRef(true);
+    const [composerInset, setComposerInset] = useState(0);
+    useLayoutEffect(() => {
+        const element = overlay.current;
+
+        if (!element) return;
+        const measure = () => {
+            if (overlayAtBottom.current) element.scrollTop = element.scrollHeight;
+            setComposerInset(element.getBoundingClientRect().height);
+        };
+        const observer = new ResizeObserver(measure);
+
+        measure();
+        observer.observe(element, { box: 'border-box' });
+        if (overlayContent.current) observer.observe(overlayContent.current);
+
+        return () => observer.disconnect();
+    }, []);
     const streamView = useRef<StreamViewHandle>(null);
     const stream = useChatStream(chat);
     const run = chat.orchestratorRunId ? project.runs.get(chat.orchestratorRunId) : undefined;
@@ -127,6 +147,7 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
             {(!stream || stream.status === 'ready') && (
                 <StreamView
                     ref={streamView}
+                    composerInset={composerInset}
                     items={items}
                     active={isRunActive(run)}
                     working={isRunActive(run) && liveLine(shownRunStatus(run))}
@@ -191,29 +212,40 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
                 />
             )}
 
-            <ContentColumn className={styles.composer}>
-                <RunningAgents chat={chat} />
-                {/* What the chat's latest run changed, once it is at rest and the person has not written since; for a read only chat too. */}
-                {composerBannerPreferences.showChanges && (
-                    <LastRunPlate chat={chat} run={run} items={stream?.status === 'ready' ? items : undefined} />
-                )}
-                {composerBannerPreferences.showTasks && progress && <TasksBanner key={chat.id} progress={progress} />}
-                {/* The composer draws the line under its box itself, with the mode at the end of it; a chat that is read only has no mode to show. */}
-                {writability.writable ? (
-                    <Composer
-                        ref={composer}
-                        chat={chat}
-                        run={run}
-                        controls={controls}
-                        onSendMessage={() => streamView.current?.followLatest()}
-                    />
-                ) : (
-                    <>
-                        <ReadOnlyNotice chat={chat} run={run} message={writability.message} />
+            <ContentColumn
+                ref={overlay}
+                className={styles.composer}
+                onScroll={event => {
+                    const element = event.currentTarget;
+                    overlayAtBottom.current = element.scrollHeight - element.clientHeight - element.scrollTop < 2;
+                }}
+            >
+                <div ref={overlayContent}>
+                    <RunningAgents chat={chat} />
+                    {/* What the chat's latest run changed, once it is at rest and the person has not written since; for a read only chat too. */}
+                    {composerBannerPreferences.showChanges && (
+                        <LastRunPlate chat={chat} run={run} items={stream?.status === 'ready' ? items : undefined} />
+                    )}
+                    {composerBannerPreferences.showTasks && progress && (
+                        <TasksBanner key={chat.id} progress={progress} />
+                    )}
+                    {/* The composer draws the line under its box itself, with the mode at the end of it; a chat that is read only has no mode to show. */}
+                    {writability.writable ? (
+                        <Composer
+                            ref={composer}
+                            chat={chat}
+                            run={run}
+                            controls={controls}
+                            onSendMessage={() => streamView.current?.followLatest()}
+                        />
+                    ) : (
+                        <>
+                            <ReadOnlyNotice chat={chat} run={run} message={writability.message} />
 
-                        {controls && <ChatControls>{controls}</ChatControls>}
-                    </>
-                )}
+                            {controls && <ChatControls>{controls}</ChatControls>}
+                        </>
+                    )}
+                </div>
             </ContentColumn>
         </ChatDropZone>
     );

@@ -2,7 +2,11 @@
 
 ## Decisions
 
-- [Push after commits and branch merges](decisions/2026-11-24-push-after-commit-and-merge.md) records the default Source Control preference and the destination of each push. Status: accepted.
+- [Delete branches from Source Control](decisions/2026-11-24-delete-branches.md) records the branch menu, confirmation and origin option. Status: accepted.
+
+- [Source Control action priority](decisions/2026-11-24-source-control-action-priority.md) records which action wins and how base updates follow automatic Sync. Status: accepted.
+
+- [Sync after commits and branch merges](decisions/2026-11-24-sync-after-commit-and-merge.md) records the shared Sync action and how it resolves branch divergence. Status: accepted.
 
 - [Changes tab render performance](decisions/2026-11-24-changes-tab-render-performance.md) records why far diff cards are empty boxes and unchanged git answers keep their objects. Status: accepted.
 
@@ -12,10 +16,20 @@
 - [Manual chat order](decisions/2026-11-24-use-manual-chat-order.md) records why the sidebar uses one saved order and puts new chats first. Status: accepted.
 - [Switch branches in a merged chat worktree](decisions/2026-11-24-switch-merged-worktree-branches.md) describes which branch switches are allowed. Status: accepted.
 - [Merge into existing checkouts](decisions/2026-11-24-merge-into-existing-checkouts.md) describes conflict checks for outgoing merges and how to resolve conflicts in an existing checkout. Status: accepted.
-- [Select the branch operation](decisions/2026-11-24-select-branch-merge-mode.md) records the split button and the scope of the four choices. Status: accepted.
+- [Branch merge choices](decisions/2026-11-24-branch-merge-choices.md) records the three choices and the destination's fast-forward policy. Status: accepted.
 - [One provider for commit messages](decisions/2026-11-24-choose-one-commit-provider.md) records the Source Control selector and how older settings map to it. Status: accepted.
 
 ## Checks
+
+- [Branch deletion](checks/2026-11-24-delete-branches.md) covers the context menu, confirmation, branch switching and protection against stale or unsafe deletions. Status: passed.
+
+- [Branch merge choices](checks/2026-11-24-branch-merge-choices.md) verifies the three modes and the result of the destination's Git policy. Status: passed with limits.
+
+- [Sidebar widths and merge file rows](checks/2026-11-24-sidebar-widths-and-merge-rows.md) covers the shared minimum, saved widths and merge file selection. Status: passed with limits.
+
+- [Source Control action priority](checks/2026-11-24-source-control-action-priority.md) covers Push, Update, Fetch and the automatic Sync preference. Status: passed with limits.
+
+- [Branch Sync](checks/2026-11-24-smart-sync.md) covers the origin exchange, conflict recovery, destination safety and streamed progress. Status: passed with limits.
 
 - [Source Control during fetch and push](checks/2026-11-24-source-control-during-sync.md) covers branch selection and queued actions while sync is pending. Status: passed.
 
@@ -44,6 +58,10 @@
 - [Stop commit message generation](checks/2026-11-24-stop-commit-message-generation.md) covers the stop control, retry and provider process cancellation. Status: passed.
 
 ## Superseded
+
+- [Select the branch operation](decisions/2026-11-24-select-branch-merge-mode.md) records the earlier four choices. Status: superseded.
+
+- [Push after commits and branch merges](decisions/2026-11-24-push-after-commit-and-merge.md) records the earlier push-only preference. Status: superseded.
 
 - [Provider question capabilities](decisions/2026-11-24-provider-question-capabilities.md) records the earlier ordinary-tool fallback. Status: superseded.
 

@@ -4,18 +4,30 @@ import { TransportError } from '../../daemon/transport';
 import { type GitPlaceKey, PlaceFacts } from './gitFacts';
 import { NOTICE_MS, RemoteActions, type RemoteTransport, remoteActionsOf } from './RemoteActions';
 
-import type { GitRemoteResult } from '@clowdy/protocol';
+import type { GitRemoteResult, GitSyncProgress, GitSyncResult, GitSyncTarget } from '@clowdy/protocol';
 
 const KEY: GitPlaceKey = { projectId: 'prj_a', folderId: 'fld_b', workspaceId: 'wks_c' };
 const PLACE = { folderId: 'fld_b', workspaceId: 'wks_c' };
+const TARGET = { branch: 'main' };
+const SYNCED: GitSyncResult = { state: 'done', branch: 'main', pulled: 2, pushed: true };
 
-/** A transport whose three actions answer what the test says, and an actions model over it for a place. */
+/** A transport whose actions answer what the test says. */
 function setup() {
-    const done = (action: 'fetch' | 'pull' | 'push'): GitRemoteResult => ({ state: 'done', action });
+    const done = (action: 'fetch'): GitRemoteResult => ({ state: 'done', action });
     const transport = {
         fetchGit: vi.fn(async (): Promise<GitRemoteResult> => done('fetch')),
         pullGit: vi.fn(async (): Promise<GitRemoteResult> => ({ state: 'done', action: 'pull', pulled: 2 })),
-        pushGit: vi.fn(async (): Promise<GitRemoteResult> => done('push')),
+        syncGit: vi.fn(
+            async (
+                _projectId: string,
+                _place: typeof PLACE,
+                _target: GitSyncTarget,
+                progress?: (progress: GitSyncProgress) => void
+            ): Promise<GitSyncResult> => {
+                progress?.({ phase: 'fetch' });
+                return SYNCED;
+            }
+        ),
     };
     const refresh = vi.fn();
     const facts = new PlaceFacts(KEY, {
@@ -52,16 +64,12 @@ describe('the moves of a place to and from origin', () => {
         expect(transport.pullGit).toHaveBeenCalledWith('prj_a', PLACE);
         expect(actions.notice).toBeUndefined();
 
-        await actions.run('push');
-        expect(transport.pushGit).toHaveBeenCalledTimes(1);
+        const progress = vi.fn();
+        expect(await actions.sync(TARGET, { onProgress: progress })).toEqual({ ok: true, result: SYNCED });
+        expect(progress).toHaveBeenCalledWith({ phase: 'fetch' });
+        expect(transport.syncGit).toHaveBeenCalledWith('prj_a', PLACE, TARGET, expect.any(Function));
         expect(actions.notice).toBeUndefined();
-
-        // Publishing sends the branch through the push call.
-        transport.pushGit.mockResolvedValueOnce({ state: 'done', action: 'push', published: true });
-        await actions.run('publish');
-        expect(transport.pushGit).toHaveBeenCalledTimes(2);
-        expect(actions.notice).toBeUndefined();
-        expect(refresh).toHaveBeenCalledTimes(4);
+        expect(refresh).toHaveBeenCalledTimes(3);
         expect(actions.running).toBeUndefined();
     });
 
@@ -76,15 +84,15 @@ describe('the moves of a place to and from origin', () => {
         vi.advanceTimersByTime(1);
         expect(actions.notice).toBeUndefined();
 
-        transport.pushGit.mockRejectedValueOnce(
+        transport.syncGit.mockRejectedValueOnce(
             new TransportError('! [rejected] main -> main (fetch first)', 409, 'Pull first')
         );
-        expect(await actions.run('push')).toEqual({
+        expect(await actions.sync(TARGET)).toEqual({
             ok: false,
-            failure: { action: 'push', message: '! [rejected] main -> main (fetch first)', hint: 'Pull first' },
+            failure: { action: 'sync', message: '! [rejected] main -> main (fetch first)', hint: 'Pull first' },
         });
         expect(actions.failure).toEqual({
-            action: 'push',
+            action: 'sync',
             message: '! [rejected] main -> main (fetch first)',
             hint: 'Pull first',
         });
@@ -99,28 +107,59 @@ describe('the moves of a place to and from origin', () => {
     it('submits another action to the daemon while reusing the pending fetch', async () => {
         const { actions, transport } = setup();
         const fetchReply = Promise.withResolvers<GitRemoteResult>();
-        const pushReply = Promise.withResolvers<GitRemoteResult>();
+        const syncReply = Promise.withResolvers<GitSyncResult>();
         transport.fetchGit.mockReturnValueOnce(fetchReply.promise);
-        transport.pushGit.mockReturnValueOnce(pushReply.promise);
+        transport.syncGit.mockReturnValueOnce(syncReply.promise);
 
         const fetch = actions.run('fetch');
-        const push = actions.run('push');
+        const sync = actions.sync(TARGET);
 
         expect(actions.running).toBe('fetch');
         expect(actions.busy).toBe(true);
-        expect(actions.isPending('push')).toBe(true);
+        expect(actions.isPending('sync')).toBe(true);
         expect(actions.run('fetch', { report: false })).toBe(fetch);
         expect(transport.fetchGit).toHaveBeenCalledTimes(1);
-        expect(transport.pushGit).toHaveBeenCalledWith('prj_a', PLACE);
+        expect(transport.syncGit).toHaveBeenCalledWith('prj_a', PLACE, TARGET, expect.any(Function));
 
         fetchReply.resolve({ state: 'done', action: 'fetch' });
         await fetch;
-        expect(actions.running).toBe('push');
+        expect(actions.running).toBe('sync');
         expect(actions.isPending('fetch')).toBe(false);
 
-        pushReply.resolve({ state: 'done', action: 'push' });
-        await expect(push).resolves.toMatchObject({ ok: true });
+        syncReply.resolve(SYNCED);
+        await expect(sync).resolves.toMatchObject({ ok: true });
         expect(actions.busy).toBe(false);
+    });
+
+    it('tracks the sync phase while an explicit fetch waits separately', async () => {
+        const { actions, transport } = setup();
+        const reply = Promise.withResolvers<GitSyncResult>();
+        const fetchReply = Promise.withResolvers<GitRemoteResult>();
+        let advance: (progress: GitSyncProgress) => void = () => undefined;
+        transport.syncGit.mockImplementationOnce((_project, _place, _target, progress) => {
+            advance = progress ?? advance;
+            advance({ phase: 'fetch' });
+            return reply.promise;
+        });
+        transport.fetchGit.mockReturnValueOnce(fetchReply.promise);
+
+        const sync = actions.sync(TARGET);
+        const fetch = actions.run('fetch');
+        expect(transport.fetchGit).toHaveBeenCalledTimes(1);
+        expect(actions.running).toBe('sync');
+        expect(actions.syncPhase).toBe('fetch');
+
+        advance({ phase: 'merge' });
+        expect(actions.syncPhase).toBe('merge');
+        advance({ phase: 'push', commit: 'a'.repeat(40) });
+        expect(actions.syncPhase).toBe('push');
+
+        reply.resolve(SYNCED);
+        await sync;
+        expect(actions.running).toBe('fetch');
+        expect(actions.syncPhase).toBeUndefined();
+        fetchReply.resolve({ state: 'done', action: 'fetch' });
+        await fetch;
     });
 
     it("is busy while the place's branch is being changed, and refuses an action then, with nothing sent", async () => {
@@ -130,17 +169,17 @@ describe('the moves of a place to and from origin', () => {
 
         expect(actions.running).toBeUndefined();
         expect(actions.busy).toBe(true);
-        expect(await actions.run('push')).toEqual({
+        expect(await actions.sync(TARGET)).toEqual({
             ok: false,
-            failure: { action: 'push', message: 'The branch is being changed' },
+            failure: { action: 'sync', message: 'The branch is being changed' },
         });
-        expect(transport.pushGit).not.toHaveBeenCalled();
+        expect(transport.syncGit).not.toHaveBeenCalled();
         expect(actions.failure).toBeUndefined();
 
         facts.switching = false;
 
         expect(actions.busy).toBe(false);
-        expect(await actions.run('push')).toMatchObject({ ok: true });
+        expect(await actions.sync(TARGET)).toMatchObject({ ok: true });
     });
 
     it('says a merge that stopped as a warning that is not a failure', async () => {
@@ -158,11 +197,11 @@ describe('the moves of a place to and from origin', () => {
     it('keeps its say to the caller that asked for it, and still reads the place again', async () => {
         const { actions, transport, refresh } = setup();
 
-        expect((await actions.run('push', { report: false })).ok).toBe(true);
+        expect((await actions.sync(TARGET, { report: false })).ok).toBe(true);
         expect(actions.notice).toBeUndefined();
 
-        transport.pushGit.mockRejectedValueOnce(new TransportError('hook said no', 409));
-        expect(await actions.run('push', { report: false })).toMatchObject({
+        transport.syncGit.mockRejectedValueOnce(new TransportError('hook said no', 409));
+        expect(await actions.sync(TARGET, { report: false })).toMatchObject({
             ok: false,
             failure: { message: 'hook said no' },
         });

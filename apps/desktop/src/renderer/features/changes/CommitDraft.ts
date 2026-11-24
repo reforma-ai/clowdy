@@ -2,20 +2,21 @@ import { errorMessage } from '@clowdy/lib';
 import { makeAutoObservable, observable, runInAction } from 'mobx';
 
 import { type Transport, TransportError } from '../../daemon/transport';
-import { branchOf, commitAndPushBlock, commitBlock, pushOrPublish } from './changesActions';
+import { branchOf, commitBlock, syncBlock } from './changesActions';
 import { placeRef } from './gitFacts';
 import { sourceControlPreferences } from './sourceControlPreferences';
 
-import type { GitChangedFile, GitCommitResult } from '@clowdy/protocol';
+import type { GitChangedFile, GitCommitResult, GitSyncProgress } from '@clowdy/protocol';
 import type { PlaceChanges } from './PlaceChanges';
 import type { RemoteActions } from './RemoteActions';
 
 /** What the daemon said when the box could not do what it was asked: git's own line as the daemon gave it, and a hint beside it when it has one. */
 export interface CommitFailure {
-    /** What failed: the commit, the request for a message, or the push that came after a commit that was made (the commit stands, and the message says so). */
-    what: 'commit' | 'generate' | 'push';
+    /** What failed: the commit, the request for a message, or the sync that came after a commit that was made (the commit stands, and the message says so). */
+    what: 'commit' | 'generate' | 'sync';
     message: string;
     hint?: string;
+    syncBranch?: string;
 }
 
 /** What the box asks of the transport. */
@@ -31,8 +32,9 @@ export class CommitDraft {
     message = '';
     /** The text Generate wrote, while the box still holds exactly that: Generate may replace it, and nothing the person typed is ever replaced. */
     generated: string | undefined;
-    /** What is going on: a message is being written, a commit is being made, or the branch is being sent after one (Commit & Push). One at a time. */
-    busy: 'generate' | 'commit' | 'push' | undefined;
+    /** What is going on: a message is being written, a commit is being made, or the branch is syncing after one (Commit & Sync). One at a time. */
+    busy: 'generate' | 'commit' | 'sync' | undefined;
+    syncPhase: GitSyncProgress['phase'] | undefined;
     /** Why the last request failed, until the person acts again. */
     failure: CommitFailure | undefined;
     readonly #unticked = observable.set<string>();
@@ -43,8 +45,8 @@ export class CommitDraft {
         private readonly transport: CommitTransport,
         /** Asks for a new round of reads of the place (`GitFacts.refresh`): what a commit, or a commit that failed, may have changed. */
         private readonly refresh: () => void,
-        /** The place's moves to and from origin: what Commit & Push sends the branch with, and what it waits for. */
-        private readonly remote: Pick<RemoteActions, 'run'>
+        /** The place's moves to and from origin: what Commit & Sync sends the branch with, and what it waits for. */
+        private readonly remote: Pick<RemoteActions, 'sync'>
     ) {
         makeAutoObservable<CommitDraft, 'transport' | 'refresh' | 'remote'>(this, {
             model: false,
@@ -54,9 +56,9 @@ export class CommitDraft {
         });
     }
 
-    /** The commit or its push is being made: the ticks and the message are held. */
+    /** The commit or its sync is being made: the ticks and the message are held. */
     get writing(): boolean {
-        return this.busy === 'commit' || this.busy === 'push';
+        return this.busy === 'commit' || this.busy === 'sync';
     }
 
     /** The place's uncommitted files, as the daemon lists them (new files included): what a commit can take. */
@@ -203,31 +205,26 @@ export class CommitDraft {
         return commitBlock(this.message, this.ticked.length);
     }
 
-    /** Why Commit & Push is unavailable, for the button and menu entry. */
-    get pushBlock(): string | undefined {
-        return commitAndPushBlock(this.model.facts.status.value);
+    /** Why Commit & Sync is unavailable, for the button and menu entry. */
+    get syncBlock(): string | undefined {
+        return syncBlock(this.model.facts.status.value);
     }
 
-    get canCommitAndPush(): boolean {
-        return this.canCommit && this.pushBlock === undefined;
+    get canCommitAndSync(): boolean {
+        return this.canCommit && this.syncBlock === undefined;
     }
 
-    get pushesByDefault(): boolean {
-        return sourceControlPreferences.autoPush && commitAndPushBlock(this.model.facts.status.value) === undefined;
+    get syncsByDefault(): boolean {
+        return sourceControlPreferences.autoSync && syncBlock(this.model.facts.status.value) === undefined;
     }
 
-    /**
-     * Fetches `origin` after a push that it turned down for commits the branch lacks (`! [rejected] ... (fetch first)`), as GitHub Desktop's `Newer Commits on Remote` offers. When the fetch
-     * goes through, the line about that push goes: it was about a branch that stands otherwise now, and the sidebar's button says how (`Pull origin`, `Diverged`). The commit stands either way.
-     */
-    async fetchAfterRejection(): Promise<void> {
-        const outcome = await this.remote.run('fetch');
+    /** Start a fresh sync of the same branch when origin moved between fetch and push. */
+    retrySync(): void {
+        const branch = this.failure?.syncBranch;
+        if (branch === undefined || this.model.facts.switching) return;
 
-        if (!outcome.ok) return;
-
-        runInAction(() => {
-            if (this.failure?.what === 'push') this.failure = undefined;
-        });
+        this.failure = undefined;
+        void this.remote.sync({ branch });
     }
 
     /** Has the agent write the message for the ticked files. A failure leaves the box as it was. */
@@ -287,15 +284,14 @@ export class CommitDraft {
      * Commits the ticked files with the message. On success the box is clear and the place is read again; on failure it stays as it was, with git's own line, since what the person wrote is
      * theirs to keep. The place is read again either way: a commit that failed may still have changed it (a hook may edit files).
      */
-    async commit(andPush = this.pushesByDefault): Promise<void> {
-        if (!(andPush ? this.canCommitAndPush : this.canCommit)) return;
+    async commit(andSync = this.syncsByDefault): Promise<void> {
+        if (!(andSync ? this.canCommitAndSync : this.canCommit)) return;
 
         const { key } = this.model.facts;
         const paths = this.ticked.map(file => file.path);
         const conclude = this.concluding;
         const status = this.model.facts.status.value;
         const branch = status?.isRepository ? branchOf(status) : undefined;
-        const action = pushOrPublish(status);
 
         this.busy = 'commit';
         this.failure = undefined;
@@ -312,8 +308,8 @@ export class CommitDraft {
                 this.generated = undefined;
             });
 
-            // The commit stands whatever the push comes to: the box is clear and the sidebar offers Push again if it failed.
-            if (andPush && branch !== undefined) await this.#send(result, action, branch);
+            // The commit stands if sync fails. The sidebar can run Sync again.
+            if (andSync && branch !== undefined) await this.#sync(result, branch);
         } catch (error) {
             runInAction(() => {
                 this.failure = failureOf('commit', error);
@@ -321,30 +317,35 @@ export class CommitDraft {
         } finally {
             runInAction(() => {
                 this.busy = undefined;
+                this.syncPhase = undefined;
             });
             this.refresh();
         }
     }
 
-    /**
-     * Sends the branch after a commit that was made (a push, or its publishing when it is not on origin), and says so as the box does: a failed push is said with the commit, honestly, as
-     * `Committed 1a2b3c4, push failed: <git's line>`, with the daemon's hint under it. The place's own moves hold their say (`report: false`), so the line is not told twice.
-     */
-    async #send(commit: GitCommitResult, action: 'push' | 'publish', branch: string): Promise<void> {
+    /** Synchronizes the new commit and keeps a sync failure separate from a commit failure. */
+    async #sync(commit: GitCommitResult, branch: string): Promise<void> {
         runInAction(() => {
-            this.busy = 'push';
+            this.busy = 'sync';
         });
 
-        const outcome = await this.remote.run(action, {
-            report: false,
-            expectedHead: { branch, commit: commit.sha },
-        });
+        const outcome = await this.remote.sync(
+            { branch, commit: commit.sha },
+            {
+                report: false,
+                onProgress: ({ phase }) =>
+                    runInAction(() => {
+                        this.syncPhase = phase;
+                    }),
+            }
+        );
 
         if (!outcome.ok) {
             runInAction(() => {
                 this.failure = {
-                    what: 'push',
-                    message: `Committed ${commit.shortSha}, push failed: ${outcome.failure.message}`,
+                    what: 'sync',
+                    message: `Committed ${commit.shortSha}, sync failed: ${outcome.failure.message}`,
+                    syncBranch: branch,
                     ...(outcome.failure.hint !== undefined && { hint: outcome.failure.hint }),
                 };
             });
@@ -367,7 +368,7 @@ export function commitDraftOf(
     model: PlaceChanges,
     transport: CommitTransport,
     refresh: () => void,
-    remote: Pick<RemoteActions, 'run'>
+    remote: Pick<RemoteActions, 'sync'>
 ): CommitDraft {
     let draft = kept.get(model);
 

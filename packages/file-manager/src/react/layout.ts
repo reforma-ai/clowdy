@@ -1,5 +1,8 @@
+import { SIDEBAR_MIN_WIDTH } from '@clowdy/components/Resizable';
+
+export { SIDEBAR_MIN_WIDTH };
+
 /** The narrowest the sidebar (the file tree) and the editor can be dragged to. */
-export const SIDEBAR_MIN_WIDTH = 150;
 export const EDITOR_MIN_WIDTH = 350;
 
 /** The narrowest the view can be: its editor and its sidebar at their narrowest, side by side. The host's column for the view has to hold it. */

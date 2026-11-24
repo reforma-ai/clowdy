@@ -57,18 +57,22 @@
     opacity: 0.4;
 }
 
+/* The title gets the available width first. Keep both pieces inside the space left by the icon and the trailing controls. */
+.headerText {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    min-width: 0;
+    overflow: hidden;
+}
+
 .label {
     flex-shrink: 0;
     align-self: flex-start;
-    white-space: nowrap;
-}
-
-/* The description an agent gives a command: as long as it likes, so it is cut with an ellipsis instead of pushing the command out of the row. */
-.shrinks {
-    flex-shrink: 1;
-    min-width: 0;
+    max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .chip {

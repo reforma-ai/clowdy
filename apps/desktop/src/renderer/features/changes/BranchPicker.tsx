@@ -3,11 +3,13 @@ import { Popover, PopoverTrigger } from '@clowdy/components/Popover';
 import { Text } from '@clowdy/components/Text';
 import { ChevronDown } from '@clowdy/icons/8';
 import { Version } from '@clowdy/icons/14';
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 
+import { useRootStore } from '../../stores';
 import { BranchList } from './BranchList';
 import styles from './BranchPicker.module.css';
 import { newBranchStarts } from './branchChoices';
+import { openDeleteBranch } from './DeleteBranchDialog';
 import { NewBranchForm } from './NewBranchForm';
 import { useBranchSwitch } from './useBranchSwitch';
 
@@ -27,8 +29,34 @@ export interface BranchPickerProps {
  */
 export function BranchPicker({ facts, label }: BranchPickerProps) {
     const model = useBranchSwitch(facts);
+    const { transport } = useRootStore();
     const [isOpen, setIsOpen] = useState(false);
     const [creating, setCreating] = useState(false);
+    const [previewing, setPreviewing] = useState(false);
+    const previewRequest = useRef<symbol | undefined>(undefined);
+    useLayoutEffect(() => {
+        setPreviewing(false);
+        return () => {
+            previewRequest.current = undefined;
+        };
+    }, [model]);
+
+    const deleteBranch = async (name: string, remote: boolean) => {
+        if (previewRequest.current || model.busy) return;
+
+        const request = Symbol();
+        previewRequest.current = request;
+        setIsOpen(false);
+        setPreviewing(true);
+        try {
+            await openDeleteBranch(model, transport, name, remote, () => previewRequest.current === request);
+        } finally {
+            if (previewRequest.current === request) {
+                previewRequest.current = undefined;
+                setPreviewing(false);
+            }
+        }
+    };
     const status = facts.status.value;
     const head = status?.isRepository === true ? status.head : undefined;
     const showCreate = (on: boolean) => {
@@ -42,14 +70,14 @@ export function BranchPicker({ facts, label }: BranchPickerProps) {
             size="sm"
             className={styles.trigger}
             contentClassName={styles.content}
-            isPending={model.busy}
+            isPending={model.busy || previewing}
             spinnerPlacement="start"
             aria-label={`Current branch: ${label}`}
             // Constant while the popover is open or not: a button that gains or loses its tooltip is drawn in another place of the tree, and would lose the focus the popover gives back.
             tooltip={`Current branch: ${label}`}
             tooltipPlacement="bottom"
         >
-            {!model.busy && <Version aria-hidden="true" className={styles.icon} />}
+            {!model.busy && !previewing && <Version aria-hidden="true" className={styles.icon} />}
             <Text weight="medium" truncate className={styles.label}>
                 {label}
             </Text>
@@ -61,6 +89,7 @@ export function BranchPicker({ facts, label }: BranchPickerProps) {
         <PopoverTrigger
             isOpen={isOpen}
             onOpenChange={open => {
+                if (open && previewRequest.current) return;
                 setIsOpen(open);
                 setCreating(false);
 
@@ -71,7 +100,13 @@ export function BranchPicker({ facts, label }: BranchPickerProps) {
             }}
         >
             {trigger}
-            <Popover placement="bottom start" width={288} spacing="xs" aria-label="Branches">
+            <Popover
+                placement="bottom start"
+                width={288}
+                spacing="xs"
+                aria-label="Branches"
+                shouldCloseOnInteractOutside={element => !element.closest('[data-branch-context-menu]')}
+            >
                 {creating ? (
                     <NewBranchForm
                         model={model}
@@ -85,6 +120,7 @@ export function BranchPicker({ facts, label }: BranchPickerProps) {
                         current={head?.kind === 'branch' ? head.name : undefined}
                         onSwitched={() => setIsOpen(false)}
                         onCreate={() => showCreate(true)}
+                        onDelete={(name, remote) => void deleteBranch(name, remote)}
                     />
                 )}
             </Popover>

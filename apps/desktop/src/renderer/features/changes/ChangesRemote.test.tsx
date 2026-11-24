@@ -21,7 +21,7 @@ import { type GitPlaceKey, gitFactsOf } from './gitFacts';
 import { placeChangesOf } from './PlaceChanges';
 import { sourceControlPreferences } from './sourceControlPreferences';
 
-import type { GitRemoteResult } from '@clowdy/protocol';
+import type { GitRemoteResult, GitSyncProgress, GitSyncResult } from '@clowdy/protocol';
 import type { FixtureGitWritesOptions } from '../../daemon/fixtureGitWrites';
 import type { Place } from '../sidePanel/currentPlace';
 import type { PlaceChanges } from './PlaceChanges';
@@ -86,6 +86,7 @@ const buttonOf = (label: string) =>
 const createPRButton = () => container.querySelector<HTMLButtonElement>('button[aria-label="Create PR"]') ?? undefined;
 const syncButton = () => container.querySelector<HTMLButtonElement>('button[data-sync]')!;
 const syncCopy = () => syncButton().querySelector('[data-sync-copy]')?.textContent;
+const syncDetail = () => document.getElementById(syncButton().getAttribute('aria-describedby') ?? '')?.textContent;
 /** The dropdown beside it, which keeps every action. */
 const dropdown = () => container.querySelector<HTMLButtonElement>('button[aria-label="More source control actions"]')!;
 const items = () => [...document.querySelectorAll<HTMLElement>('[role="menu"] [role="menuitem"]')];
@@ -172,73 +173,50 @@ afterEach(async () => {
     container.remove();
     stop?.();
     store.dispose();
-    sourceControlPreferences.setAutoPush(true);
+    sourceControlPreferences.setAutoSync(true);
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
 });
 
 describe('the sync button in the sidebar', () => {
-    it('says Publish branch for a branch that is not on origin, with the dropdown listing Fetch origin, Pull origin disabled, and Publish branch', async () => {
+    const place = { folderId: WORKTREE.folderId, workspaceId: WORKTREE.workspaceId };
+    const branch = 'clowdy/ab12cd34';
+    const read = () => transport.getGitStatus(FIXTURE_PROJECT_ID, place);
+
+    it('uses Sync to publish an unpublished branch and keeps Update from the base available', async () => {
         await start();
+        const sync = vi.spyOn(transport, 'syncGit');
 
-        expect(syncButton().getAttribute('data-sync')).toBe('publish');
-        expect(syncButton().textContent).toBe('Publish branchPublish this branch to origin');
+        expect(syncCopy()).toBe('Publish branchPublish this branch to origin');
         expect(syncButton().disabled).toBe(false);
+        expect(buttonOf(updateLabel)).toBeUndefined();
         await openMenu();
-
         expect(items().map(candidate => candidate.textContent)).toEqual([
             'Fetch origin',
             'Pull origin',
-            'Publish branch',
             updateLabel,
             ...mergeLabels,
         ]);
         expect(isOff('Fetch origin')).toBe(false);
         expect(isOff('Pull origin')).toBe(true);
-        expect(isOff('Publish branch')).toBe(false);
-    });
-
-    it('publishes without a notice and then offers to update from the base', async () => {
-        await start();
-
-        const push = vi.spyOn(transport, 'pushGit');
+        await press(dropdown());
+        await settle();
 
         await press(syncButton());
         await settle();
-        await settle();
-
-        expect(push).toHaveBeenCalledWith(FIXTURE_PROJECT_ID, {
-            folderId: 'fld_car_rental',
-            workspaceId: 'wks_ab12cd34',
-        });
+        expect(sync).toHaveBeenCalledExactlyOnceWith(FIXTURE_PROJECT_ID, place, { branch }, expect.any(Function));
+        expect(await read()).toMatchObject({ upstream: { name: `origin/${branch}`, ahead: 0, behind: 0 } });
         expect(status()).toBeNull();
-        expect(syncButton().getAttribute('data-sync')).toBe('update');
-        expect(syncButton().textContent).toContain('Update from main');
-        expect(syncButton().querySelector('[data-commit-count="down"]')?.textContent).toBe('1');
-
-        await openMenu();
-        expect(items().map(candidate => candidate.textContent)).toEqual([
-            'Fetch origin',
-            'Pull origin',
-            'Push origin',
-            updateLabel,
-            ...mergeLabels,
-        ]);
+        expect(syncButton()).toBe(buttonOf(updateLabel));
     });
 
-    it('is Fetch origin for a branch that is level, a press updates its timestamp without a separate notice, and Never fetched appears where the repository has not', async () => {
+    it('fetches when the branch is even and refreshes the clock without a separate success notice', async () => {
         await start({ key: CHECKOUT });
 
-        expect(syncButton().textContent).toBe('Fetch originLast fetched 3 minutes ago');
-        expect(syncButton().disabled).toBe(false);
-
-        const fetch = vi.spyOn(transport, 'fetchGit');
-
+        expect(syncCopy()).toBe('Fetch originLast fetched 3 minutes ago');
         await press(syncButton());
         await settle();
-        await settle();
 
-        expect(fetch).toHaveBeenCalledWith(FIXTURE_PROJECT_ID, { folderId: 'fld_car_rental' });
         expect(status()).toBeNull();
         expect(syncCopy()).toBe('Fetch originLast fetched just now');
 
@@ -247,172 +225,107 @@ describe('the sync button in the sidebar', () => {
         store.dispose();
         root = createRoot(container);
         await start({ key: CHECKOUT, gitWrites: { remote: 'never' } });
-        expect(syncButton().textContent).toBe('Fetch originNever fetched');
+        expect(syncCopy()).toBe('Fetch originNever fetched');
     });
 
-    it('moves its line on by itself while the window stays open: the clock ticks every 30 s and no new read is made', async () => {
-        // Only the clock and its interval are faked, so the fixtures and the settling that the page waits on keep their own timers.
+    it('moves its line while the window stays open without a new read', async () => {
         vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
 
         try {
             await start({ key: CHECKOUT });
-
             const reads = vi.spyOn(transport, 'getGitStatus');
 
-            expect(syncButton().textContent).toBe('Fetch originLast fetched 3 minutes ago');
-
+            expect(syncCopy()).toBe('Fetch originLast fetched 3 minutes ago');
             act(() => {
                 vi.advanceTimersByTime(29_000);
             });
-            expect(syncButton().textContent).toBe('Fetch originLast fetched 3 minutes ago');
-
+            expect(syncCopy()).toBe('Fetch originLast fetched 3 minutes ago');
             act(() => {
                 vi.advanceTimersByTime(2 * 60_000);
             });
-            expect(syncButton().textContent).toBe('Fetch originLast fetched 5 minutes ago');
+            expect(syncCopy()).toBe('Fetch originLast fetched 5 minutes ago');
             expect(reads).not.toHaveBeenCalled();
         } finally {
             vi.useRealTimers();
         }
     });
 
-    it('is Publish branch, with what it tracks, for a branch made from another one, and a press publishes it under its own name: it is level with that upstream afterwards, and nothing was pulled or sent to main', async () => {
+    it('syncs a branch that tracks another name with its own name on origin', async () => {
         await start({ gitWrites: { remote: 'renamed' } });
 
-        expect(syncButton().getAttribute('data-sync')).toBe('publish');
-        expect(syncButton().textContent).toBe('Publish branchTracks origin/main');
-        expect(syncButton().disabled).toBe(false);
-
-        const push = vi.spyOn(transport, 'pushGit');
-        const pull = vi.spyOn(transport, 'pullGit');
-
-        await press(syncButton());
-        await settle();
-        await settle();
-
-        expect(push).toHaveBeenCalledWith(FIXTURE_PROJECT_ID, {
-            folderId: 'fld_car_rental',
-            workspaceId: 'wks_ab12cd34',
-        });
-        expect(pull).not.toHaveBeenCalled();
-        expect(status()).toBeNull();
-        expect(syncButton().getAttribute('data-sync')).toBe('update');
-        expect(
-            await transport.getGitStatus(FIXTURE_PROJECT_ID, {
-                folderId: 'fld_car_rental',
-                workspaceId: 'wks_ab12cd34',
-            })
-        ).toMatchObject({ upstream: { name: 'origin/clowdy/ab12cd34', ahead: 0, behind: 0 } });
-    });
-
-    it('lists Pull origin off with what the branch tracks, and Publish branch as the one that works, for a branch made from another one', async () => {
-        await start({ gitWrites: { remote: 'renamed' } });
+        expect(syncCopy()).toBe('Publish branchTracks origin/main');
+        expect(syncDetail()).toBe(`Publish as origin/${branch}`);
         await openMenu();
-
-        expect(items().map(candidate => candidate.textContent)).toEqual([
-            'Fetch origin',
-            'Pull origin',
-            'Publish branch',
-            updateLabel,
-            ...mergeLabels,
-        ]);
         expect(isOff('Pull origin')).toBe(true);
-        expect(isOff('Publish branch')).toBe(false);
-    });
-
-    it('keeps an update from the base available beside an upstream pull, with the base count', async () => {
-        await start({ gitWrites: { clean: true, remote: 'behind' } });
-        const update = vi.spyOn(transport, 'updateGit');
-        const pull = vi.spyOn(transport, 'pullGit');
-        const updateButton = sidebar().querySelector<HTMLButtonElement>('button[aria-label="Update from main"]')!;
-
-        expect(syncButton().getAttribute('data-sync')).toBe('pull');
-        expect(updateButton.querySelector('[data-commit-count="down"]')?.textContent).toBe('1');
-        await press(updateButton);
+        await press(dropdown());
         await settle();
 
-        expect(update).toHaveBeenCalledTimes(1);
-        expect(pull).not.toHaveBeenCalled();
-        expect(status()).toBeNull();
-    });
-
-    it('is Pull origin with the count for a branch that is behind, and a press pulls and reads the place again, so the counts and the pull request are the ones it left', async () => {
-        await start({ gitWrites: { remote: 'behind' } });
-
-        const reads = {
-            status: vi.spyOn(transport, 'getGitStatus'),
-            pullRequest: vi.spyOn(transport, 'getGitPullRequest'),
-        };
-        const pull = vi.spyOn(transport, 'pullGit');
-
-        expect(syncButton().getAttribute('data-sync')).toBe('pull');
-        expect(syncButton().textContent).toBe('Pull originLast fetched 3 minutes ago2');
-        expect(syncButton().querySelector('svg')).not.toBeNull();
-        await openMenu();
-        expect(items().map(candidate => candidate.textContent)).toEqual([
-            'Fetch origin',
-            'Pull origin2 commits',
-            'Push origin',
-            updateLabel,
-            ...mergeLabels,
-        ]);
-        await press(item('Pull origin'));
-        await settle();
-        await settle();
-
-        expect(pull).toHaveBeenCalledTimes(1);
-        expect(reads.status).toHaveBeenCalled();
-        expect(reads.pullRequest).toHaveBeenCalled();
-        expect(status()).toBeNull();
-        expect(syncButton().getAttribute('data-sync')).toBe('update');
-    });
-
-    it('is Push origin with the count for a branch that is ahead, and a press pushes it', async () => {
-        await start({ gitWrites: { remote: 'ahead' } });
-
-        const push = vi.spyOn(transport, 'pushGit');
-
-        expect(syncButton().getAttribute('data-sync')).toBe('push');
-        expect(syncButton().textContent).toBe('Push originLast fetched 3 minutes ago2');
         await press(syncButton());
         await settle();
-        await settle();
-
-        expect(push).toHaveBeenCalledTimes(1);
-        expect(status()).toBeNull();
-        expect(syncButton().getAttribute('data-sync')).toBe('update');
+        expect(await read()).toMatchObject({ upstream: { name: `origin/${branch}`, ahead: 0, behind: 0 } });
     });
 
-    it('is Pull origin for a branch that diverged, which merges, and holds Push until the pull', async () => {
-        await start({ gitWrites: { remote: 'diverged' } });
+    it.each([
+        ['ahead', 'Push origin', 2, 0],
+        ['behind', 'Pull origin', 0, 2],
+        ['diverged', 'Sync', 1, 2],
+    ] as const)(
+        'recommends the upstream action before updating the base for a branch that is %s',
+        async (remote, label, ahead, behind) => {
+            await start({ gitWrites: { clean: true, remote } });
+            const sync = vi.spyOn(transport, 'syncGit');
+            const pull = vi.spyOn(transport, 'pullGit');
+            const pr = vi.spyOn(transport, 'getGitPullRequest');
 
+            expect(syncCopy()).toBe(`${label}Last fetched 3 minutes ago`);
+            expect(syncDetail()).toContain(
+                ahead > 0 ? `${ahead} commit${ahead === 1 ? '' : 's'} to push` : '2 commits to pull'
+            );
+            expect(buttonOf(updateLabel)).toBeUndefined();
+            if (behind > 0) {
+                expect(syncDetail()).toContain(`${behind} commits to pull`);
+            }
+
+            await press(syncButton());
+            await settle();
+
+            expect(sync).toHaveBeenCalledTimes(1);
+            expect(await sync.mock.results[0]?.value).toMatchObject({
+                state: 'done',
+                pulled: behind,
+                pushed: ahead > 0,
+            });
+            expect(pull).not.toHaveBeenCalled();
+            expect(await read()).toMatchObject({ upstream: { ahead: 0, behind: 0 } });
+            expect(syncButton()).toBe(buttonOf(updateLabel));
+            expect(pr).toHaveBeenCalled();
+            expect(status()).toBeNull();
+        }
+    );
+
+    it('keeps the explicit Pull and its incoming count in the menu', async () => {
+        await start({ gitWrites: { clean: true, remote: 'behind' } });
         const pull = vi.spyOn(transport, 'pullGit');
-        const push = vi.spyOn(transport, 'pushGit');
-
-        expect(syncButton().getAttribute('data-sync')).toBe('pull');
-        expect(syncButton().textContent).toBe('Pull originLast fetched 3 minutes ago12');
-        expect(syncButton().disabled).toBe(false);
-        expect(syncButton().textContent).not.toMatch(/Force push/);
+        const sync = vi.spyOn(transport, 'syncGit');
 
         await openMenu();
-        expect(isOff('Fetch origin')).toBe(false);
-        expect(isOff('Pull origin')).toBe(false);
-        expect(isOff('Push origin')).toBe(true);
-        expect(item('Push origin').textContent).toBe('Push origin1 commit');
         expect(item('Pull origin').textContent).toBe('Pull origin2 commits');
         await press(item('Pull origin'));
         await settle();
+
         expect(pull).toHaveBeenCalledTimes(1);
-        expect(push).not.toHaveBeenCalled();
+        expect(sync).not.toHaveBeenCalled();
+        expect(await read()).toMatchObject({ upstream: { behind: 0 } });
     });
 
-    it('says a pull that stopped on conflicts as a warning', async () => {
-        await start({ gitWrites: { remote: 'behind' } });
-        vi.spyOn(transport, 'pullGit').mockResolvedValue({
+    it('shows conflicts as a warning while the status refresh catches up', async () => {
+        await start({ gitWrites: { clean: true, remote: 'diverged' } });
+        vi.spyOn(transport, 'syncGit').mockResolvedValue({
             state: 'conflicts',
-            action: 'pull',
+            branch,
+            path: currentPlace.workspace!.path,
             conflicts: 2,
-        } satisfies GitRemoteResult);
+        });
 
         await press(syncButton());
         await settle();
@@ -425,124 +338,93 @@ describe('the sync button in the sidebar', () => {
         ['detached', 'blocked', 'HEAD is detached'],
         ['unborn', 'blocked', 'No commits yet'],
         ['no_origin', 'no_origin', 'Nothing to sync with'],
-    ] as const)(
-        'is off with its reason where the branch cannot be synced (%s), and its stop carries the tooltip',
-        async (script, kind, line) => {
-            await start({ gitWrites: { remote: script } });
+    ] as const)('holds Sync where it cannot run (%s) with an accessible reason', async (script, kind, line) => {
+        await start({ gitWrites: { remote: script } });
 
-            expect(syncButton().getAttribute('data-sync')).toBe(kind);
-            expect(syncButton().disabled).toBe(true);
-            expect(syncButton().textContent).toContain(line);
-            // The stop that carries the tooltip of a button that cannot be pressed.
-            const stand = syncButton().closest('[role="button"][aria-disabled="true"]');
+        expect(syncButton().getAttribute('data-sync')).toBe(kind);
+        expect(syncButton().disabled).toBe(true);
+        expect(syncCopy()).toContain(line);
+        const stand = syncButton().closest('[role="button"][aria-disabled="true"]');
+        expect(stand?.getAttribute('tabindex')).toBe('0');
+        expect(stand?.getAttribute('aria-label')).toBe(script === 'no_origin' ? 'No origin' : 'Sync');
+        await openMenu();
+        expect(isOff('Fetch origin')).toBe(script === 'no_origin');
+    });
 
-            expect(stand).not.toBeNull();
-            expect(stand?.getAttribute('tabindex')).toBe('0');
-            expect(stand?.getAttribute('aria-label')).toBe(
-                syncButton().textContent?.startsWith('No origin') ? 'No origin' : 'Publish branch'
-            );
-            // Fetch origin is in the dropdown, except where there is no origin to fetch from.
-            await openMenu();
-            expect(isOff('Fetch origin')).toBe(script === 'no_origin');
-        }
-    );
-
-    it("shows git's own line when an action fails, selectable, with the hint under it, and goes when the person acts again", async () => {
+    it("shows git's own line and hint when Sync fails", async () => {
         await start({ gitWrites: { remote: 'signing' } });
+
         await press(syncButton());
         await settle();
-        await settle();
-
         expect(alert()?.textContent).toContain('error: No private key found for public key');
         expect(alert()?.textContent).toContain("The signing agent couldn't be reached");
-        // Not a push turned down for newer commits: no Fetch origin beside it.
-        expect(alert()?.querySelector('button')).toBeNull();
 
         await openMenu();
         await press(item('Fetch origin'));
         await settle();
-        await settle();
         expect(alert()).toBeNull();
         expect(status()).toBeNull();
     });
 
-    it('shows a push that origin rejected by its line with a Fetch origin button beside it, which fetches and takes the line away', async () => {
-        await start({ gitWrites: { remote: 'rejected' } });
+    it('offers to retry the whole Sync when a push is rejected because origin moved', async () => {
+        await start({ gitWrites: { remote: 'ahead' } });
+        const sync = vi
+            .spyOn(transport, 'syncGit')
+            .mockRejectedValueOnce(new TransportError(`! [rejected] ${branch} -> ${branch} (fetch first)`, 409));
+
         await press(syncButton());
         await settle();
-        await settle();
-
-        expect(alert()?.textContent).toBe('! [rejected] clowdy/ab12cd34 -> clowdy/ab12cd34 (fetch first)Fetch origin');
-        expect(syncButton().getAttribute('data-sync')).toBe('push');
-
-        const fetch = vi.spyOn(transport, 'fetchGit');
+        expect(alert()?.textContent).toContain('(fetch first)');
+        expect(alert()?.querySelector('button')?.textContent).toBe('Retry Sync');
 
         await press(alert()!.querySelector('button')!);
         await settle();
-        await settle();
 
-        expect(fetch).toHaveBeenCalledTimes(1);
+        expect(sync).toHaveBeenCalledTimes(2);
         expect(alert()).toBeNull();
-        expect(status()).toBeNull();
+        expect(await read()).toMatchObject({ upstream: { ahead: 0, behind: 0 } });
     });
 
-    it('shows sync progress while the menu keeps other actions available', async () => {
-        await start({ key: CHECKOUT });
+    it('shows each phase without replacing the button or blocking merge choices', async () => {
+        await start({ key: CHECKOUT, gitWrites: { remote: 'ahead' } });
+        const reply = Promise.withResolvers<GitSyncResult>();
+        let progress: (step: GitSyncProgress) => void = () => undefined;
 
-        let release: () => void = () => undefined;
-
-        vi.spyOn(transport, 'fetchGit').mockImplementation(
-            () =>
-                new Promise(resolve => {
-                    release = () => resolve({ state: 'done', action: 'fetch' });
-                })
-        );
+        vi.spyOn(transport, 'syncGit').mockImplementationOnce((_project, _place, _target, onProgress) => {
+            progress = onProgress ?? progress;
+            progress({ phase: 'fetch' });
+            return reply.promise;
+        });
         const button = syncButton();
         await press(button);
 
         expect(syncButton()).toBe(button);
-        expect(syncButton().getAttribute('data-sync')).toBe('running');
         expect(syncCopy()).toBe('Fetching origin');
-        expect(syncButton().hasAttribute('data-pending')).toBe(true);
+        expect(button.hasAttribute('data-pending')).toBe(true);
         await openMenu();
-        expect(isOff('Fetch origin')).toBe(true);
         expect(isOff('Merge from branch…')).toBe(false);
         expect(isOff('Merge into branch…')).toBe(false);
 
-        release();
+        act(() => progress({ phase: 'merge' }));
+        expect(syncCopy()).toBe('Merging from origin');
+        act(() => progress({ phase: 'push', commit: 'a'.repeat(40) }));
+        expect(syncCopy()).toBe('Pushing origin');
+        reply.resolve({ state: 'done', branch: 'main', pulled: 1, pushed: true });
         await settle();
-        await settle();
+
         expect(syncButton()).toBe(button);
-        expect(syncButton().getAttribute('data-sync')).toBe('fetch');
+        expect(button.hasAttribute('data-pending')).toBe(false);
+        expect(button.dataset.sync).toBe('push');
         expect(status()).toBeNull();
     });
 
-    it('names each action by what it is doing: Pulling origin, Pushing origin, Publishing branch', async () => {
-        await start();
-
-        let release: () => void = () => undefined;
-
-        vi.spyOn(transport, 'pushGit').mockImplementation(
-            () =>
-                new Promise(resolve => {
-                    release = () => resolve({ state: 'done', action: 'push', published: true });
-                })
-        );
-        await press(syncButton());
-        expect(syncCopy()).toBe('Publishing branch');
-        release();
-        await settle();
-        await settle();
-    });
-
-    it('disables actions that need origin and keeps branch merges available', async () => {
+    it('disables only actions that require origin when the repository has none', async () => {
         await start({ gitWrites: { remote: 'no_origin' } });
         await openMenu();
 
         expect(items().map(candidate => candidate.textContent)).toEqual([
             'Fetch origin',
             'Pull origin',
-            'Push origin',
             updateLabel,
             ...mergeLabels,
         ]);
@@ -550,63 +432,101 @@ describe('the sync button in the sidebar', () => {
             true,
             true,
             true,
-            true,
             false,
             false,
         ]);
     });
 
-    it('updates from the main button, keeps Fetch in the menu, and offers Push when the merge adds a commit', async () => {
-        await start({ gitWrites: { clean: true, remote: 'level' } });
-        const readStatus = transport.getGitStatus.bind(transport);
-        let updated = false;
-        vi.spyOn(transport, 'getGitStatus').mockImplementation(async (projectId, place) => {
-            const current = await readStatus(projectId, place);
+    it('follows Push with Update and syncs the update before recommending Fetch', async () => {
+        await start({ gitWrites: { clean: true, remote: 'ahead' } });
+        const sync = vi.spyOn(transport, 'syncGit');
+        const applySync = transport.syncGit.bind(transport);
+        const update = vi.spyOn(transport, 'updateGit');
+        const primary = syncButton();
 
-            if (updated && current.isRepository && current.base.state === 'ready' && current.upstream) {
-                current.base.behind = 0;
-                current.upstream.ahead = 1;
-            }
-
-            return current;
-        });
-        let finish: (result: GitRemoteResult) => void = () => undefined;
-        const update = vi.spyOn(transport, 'updateGit').mockImplementation(
-            () =>
-                new Promise(resolve => {
-                    finish = resolve;
-                })
-        );
-
-        expect(syncButton().textContent).toContain(updateLabel);
-        await openMenu();
-        expect(isOff('Fetch origin')).toBe(false);
-        expect(isOff(updateLabel)).toBe(false);
-        await press(item('Fetch origin'));
+        expect(primary.getAttribute('aria-label')).toBe('Push origin');
+        expect(buttonOf(updateLabel)).toBeUndefined();
+        await press(primary);
         await settle();
+        expect(syncButton()).toBe(primary);
+        expect(primary.getAttribute('aria-label')).toBe(updateLabel);
+        expect(primary.querySelector('[data-commit-count="down"]')?.textContent).toBe('1');
+
+        const release = Promise.withResolvers<void>();
+        sync.mockImplementationOnce(async (project, place, target, progress) => {
+            progress?.({ phase: 'fetch' });
+            await release.promise;
+            return applySync(project, place, target, progress);
+        });
+        await press(primary);
+        await settle();
+
+        expect(update).toHaveBeenCalledExactlyOnceWith(FIXTURE_PROJECT_ID, place);
+        const result = await update.mock.results[0]?.value;
+        expect(result).toMatchObject({ state: 'done', updatedHead: { branch, commit: expect.any(String) } });
+        expect(sync).toHaveBeenLastCalledWith(
+            FIXTURE_PROJECT_ID,
+            place,
+            result.state === 'done' ? result.updatedHead : undefined,
+            expect.any(Function)
+        );
+        expect(syncCopy()).toBe('Fetching origin');
+        await openMenu();
+        expect(isOff(updateLabel)).toBe(true);
+        expect(isOff('Fetch origin')).toBe(false);
+
+        release.resolve();
+        await settle();
+        expect(syncButton()).toBe(primary);
+        expect(primary.getAttribute('aria-label')).toBe('Fetch origin');
+        expect(await read()).toMatchObject({ upstream: { ahead: 0 }, base: { behind: 0 } });
+        expect(alert()).toBeNull();
+    });
+
+    it('leaves the update local when automatic sync is off', async () => {
+        sourceControlPreferences.setAutoSync(false);
+        await start({ gitWrites: { clean: true, remote: 'level' } });
+        const sync = vi.spyOn(transport, 'syncGit');
+
+        expect(syncButton().getAttribute('aria-label')).toBe(updateLabel);
         await press(syncButton());
         await settle();
 
-        expect(update).toHaveBeenCalledExactlyOnceWith(FIXTURE_PROJECT_ID, {
-            folderId: WORKTREE.folderId,
-            workspaceId: WORKTREE.workspaceId,
-        });
-        expect(syncCopy()).toBe('Updating');
-        await openMenu();
-        expect(isOff(updateLabel)).toBe(true);
+        expect(sync).not.toHaveBeenCalled();
+        expect(syncButton().getAttribute('aria-label')).toBe('Push origin');
+    });
 
-        updated = true;
-        finish({ state: 'done', action: 'update', pulled: 1 });
+    it('keeps the local update and recommends Push when its sync fails', async () => {
+        await start({ gitWrites: { clean: true, remote: 'level' } });
+        vi.spyOn(transport, 'syncGit').mockRejectedValueOnce(new TransportError('Network is offline', 503));
+
+        await press(syncButton());
         await settle();
+
+        expect(await read()).toMatchObject({ upstream: { ahead: 1 }, base: { behind: 0 } });
+        expect(syncButton().getAttribute('aria-label')).toBe('Push origin');
+        expect(alert()?.textContent).toContain('Updated locally, sync failed: Network is offline');
+    });
+
+    it.each([
+        { state: 'conflicts', action: 'update', conflicts: 2 },
+        { state: 'done', action: 'update', pulled: 0 },
+    ] as const)('does not sync an update that never made a commit ($state)', async outcome => {
+        await start({ gitWrites: { clean: true, remote: 'level' } });
+        vi.spyOn(transport, 'updateGit').mockResolvedValueOnce(outcome);
+        const sync = vi.spyOn(transport, 'syncGit');
+
+        await press(syncButton());
         await settle();
-        expect(status()).toBeNull();
-        expect(syncButton().getAttribute('data-sync')).toBe('push');
+
+        expect(sync).not.toHaveBeenCalled();
     });
 });
 
 describe('merging branches from the sync menu', () => {
     const dialog = () => document.querySelector<HTMLElement>('[data-modal-window] [role="dialog"]')!;
     const heading = () => dialog().querySelector('h2')?.textContent;
+    const modeTrigger = () => dialog().querySelector<HTMLButtonElement>('button[aria-label="Choose merge mode"]')!;
     const options = () => [...dialog().querySelectorAll<HTMLElement>('[role="option"]')];
     const option = (name: string) => options().find(candidate => candidate.textContent?.trim() === name)!;
     const button = (name: string) =>
@@ -620,7 +540,7 @@ describe('merging branches from the sync menu', () => {
         await open('Merge from branch…');
         await press(option('origin/feature/search'));
         await settle();
-        await press(button('Create merge commit & Push'));
+        await press(button('Create a merge commit & Sync'));
         await settle();
     };
     const confirmButton = (name: string) =>
@@ -652,7 +572,7 @@ describe('merging branches from the sync menu', () => {
         await press(option('main'));
         await settle();
         expect(heading()).toBe('Merge main to clowdy/ab12cd34');
-        expect(button('Fast-forward & Push').disabled).toBe(false);
+        expect(button('Create a merge commit & Sync').disabled).toBe(false);
         expect(fetch).toHaveBeenCalledTimes(1);
 
         reply.resolve({ state: 'done', action: 'fetch' });
@@ -661,10 +581,13 @@ describe('merging branches from the sync menu', () => {
         expect(heading()).toBe('Merge main to clowdy/ab12cd34');
     });
 
-    it('lets the user open the destination picker during a push', async () => {
+    it('lets the user open the destination picker during the push phase of Sync', async () => {
         await start({ gitWrites: { clean: true, remote: 'ahead' } });
-        const reply = Promise.withResolvers<GitRemoteResult>();
-        vi.spyOn(transport, 'pushGit').mockReturnValueOnce(reply.promise);
+        const reply = Promise.withResolvers<GitSyncResult>();
+        vi.spyOn(transport, 'syncGit').mockImplementationOnce((_project, _place, _target, progress) => {
+            progress?.({ phase: 'push', commit: 'a'.repeat(40) });
+            return reply.promise;
+        });
 
         await press(syncButton());
         expect(syncCopy()).toBe('Pushing origin');
@@ -676,8 +599,8 @@ describe('merging branches from the sync menu', () => {
         await settle();
 
         expect(heading()).toBe('Merge clowdy/ab12cd34 to main');
-        expect(button('Fast-forward & Push').disabled).toBe(false);
-        reply.resolve({ state: 'done', action: 'push' });
+        expect(button('Create a merge commit & Sync').disabled).toBe(false);
+        reply.resolve({ state: 'done', branch: 'clowdy/ab12cd34', pulled: 0, pushed: true });
         await settle();
     });
 
@@ -701,12 +624,13 @@ describe('merging branches from the sync menu', () => {
         expect(option('origin/feature/search')).toBeUndefined();
     });
 
-    it('fetches origin before listing source branches and previews the selected ref before merging', async () => {
+    it('fetches origin before listing source branches and confirms the preview outcome before merging', async () => {
         await start({ gitWrites: { clean: true, remote: 'level' } });
         const success = vi.spyOn(toast, 'success').mockReturnValue('');
         const fetch = vi.spyOn(transport, 'fetchGit');
         const branches = vi.spyOn(transport, 'getGitBranches');
         const merge = vi.spyOn(transport, 'branchMergeGit');
+        const sync = vi.spyOn(transport, 'syncGit');
 
         await open('Merge from branch…');
 
@@ -714,7 +638,8 @@ describe('merging branches from the sync menu', () => {
         expect(branches).toHaveBeenCalledTimes(1);
         expect(fetch.mock.invocationCallOrder[0]!).toBeLessThan(branches.mock.invocationCallOrder[0]!);
         expect(merge).not.toHaveBeenCalled();
-        expect(button('Merge').disabled).toBe(true);
+        expect(button('Select a branch').disabled).toBe(true);
+        expect(modeTrigger().disabled).toBe(true);
         expect(heading()).toBe('Merge … to clowdy/ab12cd34');
         expect(option('origin/main')).toBeUndefined();
         expect(option('origin/dev')).toBeUndefined();
@@ -723,7 +648,7 @@ describe('merging branches from the sync menu', () => {
         await settle();
 
         expect(heading()).toBe('Merge main to clowdy/ab12cd34');
-        expect(dialog().textContent).toContain('Fast-forward');
+        expect(dialog().textContent).toContain('Moves the branch forward without a merge commit');
         expect(merge).toHaveBeenCalledTimes(1);
         expect(merge.mock.calls[0]?.[2]).toEqual({
             action: 'preview',
@@ -732,7 +657,7 @@ describe('merging branches from the sync menu', () => {
             branch: 'main',
         });
 
-        await press(button('Fast-forward & Push'));
+        await press(button('Create a merge commit & Sync'));
         await settle();
 
         expect(merge.mock.calls[1]?.[2]).toMatchObject({
@@ -742,10 +667,45 @@ describe('merging branches from the sync menu', () => {
             branch: 'main',
             sourceCommit: expect.stringMatching(/^[0-9a-f]+$/),
             targetCommit: expect.stringMatching(/^[0-9a-f]+$/),
+            expectedMode: 'fast-forward',
         });
         expect(dialog()).toBeNull();
-        expect(merge.mock.calls[2]?.[2]).toMatchObject({ action: 'push', target: 'clowdy/ab12cd34' });
+        expect(merge.mock.calls.map(call => call[2].action)).toEqual(['preview', 'merge']);
+        expect(sync.mock.calls[0]?.[2]).toMatchObject({ branch: 'clowdy/ab12cd34', destination: true });
         expect(success).toHaveBeenCalledWith({ message: 'Pushed clowdy/ab12cd34 to origin' });
+    });
+
+    it('puts comparison and up-to-date states on the disabled merge button', async () => {
+        await start({ gitWrites: { clean: true, remote: 'level' } });
+        const readPreview = transport.branchMergeGit.bind(transport);
+        let finish = () => {};
+        const merge = vi.spyOn(transport, 'branchMergeGit').mockImplementationOnce(async (...args) => {
+            const preview = await readPreview(...args);
+            if (preview.state !== 'preview') throw new Error('Expected a merge preview');
+
+            return new Promise(resolve => {
+                finish = () => resolve({ ...preview, mode: 'up-to-date', commits: 0 });
+            });
+        });
+
+        await open('Merge from branch…');
+        await press(option('main'));
+        await settle();
+
+        expect(button('Comparing branches…').disabled).toBe(true);
+        expect(dialog().querySelectorAll('[role="status"]')).toHaveLength(1);
+
+        await act(async () => finish());
+        await settle();
+
+        expect(button('Already up to date').disabled).toBe(true);
+        expect(dialog().querySelectorAll('[role="status"]')).toHaveLength(1);
+        expect(modeTrigger().disabled).toBe(false);
+        expect(merge.mock.calls.map(call => call[2].action)).toEqual(['preview']);
+
+        await press(option('main'));
+        await settle();
+        expect(button('Create a merge commit & Sync').disabled).toBe(false);
     });
 
     it('filters the destination branches with text entered while they were loading', async () => {
@@ -766,7 +726,7 @@ describe('merging branches from the sync menu', () => {
         const input = filter();
 
         expect(spinner()).not.toBeNull();
-        expect(button('Merge').disabled).toBe(true);
+        expect(button('Select a branch').disabled).toBe(true);
         await act(async () => {
             Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, 'main');
             input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -783,13 +743,13 @@ describe('merging branches from the sync menu', () => {
     it('selects a merge mode without executing it and refreshes its preview for the selected branch', async () => {
         await start({ gitWrites: { clean: true, remote: 'level' }, branches: ['remote'] });
         const merge = vi.spyOn(transport, 'branchMergeGit');
-        const chooseMode = async (mode: string) => {
-            const trigger = dialog().querySelector('button[aria-label="Choose merge mode"]')!;
-            await press(trigger);
+        const modes = () => [...document.querySelectorAll('[role="menuitemradio"]')];
+        const openModes = async () => {
+            await press(modeTrigger());
             await settle();
-            const choice = [...document.querySelectorAll('[role="menuitemradio"]')].find(row =>
-                row.textContent?.startsWith(mode)
-            )!;
+        };
+        const chooseMode = async (mode: string) => {
+            const choice = modes().find(row => row.textContent?.startsWith(mode))!;
             await press(choice);
             await settle();
         };
@@ -797,23 +757,34 @@ describe('merging branches from the sync menu', () => {
         await open('Merge from branch…');
         await press(option('origin/feature/search'));
         await settle();
-        expect(button('Create merge commit & Push').disabled).toBe(false);
+        expect(button('Create a merge commit & Sync').disabled).toBe(false);
+        expect(dialog().textContent).toContain('Creates a merge commit');
         const originalPreview = await merge.mock.results[0]!.value;
 
-        await chooseMode('Fast-forward only');
-        expect(button('Fast-forward only').disabled).toBe(true);
-        expect(dialog().textContent).toContain('the branches have diverged');
+        if (originalPreview.state !== 'preview') throw new Error('Expected a merge preview');
+        merge.mockResolvedValueOnce({ ...originalPreview, fastForwardOnly: true });
+        await press(option('origin/feature/search'));
+        await settle();
+        expect(button('Create a merge commit').disabled).toBe(true);
+        expect(modeTrigger().disabled).toBe(false);
+        expect(dialog().textContent).toContain('Git is configured to require a fast-forward');
 
+        await openModes();
+        expect(modes()).toHaveLength(3);
+        expect(modes()[0]?.textContent).toMatch(/^Create a merge commit/);
+        expect(modes()[1]?.textContent).toMatch(/^Squash and merge/);
+        expect(modes()[2]?.textContent).toMatch(/^Rebase/);
         merge.mockResolvedValueOnce(originalPreview);
         await chooseMode('Squash and merge');
         expect(button('Squash and merge').disabled).toBe(true);
         expect(dialog().textContent).toContain('Update Clowdy to use Squash and merge');
 
+        await openModes();
         await chooseMode('Rebase');
         expect(merge.mock.calls.every(call => call[2].action === 'preview')).toBe(true);
         expect(merge.mock.calls.at(-1)?.[2]).toMatchObject({ strategy: 'rebase', branch: 'feature/search' });
         expect(dialog().textContent).toContain('Replay 2 commits from clowdy/ab12cd34 on top of origin/feature/search');
-        await press(button('Rebase & Push'));
+        await press(button('Rebase & Sync'));
         await settle();
         expect(merge.mock.calls.at(-1)?.[2]).toMatchObject({ action: 'merge', strategy: 'rebase' });
         expect(button('Abort rebase')).toBeDefined();
@@ -823,26 +794,25 @@ describe('merging branches from the sync menu', () => {
         expect(sidebar().querySelector('[aria-label="Commit"]')?.textContent).toContain('Rebase paused');
     });
 
-    it('pushes only the merge destination by default without changing the source checkout', async () => {
+    it('syncs only the destination at the tip returned by Merge into', async () => {
         await start({ gitWrites: { clean: true, remote: 'level' } });
         const merge = vi.spyOn(transport, 'branchMergeGit');
-        const push = vi.spyOn(transport, 'pushGit');
+        const sync = vi.spyOn(transport, 'syncGit');
 
         await open('Merge into branch…');
         await press(option('main'));
         await settle();
-        await press(button('Fast-forward & Push'));
+        await press(button('Create a merge commit & Sync'));
         await settle();
 
-        expect(merge.mock.calls.map(call => call[2].action)).toEqual(['preview', 'merge', 'push']);
+        expect(merge.mock.calls.map(call => call[2].action)).toEqual(['preview', 'merge']);
         const applied = await merge.mock.results[1]?.value;
         expect(applied).toMatchObject({ state: 'done', commit: expect.any(String) });
-        expect(merge.mock.calls[2]?.[2]).toEqual({
-            action: 'push',
-            target: 'main',
+        expect(sync.mock.calls[0]?.[2]).toEqual({
+            branch: 'main',
             commit: applied?.state === 'done' ? applied.commit : undefined,
+            destination: true,
         });
-        expect(push).not.toHaveBeenCalled();
         expect(dialog()).toBeNull();
         expect(
             await transport.getGitStatus(FIXTURE_PROJECT_ID, {
@@ -852,41 +822,64 @@ describe('merging branches from the sync menu', () => {
         ).toMatchObject({ head: { name: 'clowdy/ab12cd34' }, upstream: { ahead: 0 } });
     });
 
-    it('keeps a completed merge available to push again when automatic push is rejected', async () => {
+    it('retries sync from the post-integration tip after a rejected push', async () => {
         await start({ gitWrites: { clean: true, remote: 'level' } });
-        const original = transport.branchMergeGit.bind(transport);
-        const merge = vi.spyOn(transport, 'branchMergeGit').mockImplementation((project, place, request) => {
-            if (request.action === 'push') {
-                merge.mockImplementation(original);
-                return Promise.reject(new TransportError('Network is offline', 503));
-            }
+        const tip = 'c'.repeat(40);
+        const sync = vi
+            .spyOn(transport, 'syncGit')
+            .mockImplementationOnce(async (_project, _place, _target, progress) => {
+                progress?.({ phase: 'push', commit: tip });
+                throw new TransportError('Network is offline', 503);
+            })
+            .mockResolvedValueOnce({ state: 'done', branch: 'main', pulled: 0, pushed: true });
 
-            return original(project, place, request);
+        await open('Merge into branch…');
+        await press(option('main'));
+        await settle();
+        await press(button('Create a merge commit & Sync'));
+        await settle();
+
+        expect(dialog().textContent).toContain('Merged into main');
+        expect(dialog().querySelector('[role="alert"]')?.textContent).toContain('Sync failed: Network is offline');
+        await press(button('Sync main'));
+        await settle();
+
+        expect(sync).toHaveBeenCalledTimes(2);
+        expect(sync.mock.calls[1]?.[2]).toEqual({ branch: 'main', commit: tip, destination: true });
+        expect(dialog()).toBeNull();
+    });
+
+    it('points to the destination checkout when Sync stops on incoming conflicts', async () => {
+        await start({ gitWrites: { clean: true, remote: 'level' } });
+        vi.spyOn(transport, 'syncGit').mockResolvedValueOnce({
+            state: 'conflicts',
+            branch: 'main',
+            path: CAR_RENTAL,
+            conflicts: 1,
         });
 
         await open('Merge into branch…');
         await press(option('main'));
         await settle();
-        await press(button('Fast-forward & Push'));
+        await press(button('Create a merge commit & Sync'));
         await settle();
 
-        expect(dialog().textContent).toContain('Merged into main');
-        expect(dialog().querySelector('[role="alert"]')?.textContent).toContain('Push failed: Network is offline');
-        await press(button('Push main'));
+        expect(dialog().querySelector('[role="status"]')?.textContent).toContain('1 conflict in main');
+        expect(dialog().querySelector('[role="status"]')?.textContent).toContain(CAR_RENTAL);
+        expect(dialog().textContent).toContain('complete the merge to resume sync');
+        expect(button('Sync main')).toBeUndefined();
+        await press(button('Done'));
         await settle();
-
-        expect(merge.mock.calls.map(call => call[2].action)).toEqual(['preview', 'merge', 'push', 'push']);
-        expect(merge.mock.calls[2]?.[2]).toEqual(merge.mock.calls[3]?.[2]);
         expect(dialog()).toBeNull();
     });
 
-    it('offers a separate push for outgoing merges when automatic push is off', async () => {
-        sourceControlPreferences.setAutoPush(false);
+    it('offers explicit Sync after an outgoing merge with automatic sync off', async () => {
+        sourceControlPreferences.setAutoSync(false);
         await start({ gitWrites: { clean: true, remote: 'level' }, branches: ['remote'] });
         const success = vi.spyOn(toast, 'success').mockReturnValue('');
         const fetch = vi.spyOn(transport, 'fetchGit');
         const merge = vi.spyOn(transport, 'branchMergeGit');
-        const push = vi.spyOn(transport, 'pushGit');
+        const sync = vi.spyOn(transport, 'syncGit');
 
         await open('Merge into branch…');
         expect(fetch).not.toHaveBeenCalled();
@@ -898,21 +891,15 @@ describe('merging branches from the sync menu', () => {
         await settle();
         expect(heading()).toBe('Merge clowdy/ab12cd34 to main');
 
-        await press(button('Fast-forward'));
+        await press(button('Create a merge commit'));
         await settle();
         expect(merge.mock.calls.map(call => call[2].action)).toEqual(['preview', 'merge']);
-        expect(push).not.toHaveBeenCalled();
+        expect(sync).not.toHaveBeenCalled();
         expect(success).not.toHaveBeenCalled();
 
-        const current = await transport.getGitStatus(FIXTURE_PROJECT_ID, {
-            folderId: WORKTREE.folderId,
-            workspaceId: WORKTREE.workspaceId,
-        });
-
-        expect(current).toMatchObject({ head: { name: 'clowdy/ab12cd34' } });
-        await press(button('Push main'));
+        await press(button('Sync main'));
         await settle();
-        expect(merge.mock.calls[2]?.[2]).toMatchObject({ action: 'push', target: 'main' });
+        expect(sync.mock.calls[0]?.[2]).toMatchObject({ branch: 'main', destination: true });
         expect(dialog()).toBeNull();
         expect(success).toHaveBeenCalledWith({ message: 'Pushed main to origin' });
     });
@@ -925,7 +912,7 @@ describe('merging branches from the sync menu', () => {
         await open('Merge into branch…');
         await press(option('main'));
         await settle();
-        await press(button('Fast-forward'));
+        await press(button('Create a merge commit'));
         await settle();
 
         expect(merge.mock.calls.map(call => call[2].action)).toEqual(['preview', 'merge']);
@@ -946,14 +933,14 @@ describe('merging branches from the sync menu', () => {
         expect(alert?.textContent).toContain('In a chat on main, use Merge from branch to merge clowdy/ab12cd34');
         expect(dialog().textContent).toContain('3 commits');
         expect(dialog().textContent).not.toContain('Creates a merge commit');
-        expect(button('Create merge commit').disabled).toBe(true);
+        expect(button('Create a merge commit').disabled).toBe(true);
 
         await press(option('dev'));
         await settle();
 
         alert = dialog().querySelector('[role="alert"]');
         expect(alert?.textContent).toBe('Check out dev before merging into it');
-        expect(button('Create merge commit').disabled).toBe(true);
+        expect(button('Create a merge commit').disabled).toBe(true);
         expect(merge.mock.calls.map(call => call[2].action)).toEqual(['preview', 'preview']);
     });
 
@@ -977,21 +964,21 @@ describe('merging branches from the sync menu', () => {
         await settle();
 
         merge.mockRejectedValueOnce(new TransportError('The branches moved since the preview', 409));
-        await press(button('Fast-forward & Push'));
+        await press(button('Create a merge commit & Sync'));
         await settle();
 
         const alert = dialog().querySelector('[role="alert"][data-color="danger"]');
         expect(alert?.textContent).toContain('The branches moved');
-        expect(button('Merge').disabled).toBe(true);
+        expect(button('Create a merge commit').disabled).toBe(true);
         expect(
             [...dialog().querySelectorAll('button')].map(button => button.textContent?.trim()).filter(Boolean)
-        ).toEqual(['Merge', 'Cancel']);
+        ).toEqual(['Create a merge commit', 'Cancel']);
         await press(option('main'));
         await settle();
 
         expect(merge.mock.calls.map(call => call[2].action)).toEqual(['preview', 'merge', 'preview']);
         expect(dialog().querySelector('[role="alert"]')).toBeNull();
-        expect(button('Fast-forward & Push').disabled).toBe(false);
+        expect(button('Create a merge commit & Sync').disabled).toBe(false);
     });
 
     it('identifies the destination checkout after a conflict and aborts only that merge', async () => {
@@ -1139,7 +1126,7 @@ describe('Create PR in the sidebar', () => {
 
     it("never opens the page for a branch GitHub does not have: a failed publish leaves it where it was, with git's line", async () => {
         await start({ tweak: noPullRequest });
-        vi.spyOn(transport, 'pushGit').mockRejectedValue(
+        vi.spyOn(transport, 'syncGit').mockRejectedValue(
             new TransportError('git@github.com: Permission denied (publickey).', 409)
         );
         await press(syncButton());
@@ -1147,7 +1134,7 @@ describe('Create PR in the sidebar', () => {
         await settle();
 
         expect(opened).toEqual([]);
-        expect(syncButton().textContent).toContain('Publish branch');
+        expect(syncCopy()).toContain('Publish this branch to origin');
         expect(createPRButton()).toBeUndefined();
         expect(alert()?.textContent).toBe('git@github.com: Permission denied (publickey).');
     });
@@ -1175,37 +1162,13 @@ describe('Create PR in the sidebar', () => {
     });
 
     it('offers Create PR once a branch tracking another branch is published under its own name', async () => {
-        await start({ tweak: noPullRequest, gitWrites: { remote: 'behind' } });
-
-        const read = transport.getGitStatus.bind(transport);
-        // What `git switch -c feat origin/main` leaves: the branch tracks `origin/main`.
-        const renamed = vi.spyOn(transport, 'getGitStatus').mockImplementation(async (...args) => {
-            const value = await read(...args);
-
-            return value.isRepository && value.upstream
-                ? { ...value, upstream: { ...value.upstream, name: 'origin/main' } }
-                : value;
-        });
-
-        gitFactsOf(transport).refresh(WORKTREE);
-        await settle();
-        await settle();
+        await start({ tweak: noPullRequest, gitWrites: { remote: 'renamed' } });
         expect(createPRButton()).toBeUndefined();
         expect(syncCopy()).toBe('Publish branchTracks origin/main');
 
-        const push = vi.spyOn(transport, 'pushGit');
-
         await press(syncButton());
         await settle();
-        await settle();
-        expect(push).toHaveBeenCalledTimes(1);
         expect(opened).toEqual([]);
-
-        // Published under its own name, the branch has its own upstream, and GitHub has it.
-        renamed.mockRestore();
-        gitFactsOf(transport).refresh(WORKTREE);
-        await settle();
-        await settle();
         await press(createPRButton()!);
 
         expect(opened).toEqual(['https://github.com/acme/car-rental/compare/main...clowdy/ab12cd34?expand=1']);

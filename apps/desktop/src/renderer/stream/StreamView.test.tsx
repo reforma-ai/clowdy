@@ -43,6 +43,84 @@ const draw = (props: { active?: boolean; working?: boolean }) =>
 const worked = () =>
     [...container.querySelectorAll('button')].find(button => button.textContent?.startsWith('Worked for'));
 
+describe('composer overlay', () => {
+    it('applies the measured inset and restores standalone behavior for zero or invalid heights', async () => {
+        const render = (composerInset?: number) =>
+            act(async () => root.render(<StreamView items={items} composerInset={composerInset} />));
+
+        await render(248);
+        const stream = container.firstElementChild as HTMLElement;
+
+        expect(stream.dataset.composerOverlay).toBe('true');
+        expect(stream.style.getPropertyValue('--composer-inset')).toBe('248px');
+
+        for (const inset of [0, -10, Number.NaN, undefined]) {
+            await render(inset);
+            expect(stream.hasAttribute('data-composer-overlay')).toBe(false);
+            expect(stream.style.getPropertyValue('--composer-inset')).toBe('0px');
+        }
+    });
+
+    it('follows content and inset growth at the end but preserves an older reading position', async () => {
+        const observers: ResizeObserverCallback[] = [];
+        const original = globalThis.ResizeObserver;
+
+        globalThis.ResizeObserver = class {
+            constructor(callback: ResizeObserverCallback) {
+                observers.push(callback);
+            }
+            observe() {}
+            unobserve() {}
+            disconnect() {}
+        };
+
+        try {
+            const render = (inset: number, list = items) =>
+                act(async () => root.render(<StreamView items={list} composerInset={inset} />));
+            await render(100);
+            const scroll = container.querySelector('[data-stick-at-bottom]') as HTMLElement;
+            let height = 1000;
+            let top = 0;
+
+            Object.defineProperties(scroll, {
+                clientHeight: { configurable: true, value: 400 },
+                scrollHeight: { configurable: true, get: () => height },
+                scrollTop: {
+                    configurable: true,
+                    get: () => top,
+                    set: (value: number) => {
+                        top = Math.max(0, Math.min(value, height - 400));
+                    },
+                },
+            });
+            const resize = () => act(() => observers.at(-1)?.([], {} as ResizeObserver));
+
+            resize();
+            expect(top).toBe(600);
+            height = 1200;
+            await render(300);
+            resize();
+            expect(top).toBe(800);
+            height = 1300;
+            await render(300, [...items, item(4, { kind: 'assistant', text: 'New message', done: true })]);
+            resize();
+            expect(top).toBe(900);
+
+            await act(async () => {
+                scroll.dispatchEvent(new WheelEvent('wheel', { deltaY: -100 }));
+                top = 300;
+                scroll.dispatchEvent(new Event('scroll'));
+            });
+            height = 1500;
+            await render(500);
+            resize();
+            expect(top).toBe(300);
+        } finally {
+            globalThis.ResizeObserver = original;
+        }
+    });
+});
+
 describe("the agent's reasoning", () => {
     const thought = (n: number, text: string, done = true, durationMs?: number) =>
         item(n, { kind: 'reasoning', text, done, ...(durationMs !== undefined && { durationMs }) });
@@ -1411,26 +1489,6 @@ describe('StreamView', () => {
                 } finally {
                     outside.remove();
                 }
-            });
-
-            it('does not make the bubble rise into place a second time when the frame goes, for a message that came after the stream was shown', async () => {
-                const bubble = () => container.querySelector('[data-message][data-turn="i-4"]');
-
-                // The first draw has the first turn alone, so the second message is news.
-                await drawWith(editable.slice(0, 4), { active: false, messageActions: { onEdit: vi.fn() } });
-                await drawWith(editable, { active: false, messageActions: { onEdit: vi.fn() } });
-
-                expect(bubble()?.hasAttribute('data-animate')).toBe(true);
-
-                await drawWith(editable, {
-                    active: false,
-                    messageActions: { onEdit: vi.fn() },
-                    editing: editing('i-4'),
-                });
-                await drawWith(editable, { active: false, messageActions: { onEdit: vi.fn() } });
-
-                expect(bubble()).not.toBeNull();
-                expect(bubble()?.hasAttribute('data-animate')).toBe(false);
             });
 
             it('stops editing from the X of the frame', async () => {

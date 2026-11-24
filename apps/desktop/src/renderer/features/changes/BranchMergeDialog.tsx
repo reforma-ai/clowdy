@@ -15,7 +15,7 @@ import { tildePath } from '../../shared/displayPath';
 import { homeFolder } from '../../shared/homeFolder';
 import { PickerList, type PickerOption } from '../../shared/PickerPopover';
 import styles from './BranchMergeDialog.module.css';
-import { commitsWords } from './changesActions';
+import { commitsWords, SYNC_WORDS } from './changesActions';
 import { confirmAbortMerge } from './confirmAbortMerge';
 import { type GitPlaceKey, gitFactsOf, placeRef } from './gitFacts';
 import { sourceControlPreferences } from './sourceControlPreferences';
@@ -27,14 +27,20 @@ import type {
     GitBranchMergeResult,
     GitBranchMergeSelection,
     GitBranchMergeStrategy,
+    GitSyncProgress,
 } from '@clowdy/protocol';
 import type { RemoteActions } from './RemoteActions';
 
 export const MERGE_LABELS = { from: 'Merge from branch…', into: 'Merge into branch…' } as const;
 
 type MergeDirection = GitBranchMergeSelection['direction'];
-type MergeOutcome = Extract<GitBranchMergeResult, { state: 'conflicts' | 'done' }>;
-type MergeAction = Exclude<GitBranchMergeRequest, { action: 'preview' }>;
+type DialogStrategy = Exclude<GitBranchMergeStrategy, 'fast-forward-only'>;
+type MergeOutcome =
+    | Extract<GitBranchMergeResult, { state: 'conflicts' | 'done' }>
+    | { state: 'sync-conflicts'; target: string; targetPath: string; conflicts: number };
+type MergeAction =
+    | Extract<GitBranchMergeRequest, { action: 'merge' | 'abort' }>
+    | { action: 'sync'; target: string; commit: string };
 
 interface MergeOptions {
     transport: Transport;
@@ -78,29 +84,29 @@ const failureOf = (error: unknown): Failure => ({
     ...(error instanceof TransportError && error.hint !== undefined && { hint: error.hint }),
 });
 
-const MODES: Record<GitBranchMergePreview['mode'], string> = {
-    'up-to-date': 'Already up to date',
-    'fast-forward': 'Fast-forward',
+const MODES: Record<Exclude<GitBranchMergePreview['mode'], 'up-to-date'>, string> = {
+    'fast-forward': 'Moves the branch forward without a merge commit',
     'merge-commit': 'Creates a merge commit',
     squash: 'Creates one commit',
     rebase: 'Rebase',
 };
 
-const STRATEGIES: Record<GitBranchMergeStrategy, { label: string; description: string }> = {
-    merge: { label: 'Merge', description: 'Fast-forward or create a merge commit' },
-    'fast-forward-only': { label: 'Fast-forward only', description: 'Only if the branches have not diverged' },
-    squash: { label: 'Squash and merge', description: 'Combine changes into one commit' },
-    rebase: { label: 'Rebase', description: 'Replay commits on the selected branch' },
+const STRATEGIES: Record<DialogStrategy, { label: string; description: string }> = {
+    merge: {
+        label: 'Create a merge commit',
+        description: 'Join the branch histories, using a fast-forward when possible',
+    },
+    squash: { label: 'Squash and merge', description: 'Combine incoming changes into one new commit' },
+    rebase: { label: 'Rebase', description: 'Replay the current branch’s commits on the selected branch' },
 };
 
 function mergeBlock(
-    { source, target, targetPath, mode, conflictCheck }: GitBranchMergePreview,
-    strategy: GitBranchMergeStrategy,
+    { source, target, targetPath, mode, fastForwardOnly, conflictCheck }: GitBranchMergePreview,
     direction: MergeDirection
 ): Failure | undefined {
     if (mode === 'up-to-date') return undefined;
-    if (strategy === 'fast-forward-only' && mode !== 'fast-forward')
-        return { message: `Can't fast-forward ${target} because the branches have diverged` };
+    if (fastForwardOnly && mode === 'merge-commit')
+        return { message: `Can't merge into ${target} because Git is configured to require a fast-forward` };
     if (direction === 'into' && !targetPath) return { message: `Check out ${target} before merging into it` };
 
     if (conflictCheck === 'conflicts')
@@ -149,15 +155,16 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
     const [fetchFailed, setFetchFailed] = useState<Failure>();
     const [loading, setLoading] = useState(true);
     const [selected, setSelected] = useState<string>();
-    const [strategy, setStrategy] = useState<GitBranchMergeStrategy>('merge');
+    const [strategy, setStrategy] = useState<DialogStrategy>('merge');
     const [preview, setPreview] = useState<GitBranchMergePreview>();
     const [pending, setPending] = useState<MergeAction['action']>();
+    const [syncPhase, setSyncPhase] = useState<GitSyncProgress['phase']>();
     const [result, setResult] = useState<MergeOutcome>();
     const [failure, setFailure] = useState<Failure>();
     const previewRound = useRef(0);
 
     const fetchOrigin = direction === 'from' && hasOrigin;
-    const autoPush = sourceControlPreferences.autoPush;
+    const autoSync = sourceControlPreferences.autoSync;
     const choices = useMemo(
         () => choicesOf(listing, current, fetchOrigin && !fetchFailed),
         [listing, current, fetchOrigin, fetchFailed]
@@ -266,76 +273,109 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
         setPending(action);
         setFailure(undefined);
 
-        try {
-            const place = placeRef(placeKey);
-            let response = await transport.branchMergeGit(projectId, place, request);
-
-            if (response.state === 'conflicts') {
-                setResult(response);
+        const sync = async (branch: string, commit: string) => {
+            action = 'sync';
+            setPending(action);
+            const synced = await transport.syncGit(
+                projectId,
+                placeRef(placeKey),
+                { branch, commit, destination: true },
+                progress => {
+                    setSyncPhase(progress.phase);
+                    if (progress.phase === 'push') {
+                        setResult({ state: 'done', target: branch, commit: progress.commit, canPush: true });
+                    }
+                }
+            );
+            if (synced.state === 'conflicts') {
+                setResult({
+                    state: 'sync-conflicts',
+                    target: synced.branch,
+                    targetPath: synced.path,
+                    conflicts: synced.conflicts,
+                });
                 return;
             }
 
-            if (action === 'merge' && response.state === 'done' && response.canPush) {
-                if (autoPush || direction === 'into') setResult(response);
-                if (autoPush) {
-                    action = 'push';
-                    setPending(action);
-                    response = await transport.branchMergeGit(projectId, place, {
-                        action,
-                        target: response.target,
-                        commit: response.commit,
-                    });
-                    if (response.state !== 'pushed') throw new Error("Couldn't push the merged branch");
-                } else if (direction === 'into') return;
+            modal.cancel();
+            toast.success({ message: synced.pushed ? `Pushed ${branch} to origin` : mergeMessage(branch) });
+        };
+
+        try {
+            if (request.action === 'sync') {
+                await sync(request.target, request.commit);
+                return;
             }
 
-            if (response.state === 'preview') throw new Error("Couldn't apply the branch action");
-            modal.cancel();
-            if (response.state === 'aborted') {
-                toast.info({
-                    message:
-                        response.operation === 'rebase'
-                            ? `Rebase of ${response.target} aborted`
-                            : `Merge into ${response.target} aborted`,
-                });
-            } else {
-                const message =
-                    response.state === 'pushed' ? `Pushed ${response.target} to origin` : mergeMessage(response.target);
-                toast.success({ message });
+            const response = await transport.branchMergeGit(projectId, placeRef(placeKey), request);
+
+            switch (response.state) {
+                case 'conflicts':
+                    setResult(response);
+                    return;
+
+                case 'done':
+                    if (response.canPush && (autoSync || direction === 'into')) {
+                        setResult(response);
+                        if (autoSync) await sync(response.target, response.commit);
+                        return;
+                    }
+                    modal.cancel();
+                    toast.success({ message: mergeMessage(response.target) });
+                    return;
+
+                case 'aborted':
+                    modal.cancel();
+                    toast.info({
+                        message:
+                            response.operation === 'rebase'
+                                ? `Rebase of ${response.target} aborted`
+                                : `Merge into ${response.target} aborted`,
+                    });
+                    return;
+
+                default:
+                    throw new Error("Couldn't apply the branch action");
             }
         } catch (error) {
             if (action === 'merge') setPreview(undefined);
             const cause = failureOf(error);
-            setFailure(action === 'push' ? { ...cause, message: `Push failed: ${cause.message}` } : cause);
+            setFailure(action === 'sync' ? { ...cause, message: `Sync failed: ${cause.message}` } : cause);
         } finally {
             gitFactsOf(transport).refreshFolder(placeKey);
             setPending(undefined);
+            setSyncPhase(undefined);
         }
     };
 
-    const blocked = preview ? mergeBlock(preview, strategy, direction) : undefined;
+    const blocked = preview ? mergeBlock(preview, direction) : undefined;
+    const upToDate = preview?.mode === 'up-to-date';
+    const canMerge = selection !== undefined && preview !== undefined && !upToDate && !blocked;
 
     const merge = () => {
-        if (!selection || !preview || preview.mode === 'up-to-date' || blocked) return;
+        if (!selection || !preview || !canMerge) return;
 
         void run({
             action: 'merge',
             ...selection,
             sourceCommit: preview.sourceCommit,
             targetCommit: preview.targetCommit,
+            expectedMode: preview.mode,
         });
     };
 
-    const actionLabel =
-        strategy !== 'merge'
-            ? STRATEGIES[strategy].label
-            : preview?.mode === 'merge-commit'
-              ? 'Create merge commit'
-              : preview?.mode === 'fast-forward'
-                ? 'Fast-forward'
-                : 'Merge';
+    const actionLabel = STRATEGIES[strategy].label;
+    const actionStatus = !selection
+        ? 'Select a branch'
+        : upToDate
+          ? 'Already up to date'
+          : !preview && !failure
+            ? 'Comparing branches…'
+            : undefined;
     const replay = preview?.replayCommits ?? 0;
     const isWorking = pending !== undefined;
+    const modeDisabled = isWorking || !selection;
+    const syncLabel = syncPhase ? SYNC_WORDS[syncPhase] : 'Syncing…';
     const empty = loading ? (
         <Spinner
             size="xxs"
@@ -388,25 +428,15 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
                 </div>
             )}
             {!result && fetchFailed && <FailureText failure={fetchFailed} />}
-            {!result && selected && !preview && !failure && (
-                <Text variant="sm" color="secondary" role="status">
-                    Comparing branches…
-                </Text>
-            )}
-            {!result && preview && (
+            {!result && preview && preview.mode !== 'up-to-date' && (
                 <div className={styles.detail} role="status">
                     <Text variant="sm">
                         {preview.mode === 'rebase'
                             ? replay > 0
                                 ? `Replay ${commitsWords(replay)} from ${target} on top of ${source}`
                                 : `Fast-forward ${target} to ${source}`
-                            : preview.mode === 'up-to-date'
-                              ? MODES[preview.mode]
-                              : commitsWords(preview.commits)}
-                        {preview.mode !== 'up-to-date' &&
-                            preview.mode !== 'rebase' &&
-                            !blocked &&
-                            ` · ${MODES[preview.mode]}`}
+                            : commitsWords(preview.commits)}
+                        {preview.mode !== 'rebase' && !blocked && ` · ${MODES[preview.mode]}`}
                     </Text>
                     {direction === 'into' && preview.targetPath && (
                         <Text color="secondary" variant="xs" title={preview.targetPath}>
@@ -416,17 +446,22 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
                 </div>
             )}
             {!result && blocked && <FailureText failure={blocked} />}
-            {result?.state === 'conflicts' && (
+            {(result?.state === 'conflicts' || result?.state === 'sync-conflicts') && (
                 <div className={styles.detail} role="status">
                     <Text variant="sm" color={result.conflicts > 0 ? 'warning' : undefined}>
                         {result.conflicts === 0
-                            ? `${result.operation === 'rebase' ? 'Rebase paused' : 'Complete the merge'} in ${result.target}`
+                            ? `${result.state === 'conflicts' && result.operation === 'rebase' ? 'Rebase paused' : 'Complete the merge'} in ${result.target}`
                             : `${result.conflicts} ${result.conflicts === 1 ? 'conflict' : 'conflicts'} in ${result.target}`}
                     </Text>
                     <Text color="secondary" variant="xs" select="text">
                         {result.targetPath}
                     </Text>
-                    {result.operation === 'rebase' && (
+                    {result.state === 'sync-conflicts' && (
+                        <Text color="secondary" variant="xs">
+                            Resolve the conflicts in this checkout and complete the merge to resume sync
+                        </Text>
+                    )}
+                    {result.state === 'conflicts' && result.operation === 'rebase' && (
                         <Text color="secondary" variant="xs">
                             {result.conflicts > 0
                                 ? 'Resolve the conflicts and continue the rebase in this chat'
@@ -444,26 +479,28 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
             <div className={styles.actions}>
                 {!result && (
                     <div className={styles.split}>
+                        <span className={styles.visuallyHidden} role="status">
+                            {selection ? actionStatus : undefined}
+                        </span>
                         <Button
                             size="md"
                             color="contrast"
                             className={styles.primary}
-                            isDisabled={!preview || preview.mode === 'up-to-date' || blocked !== undefined}
+                            isDisabled={!canMerge}
                             isPending={pending === 'merge'}
                             onPress={merge}
                         >
-                            {autoPush && hasOrigin && preview && preview.mode !== 'up-to-date' && !blocked
-                                ? `${actionLabel} & Push`
-                                : actionLabel}
+                            {actionStatus ??
+                                (autoSync && hasOrigin && canMerge ? `${actionLabel} & Sync` : actionLabel)}
                         </Button>
                         <MenuTrigger>
                             <Button
                                 size="md"
-                                color="contrast"
+                                color={canMerge || modeDisabled ? 'contrast' : 'secondary'}
                                 iconOnly
                                 className={styles.mode}
                                 aria-label="Choose merge mode"
-                                isDisabled={isWorking}
+                                isDisabled={modeDisabled}
                             >
                                 <ChevronDown aria-hidden="true" />
                             </Button>
@@ -475,13 +512,13 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
                                     selectedKeys={[strategy]}
                                     disallowEmptySelection
                                     onAction={key => {
-                                        const next = key as GitBranchMergeStrategy;
+                                        const next = key as DialogStrategy;
                                         if (next === strategy) return;
                                         setStrategy(next);
                                         if (selected) void pick(selected, next);
                                     }}
                                 >
-                                    {(Object.keys(STRATEGIES) as GitBranchMergeStrategy[]).map(id => (
+                                    {(Object.keys(STRATEGIES) as DialogStrategy[]).map(id => (
                                         <MenuItem
                                             key={id}
                                             id={id}
@@ -528,10 +565,10 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
                     <Button
                         size="md"
                         color="contrast"
-                        isPending={pending === 'push'}
-                        onPress={() => void run({ action: 'push', target: result.target, commit: result.commit })}
+                        isPending={pending === 'sync'}
+                        onPress={() => void run({ action: 'sync', target: result.target, commit: result.commit })}
                     >
-                        {`Push ${result.target}`}
+                        {pending === 'sync' ? syncLabel : `Sync ${result.target}`}
                     </Button>
                 )}
                 <Button

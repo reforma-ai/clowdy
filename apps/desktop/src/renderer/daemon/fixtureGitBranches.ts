@@ -3,6 +3,9 @@ import { TransportError } from './transport';
 
 import type {
     ChatWorkspace,
+    GitBranchDeletePreview,
+    GitBranchDeleteRequest,
+    GitBranchDeleteResult,
     GitBranches,
     GitBranchHolder,
     GitLocalBranch,
@@ -100,6 +103,8 @@ export class FixtureGitBranches {
     /** The local branches remembered after a switch, and the remote-only ones it took, by repository. */
     readonly #local = new Map<string, Set<string>>();
     readonly #took = new Map<string, Set<string>>();
+    readonly #deletedLocal = new Map<string, Set<string>>();
+    readonly #deletedOrigin = new Map<string, Set<string>>();
 
     constructor(scripts: readonly FixtureBranchScript[] = []) {
         this.#scripts = new Set(scripts);
@@ -162,7 +167,7 @@ export class FixtureGitBranches {
                 ...took,
                 ...holders.keys(),
             ]),
-        ];
+        ].filter(name => !this.#deletedLocal.get(place.key)?.has(name));
         const local: GitLocalBranch[] = names.map((name, index) => {
             const holder = name === current ? undefined : holders.get(name);
 
@@ -183,7 +188,7 @@ export class FixtureGitBranches {
                       committedAt: now - (index + 1) * 86_400_000,
                   }))
                 : []),
-        ];
+        ].filter(branch => !this.#deletedOrigin.get(place.key)?.has(branch.name));
         const remote = origin.filter(branch => !names.includes(branch.name));
 
         return {
@@ -195,6 +200,70 @@ export class FixtureGitBranches {
             recent: ['dev', 'main', ...(this.#scripts.has('held') ? [PERSON_TREE.branch] : [])].filter(
                 name => name !== current && names.includes(name)
             ),
+        };
+    }
+
+    async deleteBranch(
+        place: FixtureBranchPlace,
+        request: GitBranchDeleteRequest,
+        switchCheckout: (branch: string) => Promise<GitSwitchResult>
+    ): Promise<GitBranchDeleteResult> {
+        const { branch } = request;
+        const remoteOnly = request.action === 'preview' ? request.remote === true : request.localCommit === undefined;
+        const listing = this.list(place);
+        const local = remoteOnly ? undefined : listing.local.find(candidate => candidate.name === branch);
+        const origin = listing.origin?.find(candidate => candidate.name === branch);
+        if (remoteOnly ? !origin : !local) throw new TransportError(`There is no branch called ${branch}`, 409);
+
+        const switchTo = local?.current ? listing.defaultBranch : undefined;
+        const fallback = listing.local.find(candidate => candidate.name === switchTo);
+        const blocked =
+            branch === listing.defaultBranch
+                ? 'The default branch cannot be deleted'
+                : local?.heldBy
+                  ? `Checked out in ${local.heldBy.path}`
+                  : switchTo &&
+                      (fallback?.heldBy ||
+                          this.dirty ||
+                          this.#scripts.has('refused') ||
+                          (place.worktree && (!this.merged || (place.changes ?? 0) > 0)))
+                    ? 'Switch to another branch before deleting this branch'
+                    : undefined;
+        const preview: GitBranchDeletePreview = {
+            state: 'preview',
+            branch,
+            ...(local && { localCommit: FIXTURE_BASE_COMMIT, localUnmerged: !this.merged }),
+            ...(origin && { originCommit: FIXTURE_BASE_COMMIT, originUnmerged: !this.merged }),
+            ...(switchTo && { switchTo }),
+            ...(blocked && { blocked }),
+        };
+        if (request.action === 'preview') return preview;
+        if (blocked) throw new TransportError(blocked, 409);
+        if (
+            (!request.localCommit && !request.originCommit) ||
+            (request.localCommit !== undefined && request.localCommit !== preview.localCommit) ||
+            (request.originCommit !== undefined && request.originCommit !== preview.originCommit) ||
+            (request.localCommit !== undefined && preview.localUnmerged && !request.localUnmerged) ||
+            (request.originCommit !== undefined && preview.originUnmerged && !request.originUnmerged) ||
+            request.switchTo !== preview.switchTo
+        )
+            throw new TransportError('The branch changed since the preview', 409);
+
+        const switched = switchTo === undefined ? undefined : await switchCheckout(switchTo);
+        if (request.localCommit) {
+            this.#deletedLocal.set(place.key, new Set([...(this.#deletedLocal.get(place.key) ?? []), branch]));
+            this.#local.get(place.key)?.delete(branch);
+            this.#took.get(place.key)?.delete(branch);
+        }
+        if (request.originCommit)
+            this.#deletedOrigin.set(place.key, new Set([...(this.#deletedOrigin.get(place.key) ?? []), branch]));
+
+        return {
+            state: 'done',
+            localDeleted: request.localCommit !== undefined,
+            originDeleted: request.originCommit !== undefined,
+            ...(switched && { switchedTo: switchTo }),
+            ...(switched?.warning && { warning: switched.warning }),
         };
     }
 
@@ -245,6 +314,8 @@ export class FixtureGitBranches {
         if (this.#scripts.has('slow')) await sleep(SLOW_MS);
 
         const warning = this.#scripts.has('warned') ? { warning: HOOK_WARNING } : {};
+
+        this.#deletedLocal.get(place.key)?.delete(name);
 
         if (create || place.worktreeBranch !== undefined) {
             const local = this.#local.get(place.key) ?? new Set<string>();

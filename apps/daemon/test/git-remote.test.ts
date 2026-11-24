@@ -5,7 +5,9 @@ import {
     mkdirSync,
     readdirSync,
     readFileSync,
+    realpathSync,
     renameSync,
+    rmSync,
     statSync,
     writeFileSync,
 } from 'node:fs';
@@ -17,7 +19,7 @@ import { GitRemote, remoteFailureLine } from '../src/git/remote';
 import { WriteEnvironment } from '../src/git/writeEnv';
 import { cleanTempDirs, git, makeRepo, startHarness, tempDir, waitFor } from './helpers';
 
-import type { GitPushRequest, GitRemoteAction, GitRemoteResult } from '@clowdy/protocol';
+import type { GitPushRequest, GitRemoteAction, GitRemoteResult, GitSyncEvent, GitSyncTarget } from '@clowdy/protocol';
 import type { Place } from '../src/domain/places';
 import type { Harness } from './helpers';
 
@@ -145,6 +147,326 @@ interface Failure {
     ok: false;
     error: { code: string; message: string; details?: { hint?: string } };
 }
+
+describe('POST /v1/projects/:id/git/sync', () => {
+    async function open(path: string, environment = isolated()) {
+        const h = await start(environment);
+        const { project } = h.ok('project.add', { folders: [path] });
+        const folderId = project.folders[0].id as string;
+        const call = (target: GitSyncTarget) =>
+            h.fetch(`/v1/projects/${project.id}/git/sync`, {
+                method: 'POST',
+                body: JSON.stringify({ folderId, ...target }),
+            });
+
+        return async (target: GitSyncTarget = { branch: 'main' }): Promise<GitSyncEvent[]> => {
+            const response = await call(target);
+            expect(response.status).toBe(200);
+            expect(response.headers.get('content-type')).toStartWith('text/event-stream');
+
+            return (await response.text())
+                .trimEnd()
+                .split('\n\n')
+                .map(line => JSON.parse(line.slice('data: '.length)) as GitSyncEvent);
+        };
+    }
+
+    test('fetches once, pushes the selected tip and skips a push when already level', async () => {
+        const { path, origin } = repository();
+        const sync = await open(path);
+        const mine = commitFile(path, 'mine.txt');
+        git(path, 'tag', '-a', '-m', 'An annotated tag', 'local-only');
+        git(path, 'config', 'push.followTags', 'true');
+
+        expect(await sync()).toEqual([
+            { type: 'phase', phase: 'fetch' },
+            { type: 'phase', phase: 'push', commit: mine },
+            { type: 'result', result: { state: 'done', branch: 'main', pulled: 0, pushed: true } },
+        ]);
+        expect(git(origin, 'rev-parse', 'refs/heads/main')).toBe(mine);
+        expect(refsOf(origin)).not.toContain('refs/tags/local-only');
+        expect(git(path, 'for-each-ref', 'refs/clowdy/sync')).toBe('');
+        expect(await sync()).toEqual([
+            { type: 'phase', phase: 'fetch' },
+            { type: 'result', result: { state: 'done', branch: 'main', pulled: 0, pushed: false } },
+        ]);
+    });
+
+    test('fast-forwards a branch that only origin moved and leaves unrelated remote mappings alone', async () => {
+        const { path, origin } = repository();
+        const sync = await open(path);
+        const other = neighbour(origin);
+        const theirs = commitFile(other, 'theirs.txt');
+        git(other, 'push', '-q');
+        git(path, 'config', 'merge.ff', 'false');
+        git(path, 'config', '--replace-all', 'remote.origin.fetch', '+refs/heads/*:refs/remotes/custom/*');
+        const oldStandardRef = git(path, 'rev-parse', 'refs/remotes/origin/main');
+
+        expect(await sync()).toEqual([
+            { type: 'phase', phase: 'fetch' },
+            { type: 'phase', phase: 'merge' },
+            { type: 'result', result: { state: 'done', branch: 'main', pulled: 1, pushed: false } },
+        ]);
+        expect(git(path, 'rev-parse', 'HEAD')).toBe(theirs);
+        expect(git(path, 'rev-parse', 'refs/remotes/custom/main')).toBe(theirs);
+        expect(git(path, 'rev-parse', 'refs/remotes/origin/main')).toBe(oldStandardRef);
+    });
+
+    test('merges diverged commits and then sends the new merge tip', async () => {
+        const { path, origin } = repository();
+        const sync = await open(path);
+        const other = neighbour(origin);
+        const mine = commitFile(path, 'mine.txt');
+        const theirs = commitFile(other, 'theirs.txt');
+        writeFileSync(join(path, 'mine.txt'), 'unrelated unstaged edit\n');
+        git(other, 'push', '-q');
+        git(path, 'config', 'merge.ff', 'only');
+        git(path, 'config', 'branch.main.mergeOptions', '--squash');
+
+        const events = await sync({ branch: 'main', commit: mine });
+        const merged = git(path, 'rev-parse', 'HEAD');
+
+        expect(events).toEqual([
+            { type: 'phase', phase: 'fetch' },
+            { type: 'phase', phase: 'merge' },
+            { type: 'phase', phase: 'push', commit: merged },
+            { type: 'result', result: { state: 'done', branch: 'main', pulled: 1, pushed: true } },
+        ]);
+        expect(git(path, 'rev-parse', 'HEAD^1')).toBe(mine);
+        expect(git(path, 'rev-parse', 'HEAD^2')).toBe(theirs);
+        expect(git(origin, 'rev-parse', 'refs/heads/main')).toBe(merged);
+        expect(left(path)).toEqual([' M mine.txt']);
+        expect(git(origin, 'show', 'refs/heads/main:mine.txt')).toBe('mine.txt');
+        expect(readFileSync(join(path, 'mine.txt'), 'utf8')).toBe('unrelated unstaged edit\n');
+    });
+
+    test('keeps conflicts local and pushes the completed merge on the next sync', async () => {
+        const { path, origin } = repository();
+        commitFile(path, 'same.txt', 'base\n');
+        git(path, 'push', '-q');
+        const other = neighbour(origin);
+        const mine = commitFile(path, 'same.txt', 'local\n');
+        const theirs = commitFile(other, 'same.txt', 'remote\n');
+        git(other, 'push', '-q');
+        const sync = await open(path);
+        const checkoutPath = realpathSync(path);
+
+        expect(await sync()).toEqual([
+            { type: 'phase', phase: 'fetch' },
+            { type: 'phase', phase: 'merge' },
+            { type: 'result', result: { state: 'conflicts', branch: 'main', path: checkoutPath, conflicts: 1 } },
+        ]);
+        expect(left(path)).toEqual(['UU same.txt']);
+        expect(git(path, 'rev-parse', 'HEAD')).toBe(mine);
+        expect(git(origin, 'rev-parse', 'refs/heads/main')).toBe(theirs);
+        expect(await sync()).toEqual([
+            { type: 'result', result: { state: 'conflicts', branch: 'main', path: checkoutPath, conflicts: 1 } },
+        ]);
+
+        const resolved = commitFile(path, 'same.txt', 'local and remote\n');
+        expect(
+            (await sync({ branch: 'main', commit: resolved })).map(event => event.type === 'phase' && event.phase)
+        ).toEqual(['fetch', 'push', false]);
+        expect(git(origin, 'rev-parse', 'refs/heads/main')).toBe(resolved);
+    });
+
+    test('publishes a renamed tracking branch and ignores its stale ref when origin deletes it', async () => {
+        const { path, origin } = repository();
+        const main = git(origin, 'rev-parse', 'refs/heads/main');
+        git(path, 'switch', '-q', '-c', 'topic', '--track', 'origin/main');
+        const mine = commitFile(path, 'topic.txt');
+        const sync = await open(path);
+
+        expect((await sync({ branch: 'topic' })).at(-1)).toEqual({
+            type: 'result',
+            result: { state: 'done', branch: 'topic', pulled: 0, pushed: true },
+        });
+        expect(git(path, 'rev-parse', '--abbrev-ref', '@{upstream}')).toBe('origin/topic');
+
+        const other = neighbour(origin);
+        git(other, 'switch', '-q', '--track', 'origin/topic');
+        const stale = commitFile(other, 'stale.txt');
+        git(other, 'push', '-q');
+        git(path, 'fetch', '-q', 'origin');
+        git(other, 'push', '-q', 'origin', ':topic');
+        expect(git(path, 'rev-parse', 'refs/remotes/origin/topic')).toBe(stale);
+
+        expect((await sync({ branch: 'topic' })).at(-1)).toEqual({
+            type: 'result',
+            result: { state: 'done', branch: 'topic', pulled: 0, pushed: true },
+        });
+        expect(git(origin, 'rev-parse', 'refs/heads/topic')).toBe(mine);
+        expect(git(origin, 'rev-parse', 'refs/heads/main')).toBe(main);
+    });
+
+    test('publishes the checked commit even when a terminal advances the branch during push preparation', async () => {
+        const { path, origin } = repository();
+        git(path, 'switch', '-q', '-c', 'topic');
+        const tip = commitFile(path, 'topic.txt');
+        git(path, 'switch', '-q', '-c', 'other');
+        const newerTip = commitFile(path, 'other.txt');
+        git(path, 'switch', '-q', 'topic');
+
+        const environment = isolated();
+        const readEnvironment = environment.of.bind(environment);
+        let writes = 0;
+        environment.of = async cwd => {
+            if (++writes === 2) git(cwd, 'update-ref', 'refs/heads/topic', newerTip, tip);
+            return readEnvironment(cwd);
+        };
+        const sync = await open(path, environment);
+
+        expect(await sync({ branch: 'topic', commit: tip })).toEqual([
+            { type: 'phase', phase: 'fetch' },
+            { type: 'phase', phase: 'push', commit: tip },
+            { type: 'result', result: { state: 'done', branch: 'topic', pulled: 0, pushed: true } },
+        ]);
+        expect(git(origin, 'rev-parse', 'refs/heads/topic')).toBe(tip);
+        expect(git(path, 'rev-parse', '--abbrev-ref', '@{upstream}')).toBe('origin/topic');
+        expect(git(path, 'rev-parse', 'refs/heads/topic')).toBe(newerTip);
+    });
+
+    test('does not merge into an unrelated branch after a terminal switches the checkout during merge preparation', async () => {
+        const { path, origin } = repository();
+        const base = git(path, 'rev-parse', 'HEAD');
+        git(path, 'branch', 'other');
+        const other = neighbour(origin);
+        commitFile(other, 'incoming.txt');
+        git(other, 'push', '-q');
+
+        const environment = isolated();
+        const readEnvironment = environment.of.bind(environment);
+        let writes = 0;
+        environment.of = async cwd => {
+            if (++writes === 2) git(cwd, 'switch', '-q', 'other');
+            return readEnvironment(cwd);
+        };
+        const sync = await open(path, environment);
+
+        expect(await sync({ branch: 'main', commit: base })).toEqual([
+            { type: 'phase', phase: 'fetch' },
+            { type: 'error', status: 409, message: 'The checkout is no longer on main' },
+        ]);
+        expect(git(path, 'branch', '--show-current')).toBe('other');
+        expect(git(path, 'rev-parse', 'refs/heads/main')).toBe(base);
+        expect(git(path, 'rev-parse', 'refs/heads/other')).toBe(base);
+        expect(left(path)).toEqual([]);
+    });
+
+    test('checks the destination tip and syncs in its existing worktree', async () => {
+        const { path, origin } = repository();
+        const destination = join(tempDir('git-sync'), 'target checkout');
+        const main = git(path, 'rev-parse', 'HEAD');
+        git(path, 'worktree', 'add', '-q', '-b', 'topic', destination);
+        const tip = commitFile(destination, 'topic.txt');
+        git(destination, 'push', '-q', '-u', 'origin', 'topic');
+        const other = neighbour(origin);
+        git(other, 'switch', '-q', '--track', 'origin/topic');
+        const theirs = commitFile(other, 'theirs.txt');
+        git(other, 'push', '-q');
+        const sync = await open(path);
+
+        expect(await sync({ branch: 'topic', commit: main, destination: true })).toMatchObject([
+            { type: 'error', status: 409 },
+        ]);
+        expect(await sync({ branch: 'topic', commit: tip })).toMatchObject([{ type: 'error', status: 409 }]);
+        expect(git(destination, 'rev-parse', 'HEAD')).toBe(tip);
+        expect((await sync({ branch: 'topic', commit: tip, destination: true })).at(-1)).toEqual({
+            type: 'result',
+            result: { state: 'done', branch: 'topic', pulled: 1, pushed: false },
+        });
+        expect(git(destination, 'rev-parse', 'HEAD')).toBe(theirs);
+        expect(git(path, 'rev-parse', 'HEAD')).toBe(main);
+    });
+
+    test('keeps staged and untracked changes if syncing would require a merge', async () => {
+        const { path, origin } = repository();
+        const sync = await open(path);
+        const other = neighbour(origin);
+        const mine = commitFile(path, 'mine.txt');
+        commitFile(other, 'theirs.txt');
+        git(other, 'push', '-q');
+        writeFileSync(join(path, 'staged.txt'), 'staged\n');
+        git(path, 'add', 'staged.txt');
+        writeFileSync(join(path, 'untracked.txt'), 'untracked\n');
+
+        expect(await sync()).toMatchObject([
+            { type: 'phase', phase: 'fetch' },
+            {
+                type: 'error',
+                status: 409,
+                message: 'Commit or stash the staged changes in main before merging from origin',
+            },
+        ]);
+        expect(left(path)).toEqual(['?? untracked.txt', 'A  staged.txt']);
+        expect(git(path, 'rev-parse', 'HEAD')).toBe(mine);
+    });
+
+    test('keeps an overlapping unstaged edit and stops before push', async () => {
+        const { path, origin } = repository();
+        const mine = commitFile(path, 'same.txt', 'base\n');
+        git(path, 'push', '-q');
+        const other = neighbour(origin);
+        const theirs = commitFile(other, 'same.txt', 'remote\n');
+        git(other, 'push', '-q');
+        writeFileSync(join(path, 'same.txt'), 'unsaved local work\n');
+        const sync = await open(path);
+
+        expect(await sync()).toMatchObject([
+            { type: 'phase', phase: 'fetch' },
+            { type: 'phase', phase: 'merge' },
+            { type: 'error', status: 409, message: expect.stringContaining('would be overwritten by merge') },
+        ]);
+        expect(left(path)).toEqual([' M same.txt']);
+        expect(readFileSync(join(path, 'same.txt'), 'utf8')).toBe('unsaved local work\n');
+        expect(git(path, 'rev-parse', 'HEAD')).toBe(mine);
+        expect(git(origin, 'rev-parse', 'refs/heads/main')).toBe(theirs);
+    });
+});
+
+withScripts('Git sync progress', () => {
+    test('delivers the push phase while git is still waiting in the pre-push hook', async () => {
+        const { path, origin } = repository();
+        const before = git(origin, 'rev-parse', 'refs/heads/main');
+        const tip = commitFile(path, 'ahead.txt');
+        const h = await start();
+        const { project } = h.ok('project.add', { folders: [path] });
+        const hold = join(tempDir('git-sync'), 'wait');
+        writeFileSync(hold, '');
+        hook(path, 'pre-push', `while test -f "${hold}"; do sleep 0.01; done`);
+
+        let output = '';
+        try {
+            const response = await h.fetch(`/v1/projects/${project.id}/git/sync`, {
+                method: 'POST',
+                body: JSON.stringify({ folderId: project.folders[0].id, branch: 'main' }),
+                signal: AbortSignal.timeout(4000),
+            });
+            const reader = response.body?.getReader();
+            if (!reader) throw new Error('Expected a sync event stream');
+
+            const decoder = new TextDecoder();
+            const pushing = `data: ${JSON.stringify({ type: 'phase', phase: 'push', commit: tip })}\n\n`;
+            while (!output.includes(pushing)) {
+                const next = await reader.read();
+                if (next.done) throw new Error('Sync ended before its push phase');
+                output += decoder.decode(next.value, { stream: true });
+            }
+
+            expect(output).toStartWith('data: {"type":"phase","phase":"fetch"}\n\n');
+            expect(output).not.toContain('"type":"result"');
+            expect(git(origin, 'rev-parse', 'refs/heads/main')).toBe(before);
+
+            rmSync(hold);
+            for (let next = await reader.read(); !next.done; next = await reader.read())
+                output += decoder.decode(next.value, { stream: true });
+            expect(output).toContain('"pushed":true');
+            expect(git(origin, 'rev-parse', 'refs/heads/main')).toBe(tip);
+        } finally {
+            rmSync(hold, { force: true });
+        }
+    });
+});
 
 withScripts('remoteFailureLine', () => {
     test("is the cause and not the summary that follows it: the refused ref, a hook's line, ssh's line, a remote's line", () => {
@@ -606,6 +928,7 @@ withScripts('POST /v1/projects/:id/git/fetch, pull and push', () => {
 
             expect(level).toMatchObject({ state: 'done', action: 'update', pulled: 0 });
             expect(level).not.toHaveProperty('merged');
+            expect(level).not.toHaveProperty('updatedHead');
 
             const base = commitFile(other, 'base.txt');
 
@@ -614,11 +937,56 @@ withScripts('POST /v1/projects/:id/git/fetch, pull and push', () => {
 
             const updated = await result('update');
 
-            expect(updated).toMatchObject({ state: 'done', action: 'update', pulled: 1, merged: true });
+            expect(updated).toMatchObject({
+                state: 'done',
+                action: 'update',
+                pulled: 1,
+                merged: true,
+                updatedHead: { branch: 'feature', commit: git(path, 'rev-parse', 'HEAD') },
+            });
             expect(updated).not.toHaveProperty('upstream');
             expect(git(path, 'rev-parse', 'HEAD^2')).toBe(base);
             expect(existsSync(join(path, 'base.txt'))).toBe(true);
             expect(existsSync(join(path, 'feature.txt'))).toBe(true);
+        });
+
+        test('keeps the configured merge policy when a base update could fast-forward', async () => {
+            const h = await start();
+            const { path, origin } = repository();
+            const { result } = await open(path, h);
+            const other = neighbour(origin);
+
+            git(path, 'switch', '-q', '-c', 'feature');
+            git(path, 'config', 'merge.ff', 'false');
+            const before = git(path, 'rev-parse', 'HEAD');
+            const base = commitFile(other, 'base.txt');
+            git(other, 'push', '-q');
+
+            const updated = await result('update');
+
+            expect(updated).toMatchObject({
+                state: 'done',
+                pulled: 1,
+                updatedHead: { branch: 'feature', commit: git(path, 'rev-parse', 'HEAD') },
+            });
+            expect(git(path, 'log', '-1', '--format=%P')).toBe(`${before} ${base}`);
+        });
+
+        test('does not expose a new tip when the configured update still needs a merge commit', async () => {
+            const h = await start();
+            const { path, origin } = repository();
+            const { result } = await open(path, h);
+            const other = neighbour(origin);
+
+            git(path, 'switch', '-q', '-c', 'feature');
+            git(path, 'config', 'branch.feature.mergeOptions', '--no-commit');
+            const before = commitFile(path, 'feature.txt');
+            const base = commitFile(other, 'base.txt');
+            git(other, 'push', '-q');
+
+            expect(await result('update')).toEqual({ state: 'conflicts', action: 'update', conflicts: 0 });
+            expect(git(path, 'rev-parse', 'HEAD')).toBe(before);
+            expect(git(path, 'rev-parse', 'MERGE_HEAD')).toBe(base);
         });
 
         test('refuses to update the branch that is the base, and moves nothing', async () => {
