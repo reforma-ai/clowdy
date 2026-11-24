@@ -118,6 +118,37 @@ describe('FileTree', () => {
         expect(tree.isVisible('node_modules/react/index.js')).toBe(false);
     });
 
+    it('temporarily reveals only a requested hidden path and its ancestors', async () => {
+        const tree = new FileTree(
+            new MemoryFileSystem({
+                '.clowdy/docs/index.md': '',
+                '.clowdy/docs/.secret': '',
+                '.clowdy/other/file': '',
+                '.other/file': '',
+                'node_modules/lib/file': '',
+                'excluded/file': '',
+            }),
+            { hidden: ['**/.*', '**/node_modules'], exclude: ['excluded'] }
+        );
+        await tree.refresh();
+        tree.revealPath('.clowdy/docs');
+        expect(tree.showHidden).toBe(false);
+        expect(tree.isVisible('.clowdy/docs')).toBe(true);
+        expect(tree.isVisible('.clowdy/docs/index.md')).toBe(true);
+        expect(tree.isVisible('.clowdy/docs/.secret')).toBe(false);
+        expect(tree.isVisible('.other')).toBe(false);
+        expect(tree.isVisible('.clowdy/other')).toBe(false);
+        expect(names(tree, '.clowdy')).toEqual(['.clowdy/docs']);
+        expect(tree.isVisible('excluded/file')).toBe(false);
+        tree.revealPath('node_modules/lib');
+        expect(tree.isVisible('.clowdy/docs')).toBe(false);
+        expect(tree.isVisible('node_modules/lib')).toBe(true);
+        tree.revealPath(null);
+        expect(tree.isVisible('node_modules/lib')).toBe(false);
+        tree.setShowHidden(true);
+        expect(tree.isVisible('.other')).toBe(true);
+    });
+
     it('should tell a hidden path, or one inside a hidden folder, from a shown one', () => {
         const tree = new FileTree(new MemoryFileSystem({}), {
             exclude: ['bun.lock'],

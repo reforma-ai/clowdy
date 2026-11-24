@@ -58,7 +58,7 @@ export class FileManager {
     /** The provider allows no edits. */
     readonly readonly: boolean;
     /** The latest path to show in the explorer; see `reveal`. */
-    @observableRef accessor revealed: { path: string } | null = null;
+    @observableRef accessor revealed: { path: string; expand?: boolean } | null = null;
     /** What the Files filter looks for. */
     @observable accessor filterQuery = '';
     /** The shown files the latest filter found, with its query; `null` while the query is empty. */
@@ -161,6 +161,8 @@ export class FileManager {
             return null;
         }
 
+        // An explicitly opened file supersedes an earlier request to reveal a folder.
+        this.clearReveal();
         const document = this.tabs.get(normalized) ?? this.#add(normalized);
 
         // A tab that failed to load tries again.
@@ -251,8 +253,14 @@ export class FileManager {
 
     /** Asks the explorer to show a file or folder: its folders open, the row selected and scrolled into view. */
     @action
-    reveal(path: string): void {
-        this.revealed = { path: normalizePath(path) };
+    reveal(path: string, expand = false): void {
+        this.revealed = { path: normalizePath(path), ...(expand && { expand: true }) };
+    }
+
+    /** Forget a previous request when navigating to the root. */
+    @action
+    clearReveal(): void {
+        this.revealed = null;
     }
 
     /**

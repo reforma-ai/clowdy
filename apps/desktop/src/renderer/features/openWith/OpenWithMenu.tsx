@@ -82,7 +82,7 @@ export function OpenWithMenu({
         inFiles: isHere
             ? () =>
                   void openInFiles(root, target.projectId, place, target.relative).then(
-                      opened => !opened && toast.error({ message: 'That path is not on the disk' })
+                      opened => !opened && toast.error({ message: 'Couldn’t open this path' })
                   )
             : undefined,
         inTerminal: isHere ? () => void openInTerminal(root, target.projectId, place, target.relative) : undefined,

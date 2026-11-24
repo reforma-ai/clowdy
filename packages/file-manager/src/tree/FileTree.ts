@@ -85,6 +85,8 @@ export class FileTree {
     @observable accessor status: FileTreeStatus = 'idle';
     /** Paths matching the hidden globs are shown too. */
     @observable accessor showHidden = false;
+    /** One explicitly requested hidden path and its ancestors, until the next folder request. */
+    @observable accessor revealedPath: string | null = null;
 
     readonly #provider: FileSystemProvider;
     readonly #exclude: Minimatch[];
@@ -111,7 +113,7 @@ export class FileTree {
             const byParent = new Map<string, FileEntry[]>();
 
             for (const entry of this.entries.values()) {
-                if (!this.#shows(entry.path)) {
+                if (!this.isVisible(entry.path)) {
                     continue;
                 }
 
@@ -184,6 +186,20 @@ export class FileTree {
 
     /** The path and every folder above it are shown. */
     isVisible(path: string): boolean {
+        const normalized = normalizePath(path);
+        const revealed = this.revealedPath;
+        if (
+            !this.showHidden &&
+            this.isHidden(normalized) &&
+            !(
+                revealed &&
+                (normalized === revealed ||
+                    revealed.startsWith(`${normalized}/`) ||
+                    normalized.startsWith(`${revealed}/`))
+            )
+        ) {
+            return false;
+        }
         for (let current = normalizePath(path); current !== ''; current = dirname(current)) {
             if (!this.#shows(current)) {
                 return false;
@@ -212,6 +228,11 @@ export class FileTree {
     @action
     setShowHidden(show: boolean): void {
         this.showHidden = show;
+    }
+
+    @action
+    revealPath(path: string | null): void {
+        this.revealedPath = path === null ? null : normalizePath(path);
     }
 
     /** Lists the root at depth 3 and each folder this tab has opened. Changes that arrive meanwhile are applied on top. */
@@ -572,6 +593,12 @@ export class FileTree {
     #shows(path: string): boolean {
         const visibility = this.#visibilityOf(path);
 
-        return visibility === 'shown' || (visibility === 'hidden' && this.showHidden);
+        return (
+            visibility === 'shown' ||
+            (visibility === 'hidden' &&
+                (this.showHidden ||
+                    (this.revealedPath !== null &&
+                        (this.revealedPath === path || this.revealedPath.startsWith(`${path}/`)))))
+        );
     }
 }
