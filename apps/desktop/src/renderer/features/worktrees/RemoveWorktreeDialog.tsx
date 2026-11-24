@@ -3,7 +3,6 @@ import { Checkbox } from '@clowdy/components/Checkbox';
 import { For } from '@clowdy/components/For';
 import { openConfirmModal } from '@clowdy/components/modals';
 import { Show } from '@clowdy/components/Show';
-import { Badge } from '@clowdy/components/Tag';
 import { Text } from '@clowdy/components/Text';
 import { toast } from '@clowdy/components/Toast';
 import { useId, useState } from 'react';
@@ -39,8 +38,8 @@ interface RemoveMessageProps {
 
 /**
  * The body of the confirmation: which worktree (its branch or commit, and its path), what goes with it, and the branch as a choice of its own. The box starts ticked only for a
- * branch whose work is in the base (and is not the base itself); one that is not carries `Not merged` and the reason it is lost with the branch. A detached HEAD has no branch to
- * offer, and when its commits are not in the base it says they may be in no branch.
+ * branch whose work is in the base (and is not the base itself); otherwise the text explains the risk of deleting the branch. A detached HEAD has no branch to
+ * offer, and when its commits are not in the base the dialog warns that commits may be lost.
  */
 function RemoveMessage({ worktree, plan, choice }: RemoveMessageProps) {
     const [deleteBranch, setDeleteBranch] = useState(choice.deleteBranch);
@@ -50,7 +49,7 @@ function RemoveMessage({ worktree, plan, choice }: RemoveMessageProps) {
     return (
         <Box gap="lg">
             <Box gap="xxs">
-                <Text weight="medium" truncate>
+                <Text weight="medium" wrap="anywhere">
                     {worktreeLabel(worktree)}
                 </Text>
                 <PathText path={worktree.path} variant="sm" color="secondary" />
@@ -69,24 +68,18 @@ function RemoveMessage({ worktree, plan, choice }: RemoveMessageProps) {
             <Show when={plan.branch}>
                 {branch => (
                     <Box gap="xs">
-                        <Box direction="row" align="center" gap="md">
-                            <Checkbox
-                                size="sm"
-                                isSelected={deleteBranch}
-                                aria-describedby={warning ? warningId : undefined}
-                                onChange={selected => {
-                                    choice.deleteBranch = selected;
-                                    setDeleteBranch(selected);
-                                }}
-                            >
-                                {`Delete branch ${branch.name}`}
-                            </Checkbox>
-                            <Show when={branch.standing === 'unmerged'}>
-                                <Badge size="xs" color="warning" textValue="Not merged">
-                                    Not merged
-                                </Badge>
-                            </Show>
-                        </Box>
+                        <Checkbox
+                            size="sm"
+                            isSelected={deleteBranch}
+                            aria-label={`Also delete the branch ${branch.name}`}
+                            aria-describedby={warning ? warningId : undefined}
+                            onChange={selected => {
+                                choice.deleteBranch = selected;
+                                setDeleteBranch(selected);
+                            }}
+                        >
+                            Also delete the branch
+                        </Checkbox>
                         <Show when={warning}>
                             {text => (
                                 <Text id={warningId} variant="sm" color="warning">
@@ -99,22 +92,17 @@ function RemoveMessage({ worktree, plan, choice }: RemoveMessageProps) {
             </Show>
 
             <Show when={plan.stranded}>
-                <Box direction="row" align="center" gap="md">
-                    <Badge size="xs" color="warning" textValue="Not merged">
-                        Not merged
-                    </Badge>
-                    <Text variant="sm" color="warning">
-                        {STRANDED_WARNING}
-                    </Text>
-                </Box>
+                <Text variant="md" color="warning">
+                    {STRANDED_WARNING}
+                </Text>
             </Show>
         </Box>
     );
 }
 
 /**
- * Asks before a worktree of the Manage dialog is removed, and sends `workspace.remove`. The words follow the worktree: a plain confirm when nothing in it is uncommitted; a red
- * `Discard N changes and remove` (it sends `discard: true`) when something is, a new file or an initialised submodule included; `Remove record` when its folder is gone. The
+ * Asks before a worktree of the Manage dialog is removed, and sends `workspace.remove`. `Remove worktree` is red (and sends `discard: true`) for a tree with uncommitted changes or
+ * an initialised submodule; `Remove record` is used when its folder is gone. The
  * branch is a box of its own (`deleteBranch`), whatever the branch is called, ticked from the start only when its work is in the base. Cancelling sends nothing. The list is
  * read again once the daemon has answered, and a refusal toasts the daemon's own reason and closes the confirmation, so the next Remove asks about the row as the list now has it.
  */

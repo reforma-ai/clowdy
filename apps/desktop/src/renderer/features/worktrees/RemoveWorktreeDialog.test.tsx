@@ -157,18 +157,19 @@ describe('Remove in Manage worktrees', () => {
 
             const window = confirmation();
 
-            expect(window.textContent).toContain('Remove the worktree?');
+            expect(window.textContent).toContain('Remove worktree?');
             expect(window.textContent).toContain('feature/done');
+            expect(window.textContent).toContain('Also delete the branch');
             expect(window.textContent).toContain('worktrees/car-rental/done');
             expect(checkbox()!.checked).toBe(true);
-            expect(window.textContent).toContain('Delete branch feature/done');
+            expect(checkbox()!.getAttribute('aria-label')).toBe('Also delete the branch feature/done');
             expect(window.textContent).not.toContain('Not merged');
             // Plain, not the red button of a changed tree.
-            expect(textButton(window, 'Remove')!.dataset.color).not.toBe('danger');
+            expect(textButton(window, 'Remove worktree')!.dataset.color).not.toBe('danger');
             // Nothing is sent until the person presses it.
             expect(removals()).toEqual([]);
 
-            await confirm('Remove');
+            await confirm('Remove worktree');
 
             expect(removals()).toEqual([
                 {
@@ -189,7 +190,7 @@ describe('Remove in Manage worktrees', () => {
 
             expect(checkbox()!.checked).toBe(false);
 
-            await confirm('Remove');
+            await confirm('Remove worktree');
 
             expect(removals()).toEqual([
                 {
@@ -207,7 +208,7 @@ describe('Remove in Manage worktrees', () => {
             expect(getProjectWorktrees).toHaveBeenCalledTimes(1);
 
             await askToRemove(CLEAN_MERGED);
-            await confirm('Remove');
+            await confirm('Remove worktree');
 
             expect(getProjectWorktrees).toHaveBeenCalledTimes(2);
             expect(isConfirming()).toBe(false);
@@ -239,7 +240,7 @@ describe('Remove in Manage worktrees', () => {
             await open({ overrides: { command: slow } });
             await askToRemove(CLEAN_MERGED);
 
-            const button = textButton(confirmation(), 'Remove')!;
+            const button = textButton(confirmation(), 'Remove worktree')!;
 
             await click(button);
             await click(button);
@@ -256,22 +257,22 @@ describe('Remove in Manage worktrees', () => {
     });
 
     describe('a branch that is not merged', () => {
-        it('has its box off, says `Not merged` and what is lost with the branch, and removes the worktree alone by default', async () => {
+        it('has its box off, warns what can be lost with the branch, and removes the worktree alone by default', async () => {
             await open();
             await askToRemove(CLEAN_UNMERGED);
 
             const window = confirmation();
 
-            expect(window.textContent).toContain('Delete branch wip/pricing');
-            expect(window.textContent).toContain('Not merged');
-            expect(window.textContent).toContain('Its unmerged commits are lost with the branch');
+            expect(checkbox()!.getAttribute('aria-label')).toBe('Also delete the branch wip/pricing');
+            expect(window.textContent).not.toContain('Not merged');
+            expect(window.textContent).toContain('Unmerged commits may be lost if you delete this branch');
             expect(checkbox()!.checked).toBe(false);
             // The warning is the box's description, so a screen reader hears it with the box.
             expect(
                 window.querySelector(`#${CSS.escape(checkbox()!.getAttribute('aria-describedby')!)}`)?.textContent
-            ).toBe('Its unmerged commits are lost with the branch');
+            ).toBe('Unmerged commits may be lost if you delete this branch');
 
-            await confirm('Remove');
+            await confirm('Remove worktree');
 
             expect(removals()).toEqual([
                 {
@@ -287,7 +288,7 @@ describe('Remove in Manage worktrees', () => {
             await open();
             await askToRemove(CLEAN_UNMERGED);
             await act(async () => checkbox()!.click());
-            await confirm('Remove');
+            await confirm('Remove worktree');
 
             expect(removals()).toEqual([
                 {
@@ -312,12 +313,12 @@ describe('Remove in Manage worktrees', () => {
             await open({ data });
             await askToRemove('/Users/dev/worktrees/car-rental/trunk');
 
-            expect(confirmation().textContent).toContain('Delete branch main');
-            expect(confirmation().textContent).toContain('It is the base branch itself');
+            expect(checkbox()!.getAttribute('aria-label')).toBe('Also delete the branch main');
+            expect(confirmation().textContent).toContain('This is the base branch');
             expect(confirmation().textContent).not.toContain('Not merged');
             expect(checkbox()!.checked).toBe(false);
 
-            await confirm('Remove');
+            await confirm('Remove worktree');
 
             expect(removals()).toEqual([
                 {
@@ -340,7 +341,7 @@ describe('Remove in Manage worktrees', () => {
             await open({ data });
             await askToRemove('/Users/dev/worktrees/car-rental/release');
 
-            expect(confirmation().textContent).toContain('Delete branch release/1.0');
+            expect(checkbox()!.getAttribute('aria-label')).toBe('Also delete the branch release/1.0');
             expect(checkbox()!.checked).toBe(true);
         });
     });
@@ -351,13 +352,15 @@ describe('Remove in Manage worktrees', () => {
             await askToRemove(FOUND_WORKTREE);
 
             const window = confirmation();
-            const red = textButton(window, 'Discard 2 changes and remove')!;
+            const red = textButton(window, 'Remove worktree')!;
 
             expect(red.dataset.color).toBe('danger');
-            expect(window.textContent).toContain('Discard changes and remove?');
-            expect(window.textContent).toContain('2 uncommitted changes will be deleted for good');
+            expect(window.textContent).toContain('Remove worktree?');
+            expect(window.textContent).toContain('2 uncommitted changes will be lost');
             // An initialised submodule is said as well.
-            expect(window.textContent).toContain('Its checked-out submodules are removed with it');
+            expect(window.textContent).toContain(
+                'Checked-out submodules and any uncommitted changes in them will be removed'
+            );
             expect(removals()).toEqual([]);
 
             await click(red);
@@ -380,11 +383,11 @@ describe('Remove in Manage worktrees', () => {
             await open();
             await askToRemove(ONE_CHANGE);
 
-            expect(textButton(confirmation(), 'Discard 1 change and remove')).not.toBeUndefined();
-            expect(confirmation().textContent).toContain('1 uncommitted change will be deleted for good');
+            expect(textButton(confirmation(), 'Remove worktree')).not.toBeUndefined();
+            expect(confirmation().textContent).toContain('1 uncommitted change will be lost');
             expect(confirmation().textContent).not.toContain('files');
 
-            await confirm('Discard 1 change and remove');
+            await confirm('Remove worktree');
 
             expect(removals()).toEqual([
                 {
@@ -402,10 +405,13 @@ describe('Remove in Manage worktrees', () => {
             await open();
             await askToRemove(SUBMODULES_ONLY);
 
-            const red = textButton(confirmation(), 'Remove with submodules')!;
+            const red = textButton(confirmation(), 'Remove worktree')!;
 
             expect(red.dataset.color).toBe('danger');
-            expect(confirmation().textContent).not.toContain('Discard 0');
+            expect(confirmation().textContent).toContain(
+                'Checked-out submodules and any uncommitted changes in them will be removed'
+            );
+            expect(confirmation().textContent).not.toContain('0 uncommitted');
 
             await click(red);
             await settle();
@@ -421,9 +427,9 @@ describe('Remove in Manage worktrees', () => {
 
             expect(checkbox()).toBeNull();
             expect(confirmation().textContent).not.toContain('Not merged');
-            expect(confirmation().textContent).not.toContain('Delete branch');
+            expect(confirmation().textContent).not.toContain('Also delete the branch');
 
-            await confirm('Remove');
+            await confirm('Remove worktree');
 
             expect(removals()).toEqual([
                 { type: 'workspace.remove', projectId: FIXTURE_PROJECT_ID, folderId: 'fld_api', path: DETACHED_MERGED },
@@ -435,16 +441,34 @@ describe('Remove in Manage worktrees', () => {
             await askToRemove(STRANDED);
 
             expect(checkbox()).toBeNull();
-            expect(confirmation().textContent).toContain('Not merged');
-            expect(confirmation().textContent).toContain(
-                'Its commits may be in no branch, so they can be lost with the worktree'
-            );
+            expect(confirmation().textContent).not.toContain('Not merged');
+            expect(confirmation().textContent).toContain('Commits that aren’t on a branch may be lost');
 
-            await confirm('Remove');
+            await confirm('Remove worktree');
 
             expect(removals()).toEqual([
                 { type: 'workspace.remove', projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', path: STRANDED },
             ]);
+        });
+
+        it('shows both warnings for a detached worktree with local changes and keeps the confirmation label short', async () => {
+            const data = dataWithKinds();
+
+            data.worktrees![CAR_RENTAL]!.find(worktree => worktree.path === STRANDED)!.changes = 12;
+            await open({ data });
+            await askToRemove(STRANDED);
+
+            const window = confirmation();
+
+            expect(textButton(window, 'Remove worktree')!.dataset.color).toBe('danger');
+            expect(window.textContent).toContain('12 uncommitted changes will be lost');
+            expect(window.textContent).toContain('Commits that aren’t on a branch may be lost');
+            expect(window.textContent).not.toContain('Not merged');
+            expect(checkbox()).toBeNull();
+
+            await confirm('Remove worktree');
+
+            expect(removals()[0]).toMatchObject({ path: STRANDED, discard: true });
         });
     });
 
@@ -455,9 +479,9 @@ describe('Remove in Manage worktrees', () => {
 
             const window = confirmation();
 
-            expect(window.textContent).toContain('Remove the record?');
-            expect(window.textContent).toContain('Git still lists it, but its folder is gone from the disk');
-            expect(window.textContent).toContain('Delete branch old-pricing');
+            expect(window.textContent).toContain('Remove record?');
+            expect(window.textContent).toContain('The worktree folder is missing. This removes its record from Git.');
+            expect(checkbox()!.getAttribute('aria-label')).toBe('Also delete the branch old-pricing');
             expect(textButton(window, 'Remove record')).not.toBeUndefined();
 
             await confirm('Remove record');
@@ -531,7 +555,7 @@ describe('Remove in Manage worktrees', () => {
 
             await open({ overrides: { command: refuse } });
             await askToRemove(CLEAN_MERGED);
-            await confirm('Remove');
+            await confirm('Remove worktree');
 
             expect(refuse).toHaveBeenCalledTimes(1);
             expect(error).toHaveBeenCalledWith({
@@ -552,7 +576,7 @@ describe('Remove in Manage worktrees', () => {
             // The tree got a change after the list was read: the plain confirmation is refused, as the daemon does.
             data.worktrees![CAR_RENTAL]!.find(worktree => worktree.path === CLEAN_MERGED)!.changes = 2;
             await askToRemove(CLEAN_MERGED);
-            await confirm('Remove');
+            await confirm('Remove worktree');
 
             expect(error).toHaveBeenCalledWith({
                 title: "Couldn't remove the worktree",
@@ -563,7 +587,8 @@ describe('Remove in Manage worktrees', () => {
 
             await askToRemove(CLEAN_MERGED);
 
-            expect(textButton(confirmation(), 'Discard 2 changes and remove')).not.toBeUndefined();
+            expect(textButton(confirmation(), 'Remove worktree')!.dataset.color).toBe('danger');
+            expect(confirmation().textContent).toContain('2 uncommitted changes will be lost');
             expect(removals()).toHaveLength(1);
         });
     });
@@ -583,7 +608,7 @@ describe('Remove in Manage worktrees', () => {
                 overrides: { getProjectWorktrees: read, command: (input: CommandInput) => base.command(input) },
             });
             await askToRemove(CLEAN_MERGED);
-            await confirm('Remove');
+            await confirm('Remove worktree');
 
             const manage = document.body.querySelector<HTMLElement>('[data-modal-window]')!;
 

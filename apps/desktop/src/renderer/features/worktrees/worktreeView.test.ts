@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 import {
     branchWarning,
     changesLabel,
-    discardLabel,
     lockTip,
     mergedMark,
     removalPlan,
@@ -91,13 +90,6 @@ describe('removeHint', () => {
     });
 });
 
-describe('discardLabel', () => {
-    it("counts the changes, git's status entries, and does not call them files", () => {
-        expect(discardLabel(1)).toBe('Discard 1 change and remove');
-        expect(discardLabel(3)).toBe('Discard 3 changes and remove');
-    });
-});
-
 describe('removalPlan', () => {
     const clean = { branch: 'feature/done', merged: true, missing: false, changes: 0, submodules: false } as const;
 
@@ -106,7 +98,8 @@ describe('removalPlan', () => {
 
         expect(plan).toMatchObject({
             kind: 'plain',
-            confirmLabel: 'Remove',
+            title: 'Remove worktree?',
+            confirmLabel: 'Remove worktree',
             stranded: false,
             branch: { name: 'feature/done', selected: true, standing: 'merged' },
         });
@@ -119,7 +112,7 @@ describe('removalPlan', () => {
             standing: 'unmerged',
         });
         expect(branchWarning({ name: 'x', selected: false, standing: 'unmerged' })).toBe(
-            'Its unmerged commits are lost with the branch'
+            'Unmerged commits may be lost if you delete this branch'
         );
     });
 
@@ -128,7 +121,7 @@ describe('removalPlan', () => {
 
         expect(removalPlan(unknown).branch).toEqual({ name: 'feature/done', selected: false, standing: 'unknown' });
         expect(branchWarning({ name: 'x', selected: false, standing: 'unknown' })).toContain(
-            "Can't tell whether its commits are merged"
+            'Couldn’t verify that this branch is merged'
         );
         expect(branchWarning({ name: 'x', selected: true, standing: 'merged' })).toBeUndefined();
     });
@@ -144,7 +137,7 @@ describe('removalPlan', () => {
             selected: false,
             standing: 'base',
         });
-        expect(branchWarning({ name: 'main', selected: false, standing: 'base' })).toBe('It is the base branch itself');
+        expect(branchWarning({ name: 'main', selected: false, standing: 'base' })).toBe('This is the base branch');
         // Another branch of the same tail, or one the base does not name, is an ordinary merged branch.
         expect(removalPlan({ ...clean, branch: 'feature/main', base: 'origin/main' }).branch).toMatchObject({
             selected: true,
@@ -167,33 +160,31 @@ describe('removalPlan', () => {
     it('asks for the red confirmation, with the number of changes, when something is not committed', () => {
         expect(removalPlan({ ...clean, changes: 1 })).toMatchObject({
             kind: 'discard',
-            confirmLabel: 'Discard 1 change and remove',
-            notes: ['1 uncommitted change will be deleted for good'],
+            confirmLabel: 'Remove worktree',
+            notes: ['1 uncommitted change will be lost'],
         });
         expect(removalPlan({ ...clean, changes: 4 })).toMatchObject({
             kind: 'discard',
-            confirmLabel: 'Discard 4 changes and remove',
-            notes: ['4 uncommitted changes will be deleted for good'],
+            confirmLabel: 'Remove worktree',
+            notes: ['4 uncommitted changes will be lost'],
         });
     });
 
     it('asks for it for an initialised submodule too, naming it, and counts no change when there is none', () => {
         expect(removalPlan({ ...clean, submodules: true })).toMatchObject({
             kind: 'discard',
-            confirmLabel: 'Remove with submodules',
+            confirmLabel: 'Remove worktree',
         });
         expect(removalPlan({ ...clean, changes: 2, submodules: true }).notes).toContain(
-            'Its checked-out submodules are removed with it'
+            'Checked-out submodules and any uncommitted changes in them will be removed'
         );
-        expect(removalPlan({ ...clean, changes: 2, submodules: true }).confirmLabel).toBe(
-            'Discard 2 changes and remove'
-        );
+        expect(removalPlan({ ...clean, changes: 2, submodules: true }).confirmLabel).toBe('Remove worktree');
     });
 
     it('removes only the record of a worktree whose folder is gone, with no discard, and still offers its branch', () => {
         expect(removalPlan({ ...clean, missing: true })).toMatchObject({
             kind: 'record',
-            title: 'Remove the record?',
+            title: 'Remove record?',
             confirmLabel: 'Remove record',
             branch: { name: 'feature/done' },
         });
