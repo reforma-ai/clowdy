@@ -143,7 +143,7 @@ interface WorkspaceChipProps {
  * checkout (`Switch to <branch>` when the person picked another branch than the one the folder is on: the daemon switches the checkout when the chat is made, and the pill turns to the warning
  * colour while something is in the way), `New worktree` and `from <base>` for a worktree to be made, and `Worktree` and the branch for one that exists. The menu has `Main worktree` (the folder itself;
  * the branch at the row's end is a chip of its own, pressed, or with the right arrow on the row, it opens the list of the folder's branches at the menu's side, the way the new worktree's base does:
- * Default, Recent, Local and Remote as in the Changes sidebar, the one the folder is on checked, and with nothing picked the chat starts on it as it is),
+ * it follows the Changes branch picker and checks the folder's current branch),
  * `New worktree` (pressing the row chooses it; the base at its end is a chip of its own whose press, or the right arrow on the row, opens the searchable list of the folder's branches to start from, in
  * the groups Local and Remote, at the menu's side, with the menu staying open under it). Existing worktrees follow as rows with their branch and chat count. The rows have an icon each and no
  * check: the row that is on is the one the menu highlights. `Manage worktrees…` ends the menu behind a separator: it shuts the menu and opens the dialog of the project's worktrees (`onManage`), and chooses

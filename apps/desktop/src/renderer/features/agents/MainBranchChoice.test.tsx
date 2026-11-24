@@ -176,7 +176,7 @@ describe("the branch of the main worktree's row", () => {
         await settle();
 
         expect(options().map(row => row.textContent)).toEqual(['main', 'dev']);
-        expect(headings()).toEqual(['Default', 'Recent']);
+        expect(headings()).toEqual(['Recent']);
         expect(option('main').querySelector('[aria-label="Current"]')).not.toBeNull();
         expect(option('dev').querySelector('[aria-label="Current"]')).toBeNull();
         // The menu stays open under the list.
@@ -184,23 +184,23 @@ describe("the branch of the main worktree's row", () => {
         expect(ui().draftWorkspace).toBeNull();
     });
 
-    it('lists what only origin has under Remote and dims a branch that another worktree holds, saying where', async () => {
+    it('shows the origin prefix for remote-only branches, then the unavailable branches with their reasons', async () => {
         await start(['remote', 'held']);
         await openBranches();
 
-        expect(headings()).toEqual(['Default', 'Recent', 'Local', 'Remote']);
+        expect(headings()).toEqual(['Recent', 'Other branches', 'Unavailable']);
         expect(options().map(row => row.textContent)).toEqual([
             'main',
             'dev',
+            'origin/feature/search',
+            'origin/release/2.1',
+            'origin/chore/deps',
             'feature/paymentsChecked out in ~/car-rental-payments',
             'clowdy/ab12cd34Checked out in ~/…/ab12cd34/car-rental',
-            'feature/search',
-            'release/2.1',
-            'chore/deps',
         ]);
         expect(option('feature/payments').getAttribute('aria-disabled')).toBe('true');
         expect(option('clowdy/ab12cd34').getAttribute('aria-disabled')).toBe('true');
-        expect(option('feature/search').getAttribute('aria-disabled')).not.toBe('true');
+        expect(option('origin/feature/search').getAttribute('aria-disabled')).not.toBe('true');
     });
 
     it('filters as the person types, and Escape closes the list and picks nothing', async () => {
@@ -213,7 +213,7 @@ describe("the branch of the main worktree's row", () => {
             Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, 'rel');
             input.dispatchEvent(new Event('input', { bubbles: true }));
         });
-        expect(options().map(row => row.textContent)).toEqual(['release/2.1']);
+        expect(options().map(row => row.textContent)).toEqual(['origin/release/2.1']);
 
         await key(input, 'Escape');
         await settle();
@@ -405,7 +405,7 @@ describe('the first message with a branch picked', () => {
     it('is a branch only origin has, which the daemon makes a local one that tracks it', async () => {
         await start(['remote']);
         await openBranches();
-        await press(option('feature/search'));
+        await press(option('origin/feature/search'));
         await settle();
         await send('Fix the price');
 

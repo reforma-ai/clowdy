@@ -177,7 +177,7 @@ describe("the branch of the Changes sidebar, for the folder's own checkout", () 
         expect(popover()).toBeNull();
     });
 
-    it('opens a popover titled Current branch, with a filter and the groups, the current branch checked, and reads the branches when it opens', async () => {
+    it('opens with search, the default branch, and the current branch checked, and reads the branches when it opens', async () => {
         await start({ branches: ['remote'] });
 
         const read = vi.spyOn(transport, 'getGitBranches');
@@ -185,7 +185,7 @@ describe("the branch of the Changes sidebar, for the folder's own checkout", () 
         await open();
 
         expect(read).toHaveBeenCalledExactlyOnceWith(FIXTURE_PROJECT_ID, { folderId: 'fld_car_rental' });
-        expect(popover()?.textContent).toContain('Current branch');
+        expect(popover()?.textContent).not.toContain('Current branch');
         expect(search()).not.toBeNull();
         expect(document.activeElement).toBe(search());
         expect(rows().map(candidate => candidate.dataset.key)).toEqual([
@@ -195,7 +195,8 @@ describe("the branch of the Changes sidebar, for the folder's own checkout", () 
             'release/2.1',
             'chore/deps',
         ]);
-        expect(popover()?.textContent).toMatch(/Default.*main.*Recent.*dev.*Remote.*feature\/search/s);
+        expect(popover()?.textContent).not.toMatch(/Default|Local|Remote/);
+        expect(popover()?.textContent).toMatch(/main.*Recent.*dev.*Other branches.*origin\/feature\/search/s);
         expect(row('main').querySelector('[aria-label="Current"]')).not.toBeNull();
         expect(row('dev').querySelector('[aria-label="Current"]')).toBeNull();
         expect(buttonOf('New branch…')).toBeDefined();
@@ -212,6 +213,13 @@ describe("the branch of the Changes sidebar, for the folder's own checkout", () 
 
         expect(held.getAttribute('aria-disabled')).toBe('true');
         expect(held.textContent).toContain('Checked out in ~/…/ab12cd34/car-rental');
+        expect(held.closest('[role="group"]')?.getAttribute('aria-label')).toBe('Unavailable');
+        expect(rows().map(candidate => candidate.getAttribute('aria-disabled') === 'true')).toEqual([
+            false,
+            false,
+            true,
+            true,
+        ]);
         expect(row('feature/payments').getAttribute('aria-disabled')).toBe('true');
 
         await press(held);
@@ -230,7 +238,7 @@ describe("the branch of the Changes sidebar, for the folder's own checkout", () 
         await start({ branches: ['remote'] });
         await open();
 
-        await type(search(), 'search feat');
+        await type(search(), 'search origin/feat');
         expect(rows().map(candidate => candidate.dataset.key)).toEqual(['feature/search']);
 
         await type(search(), 'zzz');
@@ -257,12 +265,13 @@ describe("the branch of the Changes sidebar, for the folder's own checkout", () 
         expect(info).toHaveBeenCalled();
     });
 
-    it('takes a branch that only origin has by its name, and the next time it is a local branch under Local', async () => {
+    it('shows the origin prefix until checkout creates the local branch', async () => {
         await start({ branches: ['remote'] });
 
         const switchTo = vi.spyOn(transport, 'switchGitBranch');
 
         await open();
+        expect(row('feature/search').textContent).toBe('origin/feature/search');
         await press(row('feature/search'));
         await settle();
         await settle();
@@ -276,6 +285,7 @@ describe("the branch of the Changes sidebar, for the folder's own checkout", () 
         expect(trigger()?.textContent).toBe('feature/search');
 
         await open();
+        expect(row('feature/search').textContent).toBe('feature/search');
         expect(row('feature/search').querySelector('[aria-label="Current"]')).not.toBeNull();
         expect(rows().map(candidate => candidate.dataset.key)).not.toContain('release/2.1-gone');
     });

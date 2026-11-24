@@ -1,14 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-    BRANCH_GROUPS,
-    branchOptions,
-    canCreate,
-    heldRowWords,
-    heldWords,
-    newBranchStarts,
-    START_WORDS,
-} from './branchChoices';
+import { branchOptions, canCreate, heldRowWords, heldWords, newBranchStarts, START_WORDS } from './branchChoices';
 
 import type { BranchListing } from './branchChoices';
 
@@ -26,35 +18,27 @@ const listing = (overrides: Partial<BranchListing> = {}): BranchListing => ({
     ...overrides,
 });
 
-const groupsOf = (options: ReturnType<typeof branchOptions>) =>
-    Object.fromEntries(
-        [...new Set(options.map(option => option.group))].map(group => [
-            group,
-            options.filter(option => option.group === group).map(option => option.id),
-        ])
-    );
+const rowsOf = (options: ReturnType<typeof branchOptions>) => options.map(({ id, label, group }) => [id, label, group]);
 
 describe('branchOptions', () => {
-    it('lists each branch once, in the groups Default, Recent, Local and Remote, in that order', () => {
-        const options = branchOptions(listing());
+    it('pins the default branch, keeps recent branches together, and prefers local names', () => {
+        const options = branchOptions(
+            listing({
+                remote: [{ name: 'main' }, { name: 'dev' }, { name: 'feature/search' }, { name: 'release/2.1' }],
+            })
+        );
 
-        expect(Object.keys(groupsOf(options))).toEqual([
-            BRANCH_GROUPS.default,
-            BRANCH_GROUPS.recent,
-            BRANCH_GROUPS.local,
-            BRANCH_GROUPS.remote,
+        expect(rowsOf(options)).toEqual([
+            ['main', 'main', undefined],
+            ['dev', 'dev', 'Recent'],
+            ['feature/menu', 'feature/menu', 'Other branches'],
+            ['old/idea', 'old/idea', 'Other branches'],
+            ['feature/search', 'origin/feature/search', 'Other branches'],
+            ['release/2.1', 'origin/release/2.1', 'Other branches'],
         ]);
-        expect(groupsOf(options)).toEqual({
-            Default: ['main'],
-            // The default branch is under Default alone, whether or not HEAD was on it lately.
-            Recent: ['dev'],
-            Local: ['feature/menu', 'old/idea'],
-            Remote: ['feature/search', 'release/2.1'],
-        });
-        expect(new Set(options.map(option => option.id)).size).toBe(options.length);
     });
 
-    it('puts the default branch under Default when it is a branch only origin has, and then not again under Remote', () => {
+    it('pins the remote-only default branch above the rest in an unheaded list without recents', () => {
         const options = branchOptions(
             listing({
                 local: [{ name: 'feature/menu', current: true }],
@@ -64,23 +48,22 @@ describe('branchOptions', () => {
             })
         );
 
-        expect(groupsOf(options)).toEqual({ Default: ['trunk'], Local: ['feature/menu'], Remote: ['other'] });
+        expect(rowsOf(options)).toEqual([
+            ['trunk', 'origin/trunk', undefined],
+            ['feature/menu', 'feature/menu', undefined],
+            ['other', 'origin/other', undefined],
+        ]);
     });
 
-    it('leaves a group out when it has no branch', () => {
-        expect(
-            Object.keys(
-                groupsOf(
-                    branchOptions(
-                        listing({ remote: [], recent: [], local: [{ name: 'main', current: true, default: true }] })
-                    )
-                )
-            )
-        ).toEqual(['Default']);
+    it('shows a single branch without any headings and no rows for an empty repository', () => {
+        const options = branchOptions(
+            listing({ remote: [], recent: [], local: [{ name: 'main', current: true, default: true }] })
+        );
+        expect(rowsOf(options)).toEqual([['main', 'main', undefined]]);
         expect(branchOptions(listing({ local: [], remote: [], recent: [] }))).toEqual([]);
     });
 
-    it('shows a branch that another worktree has as a dimmed row that says where, in whichever group it falls', () => {
+    it('puts branches held by another worktree after every available choice, including a held default or recent branch', () => {
         const options = branchOptions(
             listing({
                 local: [
@@ -92,15 +75,23 @@ describe('branchOptions', () => {
                     { name: 'old/idea', heldBy: { path: '/Users/dev/app-idea' } },
                     { name: 'main', default: true, heldBy: { path: '/Users/dev/app', main: true } },
                 ],
+                remote: [{ name: 'dev' }, { name: 'release/2.1' }],
             }),
             '/Users/dev'
         );
         const held = options.filter(option => option.isDisabled);
 
-        expect(held.map(option => [option.id, option.group, option.description])).toEqual([
-            ['main', 'Default', 'Checked out in the main worktree'],
-            ['dev', 'Recent', 'Checked out in ~/Clowdy/…/ab12cd34/app'],
-            ['old/idea', 'Local', 'Checked out in ~/app-idea'],
+        expect(rowsOf(options)).toEqual([
+            ['feature/menu', 'feature/menu', undefined],
+            ['release/2.1', 'origin/release/2.1', undefined],
+            ['main', 'main', 'Unavailable'],
+            ['dev', 'dev', 'Unavailable'],
+            ['old/idea', 'old/idea', 'Unavailable'],
+        ]);
+        expect(held.map(option => option.description)).toEqual([
+            'Checked out in the main worktree',
+            'Checked out in ~/Clowdy/…/ab12cd34/app',
+            'Checked out in ~/app-idea',
         ]);
         expect(held.every(option => option.stacked)).toBe(true);
         expect(options.filter(option => !option.isDisabled).every(option => option.description === undefined)).toBe(

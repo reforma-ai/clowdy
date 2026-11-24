@@ -36,7 +36,7 @@
 }
 
 /*
- * The popover of the branches, and its form of a new one: one column, as wide as the popover is. Every line of words in it (the title, a reason, the form) starts where the
+ * The popover of the branches, and its form of a new one: one column, as wide as the popover is. Each reason and form label starts where the
  * list's rows have theirs, 12px inside the popover's own inset, as the list's group headings do.
  */
 .body {
@@ -44,10 +44,6 @@
     flex-direction: column;
     gap: var(--spacing-sm);
     min-width: 0;
-}
-
-.title {
-    padding: var(--spacing-xs) var(--spacing-lg) 0;
 }
 
 /* What the daemon says is the person's to copy: why a switch was refused, git's own line, the hook's. */

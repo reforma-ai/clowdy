@@ -28,9 +28,8 @@ export interface MainBranchPickerProps {
 }
 
 /**
- * The list of the new chat's branch, drawn beside the row of the menu it belongs to (the `PickerPopover` of the new worktree's base, with the same groups as the Changes sidebar's branch
- * button: Default, Recent, Local, Remote, a branch another worktree holds dimmed with where). The folder's own branch is checked unless the person chose another. Picking a branch only
- * records the choice: the daemon switches the checkout when the chat is made. While something is in the way, every other branch is dimmed and the reason is under the list, in the daemon's words;
+ * The list of the new chat's branch uses the same grouping as the Changes branch picker. The folder's own branch is checked unless the person chose another.
+ * Picking a branch records a choice for the daemon to apply when the chat starts. While something is in the way, every other branch goes under Unavailable and the reason is under the list;
  * after a refusal at send the daemon's reason is there, and stays until the choice changes.
  */
 export function MainBranchPicker({

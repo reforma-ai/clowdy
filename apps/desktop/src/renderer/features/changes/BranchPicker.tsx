@@ -20,9 +20,8 @@ export interface BranchPickerProps {
 }
 
 /**
- * The branch of the place as the title of the Changes sidebar and a button that changes it: a popover with `Current branch` as its title, a filter and the
- * groups `Default`, `Recent`, `Local` and `Remote`, a branch that another worktree has checked out dimmed with where, and `New branch…`, which opens the form of a new one in the same
- * popover. A press on a branch switches to it (`BranchSwitch`: the daemon refuses a tree with changes, a merge or rebase under way, a run working there and a branch held elsewhere, and
+ * The branch of the place as the title of the Changes sidebar and a button that changes it. The popover starts with search and lists unavailable branches at the end.
+ * `New branch…` opens the form in the same popover. A press on a branch switches to it (`BranchSwitch`: the daemon refuses a tree with changes, a merge or rebase under way, a run working there and a branch held elsewhere, and
  * says why, and the reason is shown inside the popover, selectable); the popover shuts when the switch was made, never on a refusal. While a switch runs the button shows a spinner.
  * A chat worktree must also be merged into its base. The branches are read each time the popover opens.
  */

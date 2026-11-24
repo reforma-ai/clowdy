@@ -6,8 +6,8 @@ import type { PickerOption } from '../../shared/PickerPopover';
 /** A listing of a place that is a repository. */
 export type BranchListing = Extract<GitBranches, { isRepository: true }>;
 
-/** The groups of the list, in the order they are drawn (GitHub Desktop's: the default branch, the ones lately on, the rest, and what only `origin` has). */
-export const BRANCH_GROUPS = { default: 'Default', recent: 'Recent', local: 'Local', remote: 'Remote' } as const;
+export const UNAVAILABLE_BRANCH_GROUP = 'Unavailable';
+const RECENT_BRANCH_GROUP = 'Recent';
 
 /** What a worktree that has a branch checked out is called in a reason: its path, with the home folder as `~`, or the folder's own checkout. */
 export function holderWords(holder: GitBranchHolder, home: string | undefined): string {
@@ -37,39 +37,49 @@ export function heldRowWords(holder: GitBranchHolder, home: string | undefined):
 }
 
 /**
- * The rows of the list, in groups and each branch in one: the default branch alone under `Default`, the branches HEAD was on lately under `Recent` (the daemon leaves out the current
- * one), the other local branches under `Local` and the branches only `origin` has under `Remote`. A branch another worktree has checked out is a dimmed row that says where, and is never
- * picked: git would refuse it. A group with no row is not drawn (the options of no group are not listed in it by the list).
+ * Pin the default branch above the recent and remaining branches. Prefer local rows and show the rest from origin with their remote prefix.
+ * Branches checked out in another worktree go last, with the reason under each name.
  */
 export function branchOptions(listing: BranchListing, home?: string): PickerOption[] {
+    const localByName = new Map(listing.local.map(branch => [branch.name, branch]));
+    const remoteNames = new Set(listing.remote.map(branch => branch.name));
     const options: PickerOption[] = [];
+    const unavailable: PickerOption[] = [];
     const taken = new Set<string>();
-    const add = (group: string, name: string, holder?: GitBranchHolder) => {
+    const add = (name: string, group?: string) => {
         if (taken.has(name)) return;
 
+        const local = localByName.get(name);
+
+        if (!local && !remoteNames.has(name)) return;
+
         taken.add(name);
-        options.push({
-            id: name,
-            label: name,
-            group,
-            ...(holder && { isDisabled: true, stacked: true, description: heldRowWords(holder, home) }),
-        });
+
+        if (local?.heldBy) {
+            unavailable.push({
+                id: name,
+                label: name,
+                group: UNAVAILABLE_BRANCH_GROUP,
+                isDisabled: true,
+                stacked: true,
+                description: heldRowWords(local.heldBy, home),
+            });
+        } else {
+            options.push({ id: name, label: local ? name : `origin/${name}`, group });
+        }
     };
-    const holderOf = (name: string) => listing.local.find(branch => branch.name === name)?.heldBy;
-    const defaults = [
-        ...listing.local.filter(branch => branch.default).map(branch => branch.name),
-        ...listing.remote.filter(branch => branch.default).map(branch => branch.name),
-    ];
 
-    for (const name of defaults) add(BRANCH_GROUPS.default, name, holderOf(name));
+    if (listing.defaultBranch !== undefined) add(listing.defaultBranch);
 
-    for (const name of listing.recent) add(BRANCH_GROUPS.recent, name, holderOf(name));
+    for (const name of listing.recent) add(name, RECENT_BRANCH_GROUP);
 
-    for (const branch of listing.local) add(BRANCH_GROUPS.local, branch.name, branch.heldBy);
+    const otherGroup = options.some(option => option.group === RECENT_BRANCH_GROUP) ? 'Other branches' : undefined;
 
-    for (const branch of listing.remote) add(BRANCH_GROUPS.remote, branch.name);
+    for (const name of localByName.keys()) add(name, otherGroup);
 
-    return options;
+    for (const name of remoteNames) add(name, otherGroup);
+
+    return [...options, ...unavailable];
 }
 
 /** The two places a new branch can start from, as the form words them: the default branch (`main`) and the current one, each with the name it has now. Nothing for a start that has no name (a detached HEAD, a repository with no default). */
