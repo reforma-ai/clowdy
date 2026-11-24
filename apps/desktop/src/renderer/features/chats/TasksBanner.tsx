@@ -14,6 +14,7 @@ export function TasksBanner({ progress }: { progress: ChatProgress }) {
     const project = useProjectState();
     const ui = useProjectUi();
     const { done, total, tasks } = progress;
+    const complete = done === total;
 
     return (
         <ComposerBanner role="group" aria-label="Chat tasks">
@@ -22,10 +23,14 @@ export function TasksBanner({ progress }: { progress: ChatProgress }) {
                 onPress={() => setExpanded(!expanded)}
                 summary={
                     <>
-                        <span className={styles.track} aria-hidden>
-                            <span className={styles.fill} style={{ width: `${(done / total) * 100}%` }} />
-                        </span>
-                        <Text variant="xs" color="secondary">{`${done} of ${total}`}</Text>
+                        {!complete && (
+                            <span className={styles.track} aria-hidden>
+                                <span className={styles.fill} style={{ width: `${(done / total) * 100}%` }} />
+                            </span>
+                        )}
+                        <Text variant="xs" color="secondary">
+                            {complete ? `${done} done` : `${done} of ${total}`}
+                        </Text>
                     </>
                 }
             >
