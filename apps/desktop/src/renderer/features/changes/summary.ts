@@ -13,7 +13,7 @@ export interface ChangesSummary {
     deletions: string;
     /** Some file's lines were not counted, so the numbers are a lower bound. */
     incomplete: boolean;
-    /** `2 of 16 viewed`: how many of the list's files are viewed, said only when some are. */
+    /** `2 viewed`: how many of the list's files are viewed, said only when some are. */
     viewed?: string;
     /** What else to say, each a phrase: the list was cut, or the scope has no base to count from. */
     notes: string[];
@@ -43,7 +43,7 @@ export function summaryOf(changes: RepositoryChanges, shown: readonly GitChanged
         additions: `+${additions}`,
         deletions: `−${deletions}`,
         incomplete: !changes.statsComplete,
-        ...(viewed > 0 && { viewed: `${viewed} of ${changes.files.length} viewed` }),
+        ...(viewed > 0 && { viewed: `${viewed} viewed` }),
         notes,
     };
 }

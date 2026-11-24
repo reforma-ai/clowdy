@@ -266,7 +266,7 @@ describe('the Changes tab of a chat in a worktree', () => {
             'src/booking/weekend.ts',
             'src/limits.ts',
         ]);
-        expect(summary()).toBe('6 files,+112−8');
+        expect(summary()).toBe('6 files+112−8');
         expect(scopeTrigger().textContent).toContain('All changes');
         expect(container.querySelector('[aria-label="Changed files"]')).toBeNull();
         expect(container.querySelector('[aria-label="Changes sidebar"]')?.textContent).not.toContain(
@@ -546,7 +546,7 @@ describe('the scope', () => {
 
         expect(scopeTrigger().textContent).toContain('Uncommitted');
         expect(cardPaths()).toEqual(['notes.md', 'src/booking/price.ts', 'src/limits.ts']);
-        expect(summary()).toBe('3 files,+10−3');
+        expect(summary()).toBe('3 files+10−3');
     });
 
     it('shows the selected commit in both file lists and returns to all changes from the toolbar', async () => {
@@ -717,7 +717,7 @@ describe('the filter', () => {
         await type('src/**, !*.test.ts');
 
         expect(cardPaths()).toEqual(['src/booking/price.ts', 'src/booking/weekend.ts', 'src/limits.ts']);
-        expect(summary()).toBe('3 of 6 files,+72−8');
+        expect(summary()).toBe('3 of 6 files+72−8');
 
         await type('*.md');
         expect(cardPaths()).toEqual(['notes.md']);
@@ -814,7 +814,7 @@ describe('the viewed files', () => {
         expect(cards().map(element => tickOf(element.dataset.card!).getAttribute('aria-label'))).toEqual(
             cards().map(element => `Viewed ${element.dataset.card}`)
         );
-        expect(summary()).toBe('6 files,+112−8');
+        expect(summary()).toBe('6 files+112−8');
 
         const write = vi.spyOn(transport, 'setGitViewed');
 
@@ -830,7 +830,7 @@ describe('the viewed files', () => {
         expect(tickOf('notes.md').checked).toBe(true);
         expect(card('notes.md').hasAttribute('data-open')).toBe(false);
         expect(card('src/limits.ts').hasAttribute('data-open')).toBe(true);
-        expect(summary()).toBe('6 files,+112−81 of 6 viewed');
+        expect(summary()).toBe('6 files, 1 viewed+112−8');
     });
 
     it("opens the card and takes the tick, the row's tick and the count away when the checkbox is unticked", async () => {
@@ -839,7 +839,7 @@ describe('the viewed files', () => {
         await tick('src/limits.ts');
         await tick('notes.md');
 
-        expect(summary()).toContain('2 of 6 viewed');
+        expect(summary()).toContain('2 viewed');
 
         const clear = vi.spyOn(transport, 'clearGitViewed');
 
@@ -853,7 +853,7 @@ describe('the viewed files', () => {
         );
         expect(tickOf('notes.md').checked).toBe(false);
         expect(card('notes.md').hasAttribute('data-open')).toBe(true);
-        expect(summary()).toContain('1 of 6 viewed');
+        expect(summary()).toContain('1 viewed');
     });
 
     it('opens a viewed card again on a press on its header', async () => {
@@ -888,7 +888,7 @@ describe('the viewed files', () => {
 
         expect(tickOf('notes.md').checked).toBe(true);
         expect(card('notes.md').hasAttribute('data-open')).toBe(false);
-        expect(summary()).toContain('1 of 6 viewed');
+        expect(summary()).toContain('1 viewed');
 
         await act(async () => {
             refuse(new TransportError('The worktree is missing', 503));
@@ -897,7 +897,7 @@ describe('the viewed files', () => {
 
         expect(tickOf('notes.md').checked).toBe(false);
         expect(card('notes.md').hasAttribute('data-open')).toBe(true);
-        expect(summary()).not.toMatch(/\d of \d viewed/);
+        expect(summary()).not.toMatch(/\d+ viewed/);
         // A phrase in the summary line with the daemon's reason on it, no dialog and no toast.
         expect(summary()).toContain("Couldn't save the viewed mark");
         expect(container.querySelector('[title="The worktree is missing"]')?.textContent).toBe(
@@ -930,7 +930,7 @@ describe('the viewed files', () => {
                 .filter(element => element.hasAttribute('data-open'))
                 .map(element => element.dataset.card)
         ).toEqual(['assets/logo.png', 'notes.md', 'src/booking/price.test.ts', 'src/booking/price.ts']);
-        expect(summary()).toContain('2 of 6 viewed');
+        expect(summary()).toContain('2 viewed');
     });
 
     it('keeps the ticks of one scope out of another, and of the files that are in both', async () => {
@@ -982,7 +982,7 @@ describe('the viewed files', () => {
         await tick('src/limits.ts');
         await tick('notes.md');
 
-        expect(summary()).toContain('2 of 6 viewed');
+        expect(summary()).toContain('2 viewed');
 
         edited = true;
         await act(async () => {
@@ -997,7 +997,7 @@ describe('the viewed files', () => {
         expect(tickOf('src/limits.ts').checked).toBe(false);
         expect(card('src/limits.ts').hasAttribute('data-open')).toBe(true);
         expect(tickOf('notes.md').checked).toBe(true);
-        expect(summary()).toContain('1 of 6 viewed');
+        expect(summary()).toContain('1 viewed');
     });
 
     it('reads the marks again with the next round of the store, so a mark made in another window shows', async () => {
@@ -1035,8 +1035,11 @@ describe('the viewed files', () => {
         await start();
         await draw();
 
-        // Nothing is viewed, so there is nothing to hide.
-        expect(hideViewed().disabled).toBe(true);
+        // Hiding viewed files may be enabled before any are marked.
+        expect(hideViewed().disabled).toBe(false);
+        await press(hideViewed());
+        expect(hideViewed().getAttribute('aria-pressed')).toBe('true');
+        await press(hideViewed());
         expect(hideViewed().getAttribute('aria-pressed')).toBe('false');
 
         await tick('notes.md');
@@ -1054,8 +1057,8 @@ describe('the viewed files', () => {
             'src/booking/weekend.ts',
         ]);
         // The count is of the list, so it says what was read.
-        expect(summary()).toContain('2 of 6 viewed');
-        expect(summary()).toContain('4 of 6 files');
+        expect(summary()).toContain('2 viewed');
+        expect(summary()).toContain('6 files');
 
         await press(hideViewed());
 
@@ -1080,7 +1083,7 @@ describe('the viewed files', () => {
 
         expect(cards()).toHaveLength(0);
         expect(container.textContent).toContain('Every file is viewed');
-        expect(summary()).toContain('6 of 6 viewed');
+        expect(summary()).toContain('6 viewed');
 
         await press(
             [...container.querySelectorAll('button')].find(element => element.textContent === 'Show viewed files')!
@@ -1473,7 +1476,7 @@ describe('the last run of the open chat', () => {
             'What the latest run of this chat changed'
         );
         expect(cardPaths()).toEqual(FIXTURE_RUN_FILES.map(file => file.path));
-        expect(summary()).toBe('7 files,+178−29');
+        expect(summary()).toBe('7 files+178−29');
         // The two ends of a run are trees: no commit, no base.
 
         await openMenu();
@@ -1547,7 +1550,7 @@ describe('the last run of the open chat', () => {
         await press(tick('src/booking/price.ts'));
         await settle();
         expect(card('src/booking/price.ts').hasAttribute('data-open')).toBe(false);
-        expect(summary()).toContain('1 of 7 viewed');
+        expect(summary()).toContain('1 viewed');
         expect(
             (
                 await transport.getGitViewed(

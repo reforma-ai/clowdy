@@ -4,6 +4,7 @@ import { PanelHeader } from '@clowdy/components/Panel';
 import { Select } from '@clowdy/components/Select';
 import { Text } from '@clowdy/components/Text';
 import { CollapseAll, ExpandAll, EyeOff } from '@clowdy/icons/14';
+import { observer } from 'mobx-react-lite';
 
 import styles from './ChangesToolbar.module.css';
 import { isRunScope, LAST_RUN_TOOLTIP, scopeOptions } from './changeScopes';
@@ -18,31 +19,21 @@ import type { PlaceChanges } from './PlaceChanges';
 export const FILTER_PLACEHOLDER = 'Filter files, e.g. *.md, docs/**, !*.test.ts';
 
 /** The line under the filter: how many files and lines the list has (of the ones the filter shows), and what to know about it. */
-function Summary({ model }: { model: PlaceChanges }) {
+const Summary = observer(function Summary({ model }: { model: PlaceChanges }) {
     const { changes } = model;
 
     // A list with no file has the empty state to say so, which says why; totals of nothing would only repeat it.
     if (!changes || changes.fileCount === 0) return null;
 
-    const summary = summaryOf(changes, model.files, model.viewedCount);
+    const summary = summaryOf(changes, model.matchingFiles, model.viewedCount);
     const refused = model.viewed.error;
 
     return (
         <div className={styles.summary} role="status" aria-label="Summary of the changes">
-            <span className={styles.totals} title={summary.incomplete ? "Some files weren't counted" : undefined}>
-                <Text variant="xs" color="secondary">{`${summary.files},`}</Text>
-                <Text variant="xs" color="success">
-                    {summary.additions}
-                </Text>
-                <Text variant="xs" color="danger">
-                    {summary.deletions}
-                </Text>
-            </span>
-            {summary.viewed && (
-                <Text variant="xs" color="secondary" className={styles.viewedCount}>
-                    {summary.viewed}
-                </Text>
-            )}
+            <Text variant="xs" color="secondary" className={styles.fileCount}>
+                {summary.files}
+                {summary.viewed && `, ${summary.viewed}`}
+            </Text>
             {summary.notes.map(note => (
                 <Text key={note} variant="xs" color="secondary" truncate className={styles.note}>
                     {note}
@@ -53,9 +44,17 @@ function Summary({ model }: { model: PlaceChanges }) {
                     {VIEWED_TEXT.notSaved}
                 </Text>
             )}
+            <span className={styles.totals} title={summary.incomplete ? "Some files weren't counted" : undefined}>
+                <Text variant="xs" color="success">
+                    {summary.additions}
+                </Text>
+                <Text variant="xs" color="danger">
+                    {summary.deletions}
+                </Text>
+            </span>
         </div>
     );
-}
+});
 
 /**
  * The bars over the cards: the scope menu, a button that folds all shown cards or opens them when all are folded, the Hide viewed toggle, and, where the sidebar's button goes when the sidebar is hidden (`end`, the
@@ -109,7 +108,6 @@ export function ChangesToolbar({ model, end }: { model: PlaceChanges; end?: Reac
                         tooltip="Hide viewed"
                         tooltipPlacement="bottom"
                         isPressed={model.hideViewed}
-                        isDisabled={!model.hideViewed && model.viewedCount === 0}
                         onPress={() => model.setHideViewed(!model.hideViewed)}
                     >
                         <EyeOff />
