@@ -8,7 +8,7 @@ import { exclusive } from '../domain/workspaces';
 import { conflict, invalid, unavailable } from '../errors';
 import { writeLine } from './commit';
 import { checkGitWrite, runGitWrite } from './remote';
-import { countChanges, parseWorktrees, placeOf, workingTreeRoot } from './state';
+import { checkoutOf, countChanges, placeOf, workingTreeRoot } from './state';
 import { operationUnderWay, switchRepositoryKey } from './switch';
 import { WriteEnvironment } from './writeEnv';
 
@@ -70,29 +70,6 @@ async function checkName(cwd: string, name: string): Promise<void> {
 
         throw invalid('Choose a branch');
     }
-}
-
-/** Find the checkout using Git records, which preserve paths containing spaces and line breaks. */
-async function checkoutOf(cwd: string, branch: string): Promise<string | undefined> {
-    const read = await gitRead(cwd, ['worktree', 'list', '--porcelain', '-z']);
-
-    if (!read.ok) throw unavailable('git did not list the worktrees');
-
-    const holders = parseWorktrees(read.stdout).filter(entry => entry.branch === branch && !entry.bare);
-
-    if (holders.length > 1) throw conflict(`${branch} is checked out in more than one worktree`);
-
-    const holder = holders[0];
-
-    if (!holder) return undefined;
-
-    if (holder.prunable || holder.locked !== undefined) throw conflict(`The checkout of ${branch} is unavailable`);
-
-    const path = await placeOf(holder.path);
-
-    if (!path) throw conflict(`The checkout of ${branch} is missing`);
-
-    return path;
 }
 
 async function preview(cwd: string, selection: GitBranchMergeSelection): Promise<GitBranchMergePreview> {

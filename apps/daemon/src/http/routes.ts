@@ -32,7 +32,7 @@ import { placeStatus } from '../git/status';
 import { checkRevision, checkViewedPath, viewedScopeKey } from '../git/viewed';
 import { BodyTooLarge, declaredLength, JSON_BODY_LIMIT, readJson, readText } from './body';
 import { commandResponse, failure, json } from './responses';
-import { eventStream } from './sse';
+import { eventStream, gitSyncStream } from './sse';
 
 import type {
     GitRemoteAction,
@@ -112,6 +112,11 @@ const gitCommitHash = z.string().regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/);
 const gitPushBody = gitRemoteBody.extend({
     expectedHead: z.object({ branch: z.string().min(1), commit: gitCommitHash }).optional(),
 });
+const gitSyncBase = gitRemoteBody.extend({ branch: z.string().min(1).max(250) });
+const gitSyncBody = z.union([
+    gitSyncBase.extend({ destination: z.literal(false).optional(), commit: gitCommitHash.optional() }),
+    gitSyncBase.extend({ destination: z.literal(true), commit: gitCommitHash }),
+]);
 
 const gitMergeSelection = {
     ...gitRemoteBody.shape,
@@ -537,6 +542,31 @@ export function createRoutes(context: RouteContext): Route[] {
                 context.keepOpen(request);
 
                 return json(await services.gitDiscard.discard(place, { projectId: project.id, paths: body.paths }));
+            },
+        },
+        {
+            method: 'POST',
+            pattern: /^\/v1\/projects\/([^/]+)\/git\/sync$/,
+            handle: async (request, _url, [id]) => {
+                const body = await readJson(request, gitSyncBody);
+                const place = resolvePlace(store, requireProject(store, id), body.folderId, body.workspaceId);
+
+                context.keepOpen(request);
+
+                return new Response(
+                    gitSyncStream(progress =>
+                        services.gitRemote.sync(place, body, progress, target =>
+                            services.pullRequests.forget(target).catch(() => undefined)
+                        )
+                    ),
+                    {
+                        headers: {
+                            'content-type': 'text/event-stream; charset=utf-8',
+                            'cache-control': 'no-cache, no-transform',
+                            'x-accel-buffering': 'no',
+                        },
+                    }
+                );
             },
         },
         {

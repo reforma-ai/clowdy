@@ -72,6 +72,7 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  * POST /v1/projects/:id/git/fetch|pull|push|update|abort -> GitRemoteResult (the routes that reach `origin`, and abort, which does not: a fetch, a pull that merges when the branch diverged, a push or
  *                                            the first publish, an update that merges the base, and abort of a merge that stopped). A merge that stops on conflicts answers `state: 'conflicts'`.
  *                                            Body `GitRemoteRequest`, described in `git.ts`
+ * POST /v1/projects/:id/git/sync          -> SSE `GitSyncEvent` (fetch, integrate and send a branch on origin). Body `GitSyncRequest`.
  * GET  /v1/projects/:id/git/branches?folderId=&workspaceId= -> GitBranches (the branches a place can switch to: local, those only `origin` has, the recent ones)
  * POST /v1/projects/:id/git/switch        -> GitSwitchResult (changes the branch of the folder's own checkout, never a chat's worktree, and only when nothing would be lost or disturbed:
  *                                            no change in the tree, no operation under way, no run working there). Body `GitSwitchRequest`. Both are described in `git.ts`
@@ -138,6 +139,7 @@ export const ROUTES = {
     projectGitSwitch: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/switch`,
     projectGitMerge: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/merge`,
     projectGitDiscard: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/discard`,
+    projectGitSync: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/sync`,
     projectGitRemote: (projectId: string, action: GitRemoteAction) =>
         `/v1/projects/${encodeURIComponent(projectId)}/git/${action}`,
     projectFiles: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/files`,

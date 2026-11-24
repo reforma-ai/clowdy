@@ -476,6 +476,26 @@ export interface GitPushRequest extends GitRemoteRequest {
     expectedHead?: { branch: string; commit: string };
 }
 
+/** Sync uses the current checkout unless a completed merge names its destination checkout and tip. */
+export type GitSyncTarget =
+    | { branch: string; commit?: string; destination?: false }
+    | { branch: string; commit: string; destination: true };
+
+export type GitSyncRequest = GitRemoteRequest & GitSyncTarget;
+
+/** The push phase identifies the tip after any incoming commits have been integrated. */
+export type GitSyncProgress = { phase: 'fetch' | 'merge' } | { phase: 'push'; commit: string };
+
+export type GitSyncResult =
+    | { state: 'done'; branch: string; pulled: number; pushed: boolean }
+    | { state: 'conflicts'; branch: string; path: string; conflicts: number };
+
+/** SSE messages from POST .../git/sync in the order the operation reaches them. */
+export type GitSyncEvent =
+    | ({ type: 'phase' } & GitSyncProgress)
+    | { type: 'result'; result: GitSyncResult }
+    | { type: 'error'; status: number; message: string; hint?: string };
+
 /**
  * What a remote action did, so the client reads what it changed again. `upstream` is the branch's upstream as the action left it, with how far apart the two are (a push leaves 0
  * and 0); absent when the branch has none (a fetch on a branch that tracks nothing, a detached HEAD).

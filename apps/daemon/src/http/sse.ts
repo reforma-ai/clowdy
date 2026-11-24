@@ -1,6 +1,8 @@
 import { SSE_EVENT } from '@clowdy/protocol';
 
-import type { ClowdyEvent } from '@clowdy/protocol';
+import { CommandError, HTTP_STATUS } from '../errors';
+
+import type { ClowdyEvent, GitErrorDetails, GitSyncEvent, GitSyncProgress, GitSyncResult } from '@clowdy/protocol';
 import type { Store } from '../store';
 
 const HEARTBEAT_MS = 15_000;
@@ -10,6 +12,47 @@ const encoder = new TextEncoder();
 
 export const frame = (event: ClowdyEvent) =>
     encoder.encode(`id: ${event.cursor}\nevent: ${SSE_EVENT}\ndata: ${JSON.stringify(event)}\n\n`);
+
+/** A write runs to completion even if the client stops reading its progress. */
+export function gitSyncStream(
+    run: (progress: (step: GitSyncProgress) => void) => Promise<GitSyncResult>
+): ReadableStream<Uint8Array<ArrayBuffer>> {
+    let cancelled = false;
+
+    return new ReadableStream<Uint8Array<ArrayBuffer>>({
+        start(controller) {
+            const send = (event: GitSyncEvent) => {
+                if (!cancelled) controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+            };
+            const sync = async () => {
+                try {
+                    const result = await run(step => send({ type: 'phase', ...step }));
+                    send({ type: 'result', result });
+                } catch (error) {
+                    if (error instanceof CommandError) {
+                        const hint = (error.details as GitErrorDetails | undefined)?.hint;
+                        send({
+                            type: 'error',
+                            status: HTTP_STATUS[error.code],
+                            message: error.message,
+                            ...(typeof hint === 'string' && { hint }),
+                        });
+                    } else {
+                        console.error('Git sync failed', error);
+                        send({ type: 'error', status: 500, message: "Couldn't sync the branch" });
+                    }
+                } finally {
+                    if (!cancelled) controller.close();
+                }
+            };
+
+            void sync();
+        },
+        cancel() {
+            cancelled = true;
+        },
+    });
+}
 
 /** Resolves true when a transaction commits, false after `ms`, and true at once if `signal` aborts. */
 function nextCommit(store: Store, ms: number, signal: AbortSignal): Promise<boolean> {
