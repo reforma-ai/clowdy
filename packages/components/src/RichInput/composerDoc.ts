@@ -86,15 +86,15 @@ function wrapTextMarks(text: string, marks: JSONContent['marks']): string {
 export function docToPlainText(doc: ComposerDoc, serializeMention?: RichInputMentionSerializer): string {
     const parts: string[] = [];
 
-    const walkInline = (node: JSONContent) => {
+    const walkInline = (node: JSONContent, target = parts) => {
         if (node.type === 'hardBreak') {
-            parts.push('  \n');
+            target.push('  \n');
 
             return;
         }
 
         if (node.type === 'text' && node.text) {
-            parts.push(wrapTextMarks(node.text, node.marks));
+            target.push(wrapTextMarks(node.text, node.marks));
 
             return;
         }
@@ -103,18 +103,35 @@ export function docToPlainText(doc: ComposerDoc, serializeMention?: RichInputMen
             const text = serializeMention?.(mentionAttrsFromNode(node.attrs ?? {}));
 
             if (text) {
-                parts.push(text);
+                target.push(text);
             }
 
             return;
         }
 
         for (const child of node.content ?? []) {
-            walkInline(child);
+            walkInline(child, target);
         }
     };
 
     const walkBlock = (node: JSONContent) => {
+        if (node.type === 'composerQuote') {
+            const inline: string[] = [];
+            walkInline(node, inline);
+            const text = inline.join('');
+
+            if (text.trim()) {
+                parts.push(
+                    text
+                        .split(/(?: {2})?\n/)
+                        .map(line => (line.trim() ? `> ${line}` : '>'))
+                        .join('  \n')
+                );
+            }
+
+            return;
+        }
+
         if (node.type === 'bulletList' || node.type === 'orderedList') {
             const items = node.content ?? [];
             const start = typeof node.attrs?.start === 'number' ? node.attrs.start : 1;
