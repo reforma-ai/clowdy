@@ -615,7 +615,7 @@ describe('merging branches from the sync menu', () => {
         await open('Merge from branch…');
         await press(option('origin/feature/search'));
         await settle();
-        await press(button('Merge into clowdy/ab12cd34'));
+        await press(button('Merge origin/feature/search to clowdy/ab12cd34'));
         await settle();
     };
     const confirmButton = (name: string) =>
@@ -644,7 +644,7 @@ describe('merging branches from the sync menu', () => {
         expect(branches).toHaveBeenCalledTimes(1);
         expect(fetch.mock.invocationCallOrder[0]!).toBeLessThan(branches.mock.invocationCallOrder[0]!);
         expect(merge).not.toHaveBeenCalled();
-        expect(button('Merge into clowdy/ab12cd34').disabled).toBe(true);
+        expect(button('Merge … to clowdy/ab12cd34').disabled).toBe(true);
         expect(heading()).toBe('Merge … to clowdy/ab12cd34');
         expect(option('origin/main')).toBeUndefined();
         expect(option('origin/dev')).toBeUndefined();
@@ -662,7 +662,7 @@ describe('merging branches from the sync menu', () => {
             branch: 'main',
         });
 
-        await press(button('Merge into clowdy/ab12cd34'));
+        await press(button('Merge main to clowdy/ab12cd34'));
         await settle();
 
         expect(merge.mock.calls[1]?.[2]).toMatchObject({
@@ -694,7 +694,7 @@ describe('merging branches from the sync menu', () => {
         const input = filter();
 
         expect(spinner()).not.toBeNull();
-        expect(button('Merge').disabled).toBe(true);
+        expect(button('Merge clowdy/ab12cd34 to …').disabled).toBe(true);
         await act(async () => {
             Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, 'main');
             input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -724,7 +724,7 @@ describe('merging branches from the sync menu', () => {
         await settle();
         expect(heading()).toBe('Merge clowdy/ab12cd34 to main');
 
-        await press(button('Merge into main'));
+        await press(button('Merge clowdy/ab12cd34 to main'));
         await settle();
         expect(merge.mock.calls.map(call => call[2].action)).toEqual(['preview', 'merge']);
         expect(push).not.toHaveBeenCalled();
@@ -754,14 +754,14 @@ describe('merging branches from the sync menu', () => {
         expect(alert?.textContent).toContain('In a chat on main, use Merge from branch to merge clowdy/ab12cd34');
         expect(dialog().textContent).toContain('3 commits');
         expect(dialog().textContent).not.toContain('Creates a merge commit');
-        expect(button('Merge into main').disabled).toBe(true);
+        expect(button('Merge clowdy/ab12cd34 to main').disabled).toBe(true);
 
         await press(option('dev'));
         await settle();
 
         alert = dialog().querySelector('[role="alert"]');
         expect(alert?.textContent).toBe('Check out dev before merging into it');
-        expect(button('Merge into dev').disabled).toBe(true);
+        expect(button('Merge clowdy/ab12cd34 to dev').disabled).toBe(true);
         expect(merge.mock.calls.map(call => call[2].action)).toEqual(['preview', 'preview']);
     });
 
@@ -776,7 +776,7 @@ describe('merging branches from the sync menu', () => {
         expect(option('origin/main')).toBeUndefined();
     });
 
-    it('offers a way to refresh a refused preview before trying the merge again', async () => {
+    it('rechecks a refused merge when the selected branch is chosen again', async () => {
         await start({ gitWrites: { clean: true } });
         const merge = vi.spyOn(transport, 'branchMergeGit');
 
@@ -785,16 +785,21 @@ describe('merging branches from the sync menu', () => {
         await settle();
 
         merge.mockRejectedValueOnce(new TransportError('The branches moved since the preview', 409));
-        await press(button('Merge into main'));
+        await press(button('Merge clowdy/ab12cd34 to main'));
         await settle();
 
-        expect(dialog().querySelector('[role="alert"]')?.textContent).toContain('The branches moved');
-        expect(button('Merge into main').disabled).toBe(true);
-        await press(button('Refresh preview'));
+        const alert = dialog().querySelector('[role="alert"][data-color="danger"]');
+        expect(alert?.textContent).toContain('The branches moved');
+        expect(button('Merge clowdy/ab12cd34 to main').disabled).toBe(true);
+        expect(
+            [...dialog().querySelectorAll('button')].map(button => button.textContent?.trim()).filter(Boolean)
+        ).toEqual(['Merge clowdy/ab12cd34 to main', 'Cancel']);
+        await press(option('main'));
         await settle();
 
         expect(merge.mock.calls.map(call => call[2].action)).toEqual(['preview', 'merge', 'preview']);
-        expect(button('Merge into main').disabled).toBe(false);
+        expect(dialog().querySelector('[role="alert"]')).toBeNull();
+        expect(button('Merge clowdy/ab12cd34 to main').disabled).toBe(false);
     });
 
     it('identifies the destination checkout after a conflict and aborts only that merge', async () => {

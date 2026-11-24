@@ -1,5 +1,7 @@
+import { AttentionCircle } from '@clowdy/icons/14';
 import { useState } from 'react';
 
+import { Alert, AlertDescription, AlertIcon } from '../Alert';
 import { Box } from '../Box';
 import { Button } from '../Button';
 import { Modal, useModalContext } from '../Modal';
@@ -172,9 +174,12 @@ export function ConfirmModalContent({
                 )}
                 <Show when={failure}>
                     {text => (
-                        <Text variant="md" color="danger" role="alert" select="text">
-                            {text}
-                        </Text>
+                        <Alert color="danger">
+                            <AlertIcon>
+                                <AttentionCircle />
+                            </AlertIcon>
+                            <AlertDescription className="select-text">{text}</AlertDescription>
+                        </Alert>
                     )}
                 </Show>
             </Box>

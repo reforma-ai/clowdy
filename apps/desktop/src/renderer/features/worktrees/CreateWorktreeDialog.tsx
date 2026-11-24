@@ -1,3 +1,4 @@
+import { Alert, AlertDescription, AlertIcon } from '@clowdy/components/Alert';
 import { Box } from '@clowdy/components/Box';
 import { Button } from '@clowdy/components/Button';
 import { FormField } from '@clowdy/components/FormField';
@@ -5,6 +6,7 @@ import { Input } from '@clowdy/components/Input';
 import { Modal, useModalContext } from '@clowdy/components/Modal';
 import { Text } from '@clowdy/components/Text';
 import { toast } from '@clowdy/components/Toast';
+import { AttentionCircle } from '@clowdy/icons/14';
 import { branchNameProblem } from '@clowdy/protocol';
 import { type FormEvent, useState } from 'react';
 
@@ -98,12 +100,15 @@ function CreateWorktreeForm({ root, projectId, group, reload }: CreateWorktreeOp
                 {problem && <FormField.Error>{problem}</FormField.Error>}
             </FormField>
             {failure && (
-                <Text variant="sm" color="danger" role="alert">
-                    {failure}
-                </Text>
+                <Alert color="danger">
+                    <AlertIcon>
+                        <AttentionCircle />
+                    </AlertIcon>
+                    <AlertDescription className="select-text">{failure}</AlertDescription>
+                </Alert>
             )}
             <Box direction="row" justify="end" gap="md">
-                <Button variant="filling" color="secondary" onPress={() => modal.cancel()} isDisabled={pending}>
+                <Button variant="filled" color="secondary" onPress={() => modal.cancel()} isDisabled={pending}>
                     Cancel
                 </Button>
                 <Button type="submit" color="primary" isDisabled={!branchName || !!problem} isPending={pending}>

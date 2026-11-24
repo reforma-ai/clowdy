@@ -263,7 +263,7 @@ export class GitBranchMerge {
         const { source, target, sourceCommit, targetCommit, mode } = plan;
 
         if (sourceCommit !== request.sourceCommit || targetCommit !== request.targetCommit)
-            throw conflict('A branch changed. Refresh the merge preview');
+            throw conflict('A branch changed since the preview. Select the branch again to review the merge');
 
         if (mode === 'up-to-date') return { state: 'done', target, commit: targetCommit, canPush: false };
 
@@ -399,8 +399,7 @@ export class GitBranchMerge {
             gitAnswer(path, ['rev-parse', '--verify', '--quiet', 'HEAD']),
         ]);
 
-        if (head !== `${HEADS}${branch}` || tip !== commit)
-            throw conflict(`The checkout of ${branch} changed. Refresh the merge preview`);
+        if (head !== `${HEADS}${branch}` || tip !== commit) throw conflict(`The checkout of ${branch} changed`);
     }
 
     #requireIdle(path: string, target: string): void {

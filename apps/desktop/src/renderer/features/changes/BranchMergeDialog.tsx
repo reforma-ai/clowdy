@@ -1,8 +1,9 @@
+import { Alert, AlertDescription, AlertIcon } from '@clowdy/components/Alert';
 import { Button } from '@clowdy/components/Button';
 import { Modal, useModalContext } from '@clowdy/components/Modal';
 import { Spinner } from '@clowdy/components/Spinner';
 import { Text } from '@clowdy/components/Text';
-import { Close } from '@clowdy/icons/14';
+import { AttentionCircle, Close } from '@clowdy/icons/14';
 import { errorMessage } from '@clowdy/lib';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 
@@ -100,16 +101,17 @@ function outgoingBlock({
 
 function FailureText({ failure }: { failure: Failure }) {
     return (
-        <div className={styles.error} role="alert">
-            <Text color="danger" select="text">
-                {failure.message}
-            </Text>
+        <Alert color="danger">
+            <AlertIcon>
+                <AttentionCircle />
+            </AlertIcon>
+            <AlertDescription className="select-text">{failure.message}</AlertDescription>
             {failure.hint && (
-                <Text color="secondary" select="text">
+                <Text variant="xs" color="secondary" select="text">
                     {failure.hint}
                 </Text>
             )}
-        </div>
+        </Alert>
     );
 }
 
@@ -303,7 +305,7 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
             )}
             {!result && fetchFailed && <FailureText failure={fetchFailed} />}
             {!result && selected && !preview && !failure && (
-                <Text color="secondary" role="status">
+                <Text variant="sm" color="secondary" role="status">
                     Comparing branches…
                 </Text>
             )}
@@ -342,6 +344,17 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
             )}
             {failure && <FailureText failure={failure} />}
             <div className={styles.actions}>
+                {!result && (
+                    <Button
+                        size="sm"
+                        color="contrast"
+                        isDisabled={!preview || preview.mode === 'up-to-date' || blocked !== undefined}
+                        isPending={pending === 'merge'}
+                        onPress={merge}
+                    >
+                        {`Merge ${source} to ${target}`}
+                    </Button>
+                )}
                 {result?.state === 'conflicts' && result.conflicts > 0 && (
                     <Button
                         size="sm"
@@ -362,6 +375,16 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
                         Abort merge
                     </Button>
                 )}
+                {result?.state === 'done' && direction === 'into' && result.canPush && (
+                    <Button
+                        size="sm"
+                        color="contrast"
+                        isPending={pending === 'push'}
+                        onPress={() => void run({ action: 'push', target: result.target, commit: result.commit })}
+                    >
+                        {`Push ${result.target}`}
+                    </Button>
+                )}
                 <Button
                     size="sm"
                     variant="filled"
@@ -371,34 +394,6 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
                 >
                     {result ? 'Done' : 'Cancel'}
                 </Button>
-                {!result && choice && failure && (
-                    <Button size="sm" variant="bordered" onPress={() => void pick(choice.id)}>
-                        Refresh preview
-                    </Button>
-                )}
-                {result?.state === 'done' && direction === 'into' && result.canPush && (
-                    <Button
-                        className={styles.action}
-                        size="sm"
-                        color="contrast"
-                        isPending={pending === 'push'}
-                        onPress={() => void run({ action: 'push', target: result.target, commit: result.commit })}
-                    >
-                        {`Push ${result.target}`}
-                    </Button>
-                )}
-                {!result && (
-                    <Button
-                        className={styles.action}
-                        size="sm"
-                        color="contrast"
-                        isDisabled={!preview || preview.mode === 'up-to-date' || blocked !== undefined}
-                        isPending={pending === 'merge'}
-                        onPress={merge}
-                    >
-                        {preview || choice || direction === 'from' ? `Merge into ${target}` : 'Merge'}
-                    </Button>
-                )}
             </div>
         </div>
     );
