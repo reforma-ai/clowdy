@@ -225,7 +225,7 @@ export function RunningAgents({ chat }: { chat: Chat }) {
                         onPress={() => setCommandsExpanded(open => !open)}
                         summary={<Text variant="xs" color="secondary">{`${own.length} running`}</Text>}
                     >
-                        {own.every(item => item.kind === 'command') ? 'Commands' : 'Background work'}
+                        {own.every(item => item.kind === 'command') ? 'Background commands' : 'Background work'}
                     </ComposerBannerHeader>
                     {commandsExpanded && (
                         <div className={styles.agentRows}>

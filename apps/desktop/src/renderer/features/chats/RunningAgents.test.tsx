@@ -56,7 +56,7 @@ const lines = () =>
     [...container.querySelectorAll('[aria-label="Work in progress"] > div')].flatMap(line =>
         line.className.includes('agentRows')
             ? [...line.children]
-            : line.textContent?.match(/^(Commands|Background work)\d+ running$/)
+            : line.textContent?.match(/^(Background commands|Background work)\d+ running$/)
               ? []
               : [line]
     );
@@ -96,7 +96,7 @@ async function draw(chatId = 'c-1') {
     await render(chatId);
     await render(chatId);
     const commands = [...container.querySelectorAll<HTMLButtonElement>('button[aria-expanded]')].find(button =>
-        /^(Commands|Background work)\d+ running$/.test(button.textContent ?? '')
+        /^(Background commands|Background work)\d+ running$/.test(button.textContent ?? '')
     );
     if (commands?.getAttribute('aria-expanded') === 'false') await act(async () => commands.click());
 }
@@ -749,7 +749,7 @@ describe('RunningAgents, a command that can be stopped alone', () => {
         put({ ...runs().get('r-orch-5')!, background: [command(1), command(2)] });
         await render('c-5');
         const disclosure = [...container.querySelectorAll<HTMLButtonElement>('button[aria-expanded]')].find(
-            button => button.textContent === 'Commands2 running'
+            button => button.textContent === 'Background commands2 running'
         )!;
         expect(disclosure.getAttribute('aria-expanded')).toBe('false');
         expect(container.textContent).not.toContain('Command · command 1');
@@ -766,7 +766,7 @@ describe('RunningAgents, a command that can be stopped alone', () => {
         });
         await render('c-5');
         const disclosure = [...container.querySelectorAll<HTMLButtonElement>('button[aria-expanded]')].find(
-            button => button.textContent === 'Commands2 running'
+            button => button.textContent === 'Background commands2 running'
         )!;
         expect(disclosure.getAttribute('aria-expanded')).toBe('false');
         expect(container.textContent).not.toContain('Background task running');
