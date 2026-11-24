@@ -76,9 +76,9 @@ function whyUnread(repository: FolderRepository): string | undefined {
 
 /** Number of chats using a worktree. */
 function usersLine(chats: readonly Chat[]): string {
-    if (chats.length === 0) return 'No chats';
+    if (chats.length === 0) return 'Worktree';
 
-    return `${chats.length} ${chats.length === 1 ? 'chat' : 'chats'}`;
+    return `Worktree used in ${chats.length} ${chats.length === 1 ? 'chat' : 'chats'}`;
 }
 
 /**

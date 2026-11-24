@@ -207,7 +207,7 @@ describe('the control', () => {
         expect(textsOf(menuItems())).toEqual([
             'Main worktreeUse the project foldermain',
             'New worktreeUse a new folder and branchFrom origin/main',
-            'clowdy/ab12cd34No chats',
+            'clowdy/ab12cd34Worktree',
             'Folder settings…',
         ]);
         // Manage opens a dialog and does not select a place.
@@ -591,15 +591,15 @@ describe('Existing worktrees', () => {
         await start({ data: withFixtureWorkspace(createFixtureData()) });
         await openWorktrees();
 
-        expect(worktreeRows().map(row => row.textContent)).toEqual(['clowdy/ab12cd341 chat']);
+        expect(worktreeRows().map(row => row.textContent)).toEqual(['clowdy/ab12cd34Worktree used in 1 chat']);
         expect(worktreeRows().map(iconsOf)).toEqual([1]);
         expect(document.body.textContent).not.toContain('Changes');
     });
 
-    it('show zero chats for an unused worktree', async () => {
+    it('labels an unused worktree without a chat count', async () => {
         await openWorktrees();
 
-        expect(worktreeRows().map(row => row.textContent)).toEqual(['clowdy/ab12cd34No chats']);
+        expect(worktreeRows().map(row => row.textContent)).toEqual(['clowdy/ab12cd34Worktree']);
     });
 
     describe('the ones a chat works in and the ones none does', () => {
@@ -642,9 +642,9 @@ describe('Existing worktrees', () => {
             await openWorktrees();
 
             expect(worktreeRows().map(row => row.textContent)).toEqual([
-                'clowdy/ab12cd341 chat',
-                'worktree-agent-a1No chats',
-                'worktree-agent-a2No chats',
+                'clowdy/ab12cd34Worktree used in 1 chat',
+                'worktree-agent-a1Worktree',
+                'worktree-agent-a2Worktree',
             ]);
         });
 
@@ -671,7 +671,7 @@ describe('Existing worktrees', () => {
         await start({ data });
         await openWorktrees();
 
-        expect(worktreeRow('clowdy/ab12cd34').textContent).toContain('4 chats');
+        expect(worktreeRow('clowdy/ab12cd34').textContent).toContain('Worktree used in 4 chats');
     });
 
     it('scroll when there are many, in a box that keeps the popover to a height', async () => {
