@@ -766,16 +766,18 @@ describe('the sidebar', () => {
         await draw();
 
         expect(container.querySelector('[aria-label="Changes sidebar"]')).not.toBeNull();
+        expect(button('Source control').getAttribute('aria-pressed')).toBe('true');
 
-        await press(container.querySelector('[data-sidebar-toggle]')!);
+        await press(button('Source control'));
         await settle();
 
         expect(container.querySelector('[aria-label="Changes sidebar"]')).toBeNull();
         expect(container.querySelectorAll('[data-sidebar-toggle]')).toHaveLength(1);
+        expect(button('Source control').getAttribute('aria-pressed')).toBe('false');
         expect(changesSidebarLayout.open).toBe(false);
         expect(JSON.parse(localStorage.getItem('clowdy:changes-sidebar-open') ?? 'null')).toBe(false);
 
-        await press(container.querySelector('[data-sidebar-toggle]')!);
+        await press(button('Source control'));
         await settle();
 
         expect(container.querySelector('[aria-label="Changes sidebar"]')).not.toBeNull();
