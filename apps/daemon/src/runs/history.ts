@@ -64,7 +64,10 @@ function entryOf(item: StreamItem): string | undefined {
         case 'note':
             return `Clowdy: ${clip(body.text)}`;
         case 'question':
-            return `You asked the person: ${clip(body.text)}${body.answer ? ` They answered: ${clip(body.answer)}` : ''}`;
+            if (body.state === 'cancelled' || body.state === 'expired' || body.state === 'preparing') {
+                return `You tried to ask the person: ${clip(body.text)} The question was withdrawn without an answer.`;
+            }
+            return `You asked the person: ${clip(body.text)}${body.answer ? ` They answered: ${clip(body.answer)}` : ''}${body.abandoned ? ' The person stopped that work; do not resume it unless asked.' : ''}`;
         case 'error':
             return `Error: ${clip(body.text)}`;
     }

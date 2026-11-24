@@ -82,12 +82,23 @@ export function findQuestion(db: Database, runId: string, questionId: string): S
     return row ? toItem(row, false) : undefined;
 }
 
-/** Unanswered questions whose session can no longer receive an answer after a restart. */
+/** Unanswered questions that are open or being prepared. */
 export function listOpenQuestions(db: Database, runId: string): StreamItem[] {
     return (
         db
             .query(
-                "SELECT * FROM stream_items WHERE run_id = ? AND json_extract(body, '$.kind') = 'question' AND json_extract(body, '$.answer') IS NULL AND json_extract(body, '$.state') IS NULL ORDER BY seq"
+                "SELECT * FROM stream_items WHERE run_id = ? AND json_extract(body, '$.kind') = 'question' AND json_extract(body, '$.answer') IS NULL AND (json_extract(body, '$.state') IS NULL OR json_extract(body, '$.state') = 'preparing') ORDER BY seq"
+            )
+            .all(runId) as ItemRow[]
+    ).map(row => toItem(row, false));
+}
+
+/** Answered durable questions whose continuation has not completed. */
+export function listPendingQuestionAnswers(db: Database, runId: string): StreamItem[] {
+    return (
+        db
+            .query(
+                "SELECT * FROM stream_items WHERE run_id = ? AND json_extract(body, '$.kind') = 'question' AND json_extract(body, '$.durable') = 1 AND json_extract(body, '$.answer') IS NOT NULL AND coalesce(json_extract(body, '$.delivered'), 0) = 0 AND coalesce(json_extract(body, '$.abandoned'), 0) = 0 ORDER BY seq"
             )
             .all(runId) as ItemRow[]
     ).map(row => toItem(row, false));
@@ -129,6 +140,17 @@ export function listOpenThoughts(db: Database, runId: string): StreamItem[] {
         db
             .query(
                 "SELECT * FROM stream_items WHERE run_id = ? AND json_extract(body, '$.kind') = 'reasoning' AND json_extract(body, '$.done') = 0 ORDER BY seq"
+            )
+            .all(runId) as ItemRow[]
+    ).map(row => toItem(row, false));
+}
+
+/** Assistant messages a crash left streaming. */
+export function listOpenAssistantMessages(db: Database, runId: string): StreamItem[] {
+    return (
+        db
+            .query(
+                "SELECT * FROM stream_items WHERE run_id = ? AND json_extract(body, '$.kind') = 'assistant' AND json_extract(body, '$.done') = 0 ORDER BY seq"
             )
             .all(runId) as ItemRow[]
     ).map(row => toItem(row, false));

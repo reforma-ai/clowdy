@@ -3,11 +3,11 @@ import { join, resolve } from 'node:path';
 import { isTerminalRunStatus, STOPPED_TOOL } from '@clowdy/protocol';
 
 import { getChat } from '../db/chats';
-import { listItems, nextSeq } from '../db/items';
+import { findQuestion, listItems, listPendingQuestionAnswers, nextSeq } from '../db/items';
 import { getRun, getRunWork, listActiveRuns, listRunsWithProcess, setRunWork } from '../db/runs';
 import { getWorkspace } from '../db/workspaces';
 import { git } from '../domain/git';
-import { appendItem, markRewindPoint } from '../domain/items';
+import { appendItem, markRewindPoint, updateItem } from '../domain/items';
 import { workingFolder } from '../domain/places';
 import { isBeingRemoved } from '../domain/workspaceRemoval';
 import { canNameBranch, needsPreparing, ownsWorktree, prepareWorkspace } from '../domain/workspaces';
@@ -39,6 +39,7 @@ import type {
     ChatWorkspace,
     EngineId,
     Project,
+    QuestionOption,
     Run,
     RunContext,
 } from '@clowdy/protocol';
@@ -78,6 +79,8 @@ interface LiveRun {
     trees?: TurnTrees;
     /** The turn was ended on purpose (`interrupt`): it is not a failure, and the run is left at rest for the message that asked for it. */
     interrupted?: boolean;
+    questionPause?: string;
+    questionStoppedWork?: boolean;
     /** Set when the engine is at its subscription limit: the turn stops and the run waits for the reset. */
     pausedUntil?: number;
     native?: NativeAgents;
@@ -122,7 +125,7 @@ type Wait = { kind: 'limit'; until: number } | { kind: 'transient'; delayMs: num
  * What a turn that did not settle the run asks for: a wait, or at once the next turn of a new session (the old one could not take a message), the slot
  * kept, or the run at rest because its turn was ended on purpose (`interrupt`).
  */
-type Retry = Wait | { kind: 'resume' } | { kind: 'stopped' };
+type Retry = Wait | { kind: 'resume' } | { kind: 'stopped' } | { kind: 'question'; questionId: string };
 
 /** Synchronous, because a turn reads it between counting the live sessions and starting its own: nothing may wait there. */
 export function isFolder(path: string): boolean {
@@ -247,6 +250,7 @@ export class RunDriver {
         this.snapshots = new TurnSnapshots(deps.store);
         deps.runs.stopNative = (child, reason) => this.stopSubagent(child, reason);
         deps.runs.stopCommand = (runId, itemId) => this.stopCommand(runId, itemId);
+        deps.runs.onDurableAnswer = runId => this.launch(runId);
     }
 
     /* --------------------------------- Starting -------------------------------- */
@@ -361,6 +365,18 @@ export class RunDriver {
         live.turn.abort();
 
         return true;
+    }
+
+    /** Stops an ACP turn before making a durable question available to the person. */
+    pauseQuestion(runId: string, question: { text: string; options: QuestionOption[]; recommended?: string }): void {
+        const live = this.live.get(runId);
+        if (!live?.session || !live.turn || live.ended?.aborted || this.deps.runs.require(runId).status !== 'running') {
+            throw new Error('The agent cannot be paused for a question');
+        }
+        live.questionPause = this.deps.runs.prepareDurableQuestion(runId, question);
+        live.questionStoppedWork = (live.background?.length ?? 0) > 0;
+        live.interrupted = true;
+        live.turn.abort();
     }
 
     /**
@@ -575,10 +591,18 @@ export class RunDriver {
                     return;
                 }
 
+                if (retry.kind === 'question') {
+                    if (live.questionStoppedWork)
+                        runs.note(runId, 'Background work stopped while waiting for your answer');
+                    runs.activateDurableQuestion(runId, retry.questionId);
+                    return;
+                }
+
                 failures += retry.kind === 'transient' ? 1 : 0;
                 await this.waitToRetry(runId, live, retry, signal);
             }
         } catch (error) {
+            if (live.questionPause) runs.cancelPreparedQuestion(runId, live.questionPause);
             if (!signal.aborted) {
                 this.fail(runId, error);
             }
@@ -704,7 +728,18 @@ export class RunDriver {
         const work = getRunWork(store.db, runId);
         const ownChat = run.chatId ? getChat(store.db, run.chatId) : undefined;
         const surroundings = this.surroundings(run, work, ownChat, promptChat(store, ownChat));
-        const { prompt, lost } = this.compose(work, run.engine);
+        const composed = this.compose(work, run.engine);
+        const pendingAnswers = listPendingQuestionAnswers(store.db, runId).flatMap(item =>
+            item.body.kind === 'question' && item.body.answer !== undefined ? [item.body] : []
+        );
+        const prompt = [
+            ...pendingAnswers.map(
+                question =>
+                    `The previous turn was stopped to ask a question. The question was: ${question.text}\n\nThe user's answer: ${question.answer}\n\nUse this answer in the current work.`
+            ),
+            composed.prompt,
+        ].join('\n\n');
+        const { lost } = composed;
 
         const turnAbort = new AbortController();
         const ended = AbortSignal.any([signal, turnAbort.signal, this.stopping.signal]);
@@ -771,7 +806,12 @@ export class RunDriver {
         live.session = session;
         live.close = close;
         ended.addEventListener('abort', onEnded, { once: true });
-        store.tx(() => setRunWork(store.db, runId, { nextPrompt: null, ...(lost && { lostBackground: null }) }));
+        store.tx(() =>
+            setRunWork(store.db, runId, {
+                nextPrompt: null,
+                ...(lost && pendingAnswers.length === 0 && { lostBackground: null }),
+            })
+        );
         this.onTurnStarted(runId);
 
         try {
@@ -780,17 +820,35 @@ export class RunDriver {
             // A message was on its way to the session when it ended; its refusal (the session is over) makes it the next turn of a new one.
             await live.delivery;
 
+            if (live.questionPause && !signal.aborted) return { kind: 'question', questionId: live.questionPause };
+
             if (live.restart) {
                 return { kind: 'resume' };
             }
 
             // Do not publish a result or start a replacement before the session has closed.
             await close();
+            store.tx(() => {
+                if (lost && pendingAnswers.length > 0) setRunWork(store.db, runId, { lostBackground: null });
+                for (const question of pendingAnswers) {
+                    const item = findQuestion(store.db, runId, question.questionId);
+                    if (
+                        item?.body.kind === 'question' &&
+                        item.body.answer !== undefined &&
+                        !item.body.delivered &&
+                        !item.body.abandoned
+                    ) {
+                        updateItem(store, runId, item.seq, { ...item.body, delivered: true });
+                    }
+                }
+            });
             this.settle(runId, live, result);
 
             return undefined;
         } catch (error) {
             await live.delivery;
+
+            if (live.questionPause && !signal.aborted) return { kind: 'question', questionId: live.questionPause };
 
             if (live.restart && !ended.aborted) {
                 return { kind: 'resume' };
@@ -948,7 +1006,15 @@ export class RunDriver {
 
         if (lost && lost.length > 0) {
             store.tx(() => {
-                setRunWork(store.db, runId, { lostBackground: lost });
+                const previous = getRunWork(store.db, runId).lostBackground ?? [];
+                const seen = new Set<string>();
+                const combined = [...previous, ...lost].filter(item => {
+                    const key = JSON.stringify([item.kind, item.id, item.title]);
+                    if (seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                });
+                setRunWork(store.db, runId, { lostBackground: combined });
                 runs.setBackground(runId, []);
             });
         }
@@ -1073,6 +1139,24 @@ export class RunDriver {
 
         try {
             for await (const event of session) {
+                const advances =
+                    event.type === 'done' ||
+                    (event.type === 'text' && event.delta.length > 0 && event.agentId === undefined) ||
+                    (event.type === 'thought' && event.delta.length > 0 && event.agentId === undefined) ||
+                    (event.type === 'tool' &&
+                        event.state === 'running' &&
+                        event.agentId === undefined &&
+                        event.name !== ASK_USER);
+                if (advances && !live.questionPause && runs.require(run.id).status === 'waiting_user') {
+                    const questionId = runs.prepareLiveQuestion(run.id);
+                    if (questionId) {
+                        live.questionPause = questionId;
+                        live.questionStoppedWork = (live.background?.length ?? 0) > 0;
+                        live.interrupted = true;
+                        live.turn?.abort();
+                        return undefined;
+                    }
+                }
                 switch (event.type) {
                     case 'session':
                         runs.setSessionId(run.id, event.sessionId);

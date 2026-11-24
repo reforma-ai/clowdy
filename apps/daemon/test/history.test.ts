@@ -12,6 +12,29 @@ const inside = (record: string | undefined) =>
     record!.split('<earlier_conversation>\n')[1]!.split('\n</earlier_conversation>')[0]!;
 
 describe('conversationRecord', () => {
+    test('distinguishes a stopped continuation and withdrawn questions when the provider session is lost', () => {
+        const record = conversationRecord(
+            stream(
+                {
+                    kind: 'question',
+                    questionId: 'a',
+                    text: 'Which?',
+                    options: [],
+                    durable: true,
+                    answer: 'Blue',
+                    abandoned: true,
+                },
+                { kind: 'question', questionId: 'b', text: 'Again?', options: [], state: 'cancelled' }
+            ),
+            []
+        );
+        expect(inside(record)).toContain(
+            'They answered: Blue The person stopped that work; do not resume it unless asked.'
+        );
+        expect(inside(record)).toContain(
+            'You tried to ask the person: Again? The question was withdrawn without an answer.'
+        );
+    });
     test('tells the conversation in order: the person, the agent, its tools and the notes', () => {
         const record = conversationRecord(
             stream(

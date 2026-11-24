@@ -62,7 +62,13 @@ export function QuestionCard({ question, onAnswer }: QuestionCardProps) {
         return (
             <div className={styles.card}>
                 <QuestionText text={text} />
-                <Text color="secondary">{state === 'expired' ? 'Question expired' : 'Question withdrawn'}</Text>
+                <Text color="secondary">
+                    {state === 'preparing'
+                        ? 'Stopping the agent…'
+                        : state === 'expired'
+                          ? 'Question expired'
+                          : 'Question withdrawn'}
+                </Text>
             </div>
         );
     }

@@ -110,7 +110,20 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
             config,
             runs,
             engines,
-            tools: (run, mode) => toolsFor({ store, runs, threads }, run, mode, agents.taskChannel(run.engine)),
+            tools: (run, mode) =>
+                toolsFor(
+                    {
+                        store,
+                        runs,
+                        threads,
+                        ...(agents.questionElicitation(run.engine) === false && {
+                            pauseQuestion: (id, question) => driver.pauseQuestion(id, question),
+                        }),
+                    },
+                    run,
+                    mode,
+                    agents.taskChannel(run.engine)
+                ),
             compactCommand: engine => agents.compactCommand(engine),
             namesChats: engine => agents.setting(engine, CHAT_TITLE_SETTING),
         });
