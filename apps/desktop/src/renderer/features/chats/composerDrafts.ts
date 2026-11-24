@@ -1,4 +1,5 @@
 import { type ComposerDoc, docToPlainText, emptyComposerDoc, plainTextToDoc } from '@clowdy/components/RichInput';
+import { useSyncExternalStore } from 'react';
 
 import { serializeMention } from './composerMentions';
 
@@ -27,18 +28,38 @@ export function editDraftKey(chatId: ChatId, itemId: string): string {
 
 /** What was typed and not sent, so that moving to another chat and back does not lose it. Keyed by a chat's id, `newChatDraftKey` or `editDraftKey`. */
 const drafts = new Map<string, ComposerDoc>();
+const listeners = new Set<() => void>();
+let revision = 0;
+
+function changed() {
+    revision++;
+    listeners.forEach(listener => listener());
+}
+
+function subscribe(listener: () => void) {
+    listeners.add(listener);
+    return () => void listeners.delete(listener);
+}
+
+export function useDraftRevision() {
+    return useSyncExternalStore(subscribe, () => revision);
+}
 
 export function draftOf(key: string): ComposerDoc {
     return drafts.get(key) ?? emptyComposerDoc();
 }
 
 export function saveDraft(key: string, doc: ComposerDoc): void {
+    const wasDirty = messageOf(draftOf(key)) !== '';
     drafts.set(key, doc);
+    if (wasDirty !== (messageOf(doc) !== '')) changed();
 }
 
 /** Forgets a draft: an edit session that has ended leaves nothing behind. */
 export function dropDraft(key: string): void {
+    const wasDirty = messageOf(draftOf(key)) !== '';
     drafts.delete(key);
+    if (wasDirty) changed();
 }
 
 /** The words a draft sends: the document as markdown with its mentions written out, trimmed. Empty when there is nothing to send. */

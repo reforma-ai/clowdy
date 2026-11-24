@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { openConfirmModal } from '@clowdy/components/modals';
+import { emptyComposerDoc, plainTextToDoc } from '@clowdy/components/RichInput';
 import { runInAction } from 'mobx';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -16,6 +17,8 @@ import {
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { hotkeys, installDispatcher } from '../../hotkeys';
 import { RootStore, RootStoreProvider } from '../../stores';
+import { saveDraft } from '../chats/composerDrafts';
+import { setFiles } from '../chats/composerFiles';
 import { chatListPreferences } from './chatListPreferences';
 import { Screen } from './Screen';
 import { starCardPreferences } from './starCardState';
@@ -1281,6 +1284,23 @@ describe('threads', () => {
         rowOf(key).querySelector<HTMLButtonElement>('button[aria-label^="Expand"], button[aria-label^="Collapse"]');
     const depthOf = (key: string) => rowOf(key).getAttribute('data-depth');
     const dotOf = (key: string) => rowOf(key).querySelector('[role="img"]')?.getAttribute('aria-label');
+
+    it('updates the draft dot when text or attachments are added and cleared', async () => {
+        const tone = () => rowOf('c-4').querySelector('[role="img"] [data-tone]')?.getAttribute('data-tone');
+
+        expect(dotOf('c-4')).toBeUndefined();
+        await act(async () => saveDraft('c-4', plainTextToDoc('Unsent')));
+        expect(dotOf('c-4')).toBe('Unsent draft');
+        expect(tone()).toBe('neutral');
+        await act(async () => saveDraft('c-4', emptyComposerDoc()));
+        expect(dotOf('c-4')).toBeUndefined();
+        await act(async () =>
+            setFiles('c-4', [{ key: 'file', name: 'a.txt', mediaType: 'text/plain', size: 1, status: 'ready' }])
+        );
+        expect(dotOf('c-4')).toBe('Unsent draft');
+        await act(async () => setFiles('c-4', []));
+        expect(dotOf('c-4')).toBeUndefined();
+    });
     const stopThreads = async () => {
         for (const runId of ['r-orch-6a', 'r-orch-6e']) await store.command({ type: 'run.cancel', runId });
 
@@ -1417,7 +1437,7 @@ describe('threads', () => {
         expect(dotOf('c-6')).toBe('Threads working');
         expect(dotOf('c-6a')).toBe('Working');
         expect(dotOf('c-6c')).toBe('Failed');
-        expect(dotOf('c-6b')).toBeUndefined();
+        expect(dotOf('c-6b')).toBe('Done');
         expect(rowOf('c-6e').querySelector('[data-provider]')?.getAttribute('data-provider')).toBe('codex');
     });
 

@@ -44,23 +44,27 @@ export function ChatStatus({
     run,
     threads,
     className,
+    draft = false,
 }: {
     run: Run | undefined;
     threads?: ThreadsActivity;
     className?: string;
+    draft?: boolean;
 }) {
-    const tone = chatDotTone(run, threads);
+    const tone = chatDotTone(run, threads, draft);
 
     if (!tone) return null;
 
-    // The run's own state wins, unless a thread's wait for the person takes the dot over; only a chat whose run says nothing shows its threads.
-    const own = run !== undefined && chatDotTone(run) === tone ? run : undefined;
+    // A thread's question takes priority over a completed or working run.
+    const own = run !== undefined && chatDotTone(run) === tone && threads !== 'asking' ? run : undefined;
     const ownStatus = own && shownRunStatus(own);
     const label = ownStatus
         ? RUN_STATUS_VIEW[ownStatus].label
-        : threads === 'asking'
-          ? 'A thread is waiting for you'
-          : 'Threads working';
+        : draft && tone === 'neutral'
+          ? 'Unsent draft'
+          : threads === 'asking'
+            ? 'A thread is waiting for you'
+            : 'Threads working';
 
     return (
         <span className={className} role="img" aria-label={label}>

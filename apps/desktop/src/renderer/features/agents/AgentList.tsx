@@ -34,6 +34,8 @@ import { archiveChat } from '../chats/archiveChat';
 import { ChatMenu } from '../chats/ChatMenu';
 import { isRunActive } from '../chats/chatRun';
 import { perform } from '../chats/commands';
+import { draftOf, messageOf, useDraftRevision } from '../chats/composerDrafts';
+import { filesOf, useDraftFilesRevision } from '../chats/composerFiles';
 import { deleteChat } from '../chats/deleteChat';
 import { workspaceHead } from '../openWith';
 import styles from './AgentList.module.css';
@@ -121,6 +123,8 @@ export function AgentList({
     isCovered: boolean;
 }) {
     const root = useRootStore();
+    useDraftRevision();
+    useDraftFilesRevision();
     const project = useProjectState();
     const ui = useProjectUi();
     const [renamingId, setRenamingId] = useState<ChatId | null>(null);
@@ -350,15 +354,16 @@ export function AgentList({
         const { chat } = row;
         const run = runOf(chat);
         const busy = actions.busy(chat);
-        const threads = busy
-            ? project
-                  .threadsBelow(chat.id)
-                  .some(thread => thread.archivedAt === undefined && asksThePerson(thread, project.runs))
-                ? ('asking' as const)
-                : ('working' as const)
-            : undefined;
-        const status = busy ? <ChatStatus run={run} threads={threads} className={styles.archiveStatus} /> : undefined;
-        const icon = <ChatIcon chat={chat} run={run} threads={threads} showStatus={!busy && renamingId !== chat.id} />;
+        const threads = project
+            .threadsBelow(chat.id)
+            .some(thread => thread.archivedAt === undefined && asksThePerson(thread, project.runs))
+            ? ('asking' as const)
+            : project.threadsBelow(chat.id).some(thread => isActiveThread(thread, project.runs))
+              ? ('working' as const)
+              : undefined;
+        const draft = messageOf(draftOf(chat.id)) !== '' || filesOf(chat.id).length > 0;
+        const status = <ChatStatus run={run} threads={threads} draft={draft} className={styles.archiveStatus} />;
+        const icon = <ChatIcon chat={chat} run={run} threads={threads} showStatus={false} />;
 
         return (
             <GridListItem
@@ -646,7 +651,8 @@ function RowEnd({
     return (
         // The buttons and the popover are React children of the row, so their clicks and keys would reach the row through the tree.
         <span className={styles.chatActions} {...ownEvents}>
-            {status ?? (
+            {status}
+            {!busy && (
                 <Button
                     className={styles.rowAction}
                     variant="filling"

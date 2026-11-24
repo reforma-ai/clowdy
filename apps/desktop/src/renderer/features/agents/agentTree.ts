@@ -321,18 +321,18 @@ export function resolveSelection(
     return { chat, run: undefined, draft: chat === undefined };
 }
 
-/**
- * The dot on the icon of a chat's row, from what its orchestrator is doing: green while it works (or waits for its own background work),
- * blue when it has asked the person something (also while the run rests for its background work and a card is open: `shownRunStatus`), red when it failed.
- * A run that is blocked or queued shows its usual tone.
- * A chat at rest whose own threads work (`threads` `working`) is green too: its work goes on in them. A thread below it that waits for the person
- * (`asking`) makes the dot blue whenever the chat's own would be green or none: the question is in that thread's chat.
- * Nothing for a chat that has not started or whose run is over (done, stopped, interrupted): no news is no dot.
- */
-export function chatDotTone(run: Run | undefined, threads?: ThreadsActivity): StatusTone | undefined {
+/** Working is green, completion and requests for attention are yellow, and an unsent draft is gray. */
+export function chatDotTone(run: Run | undefined, threads?: ThreadsActivity, draft = false): StatusTone | undefined {
     const own = ownDotTone(run, threads === 'working');
 
-    return threads === 'asking' && (own === undefined || own === 'success') ? 'accent' : own;
+    if (
+        threads === 'asking' &&
+        (own === undefined || own === 'success' || (run && shownRunStatus(run) === 'succeeded'))
+    )
+        return 'warning';
+    if (draft && (own === undefined || (run && shownRunStatus(run) === 'succeeded' && threads !== 'working')))
+        return 'neutral';
+    return own;
 }
 
 /** What the threads below a chat are doing that its dot tells: some work, or some wait for the person (which wins). */
@@ -344,7 +344,9 @@ function ownDotTone(run: Run | undefined, threadsWorking: boolean): StatusTone |
         case 'waiting_background':
             return 'success';
         case 'waiting_user':
-            return 'accent';
+            return 'warning';
+        case 'succeeded':
+            return threadsWorking ? 'success' : 'warning';
         case 'failed':
             return 'danger';
         case 'blocked':
