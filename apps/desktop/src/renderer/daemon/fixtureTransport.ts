@@ -86,6 +86,7 @@ import type {
     GitFileSides,
     GitMessage,
     GitPullRequestInfo,
+    GitPushRequest,
     GitRemoteAction,
     GitRemoteResult,
     GitScope,
@@ -450,7 +451,19 @@ export class FixtureTransport implements Transport {
         return this.#remote('pull', projectId, place);
     }
 
-    pushGit(projectId: ProjectId, place: PlaceRef): Promise<GitRemoteResult> {
+    async pushGit(
+        projectId: ProjectId,
+        place: PlaceRef,
+        expectedHead?: GitPushRequest['expectedHead']
+    ): Promise<GitRemoteResult> {
+        if (expectedHead) {
+            const { head, workspace } = this.#gitPlace(projectId, place);
+            const { branch } = this.#remotePlace(head, workspace, place);
+
+            if (branch !== expectedHead.branch)
+                throw new TransportError(`The checkout switched from ${expectedHead.branch}`, 409);
+        }
+
         return this.#remote('push', projectId, place);
     }
 

@@ -471,6 +471,11 @@ export interface GitRemoteRequest {
     workspaceId?: string;
 }
 
+/** A push following a commit can require the checkout to still be on that commit and branch. */
+export interface GitPushRequest extends GitRemoteRequest {
+    expectedHead?: { branch: string; commit: string };
+}
+
 /**
  * What a remote action did, so the client reads what it changed again. `upstream` is the branch's upstream as the action left it, with how far apart the two are (a push leaves 0
  * and 0); absent when the branch has none (a fetch on a branch that tracks nothing, a detached HEAD).

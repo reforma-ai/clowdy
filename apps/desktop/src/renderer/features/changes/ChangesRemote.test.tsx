@@ -19,6 +19,7 @@ import { openEffects } from '../openWith';
 import { ChangesSidebar } from './ChangesSidebar';
 import { type GitPlaceKey, gitFactsOf } from './gitFacts';
 import { placeChangesOf } from './PlaceChanges';
+import { sourceControlPreferences } from './sourceControlPreferences';
 
 import type { GitRemoteResult } from '@clowdy/protocol';
 import type { FixtureGitWritesOptions } from '../../daemon/fixtureGitWrites';
@@ -171,6 +172,7 @@ afterEach(async () => {
     container.remove();
     stop?.();
     store.dispose();
+    sourceControlPreferences.setAutoPush(true);
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
 });
@@ -616,7 +618,7 @@ describe('merging branches from the sync menu', () => {
         await open('Merge from branch…');
         await press(option('origin/feature/search'));
         await settle();
-        await press(button('Create merge commit'));
+        await press(button('Create merge commit & Push'));
         await settle();
     };
     const confirmButton = (name: string) =>
@@ -664,7 +666,7 @@ describe('merging branches from the sync menu', () => {
             branch: 'main',
         });
 
-        await press(button('Fast-forward'));
+        await press(button('Fast-forward & Push'));
         await settle();
 
         expect(merge.mock.calls[1]?.[2]).toMatchObject({
@@ -676,7 +678,8 @@ describe('merging branches from the sync menu', () => {
             targetCommit: expect.stringMatching(/^[0-9a-f]+$/),
         });
         expect(dialog()).toBeNull();
-        expect(success).toHaveBeenCalledWith({ message: 'Merged into clowdy/ab12cd34' });
+        expect(merge.mock.calls[2]?.[2]).toMatchObject({ action: 'push', target: 'clowdy/ab12cd34' });
+        expect(success).toHaveBeenCalledWith({ message: 'Pushed clowdy/ab12cd34 to origin' });
     });
 
     it('filters the destination branches with text entered while they were loading', async () => {
@@ -728,7 +731,7 @@ describe('merging branches from the sync menu', () => {
         await open('Merge from branch…');
         await press(option('origin/feature/search'));
         await settle();
-        expect(button('Create merge commit').disabled).toBe(false);
+        expect(button('Create merge commit & Push').disabled).toBe(false);
         const originalPreview = await merge.mock.results[0]!.value;
 
         await chooseMode('Fast-forward only');
@@ -744,7 +747,7 @@ describe('merging branches from the sync menu', () => {
         expect(merge.mock.calls.every(call => call[2].action === 'preview')).toBe(true);
         expect(merge.mock.calls.at(-1)?.[2]).toMatchObject({ strategy: 'rebase', branch: 'feature/search' });
         expect(dialog().textContent).toContain('Replay 2 commits from clowdy/ab12cd34 on top of origin/feature/search');
-        await press(button('Rebase'));
+        await press(button('Rebase & Push'));
         await settle();
         expect(merge.mock.calls.at(-1)?.[2]).toMatchObject({ action: 'merge', strategy: 'rebase' });
         expect(button('Abort rebase')).toBeDefined();
@@ -754,7 +757,65 @@ describe('merging branches from the sync menu', () => {
         expect(sidebar().querySelector('[aria-label="Commit"]')?.textContent).toContain('Rebase paused');
     });
 
-    it('keeps the source checkout and pushes only the selected destination on a separate press', async () => {
+    it('pushes only the merge destination by default without changing the source checkout', async () => {
+        await start({ gitWrites: { clean: true, remote: 'level' } });
+        const merge = vi.spyOn(transport, 'branchMergeGit');
+        const push = vi.spyOn(transport, 'pushGit');
+
+        await open('Merge into branch…');
+        await press(option('main'));
+        await settle();
+        await press(button('Fast-forward & Push'));
+        await settle();
+
+        expect(merge.mock.calls.map(call => call[2].action)).toEqual(['preview', 'merge', 'push']);
+        const applied = await merge.mock.results[1]?.value;
+        expect(applied).toMatchObject({ state: 'done', commit: expect.any(String) });
+        expect(merge.mock.calls[2]?.[2]).toEqual({
+            action: 'push',
+            target: 'main',
+            commit: applied?.state === 'done' ? applied.commit : undefined,
+        });
+        expect(push).not.toHaveBeenCalled();
+        expect(dialog()).toBeNull();
+        expect(
+            await transport.getGitStatus(FIXTURE_PROJECT_ID, {
+                folderId: WORKTREE.folderId,
+                workspaceId: WORKTREE.workspaceId,
+            })
+        ).toMatchObject({ head: { name: 'clowdy/ab12cd34' }, upstream: { ahead: 0 } });
+    });
+
+    it('keeps a completed merge available to push again when automatic push is rejected', async () => {
+        await start({ gitWrites: { clean: true, remote: 'level' } });
+        const original = transport.branchMergeGit.bind(transport);
+        const merge = vi.spyOn(transport, 'branchMergeGit').mockImplementation((project, place, request) => {
+            if (request.action === 'push') {
+                merge.mockImplementation(original);
+                return Promise.reject(new TransportError('Network is offline', 503));
+            }
+
+            return original(project, place, request);
+        });
+
+        await open('Merge into branch…');
+        await press(option('main'));
+        await settle();
+        await press(button('Fast-forward & Push'));
+        await settle();
+
+        expect(dialog().textContent).toContain('Merged into main');
+        expect(dialog().querySelector('[role="alert"]')?.textContent).toContain('Push failed: Network is offline');
+        await press(button('Push main'));
+        await settle();
+
+        expect(merge.mock.calls.map(call => call[2].action)).toEqual(['preview', 'merge', 'push', 'push']);
+        expect(merge.mock.calls[2]?.[2]).toEqual(merge.mock.calls[3]?.[2]);
+        expect(dialog()).toBeNull();
+    });
+
+    it('offers a separate push for outgoing merges when automatic push is off', async () => {
+        sourceControlPreferences.setAutoPush(false);
         await start({ gitWrites: { clean: true, remote: 'level' }, branches: ['remote'] });
         const success = vi.spyOn(toast, 'success').mockReturnValue('');
         const fetch = vi.spyOn(transport, 'fetchGit');
@@ -850,7 +911,7 @@ describe('merging branches from the sync menu', () => {
         await settle();
 
         merge.mockRejectedValueOnce(new TransportError('The branches moved since the preview', 409));
-        await press(button('Fast-forward'));
+        await press(button('Fast-forward & Push'));
         await settle();
 
         const alert = dialog().querySelector('[role="alert"][data-color="danger"]');
@@ -864,7 +925,7 @@ describe('merging branches from the sync menu', () => {
 
         expect(merge.mock.calls.map(call => call[2].action)).toEqual(['preview', 'merge', 'preview']);
         expect(dialog().querySelector('[role="alert"]')).toBeNull();
-        expect(button('Fast-forward').disabled).toBe(false);
+        expect(button('Fast-forward & Push').disabled).toBe(false);
     });
 
     it('identifies the destination checkout after a conflict and aborts only that merge', async () => {

@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { branchPrefix } from '../chats/branchPrefix';
-import { SourceControlPage } from './SourceControlPage';
+import { BranchPrefixRow } from './BranchPrefixRow';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let container: HTMLDivElement;
@@ -16,7 +16,7 @@ beforeEach(() => {
     container = document.createElement('div');
     document.body.append(container);
     root = createRoot(container);
-    act(() => root.render(<SourceControlPage />));
+    act(() => root.render(<BranchPrefixRow />));
 });
 afterEach(() => {
     act(() => root.unmount());

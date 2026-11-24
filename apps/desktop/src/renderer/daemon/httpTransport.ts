@@ -37,6 +37,7 @@ import type {
     GitFileSides,
     GitMessage,
     GitPullRequestInfo,
+    GitPushRequest,
     GitRemoteRequest,
     GitRemoteResult,
     GitScope,
@@ -254,8 +255,15 @@ export class HttpTransport implements Transport {
         return this.#write(ROUTES.projectGitRemote(projectId, 'pull'), { ...place } satisfies GitRemoteRequest);
     }
 
-    pushGit(projectId: ProjectId, place: PlaceRef): Promise<GitRemoteResult> {
-        return this.#write(ROUTES.projectGitRemote(projectId, 'push'), { ...place } satisfies GitRemoteRequest);
+    pushGit(
+        projectId: ProjectId,
+        place: PlaceRef,
+        expectedHead?: GitPushRequest['expectedHead']
+    ): Promise<GitRemoteResult> {
+        return this.#write(ROUTES.projectGitRemote(projectId, 'push'), {
+            ...place,
+            expectedHead,
+        } satisfies GitPushRequest);
     }
 
     updateGit(projectId: ProjectId, place: PlaceRef): Promise<GitRemoteResult> {

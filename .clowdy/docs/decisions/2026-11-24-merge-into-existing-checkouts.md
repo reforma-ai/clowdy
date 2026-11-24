@@ -15,7 +15,7 @@ An outgoing merge used to create a temporary worktree when the destination was n
 
 **Merge into branch…** requires an existing checkout. Its preview reports incoming commits, the destination path, and whether the pinned commits can merge cleanly. A predicted conflict blocks the action and points to **Merge from branch…** in a chat on the destination branch. The daemon checks again before merging. Source Control creates no worktree for either direction.
 
-**Merge from branch…** merges into the current checkout and can leave conflicts there for resolution. It fetches origin first when available. The conflict result shows the folder, Done dismisses the dialog, and Abort merge requires confirmation. Both directions fast-forward when possible. An outgoing merge can be pushed with a separate action after it succeeds.
+**Merge from branch…** merges into the current checkout and can leave conflicts there for resolution. It fetches origin first when available. The conflict result shows the folder, Done dismisses the dialog, and Abort merge requires confirmation. Both directions fast-forward when possible. The push step is covered by [Push after commits and branch merges in Source Control](2026-11-24-push-after-commit-and-merge.md).
 
 ## Consequences
 

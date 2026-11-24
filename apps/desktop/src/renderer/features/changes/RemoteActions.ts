@@ -5,7 +5,7 @@ import { type Transport, TransportError } from '../../daemon/transport';
 import { type RemoteActionId, remoteCall, remoteNotice } from './changesActions';
 import { type PlaceFacts, placeRef } from './gitFacts';
 
-import type { GitRemoteResult } from '@clowdy/protocol';
+import type { GitPushRequest, GitRemoteResult } from '@clowdy/protocol';
 
 /** What the actions ask of the transport. */
 export type RemoteTransport = Pick<Transport, 'fetchGit' | 'pullGit' | 'pushGit' | 'updateGit' | 'abortGit'>;
@@ -61,7 +61,10 @@ export class RemoteActions {
      * Runs an action and says how it ended; it never rejects. One at a time: while one runs another is refused at once, with nothing sent. `report: false` leaves the notice and the failure
      * to the caller (Commit & Push words a failed push as part of the commit's own line).
      */
-    async run(id: RemoteActionId, { report = true }: { report?: boolean } = {}): Promise<RemoteOutcome> {
+    async run(
+        id: RemoteActionId,
+        { report = true, expectedHead }: { report?: boolean; expectedHead?: GitPushRequest['expectedHead'] } = {}
+    ): Promise<RemoteOutcome> {
         if (this.running !== undefined) return { ok: false, failure: { action: id, message: 'An action is running' } };
 
         if (this.facts.switching) return { ok: false, failure: { action: id, message: 'The branch is being changed' } };
@@ -82,7 +85,9 @@ export class RemoteActions {
                     ? this.transport.updateGit(key.projectId, place)
                     : call === 'abort'
                       ? this.transport.abortGit(key.projectId, place)
-                      : this.transport.pushGit(key.projectId, place));
+                      : expectedHead === undefined
+                        ? this.transport.pushGit(key.projectId, place)
+                        : this.transport.pushGit(key.projectId, place, expectedHead));
 
             const notice = report ? remoteNotice(result) : undefined;
 
