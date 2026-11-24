@@ -22,14 +22,14 @@
     padding-block-end: var(--spacing-192);
 }
 
-/* Keep the scrollbar unmasked: the narrow opaque strip is outside the message column. */
+/* Fade below the composer's top edge; keep the scrollbar unmasked in the narrow strip at the right. */
 .root[data-composer-overlay] .scroll {
     mask-image:
         linear-gradient(
             to bottom,
             #000 0,
-            #000 max(0px, calc(100% - var(--composer-inset) - 48px)),
-            transparent max(0px, calc(100% - var(--composer-inset)))
+            #000 max(0px, calc(100% - var(--composer-inset))),
+            transparent min(100%, max(0px, calc(100% - var(--composer-inset) + 48px)))
         ),
         linear-gradient(#000, #000);
     mask-size:
