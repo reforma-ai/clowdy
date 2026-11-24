@@ -670,8 +670,24 @@ describe('Create PR in the sidebar', () => {
         await start();
 
         expect(container.querySelector('[aria-label="Pull request"]')?.textContent).toContain('PR #128');
+        expect(container.querySelector('button svg[data-state="open"]')).not.toBeNull();
         expect(buttonOf('Create PR')).toBeUndefined();
         expect(buttonOf('Publish first')).toBeUndefined();
+    });
+
+    it('shows a merged pull request with a state icon and its checks', async () => {
+        await start({
+            tweak: data => {
+                data.pullRequests[CAR_RENTAL] = { worktree: 'merged' };
+            },
+        });
+
+        const pr = container.querySelector('[aria-label="Pull request"]')!;
+        const link = pr.querySelector('button[aria-label*="Merged"]')!;
+
+        expect(link.textContent).toBe('PR #31');
+        expect(link.querySelector('svg[data-state="merged"]')).not.toBeNull();
+        expect(pr.querySelectorAll('ul[aria-label="Checks"] a')).toHaveLength(3);
     });
 
     it('shows a single Publish action for a clean unpublished branch and offers Create PR after publishing', async () => {

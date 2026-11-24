@@ -765,12 +765,36 @@ describe('the sidebar', () => {
     it('has the base, how far the branch is from it and the pull request with its checks, and opens the repository on GitHub', async () => {
         const open = vi.spyOn(window, 'open').mockReturnValue(null);
 
-        await start();
+        await start({
+            wrap: base =>
+                overrideTransport(base, {
+                    getGitPullRequest: async (project, place) => {
+                        const answer = await base.getGitPullRequest(project, place);
+                        const preview = answer.isRepository
+                            ? answer.pullRequest?.checks.items.find(check => check.name === 'ci/deploy-preview')
+                            : undefined;
+
+                        if (preview) preview.url = 'http://preview.car-rental.example/pr-128';
+
+                        return answer;
+                    },
+                }),
+        });
         await draw();
 
         const sidebar = container.querySelector('[aria-label="Changes sidebar"]')!;
 
-        expect(sidebar.querySelector('[aria-label^="Checks"]')).not.toBeNull();
+        const checks = sidebar.querySelector('ul[aria-label="Checks"]')!;
+        const failedCheck = checks.querySelector<HTMLAnchorElement>('a[aria-label="unit (windows), Failing"]')!;
+        const skippedCheck = checks.querySelector<HTMLAnchorElement>('a[aria-label="docs, Skipped"]')!;
+        const previewCheck = checks.querySelector<HTMLAnchorElement>('a[aria-label="ci/deploy-preview, Passing"]')!;
+
+        expect(checks.querySelectorAll('li')).toHaveLength(7);
+        expect(failedCheck.getAttribute('href')).toBe('https://github.com/acme/car-rental/actions/runs/101/job/2');
+        expect(failedCheck.target).toBe('_blank');
+        expect(failedCheck.rel).toBe('noopener');
+        expect(skippedCheck.getAttribute('href')).toBe('https://github.com/acme/car-rental/pull/128/checks');
+        expect(previewCheck.getAttribute('href')).toBe('https://github.com/acme/car-rental/pull/128/checks');
 
         await press(sidebar.querySelector('button[aria-label="Open the repository on GitHub"]')!);
 

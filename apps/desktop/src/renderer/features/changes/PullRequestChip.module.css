@@ -1,9 +1,11 @@
 @reference '@clowdy/styles/rulesets';
 
-/* The pull request as a chip in two parts: its number and state, and the dot of its checks. Drawn by the Changes tab's sidebar. */
 .chip {
     display: flex;
-    align-items: center;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-4);
+    width: 100%;
     min-width: 0;
 }
 
@@ -11,11 +13,60 @@
     opacity: var(--opacity-inactive);
 }
 
-.pr {
-    gap: var(--spacing-sm);
+.pr[data-size][data-variant] {
     min-width: 0;
+    max-width: 100%;
+}
+
+.prMark,
+.checkLink {
+    flex-shrink: 0;
+    color: var(--color-secondary-muted-text);
+}
+
+.prMark[data-state='open'] {
+    color: var(--color-success-text);
+}
+
+.prMark[data-state='merged'] {
+    color: var(--color-accent-text);
 }
 
 .checks {
+    width: 100%;
+    max-height: calc(var(--spacing-24) * 6.5);
+}
+
+.list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.check[data-size][data-variant] {
+    width: 100%;
+    min-width: 0;
+    justify-content: flex-start;
+    gap: var(--spacing-6);
+    padding-inline: var(--spacing-6);
+}
+
+.checkMark {
+    display: flex;
     flex-shrink: 0;
+}
+
+.checkName {
+    flex: 1;
+    min-width: 0;
+}
+
+.checkState {
+    flex-shrink: 0;
+}
+
+@container (max-width: 12rem) {
+    .checkState {
+        display: none;
+    }
 }
