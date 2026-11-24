@@ -1,20 +1,18 @@
 @reference '@clowdy/styles/rulesets';
 
-.track {
-    width: 90px;
-    max-width: 18vw;
-    height: var(--spacing-6);
-    border-radius: var(--radius-full);
-    background-color: var(--color-secondary-muted);
-    overflow: hidden;
+.header {
+    height: auto;
+    min-height: var(--spacing-30);
 }
 
-.fill {
-    display: block;
-    height: 100%;
-    border-radius: inherit;
-    background-color: var(--color-primary);
-    transition: width 300ms ease-out;
+.headerContent {
+    display: grid;
+    grid-template-columns: max-content minmax(0, auto);
+}
+
+.summary {
+    text-align: end;
+    white-space: normal;
 }
 
 .list {
@@ -58,10 +56,4 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .fill {
-        transition: none;
-    }
 }

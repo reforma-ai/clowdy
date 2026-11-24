@@ -27,28 +27,27 @@ const task = (number: number, statusId: string): Task => ({
 });
 
 describe('chatProgress', () => {
-    it('counts the done tasks against all of them', () => {
+    it('shows the occupied status categories in workflow order', () => {
         const progress = chatProgress(
-            [task(1, 'done'), task(2, 'active'), task(3, 'review'), task(4, 'done')],
+            [task(1, 'done'), task(2, 'active'), task(3, 'review'), task(4, 'done'), task(5, 'todo')],
             statuses
         );
 
-        expect(progress).toMatchObject({ done: 2, total: 4 });
-        expect(progress?.tasks.map(item => item.key)).toEqual(['CAR-1', 'CAR-2', 'CAR-3', 'CAR-4']);
+        expect(progress?.summary).toBe('1 to do, 1 in progress, 1 in review, 2 done');
+        expect(progress?.tasks.map(item => item.key)).toEqual(['CAR-1', 'CAR-2', 'CAR-3', 'CAR-4', 'CAR-5']);
     });
 
     it('leaves canceled tasks out of the count and out of the chips', () => {
         const progress = chatProgress([task(1, 'done'), task(2, 'canceled'), task(3, 'todo')], statuses);
 
-        expect(progress).toMatchObject({ done: 1, total: 2 });
+        expect(progress?.summary).toBe('1 to do, 1 done');
         expect(progress?.tasks.map(item => item.key)).toEqual(['CAR-1', 'CAR-3']);
     });
 
     it('treats a task whose status left the workflow as not done', () => {
-        expect(chatProgress([task(1, 'done'), task(2, 'removed-status')], statuses)).toMatchObject({
-            done: 1,
-            total: 2,
-        });
+        expect(chatProgress([task(1, 'done'), task(2, 'removed-status')], statuses)?.summary).toBe(
+            '1 with unknown status, 1 done'
+        );
     });
 
     it('has no progress without tasks, or with only canceled ones', () => {
