@@ -79,18 +79,12 @@ export function ChipTrigger({
                     {lead}
                 </Text>
             )}
-<<<<<<< HEAD
             {label && (
                 <Text truncate className={trail ? styles.whole : undefined}>
                     {label}
                 </Text>
             )}
-=======
-            <Text truncate className={trail ? styles.whole : undefined}>
-                {label}
-            </Text>
             {detail}
->>>>>>> origin/main
             {trail && (
                 <Text color="secondary" truncate className={styles.trail}>
                     {trail}

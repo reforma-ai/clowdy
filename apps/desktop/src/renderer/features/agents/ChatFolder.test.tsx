@@ -615,14 +615,10 @@ describe('the folder of a chat that works in a worktree', () => {
         await draw({ workspace, bridge: APP });
 
         expect(pill()?.hasAttribute('data-missing')).toBe(true);
-<<<<<<< HEAD
         expect(container.textContent).toBe('webWorktree');
-=======
-        expect(container.textContent).toBe('web · Worktree');
         await press(pill()!);
         expect(document.body.textContent).toContain('This worktree no longer exists');
         expect(item('New chat').getAttribute('aria-disabled')).toBe('true');
->>>>>>> origin/main
     });
 
     it('opens the menu on the worktree, whose path it copies and opens', async () => {
@@ -647,7 +643,7 @@ describe('the folder of a chat that works in a worktree', () => {
         await draw({ workspace, bridge: APP });
 
         expect(container.querySelectorAll('button')).toHaveLength(1);
-        expect(pill()?.textContent).toBe('web · Worktree clowdy/ab12cd34');
+        expect(pill()?.textContent).toBe('webWorktreeclowdy/ab12cd34');
         await press(pill()!);
         await press(item('New chat'));
 

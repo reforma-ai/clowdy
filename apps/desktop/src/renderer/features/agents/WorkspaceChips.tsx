@@ -38,6 +38,22 @@ import type {
 import type { BranchListing } from '../changes/branchChoices';
 import type { FolderRepository } from './useFolderRepository';
 
+/** A chosen worktree remains visible while its repository data is unavailable. */
+function WorkspaceLabel({ worktree, branch }: { worktree: string; branch?: string }) {
+    return (
+        <div
+            role="group"
+            className={styles.label}
+            title={tildePath(worktree, homeFolder.path)}
+            aria-label={`Where it runs: Worktree${branch ? `, branch ${branch}` : ''}`}
+        >
+            <Split aria-hidden="true" />
+            <Text color="secondary">Worktree</Text>
+            {branch && <Text truncate>{branch}</Text>}
+        </div>
+    );
+}
+
 /** What a screen reader says of what is checked out: a branch, or on a detached HEAD the commit it is at. */
 const branchWords = (name: string, detached: boolean) => (detached ? `detached at ${name}` : `branch ${name}`);
 
@@ -111,7 +127,8 @@ interface FolderChoices {
     onPickFolder: (folder: ProjectFolder) => void;
 }
 
-function FolderRows({ folders, selectedFolderId, missing }: FolderChoices) {
+// This is a collection helper, not a component: the renderer wraps capitalized JSX functions in observer.
+function folderRows({ folders, selectedFolderId, missing }: FolderChoices) {
     const names = folderNames(folders);
 
     return folders.map((folder, index) => (
@@ -389,7 +406,7 @@ function WorkspaceChip({
                                         selectedKeys={[`folder:${selectedFolderId}`]}
                                         disallowEmptySelection
                                     >
-                                        {FolderRows({ folders, selectedFolderId, missing, onPickFolder })}
+                                        {folderRows({ folders, selectedFolderId, missing, onPickFolder })}
                                     </MenuSection>
                                 )}
                                 {folders.length > 1 && <MenuSeparator />}
@@ -617,13 +634,7 @@ export function WorkspaceChips({
             />
         );
 
-    if (choice?.mode === 'existing')
-        return (
-            <WorkspaceLabel
-                worktree={choice.path}
-                git={workspaceRow?.branch ? { branch: workspaceRow.branch } : undefined}
-            />
-        );
+    if (choice?.mode === 'existing') return <WorkspaceLabel worktree={choice.path} branch={workspaceRow?.branch} />;
 
     const why = whyUnread(repository);
 
@@ -657,7 +668,7 @@ export function WorkspaceChips({
                             if (folder && !missing.has(folder.id)) pickFolder(folder);
                         }}
                     >
-                        {FolderRows({ folders, selectedFolderId, missing, onPickFolder })}
+                        {folderRows({ folders, selectedFolderId, missing, onPickFolder })}
                     </Menu>
                 </Popover>
             </MenuTrigger>

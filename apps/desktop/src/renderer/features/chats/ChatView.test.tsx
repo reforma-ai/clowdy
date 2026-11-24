@@ -551,12 +551,6 @@ describe('a chat whose orchestrator waits for background work', () => {
         await start();
         await draw('c-5');
 
-<<<<<<< HEAD
-        // Commands are grouped in a disclosure until opened.
-        expect(
-            [...container.querySelectorAll('[aria-label="Work in progress"] > div')].map(row => row.textContent)
-        ).toEqual(['Commands2 running']);
-=======
         // The commands are folded under one line that counts them. Opened, each has a row, and only the first can be stopped alone: the other is counted.
         const commands = [
             ...container.querySelectorAll<HTMLButtonElement>('[aria-label="Work in progress"] button[aria-expanded]'),
@@ -571,7 +565,6 @@ describe('a chat whose orchestrator waits for background work', () => {
                 row => row.textContent
             )
         ).toEqual(['Command · bun run testStop', 'Command · bun run typecheck', 'Background task runningStop run']);
->>>>>>> origin/main
         expect(container.textContent).not.toContain('Waiting for background work…');
         expect(notice()).toBeNull();
         expect(field()).not.toBeNull();
