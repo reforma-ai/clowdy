@@ -2,9 +2,11 @@
 
 ## Decisions
 
+- [Push after commits and branch merges](decisions/2026-11-24-push-after-commit-and-merge.md) records the default Source Control preference and the destination of each push. Status: accepted.
+
 - [Changes tab render performance](decisions/2026-11-24-changes-tab-render-performance.md) records why far diff cards are empty boxes and unchanged git answers keep their objects. Status: accepted.
 
-- [Provider question capabilities](decisions/2026-11-24-provider-question-capabilities.md) records how agents opt into form elicitation and its current limits. Status: accepted.
+- [Durable provider questions](decisions/2026-11-24-durable-provider-questions.md) records provider capabilities and how questions survive an agent without form elicitation. Status: accepted.
 
 - [Stage coordination follows Briefback](decisions/2026-11-24-briefback-stage-coordination.md) records the stage, review and delegation model. Status: accepted.
 - [Manual chat order](decisions/2026-11-24-use-manual-chat-order.md) records why the sidebar uses one saved order and puts new chats first. Status: accepted.
@@ -15,9 +17,13 @@
 
 ## Checks
 
+- [Source Control during fetch and push](checks/2026-11-24-source-control-during-sync.md) covers branch selection and queued actions while sync is pending. Status: passed.
+
+- [Automatic push in Source Control](checks/2026-11-24-auto-push-in-source-control.md) covers both merge directions, the saved setting and recovery after rejection. Status: passed with limits.
+
 - [Changes tab performance](checks/2026-11-24-changes-tab-performance.md) covers render time before and after for 200 files, and the tests. Status: passed with limits.
 
-- [Question lifecycle](checks/2026-11-24-question-lifecycle.md) covers provider questions, cancellation, and the remaining Cursor timeout. Status: partial.
+- [Question lifecycle](checks/2026-11-24-question-lifecycle.md) covers provider questions, cancellation, recovery and timed waits. Status: passed with limits.
 
 - [Briefback stage coordination](checks/2026-11-24-briefback-stage-coordination.md) covers skill validation, prompt tests and the daemon typecheck baseline. Status: passed with limits.
 - [System skill edits](checks/2026-11-24-system-skill-edit.md) covers validation, integration tests and semantic review. Status: passed with limits.
@@ -38,5 +44,7 @@
 - [Stop commit message generation](checks/2026-11-24-stop-commit-message-generation.md) covers the stop control, retry and provider process cancellation. Status: passed.
 
 ## Superseded
+
+- [Provider question capabilities](decisions/2026-11-24-provider-question-capabilities.md) records the earlier ordinary-tool fallback. Status: superseded.
 
 - [Merge between branches](decisions/2026-11-24-merge-between-branches.md) records the earlier temporary checkout policy. Status: superseded.

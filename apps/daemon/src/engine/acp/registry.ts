@@ -159,6 +159,12 @@ export class AgentRegistry {
         return this.spec(id)?.taskTools ?? this.stored.agents.find(agent => agent.id === id)?.taskTools ?? 'cli';
     }
 
+    /** Whether a known ACP agent has been verified to forward form elicitation. */
+    questionElicitation(id: string): boolean | undefined {
+        const agent = this.spec(id) ?? this.stored.agents.find(candidate => candidate.id === id);
+        return agent === undefined ? undefined : agent.elicitation === true;
+    }
+
     /** Whether Fork and Edit may be offered for chats of the agent (`AgentSpec.fork`); a custom agent has neither. */
     canFork(id: string): boolean {
         return this.spec(id)?.fork === true;

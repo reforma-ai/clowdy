@@ -3,36 +3,24 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { FixtureTransport } from '../../daemon/fixtureTransport';
-import { RootStore, RootStoreProvider } from '../../stores';
 import { branchPrefix } from '../chats/branchPrefix';
-import { SourceControlPage } from './SourceControlPage';
+import { BranchPrefixRow } from './BranchPrefixRow';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let container: HTMLDivElement;
 let root: Root;
-let store: RootStore;
 const prefixField = () => container.querySelector<HTMLInputElement>('input[aria-label="Branch prefix"]')!;
 const prefixNote = () => container.querySelector('[role="alert"]')?.textContent;
-beforeEach(async () => {
+beforeEach(() => {
     branchPrefix.setValue('');
-    store = new RootStore(new FixtureTransport(), { storage: undefined });
-    await store.load();
     container = document.createElement('div');
     document.body.append(container);
     root = createRoot(container);
-    act(() =>
-        root.render(
-            <RootStoreProvider value={store}>
-                <SourceControlPage />
-            </RootStoreProvider>
-        )
-    );
+    act(() => root.render(<BranchPrefixRow />));
 });
 afterEach(() => {
     act(() => root.unmount());
     container.remove();
-    store.dispose();
     branchPrefix.setValue('');
 });
 

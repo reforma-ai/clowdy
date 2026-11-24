@@ -318,6 +318,27 @@ describe('the Changes tab of a chat in a worktree', () => {
         expect(card('notes.md').querySelector('[data-diff]')).toBeNull();
     });
 
+    it("opens and brings up a file's card on a press on its row in the commit box, through a filter that left it out, and leaves its tick as it was", async () => {
+        sourceControlPreferences.setCollapseDiffs(true);
+        await start();
+        await draw();
+        await bringNear();
+        await type('*.md');
+
+        expect(cardPaths()).not.toContain('src/limits.ts');
+
+        const tick = container.querySelector<HTMLInputElement>(
+            '[aria-label="Commit"] input[aria-label="src/limits.ts"]'
+        )!;
+
+        await press(tick.closest('[role="row"]')!);
+        await vi.waitFor(() => expect(scrolled).toEqual([card('src/limits.ts')]));
+
+        expect(filter().value).toBe('');
+        expect(card('src/limits.ts').hasAttribute('data-open')).toBe(true);
+        expect(tick.checked).toBe(true);
+    });
+
     it('keeps a card that went far from the edge as an empty box in its place, and builds it again when it comes near', async () => {
         await start();
         await draw();

@@ -106,8 +106,12 @@ const gitDiscardBody = z.object({
     paths: z.array(z.string()),
 });
 
-/** The body of `POST .../git/fetch`, `.../pull` and `.../push` (`GitRemoteRequest`): the place and nothing else, so nothing a client sends changes what is run. */
+/** The place of a remote action, with an optional expected head for push. */
 const gitRemoteBody = z.object({ folderId: z.string(), workspaceId: z.string().optional() });
+const gitCommitHash = z.string().regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/);
+const gitPushBody = gitRemoteBody.extend({
+    expectedHead: z.object({ branch: z.string().min(1), commit: gitCommitHash }).optional(),
+});
 
 const gitMergeSelection = {
     ...gitRemoteBody.shape,
@@ -117,7 +121,6 @@ const gitMergeSelection = {
     remote: z.literal(true).optional(),
     strategy: z.enum(GIT_BRANCH_MERGE_STRATEGIES).optional(),
 };
-const gitCommitHash = z.string().regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/);
 const gitMergeTarget = { ...gitRemoteBody.shape, target: z.string(), commit: gitCommitHash };
 
 const gitMergeBody = z.discriminatedUnion('action', [
@@ -540,14 +543,19 @@ export function createRoutes(context: RouteContext): Route[] {
             method: 'POST',
             pattern: /^\/v1\/projects\/([^/]+)\/git\/(fetch|pull|push|update|abort)$/,
             handle: async (request, _url, [id, action]) => {
-                const body = await readJson(request, gitRemoteBody);
+                const body = await readJson(request, gitPushBody);
                 const place = resolvePlace(store, requireProject(store, id), body.folderId, body.workspaceId);
 
                 // A fetch or a push over SSH may wait for a fingerprint, longer than the connection's idle timeout.
                 context.keepOpen(request);
 
                 try {
-                    return json(await services.gitRemote[action as GitRemoteAction](place));
+                    const remote = services.gitRemote;
+                    return json(
+                        action === 'push'
+                            ? await remote.push(place, body.expectedHead)
+                            : await remote[action as Exclude<GitRemoteAction, 'push'>](place)
+                    );
                 } finally {
                     // What GitHub says of the branch moves with what was sent (a pull request opened, its checks started): the next read of it asks again, not after the short while it is kept.
                     await services.pullRequests.forget(place).catch(() => undefined);

@@ -302,6 +302,20 @@ export class PlaceChanges {
         this.revealRequest = path;
     }
 
+    /**
+     * Brings an uncommitted file up in the diff list, as a press on its row in the commit box asks: in the scope that is shown when its list has the file, else in the uncommitted
+     * one. A filter or the hidden viewed files that would leave its card out let it through. `ChangesView` opens the card and scrolls to it once the list has it.
+     */
+    showFile(path: string): void {
+        if (!this.changes?.files.some(file => file.path === path)) this.setScope('uncommitted');
+
+        if (!compileChangeFilter(this.filter).matches(path)) this.setFilter('');
+
+        if (this.hideViewed && this.isViewed(path)) this.setHideViewed(false);
+
+        this.revealRequest = path;
+    }
+
     /** Shows a merge file in the uncommitted diff list. */
     showUncommittedFile(path: string): void {
         this.setScope('uncommitted');

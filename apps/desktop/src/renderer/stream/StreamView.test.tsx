@@ -399,6 +399,20 @@ describe('runs of tool calls', () => {
         );
     });
 
+    it('does not offer an answer while the agent is being stopped', async () => {
+        const question = item(3, {
+            kind: 'question',
+            questionId: 'q',
+            text: 'Which?',
+            options: [{ id: 'a', label: 'A' }],
+            durable: true,
+            state: 'preparing',
+        });
+        await act(async () => root.render(<StreamView items={[asked, question]} active onAnswer={vi.fn()} />));
+        expect(container.textContent).toContain('Stopping the agent…');
+        expect([...container.querySelectorAll('button')].some(button => button.textContent === 'Next')).toBe(false);
+    });
+
     it('replaces the tool preview with the wait status when the agent stops working', async () => {
         const stream = [asked, bash(1, 'pwd'), bash(2, 'bun test', 'running')];
 

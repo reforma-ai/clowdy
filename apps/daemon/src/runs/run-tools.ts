@@ -9,7 +9,7 @@ import type { ToolDeps } from './tool-kit';
 export const ASK_USER = 'ask_user';
 
 /** Semi-manual orchestrators ask the user through a question card and wait for the answer. */
-export function askUserTool({ runs }: ToolDeps, run: Run): ToolDefinition {
+export function askUserTool({ runs, pauseQuestion }: ToolDeps, run: Run): ToolDefinition {
     return defineTool(
         ASK_USER,
         'Asks the user one question and waits for the answer. Offer concrete options a manager can weigh, and mark the one you recommend. Only for significant forks; decide routine things yourself.',
@@ -21,6 +21,13 @@ export function askUserTool({ runs }: ToolDeps, run: Run): ToolDefinition {
             recommended: z.string().optional().describe('The id of the option you recommend'),
         }),
         async (input, signal) => {
+            if (pauseQuestion) {
+                pauseQuestion(run.id, { text: input.question, options: input.options, recommended: input.recommended });
+                return await new Promise<never>((_, reject) => {
+                    if (signal.aborted) reject(signal.reason);
+                    else signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+                });
+            }
             const answer = await runs.ask(
                 run.id,
                 { text: input.question, options: input.options, recommended: input.recommended },

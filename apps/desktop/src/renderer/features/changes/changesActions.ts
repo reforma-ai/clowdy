@@ -322,7 +322,7 @@ export function remoteNotice(result: GitRemoteResult): { words: string; tone: 'w
 }
 
 /**
- * Why Commit & Push is not offered, as a few words; nothing when it is: there is no `origin`, HEAD is on no branch, a merge is in progress, the branch tracks something that is not on `origin`,
+ * Why Commit & Push is not offered, as a few words; nothing when it is: there is no `origin`, HEAD is on no branch, a merge has unresolved conflicts, the branch tracks something that is not on `origin`,
  * or its upstream has commits that it lacks (the push after the commit would be rejected, so it is pulled first). A branch with no commit yet is fine: the commit is its first, and publishing
  * it comes after.
  */
@@ -333,14 +333,15 @@ export function commitAndPushBlock(status: GitStatus | undefined): string | unde
 
     if (status.head.kind === 'detached') return 'HEAD is detached';
 
-    if (status.merging) return 'A merge is in progress';
+    if ((status.merging?.conflicts ?? 0) > 0) return 'A merge is in progress';
 
     const tracking = trackingOf(status);
 
     if (tracking.kind === 'foreign') return foreignWords(tracking.upstream);
 
     // A branch that is not published is published by the push after the commit.
-    if (tracking.kind !== 'published') return undefined;
+    // Finishing a merge can bring in the upstream commits missing from the current HEAD.
+    if (tracking.kind !== 'published' || status.merging) return undefined;
 
     const { upstream: published } = tracking;
 

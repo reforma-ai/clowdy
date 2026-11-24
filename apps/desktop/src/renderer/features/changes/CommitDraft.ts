@@ -2,10 +2,11 @@ import { errorMessage } from '@clowdy/lib';
 import { makeAutoObservable, observable, runInAction } from 'mobx';
 
 import { type Transport, TransportError } from '../../daemon/transport';
-import { commitAndPushBlock, commitBlock, pushOrPublish } from './changesActions';
+import { branchOf, commitAndPushBlock, commitBlock, pushOrPublish } from './changesActions';
 import { placeRef } from './gitFacts';
+import { sourceControlPreferences } from './sourceControlPreferences';
 
-import type { GitChangedFile } from '@clowdy/protocol';
+import type { GitChangedFile, GitCommitResult } from '@clowdy/protocol';
 import type { PlaceChanges } from './PlaceChanges';
 import type { RemoteActions } from './RemoteActions';
 
@@ -43,7 +44,7 @@ export class CommitDraft {
         /** Asks for a new round of reads of the place (`GitFacts.refresh`): what a commit, or a commit that failed, may have changed. */
         private readonly refresh: () => void,
         /** The place's moves to and from origin: what Commit & Push sends the branch with, and what it waits for. */
-        private readonly remote: Pick<RemoteActions, 'run' | 'busy'>
+        private readonly remote: Pick<RemoteActions, 'run'>
     ) {
         makeAutoObservable<CommitDraft, 'transport' | 'refresh' | 'remote'>(this, {
             model: false,
@@ -178,6 +179,7 @@ export class CommitDraft {
     get canCommit(): boolean {
         return (
             this.busy === undefined &&
+            !this.model.facts.switching &&
             !this.rebasing &&
             (this.merging?.conflicts ?? 0) === 0 &&
             this.message.trim() !== '' &&
@@ -191,6 +193,7 @@ export class CommitDraft {
      */
     get commitReason(): string | undefined {
         if (this.busy !== undefined) return undefined;
+        if (this.model.facts.switching) return 'The branch is being changed';
         if (this.rebasing) return 'Continue or abort the rebase first';
 
         if ((this.merging?.conflicts ?? 0) > 0) return 'Resolve the conflicts first';
@@ -200,13 +203,17 @@ export class CommitDraft {
         return commitBlock(this.message, this.ticked.length);
     }
 
-    /** Why Commit & Push is not offered right now, for its menu entry; nothing when it is. Another action running holds it, and so does a branch the push after the commit would not take. */
+    /** Why Commit & Push is unavailable, for the button and menu entry. */
     get pushBlock(): string | undefined {
-        return this.remote.busy ? 'An action is running' : commitAndPushBlock(this.model.facts.status.value);
+        return commitAndPushBlock(this.model.facts.status.value);
     }
 
     get canCommitAndPush(): boolean {
         return this.canCommit && this.pushBlock === undefined;
+    }
+
+    get pushesByDefault(): boolean {
+        return sourceControlPreferences.autoPush && commitAndPushBlock(this.model.facts.status.value) === undefined;
     }
 
     /**
@@ -280,12 +287,15 @@ export class CommitDraft {
      * Commits the ticked files with the message. On success the box is clear and the place is read again; on failure it stays as it was, with git's own line, since what the person wrote is
      * theirs to keep. The place is read again either way: a commit that failed may still have changed it (a hook may edit files).
      */
-    async commit(andPush = false): Promise<void> {
+    async commit(andPush = this.pushesByDefault): Promise<void> {
         if (!(andPush ? this.canCommitAndPush : this.canCommit)) return;
 
         const { key } = this.model.facts;
         const paths = this.ticked.map(file => file.path);
         const conclude = this.concluding;
+        const status = this.model.facts.status.value;
+        const branch = status?.isRepository ? branchOf(status) : undefined;
+        const action = pushOrPublish(status);
 
         this.busy = 'commit';
         this.failure = undefined;
@@ -303,7 +313,7 @@ export class CommitDraft {
             });
 
             // The commit stands whatever the push comes to: the box is clear and the sidebar offers Push again if it failed.
-            if (andPush) await this.#send(result.shortSha);
+            if (andPush && branch !== undefined) await this.#send(result, action, branch);
         } catch (error) {
             runInAction(() => {
                 this.failure = failureOf('commit', error);
@@ -320,20 +330,21 @@ export class CommitDraft {
      * Sends the branch after a commit that was made (a push, or its publishing when it is not on origin), and says so as the box does: a failed push is said with the commit, honestly, as
      * `Committed 1a2b3c4, push failed: <git's line>`, with the daemon's hint under it. The place's own moves hold their say (`report: false`), so the line is not told twice.
      */
-    async #send(shortSha: string): Promise<void> {
-        const action = pushOrPublish(this.model.facts.status.value);
-
+    async #send(commit: GitCommitResult, action: 'push' | 'publish', branch: string): Promise<void> {
         runInAction(() => {
             this.busy = 'push';
         });
 
-        const outcome = await this.remote.run(action, { report: false });
+        const outcome = await this.remote.run(action, {
+            report: false,
+            expectedHead: { branch, commit: commit.sha },
+        });
 
         if (!outcome.ok) {
             runInAction(() => {
                 this.failure = {
                     what: 'push',
-                    message: `Committed ${shortSha}, push failed: ${outcome.failure.message}`,
+                    message: `Committed ${commit.shortSha}, push failed: ${outcome.failure.message}`,
                     ...(outcome.failure.hint !== undefined && { hint: outcome.failure.hint }),
                 };
             });
@@ -356,7 +367,7 @@ export function commitDraftOf(
     model: PlaceChanges,
     transport: CommitTransport,
     refresh: () => void,
-    remote: Pick<RemoteActions, 'run' | 'busy'>
+    remote: Pick<RemoteActions, 'run'>
 ): CommitDraft {
     let draft = kept.get(model);
 

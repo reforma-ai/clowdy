@@ -1,11 +1,11 @@
 import { errorMessage } from '@clowdy/lib';
-import { makeAutoObservable, runInAction } from 'mobx';
+import { makeAutoObservable, observable, runInAction } from 'mobx';
 
 import { type Transport, TransportError } from '../../daemon/transport';
 import { type RemoteActionId, remoteCall, remoteNotice } from './changesActions';
 import { type PlaceFacts, placeRef } from './gitFacts';
 
-import type { GitRemoteResult } from '@clowdy/protocol';
+import type { GitPushRequest, GitRemoteResult } from '@clowdy/protocol';
 
 /** What the actions ask of the transport. */
 export type RemoteTransport = Pick<Transport, 'fetchGit' | 'pullGit' | 'pushGit' | 'updateGit' | 'abortGit'>;
@@ -23,21 +23,24 @@ export interface RemoteFailure {
 /** How an action ended, for a caller that tells it in its own words. */
 export type RemoteOutcome = { ok: true; result: GitRemoteResult } | { ok: false; failure: RemoteFailure };
 
+interface RemoteRequestOptions {
+    report?: boolean;
+    expectedHead?: GitPushRequest['expectedHead'];
+}
+
 /**
- * What the sidebar and the commit box hold of one place's moves to and from `origin`: which action is running (one at a time for the place, as the daemon runs them), a temporary conflict
- * notice and why the last action failed. It is kept for the place as the facts are (`remoteActionsOf`),
- * so the sidebar's menu and its Create PR are one: a push started in one shows as running in the other. The place's facts are read again when an action ends, either way: a push
- * that was rejected may still have moved something, and a fetch moves the counts the buttons are drawn from. The daemon forgets what it kept of the branch's pull request after an action,
- * so that read is the new one.
+ * The sidebar and commit box share the pending writes of a place. The daemon runs those writes in order.
+ * When each request ends, read the place again so the counts and pull request reflect what changed.
  */
 export class RemoteActions {
-    /** The action that is running. */
-    running: RemoteActionId | undefined;
     /** The conflict notice, until it goes. */
     notice: { words: string; tone?: 'warning' } | undefined;
     /** Why the last action failed, until the person acts again. */
     failure: RemoteFailure | undefined;
     #timer: ReturnType<typeof setTimeout> | undefined;
+    readonly #requests = observable.array<{ id: RemoteActionId; outcome: Promise<RemoteOutcome> }>([], {
+        deep: false,
+    });
 
     constructor(
         readonly facts: PlaceFacts,
@@ -52,26 +55,47 @@ export class RemoteActions {
         });
     }
 
-    /** An action is running, or the place's branch is being changed: the daemon would run the action after the switch, on the new branch. */
+    /** The oldest pending action drives the sync button. */
+    get running(): RemoteActionId | undefined {
+        return this.#requests[0]?.id;
+    }
+
+    isPending(id: RemoteActionId): boolean {
+        return this.#requests.some(request => remoteCall(request.id) === remoteCall(id));
+    }
+
+    /** A write is pending or the checkout is switching branches. */
     get busy(): boolean {
         return this.running !== undefined || this.facts.switching;
     }
 
     /**
-     * Runs an action and says how it ended; it never rejects. One at a time: while one runs another is refused at once, with nothing sent. `report: false` leaves the notice and the failure
-     * to the caller (Commit & Push words a failed push as part of the commit's own line).
+     * Sends the action to the daemon's write queue. A merge picker can reuse a fetch already in that queue.
+     * `report: false` leaves the notice and failure to the caller.
      */
-    async run(id: RemoteActionId, { report = true }: { report?: boolean } = {}): Promise<RemoteOutcome> {
-        if (this.running !== undefined) return { ok: false, failure: { action: id, message: 'An action is running' } };
+    run(id: RemoteActionId, options: RemoteRequestOptions = {}): Promise<RemoteOutcome> {
+        if (this.facts.switching)
+            return Promise.resolve({ ok: false, failure: { action: id, message: 'The branch is being changed' } });
 
-        if (this.facts.switching) return { ok: false, failure: { action: id, message: 'The branch is being changed' } };
+        if (id === 'fetch') {
+            const fetch = this.#requests.find(request => request.id === 'fetch');
+            if (fetch) return fetch.outcome;
+        }
 
+        this.#forget();
+        const outcome = this.#perform(id, options).finally(() => {
+            runInAction(() => this.#requests.remove(request));
+            this.refresh();
+        });
+        const request = { id, outcome };
+        this.#requests.push(request);
+        return outcome;
+    }
+
+    async #perform(id: RemoteActionId, { report = true, expectedHead }: RemoteRequestOptions): Promise<RemoteOutcome> {
         const { key } = this.facts;
         const place = placeRef(key);
         const call = remoteCall(id);
-
-        this.running = id;
-        this.#forget();
 
         try {
             const result = await (call === 'fetch'
@@ -82,7 +106,9 @@ export class RemoteActions {
                     ? this.transport.updateGit(key.projectId, place)
                     : call === 'abort'
                       ? this.transport.abortGit(key.projectId, place)
-                      : this.transport.pushGit(key.projectId, place));
+                      : expectedHead === undefined
+                        ? this.transport.pushGit(key.projectId, place)
+                        : this.transport.pushGit(key.projectId, place, expectedHead));
 
             const notice = report ? remoteNotice(result) : undefined;
 
@@ -101,11 +127,6 @@ export class RemoteActions {
             });
 
             return { ok: false, failure };
-        } finally {
-            runInAction(() => {
-                this.running = undefined;
-            });
-            this.refresh();
         }
     }
 

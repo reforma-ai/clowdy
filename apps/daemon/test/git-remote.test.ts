@@ -17,7 +17,7 @@ import { GitRemote, remoteFailureLine } from '../src/git/remote';
 import { WriteEnvironment } from '../src/git/writeEnv';
 import { cleanTempDirs, git, makeRepo, startHarness, tempDir, waitFor } from './helpers';
 
-import type { GitRemoteAction, GitRemoteResult } from '@clowdy/protocol';
+import type { GitPushRequest, GitRemoteAction, GitRemoteResult } from '@clowdy/protocol';
 import type { Place } from '../src/domain/places';
 import type { Harness } from './helpers';
 
@@ -256,19 +256,19 @@ withScripts('POST /v1/projects/:id/git/fetch, pull and push', () => {
     async function open(path: string, h: Harness) {
         const { project } = h.ok('project.add', { folders: [path] });
         const folderId = project.folders[0].id as string;
-        const call = (action: GitRemoteAction, place: Record<string, string> = {}) =>
+        const call = (action: GitRemoteAction, place: Partial<GitPushRequest> = {}) =>
             h.fetch(`/v1/projects/${project.id}/git/${action}`, {
                 method: 'POST',
                 body: JSON.stringify({ folderId, ...place }),
             });
-        const result = async (action: GitRemoteAction, place: Record<string, string> = {}) => {
+        const result = async (action: GitRemoteAction, place: Partial<GitPushRequest> = {}) => {
             const response = await call(action, place);
 
             expect(response.status).toBe(200);
 
             return await json<GitRemoteResult>(response);
         };
-        const failure = async (action: GitRemoteAction, status: number, place: Record<string, string> = {}) => {
+        const failure = async (action: GitRemoteAction, status: number, place: Partial<GitPushRequest> = {}) => {
             const response = await call(action, place);
 
             expect(response.status).toBe(status);
@@ -740,6 +740,32 @@ withScripts('POST /v1/projects/:id/git/fetch, pull and push', () => {
 
             expect(error).toEqual({ code: 'conflict', message: '! [rejected] main -> main (fetch first)' });
             expect(git(origin, 'rev-parse', 'refs/heads/main')).toBe(theirs);
+        });
+
+        test('refuses a commit follow-up push when the branch or commit does not match', async () => {
+            const h = await start();
+            const { path, origin } = repository();
+            const { failure, result } = await open(path, h);
+            const original = git(origin, 'rev-parse', 'refs/heads/main');
+            const committed = commitFile(path, 'mine.txt');
+
+            git(path, 'switch', '-q', '-c', 'side');
+            const side = commitFile(path, 'side.txt');
+
+            const expectedHead = { branch: 'main', commit: committed };
+
+            expect(await failure('push', 409, { expectedHead })).toMatchObject({
+                message: 'The checkout switched from main to side',
+            });
+            expect(refsOf(origin)).not.toContain('refs/heads/side');
+
+            git(path, 'switch', '-q', 'main');
+            expect(await failure('push', 409, { expectedHead: { branch: 'main', commit: side } })).toMatchObject({
+                message: 'main changed after the commit',
+            });
+            expect(git(origin, 'rev-parse', 'refs/heads/main')).toBe(original);
+            expect(await result('push', { expectedHead })).toMatchObject({ action: 'push' });
+            expect(git(origin, 'rev-parse', 'refs/heads/main')).toBe(committed);
         });
 
         test('reports a failing pre-push hook by its own line', async () => {
