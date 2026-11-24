@@ -135,7 +135,7 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
                             )}
                         </span>
                         <Counts ahead={view.ahead} behind={view.behind} />
-                        {running !== undefined && <Spinner size="xs" className={styles.spinner} aria-hidden />}
+                        {running !== undefined && <Spinner size="xxs" className={styles.spinner} aria-hidden />}
                     </Button>
                 </Unavailable>
 
