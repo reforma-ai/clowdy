@@ -35,7 +35,6 @@ import { ChatMenu } from '../chats/ChatMenu';
 import { isRunActive } from '../chats/chatRun';
 import { perform } from '../chats/commands';
 import { deleteChat } from '../chats/deleteChat';
-import { threadsAtWork } from '../chats/runningAgentRows';
 import { workspaceHead } from '../openWith';
 import styles from './AgentList.module.css';
 import { ArchiveButton } from './ArchiveButton';
@@ -52,7 +51,7 @@ import {
     isActiveThread,
     orchestratorOf,
 } from './agentTree';
-import { ChatIcon } from './ChatIcon';
+import { ChatIcon, ChatStatus } from './ChatIcon';
 import { chatListPreferences } from './chatListPreferences';
 import { GroupFolderName } from './GroupFolderName';
 import { StarCard } from './StarCard';
@@ -348,16 +347,17 @@ export function AgentList({
 
     const renderRow = (row: AgentRow) => {
         const { chat } = row;
-        // A thread below the chat, at any depth, that waits for the person: its row is listed under a folded chat too, and the chat's dot says so. Else the
-        // same threads the strip above the message box lists, when they work.
-        const threads = project
-            .threadsBelow(chat.id)
-            .some(thread => thread.archivedAt === undefined && asksThePerson(thread, project.runs))
-            ? ('asking' as const)
-            : threadsAtWork(project.threadsOf(chat.id), project.runs).length > 0
-              ? ('working' as const)
-              : undefined;
-        const icon = <ChatIcon chat={chat} run={runOf(chat)} threads={threads} />;
+        const run = runOf(chat);
+        const busy = actions.busy(chat);
+        const threads = busy
+            ? project
+                  .threadsBelow(chat.id)
+                  .some(thread => thread.archivedAt === undefined && asksThePerson(thread, project.runs))
+                ? ('asking' as const)
+                : ('working' as const)
+            : undefined;
+        const status = busy ? <ChatStatus run={run} threads={threads} className={styles.archiveStatus} /> : undefined;
+        const icon = <ChatIcon chat={chat} run={run} threads={threads} showStatus={!busy || renamingId === chat.id} />;
 
         return (
             <GridListItem
@@ -377,12 +377,14 @@ export function AgentList({
                         <RowEnd
                             chat={chat}
                             actions={actions}
+                            busy={busy}
+                            status={status}
                             isOpen={menuOpenId === chat.id}
                             onOpenChange={open => setMenuOpenId(open ? chat.id : null)}
                         />
                     )
                 }
-                className={row.depth > 0 ? styles.nested : undefined}
+                className={styles.chatRow}
                 style={{ '--depth': row.depth } as CSSProperties}
                 // The row of an open menu, from its button or the right click, stays as if hovered: the pointer is in the menu, not on the row.
                 data-open={menuOpenId === chat.id || (contextMenu.isOpen && menuChat?.id === chat.id) || undefined}
@@ -606,48 +608,51 @@ function Fold({ row, icon, onToggle }: { row: AgentRow; icon: ReactNode; onToggl
     );
 }
 
-/** The end of a chat's row, on hover: Archive as a quick action, and the `⋯` menu button. */
+/** The activity indicator takes the archive shortcut's place while the chat or its threads are active. */
 function RowEnd({
     chat,
     actions,
+    busy,
+    status,
     isOpen,
     onOpenChange,
 }: {
     chat: Chat;
     actions: ChatActions;
+    busy: string | undefined;
+    status: ReactNode;
     isOpen: boolean;
     onOpenChange: (isOpen: boolean) => void;
 }) {
-    const busy = actions.busy(chat);
     const close = () => onOpenChange(false);
 
     return (
         // The buttons and the popover are React children of the row, so their clicks and keys would reach the row through the tree.
-        <span className={styles.end} {...ownEvents}>
-            <Button
-                variant="filling"
-                color="secondary"
-                size="xs"
-                iconOnly
-                aria-label="Archive"
-                tooltip={busy ?? 'Archive'}
-                isDisabled={busy !== undefined}
-                preventFocusOnPress
-                data-show={listBoxItemDataShow.itemBoth}
-                onPress={() => actions.archive(chat)}
-            >
-                <Archive />
-            </Button>
+        <span className={styles.chatActions} {...ownEvents}>
+            {status ?? (
+                <Button
+                    className={styles.rowAction}
+                    variant="filling"
+                    color="secondary"
+                    size="xs"
+                    iconOnly
+                    aria-label="Archive"
+                    tooltip="Archive"
+                    preventFocusOnPress
+                    onPress={() => actions.archive(chat)}
+                >
+                    <Archive />
+                </Button>
+            )}
             <PopoverTrigger isOpen={isOpen} onOpenChange={onOpenChange}>
                 <Button
+                    className={styles.rowAction}
                     variant="filling"
                     color="secondary"
                     size="xs"
                     iconOnly
                     aria-label="Chat actions"
                     preventFocusOnPress
-                    // Kept while the menu is open, though the pointer has left the row.
-                    data-show={isOpen ? undefined : listBoxItemDataShow.itemBoth}
                 >
                     <More />
                 </Button>
