@@ -90,6 +90,14 @@
     min-width: 0;
 }
 
+.groupHeading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-md);
+    min-width: 0;
+}
+
 /* One surface for the folder's worktrees, as Settings' folder card is: the rows bring no border of their own, hairlines join them. */
 .card {
     display: flex;

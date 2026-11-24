@@ -69,8 +69,8 @@ export interface FixtureData {
      * (`worktree`, `open` when it is left out). See `fixtureGitPullRequest`.
      */
     pullRequests: Record<string, { checkout?: FixturePullRequestScript; worktree?: FixturePullRequestScript }>;
-    /** What `workspace.remove` took out of each folder's git, by the folder's path (`FixtureRemovals`): the reads answer as if git no longer had it. A folder that is not listed lost nothing. */
-    removed?: Record<string, FixtureRemovals>;
+    /** Worktree and branch changes by repository path. */
+    worktreeEdits?: Record<string, FixtureWorktreeEdits>;
     statuses: Record<string, TaskStatus[]>;
     chats: Chat[];
     /** Every task of every project, the archived ones too: the snapshot leaves those out, and `getTaskDetail` and the archive's pages read them. */
@@ -677,13 +677,9 @@ const API_FILES = [
     'src/limits.ts',
 ];
 
-/**
- * What `workspace.remove` took out of a fixture folder's git. `fixtureFolderGit` is a function of the folder, so the removals are kept beside it and applied to what it lists:
- * the paths of the worktrees that are gone, the local branches that were deleted with them, and the branches that stay now that their worktree is gone (a branch git lists as a
- * local one once no worktree holds it).
- */
-export interface FixtureRemovals {
-    worktrees: string[];
+interface FixtureWorktreeEdits {
+    created: Array<{ path: string; branch: string }>;
+    removed: string[];
     deleted: string[];
     kept: string[];
 }
@@ -691,26 +687,28 @@ export interface FixtureRemovals {
 /**
  * What `GET git` answers for a fixture folder: no repository when `git` says nothing of it, else the branch it has checked out, a few more branches (local and
  * `origin`'s), `origin/main` as the default one, and two worktrees: the folder itself and one Clowdy made for a chat, with changes in it. The folder's own
- * `baseBranch` is the default one when the repository has it, as the daemon answers. `removals` are what `workspace.remove` took out since.
+ * `baseBranch` is the default one when the repository has it, as the daemon answers. `edits` include checkouts created or removed since.
  */
 export function fixtureFolderGit(
     path: string,
     head: { branch?: string; detached?: true } | undefined,
     baseBranch?: string,
-    removals?: FixtureRemovals
+    edits?: FixtureWorktreeEdits
 ): FolderGit {
     if (!head?.branch) return { isRepository: false };
 
     const name = path.split('/').filter(Boolean).at(-1) ?? 'folder';
+    const created = edits?.created.filter(worktree => !edits.removed.includes(worktree.path)) ?? [];
     const locals = [
         ...new Set([
             ...(head.detached ? [] : [head.branch]),
             'main',
             'dev',
             'feature/payments',
-            ...(removals?.kept ?? []),
+            ...(edits?.kept ?? []),
+            ...created.map(worktree => worktree.branch),
         ]),
-    ].filter(branch => !removals?.deleted.includes(branch));
+    ].filter(branch => !edits?.deleted.includes(branch));
     const branches = [
         ...locals.map(branch => ({ name: branch, remote: false })),
         ...['origin/main', 'origin/dev'].map(branch => ({ name: branch, remote: true })),
@@ -734,7 +732,8 @@ export function fixtureFolderGit(
                 main: false,
                 dirty: true,
             },
-        ].filter(worktree => !removals?.worktrees.includes(worktree.path)),
+            ...created.map(worktree => ({ ...worktree, head: 'a1b2c3d', main: false, dirty: false })),
+        ].filter(worktree => !edits?.removed.includes(worktree.path)),
     };
 }
 
@@ -753,14 +752,14 @@ const FIXTURE_CHANGES = 3;
  */
 export function fixtureProjectWorktrees(
     project: Pick<Project, 'id' | 'folders'>,
-    data: Pick<FixtureData, 'git' | 'worktrees' | 'removed' | 'chats'>
+    data: Pick<FixtureData, 'git' | 'worktrees' | 'worktreeEdits' | 'chats'>
 ): FolderWorktrees[] {
     const names = folderNames(project.folders);
 
     return project.folders.map((folder, index): FolderWorktrees => {
         const group = { folderId: folder.id, name: names[index] };
-        const removals = data.removed?.[folder.path];
-        const repository = fixtureFolderGit(folder.path, data.git[folder.path], folder.settings?.baseBranch, removals);
+        const edits = data.worktreeEdits?.[folder.path];
+        const repository = fixtureFolderGit(folder.path, data.git[folder.path], folder.settings?.baseBranch, edits);
 
         if (!repository.isRepository) return { ...group, isRepository: false, worktrees: [] };
 
@@ -773,9 +772,9 @@ export function fixtureProjectWorktrees(
                     ...(branch !== undefined && { branch }),
                     head,
                     changes: dirty ? FIXTURE_CHANGES : 0,
-                    merged: false,
+                    merged: !dirty,
                 })),
-            ...(data.worktrees?.[folder.path] ?? []).filter(worktree => !removals?.worktrees.includes(worktree.path)),
+            ...(data.worktrees?.[folder.path] ?? []).filter(worktree => !edits?.removed.includes(worktree.path)),
         ];
         const own = repository.worktrees.find(worktree => worktree.main)!;
         const main: WorktreeInfo = {
@@ -1360,17 +1359,17 @@ export function fixtureChatWorkspace(
         chatId,
         head,
         known,
-        removed,
+        edits,
     }: {
         projectName: string;
         folder: ProjectFolder;
         chatId: string;
         head: FixtureData['git'][string] | undefined;
         known: readonly ChatWorkspace[];
-        removed?: FixtureRemovals;
+        edits?: FixtureWorktreeEdits;
     }
 ): { workspace: ChatWorkspace } | { error: string } {
-    const repository = fixtureFolderGit(folder.path, head, undefined, removed);
+    const repository = fixtureFolderGit(folder.path, head, undefined, edits);
 
     if (!repository.isRepository) return { error: `${folder.path} is not a git repository` };
 
