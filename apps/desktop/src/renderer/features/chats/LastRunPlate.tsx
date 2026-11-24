@@ -1,16 +1,14 @@
-import { Button } from '@clowdy/components/Button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@clowdy/components/Collapsible';
 import { GridList, GridListItem } from '@clowdy/components/List';
 import { Scrollable } from '@clowdy/components/Scrollable';
 import { Text } from '@clowdy/components/Text';
-import { ChevronDown } from '@clowdy/icons/14';
 
 import { useProjectState, useRootStore } from '../../stores';
 import { chatFolder } from '../agents/agentTree';
 import { CHANGE_KIND_VIEW, filesWords, splitPath } from '../changes/gitSummary';
 import { openRunInChanges } from '../changes/openRunInChanges';
 import { chatPlace, isPlaceReady } from '../sidePanel/currentPlace';
-import { ComposerBanner } from './ComposerBanner';
+import { ComposerBanner, ComposerBannerHeader } from './ComposerBanner';
 import styles from './LastRunPlate.module.css';
 import { isLastRunCurrent, lastRunScope, plateFilesOf, plateTotals, rowCounts, rowLabel } from './lastRunRows';
 import { useLastRunChanges } from './useLastRunChanges';
@@ -81,35 +79,26 @@ function RunPlate({ changes, onOpen }: { changes: RepositoryChanges; onOpen: (pa
                 {({ state }) => (
                     <>
                         <CollapsibleTrigger asChild>
-                            <Button
-                                variant="filling"
-                                color="secondary"
-                                size="sm"
-                                className={styles.header}
-                                contentClassName={styles.headerContent}
+                            <ComposerBannerHeader
+                                expanded={state.isExpanded}
+                                summary={
+                                    <>
+                                        <Text variant="xs" color="secondary">
+                                            {filesWords(changes.fileCount)}
+                                        </Text>
+                                        <span className={styles.counts}>
+                                            <Text variant="xs" color="success">
+                                                {totals.additions}
+                                            </Text>
+                                            <Text variant="xs" color="danger">
+                                                {totals.deletions}
+                                            </Text>
+                                        </span>
+                                    </>
+                                }
                             >
-                                <Text variant="xs" weight="medium">
-                                    Changes
-                                </Text>
-                                <span className={styles.summary}>
-                                    <Text variant="xs" color="secondary">
-                                        {filesWords(changes.fileCount)}
-                                    </Text>
-                                    <span className={styles.counts}>
-                                        <Text variant="xs" color="success">
-                                            {totals.additions}
-                                        </Text>
-                                        <Text variant="xs" color="danger">
-                                            {totals.deletions}
-                                        </Text>
-                                    </span>
-                                    <ChevronDown
-                                        className="chevron next"
-                                        aria-expanded={state.isExpanded}
-                                        aria-hidden
-                                    />
-                                </span>
-                            </Button>
+                                Changes
+                            </ComposerBannerHeader>
                         </CollapsibleTrigger>
                         {state.isExpanded && (
                             <CollapsibleContent asChild>

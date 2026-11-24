@@ -522,7 +522,7 @@ describe('a thread', () => {
         const toggle = banner.querySelector<HTMLButtonElement>('button[aria-expanded]')!;
 
         expect(toggle.getAttribute('aria-expanded')).toBe('false');
-        expect(banner.textContent).toContain('Agents running · 2');
+        expect(toggle.textContent).toBe('Agents2 running');
         expect(banner.textContent).not.toContain('Fix the price rounding');
 
         await act(async () => toggle.click());
