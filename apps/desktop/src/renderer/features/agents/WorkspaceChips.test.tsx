@@ -262,7 +262,7 @@ describe('the control', () => {
         await chooseMode('New worktree');
 
         expect(ui().draftWorkspace).toEqual({ mode: 'new' });
-        expect(chip()?.textContent).toBe('New worktreefrom origin/main');
+        expect(chip()?.textContent).toBe('Worktreefrom origin/main');
         expect(chip()?.getAttribute('aria-label')).toBe('Where it runs: New worktree from origin/main');
         expect(dimParts()).toEqual(['from origin/main']);
         expect(container.querySelector('[aria-label^="Branch"]')).toBeNull();
@@ -526,7 +526,7 @@ describe('the branch a new worktree starts from', () => {
             await settle();
 
             expect(ui().draftWorkspace).toEqual({ mode: 'new', base: 'origin/dev' });
-            expect(chip()?.textContent).toBe('New worktreefrom origin/dev');
+            expect(chip()?.textContent).toBe('Worktreefrom origin/dev');
             expect(options()).toEqual([]);
             expect(menuItems()).toEqual([]);
         });
@@ -775,7 +775,7 @@ describe('Folder settings…', () => {
 
         expect(opener).toHaveBeenCalledOnce();
         expect(ui().draftWorkspace).toEqual({ mode: 'new', base: 'dev' });
-        expect(chip()?.textContent).toBe('New worktreefrom dev');
+        expect(chip()?.textContent).toBe('Worktreefrom dev');
         // The base list is not what the press opens.
         expect(options()).toEqual([]);
 
@@ -1284,7 +1284,7 @@ describe('the folder of the page', () => {
         await draw(() => ui().show(view));
         await settle();
 
-        expect(chip()?.textContent).toBe('New worktreefrom dev');
+        expect(chip()?.textContent).toBe('Worktreefrom dev');
     });
 });
 

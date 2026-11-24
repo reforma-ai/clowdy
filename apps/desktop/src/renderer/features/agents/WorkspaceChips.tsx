@@ -165,7 +165,7 @@ interface WorkspaceChipProps extends FolderChoices {
 /**
  * The one control of the new chat's place: a pill that says where the chat will work and opens a menu to change it. Closed it says the branch alone for the folder's own
  * checkout (`Switch to <branch>` when the person picked another branch than the one the folder is on: the daemon switches the checkout when the chat is made, and the pill turns to the warning
- * colour while something is in the way), `New worktree` and `from <base>` for a worktree to be made, and `Worktree` and the branch for one that exists. The menu has `Main worktree` (the folder itself;
+ * colour while something is in the way), `Worktree` and `from <base>` for a worktree to be made, and `Worktree` and the branch for one that exists. The menu has `Main worktree` (the folder itself;
  * the branch at the row's end is a chip of its own, pressed, or with the right arrow on the row, it opens the list of the folder's branches at the menu's side, the way the new worktree's base does:
  * it follows the Changes branch picker and checks the folder's current branch),
  * `New worktree` (pressing the row chooses it; the base at its end is a chip of its own whose press, or the right arrow on the row, opens the searchable list of the folder's branches to start from, in
@@ -285,7 +285,7 @@ function WorkspaceChip({
     const trigger =
         choice?.mode === 'new'
             ? {
-                  label: 'New worktree',
+                  label: 'Worktree',
                   trail: base === undefined ? undefined : `from ${base}`,
                   ariaLabel: `Where it runs: New worktree${base === undefined ? '' : ` from ${base}`}`,
               }
