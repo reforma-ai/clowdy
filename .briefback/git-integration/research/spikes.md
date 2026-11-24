@@ -248,7 +248,7 @@ Limits of this recommendation:
 
 ### Facts of the machine (read only)
 
-- `commit.gpgsign=true`, `gpg.format=ssh`, `user.signingkey` is a public key file inside Secretive's container, `gpg.ssh.allowedsignersfile` is set, and `url.git@github.com:.insteadof=https://github.com/`. `origin` is `git@github.com:kachurun/clowdy.git`.
+- `commit.gpgsign=true`, `gpg.format=ssh`, `user.signingkey` is a public key file inside Secretive's container, `gpg.ssh.allowedsignersfile` is set, and `url.git@github.com:.insteadof=https://github.com/`. `origin` is `git@github.com:reforma-ai/clowdy.git`.
 - `~/.ssh/config` has `Host github.com` (`User git`, `IdentitiesOnly yes`) and `Host *` with `IdentityAgent` set to Secretive's socket.
 - The current shell's `SSH_AUTH_SOCK` is Secretive's socket. `launchctl getenv SSH_AUTH_SOCK` is launchd's own listener socket (`/var/run/com.apple.launchd.<id>/Listeners`), which is what an app opened from Finder inherits.
 - `$SHELL -ilc 'printf %s "$PATH"'` (what `apps/desktop/src/main/loginShell.ts` runs) gave the owner's PATH, with Homebrew's `git` first and `/usr/bin/ssh-keygen` and `/usr/bin/ssh` from the system.

@@ -66,7 +66,7 @@ The main process owns everything about versions and updates, and none of it reac
 - `apps/desktop/src/shared/bridge.ts`, `src/preload/index.ts` — the bridge
 - `apps/desktop/src/renderer/root.ts` — the "Update ready" toast
 - `apps/desktop/scripts/build.ts`, `main-bundle.ts` — baking `__CLOWDY_RELEASE_REPO__`
-- `.briefback/releases-updates/research/` and `plan.md` — earlier research and plan of the update system (repo `kachurun/clowdy`, public later)
+- `.briefback/releases-updates/research/` and `plan.md` — earlier research and plan of the update system (repo `reforma-ai/clowdy`, public later)
 
 ## Open questions
 

@@ -2,7 +2,7 @@
 
 What the repository owner sets up once so that GitHub builds Clowdy's installers, publishes OTA bundles, and installed apps update themselves. How the pipeline works is in [AGENTS.md → Releases](AGENTS.md#releases); this page only covers what to configure, where, and in which order.
 
-Everything here lives in the repository settings on GitHub (`kachurun/clowdy` → **Settings**). Nothing goes into `.env` files or the code.
+Everything here lives in the repository settings on GitHub (`reforma-ai/clowdy` → **Settings**). Nothing goes into `.env` files or the code.
 
 | Name | Kind | Needed for | When |
 | --- | --- | --- | --- |
@@ -29,8 +29,8 @@ bun -e "const { generateKeyPairSync } = require('node:crypto'); const { writeFil
 Put the files into GitHub, either with `gh`:
 
 ```sh
-gh secret set CLOWDY_OTA_SIGNING_KEY --repo kachurun/clowdy < ota-private.pem
-gh variable set CLOWDY_OTA_PUBLIC_KEY --repo kachurun/clowdy < ota-public.pem
+gh secret set CLOWDY_OTA_SIGNING_KEY --repo reforma-ai/clowdy < ota-private.pem
+gh variable set CLOWDY_OTA_PUBLIC_KEY --repo reforma-ai/clowdy < ota-public.pem
 ```
 
 or by hand: paste the whole of `ota-private.pem`, `BEGIN` and `END` lines included, as the secret `CLOWDY_OTA_SIGNING_KEY`, and `ota-public.pem` as the variable `CLOWDY_OTA_PUBLIC_KEY`.
