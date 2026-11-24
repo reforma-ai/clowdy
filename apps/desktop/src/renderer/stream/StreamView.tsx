@@ -85,7 +85,7 @@ export interface StreamViewProps {
     active?: boolean;
     /**
      * The run is going: ends the stream with a live line. A string replaces the default "Working…", and says the run waits for something else (a free slot, background
-     * work) instead of working. `true` is the agent at work: the run of tool calls at the end of the stream stays open to be watched, and any other value closes it.
+     * work) instead of working. With `true`, a collapsed tool group at the end can show its latest running tool on the live line.
      */
     working?: boolean | string;
     /** The person answered a `question` item. */
@@ -147,11 +147,13 @@ export function StreamView({
     const lastWithActions = messageActions ? blocks.findLast(hasMessageActions)?.item.id : undefined;
     const forkPoint = forkedFrom && forkPointId(items, forkedFrom.atSeq);
     const last = items.at(-1)?.body;
+    const lastBlock = blocks.at(-1);
+    const liveToolGroup = working === true && lastBlock?.kind === 'tools' ? lastBlock : undefined;
     // A message or a thought that is still arriving carries its own marker, and so does a compaction that runs (Reforma hides its pending line the same way).
     const live =
         ((last?.kind === 'assistant' || last?.kind === 'reasoning') && !last.done) ||
         (last?.kind === 'tool' && last.name === COMPACT_TOOL && last.state === 'running');
-    const showWorking = Boolean(working) && !live;
+    const showWorking = Boolean(working) && !live && !liveToolGroup;
 
     // The frame of an edit stands in for a bubble that is drawn again when the frame goes. That bubble is no news, so it must not rise into place a second time,
     // and a frame closed with the focus in it (Escape, the X) hands the focus to its message's Edit button, where the person pressed it, instead of dropping it.
@@ -301,7 +303,7 @@ export function StreamView({
                 <div ref={scrollRef} className={styles.scroll}>
                     <ContentColumn ref={contentRef} className={styles.content}>
                         {items.length === 0 && emptyState}
-                        {blocks.map((block, index) => {
+                        {blocks.map(block => {
                             switch (block.kind) {
                                 case 'worked':
                                     return (
@@ -321,13 +323,9 @@ export function StreamView({
                                         </Fragment>
                                     );
                                 case 'tools':
-                                    // The run at the end, while the agent is at work, is what it is doing now: it stays open, and closes when the agent goes on or waits for something else.
                                     return (
                                         <Fragment key={block.key}>
-                                            <ToolGroup
-                                                items={block.items}
-                                                live={working === true && index === blocks.length - 1}
-                                            />
+                                            <ToolGroup items={block.items} live={block === liveToolGroup} />
                                             {endsHistory(block) && divider}
                                         </Fragment>
                                     );

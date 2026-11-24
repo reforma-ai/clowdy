@@ -77,23 +77,22 @@ describe('summarizeTools', () => {
         expect(summarizeTools([call('create_task'), call('task_list'), run()])).toBe('Used 2 tools, ran 1 command');
     });
 
-    it('puts a verb in the present tense while a call of its kind is going, and not the others', () => {
+    it('counts only finished calls, even when the same kind of work is still running', () => {
         expect(
             summarizeTools([run(), run(), call('Bash', { command: 'bun test' }, { state: 'running' }), read('a.ts')])
-        ).toBe('Running 3 commands, explored 1 file');
+        ).toBe('Ran 2 commands, explored 1 file');
         expect(summarizeTools([read('a.ts'), call('Read', { file_path: 'b.ts' }, { state: 'running' }), run()])).toBe(
-            'Exploring 2 files, ran 1 command'
+            'Explored 1 file, ran 1 command'
         );
     });
 
-    it('puts editing and the other tools in the present tense too', () => {
+    it('uses a generic heading until the first call finishes', () => {
         expect(
             summarizeTools([
                 call('Edit', { file_path: 'a.ts' }, { state: 'running' }),
                 call('create_task', {}, { state: 'running' }),
-                run(),
             ])
-        ).toBe('Editing 1 file, using 1 tool, ran 1 command');
+        ).toBe('Tools');
     });
 
     it('counts what failed at the end, and not what the person stopped', () => {

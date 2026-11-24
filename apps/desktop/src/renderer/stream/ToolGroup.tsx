@@ -4,40 +4,36 @@ import { ReasoningLine } from './ReasoningLine';
 import { ToolCard } from './ToolCard';
 import { summarizeTools } from './toolGroups';
 import { Worked } from './Worked';
+import { WorkingLine } from './WorkingLine';
 
 import type { StreamItem } from '@clowdy/protocol';
 
 export interface ToolGroupProps {
     /** The calls of the run and the thoughts between them, in order: tool and reasoning items only (`groupToolRuns`). */
     items: StreamItem[];
-    /** The run is what the agent is doing now, the end of the stream while it works: its calls show. Once the agent goes on to something else the group closes. */
+    /** This group is at the end of the stream while the agent is working. */
     live?: boolean;
 }
 
 /**
  * A run of tool calls, and the thoughts between them, behind one line that says what the calls did (`Ran 18 commands, explored 3 files`), so a turn reads as
- * its phases and not as a list of commands. Closed while it is over; open while it is the live end of the stream, so the person can watch the calls run. A press on the line decides for good.
+ * its phases and not as a list of commands. A closed live group previews the most recent call still running.
  */
 export function ToolGroup({ items, live = false }: ToolGroupProps) {
-    const [chosen, setChosen] = useState<boolean>();
+    const [open, setOpen] = useState(false);
     const calls = items.flatMap(item => (item.body.kind === 'tool' ? [item.body] : []));
-    const last = items.at(-1)?.body;
-    // A thought that goes on at the live end is what the agent does now, and the stream's Working line is not drawn under it: a group the person closed shows it by its line.
-    const thinking = live && last?.kind === 'reasoning' && !last.done;
+    const running = live && !open ? calls.findLast(call => call.state === 'running') : undefined;
 
     return (
-        <Worked
-            label={summarizeTools(calls)}
-            open={chosen ?? live}
-            onOpenChange={setChosen}
-            shimmer={thinking || calls.some(call => call.state === 'running')}
-            ruled
-        >
-            {items.map(item => {
-                if (item.body.kind === 'tool') return <ToolCard key={item.id} call={item.body} />;
+        <>
+            <Worked label={summarizeTools(calls)} open={open} onOpenChange={setOpen} ruled>
+                {items.map(item => {
+                    if (item.body.kind === 'tool') return <ToolCard key={item.id} call={item.body} />;
 
-                return item.body.kind === 'reasoning' ? <ReasoningLine key={item.id} body={item.body} /> : null;
-            })}
-        </Worked>
+                    return item.body.kind === 'reasoning' ? <ReasoningLine key={item.id} body={item.body} /> : null;
+                })}
+            </Worked>
+            {live && <WorkingLine tool={running} />}
+        </>
     );
 }

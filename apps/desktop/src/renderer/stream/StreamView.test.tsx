@@ -143,40 +143,20 @@ describe("the agent's reasoning", () => {
         expect(container.textContent).toContain('whoami');
     });
 
-    it('is open in the live group while the agent thinks after its calls', async () => {
-        await act(async () =>
-            root.render(
-                <StreamView
-                    items={[asked, bash(1, 'pwd'), bash(2, 'whoami'), thought(3, 'What next?', false)]}
-                    active
-                    working
-                />
-            )
-        );
-
-        expect(line('Ran 2 commands')!.getAttribute('aria-expanded')).toBe('true');
-        expect(line('Thinking…')).toBeDefined();
-    });
-
-    it('keeps the line of a group the person closed shimmering while the agent thinks in it, since no Working line stands in for it then', async () => {
+    it('keeps the loader visible while the agent thinks inside a tool group', async () => {
         const stream = [asked, bash(1, 'pwd'), bash(2, 'whoami')];
 
         await act(async () =>
             root.render(<StreamView items={[...stream, thought(3, 'What next?', false)]} active working />)
         );
+        expect(line('Ran 2 commands')!.getAttribute('aria-expanded')).toBe('false');
+        expect(line('Thinking…')).toBeUndefined();
+        expect(container.textContent).toContain('Working…');
+
         await act(async () => line('Ran 2 commands')!.click());
 
-        expect(line('Ran 2 commands')!.getAttribute('aria-expanded')).toBe('false');
-        expect(container.textContent).not.toContain('Working…');
-        expect(line('Ran 2 commands')!.querySelector('[style*="shimmer"]')).not.toBeNull();
-
-        // The thought ends: the line rests and the Working line is back.
-        await act(async () =>
-            root.render(<StreamView items={[...stream, thought(3, 'What next?', true, 2000)]} active working />)
-        );
-
-        expect(line('Ran 2 commands')!.querySelector('[style*="shimmer"]')).toBeNull();
-        expect(container.textContent).toContain('Working…');
+        expect(line('Thinking…')).toBeDefined();
+        expect(container.querySelector('[role="status"] #progress-loader-a')).not.toBeNull();
     });
 
     it('leaves a thought and a single call as two rows of the fold, with no group around them', async () => {
@@ -275,6 +255,7 @@ describe('runs of tool calls', () => {
     const said = (n: number, text: string, done = true) => item(n, { kind: 'assistant', text, done });
     const group = (label: string) =>
         [...container.querySelectorAll('button')].find(button => button.textContent === label);
+    const status = () => container.querySelector('[role="status"]');
     const asked = item(0, { kind: 'user', text: 'Check the box' });
 
     it('draws calls that follow one another under one line, closed once the agent has gone on, and a press opens them', async () => {
@@ -313,26 +294,29 @@ describe('runs of tool calls', () => {
         );
     });
 
-    it('keeps the run at the end of a stream that is going open, tells what runs now, and closes it once the agent goes on', async () => {
-        const going = [asked, bash(1, 'pwd'), bash(2, 'bun test', 'running')];
+    it('starts the live phase closed and moves a finished edit from the loader into the summary', async () => {
+        const read = item(1, {
+            kind: 'tool',
+            toolCallId: 'read',
+            name: 'Read',
+            input: { file_path: 'bar.ts' },
+            state: 'done',
+        });
+        const edit = (state: 'running' | 'done') =>
+            item(2, { kind: 'tool', toolCallId: 'edit', name: 'Edit', input: { file_path: 'foo.ts' }, state });
 
-        await act(async () => root.render(<StreamView items={going} active working />));
+        await act(async () => root.render(<StreamView items={[asked, read, edit('running')]} active working />));
 
-        expect(group('Running 2 commands')).toBeDefined();
-        expect(container.textContent).toContain('bun test');
+        expect(group('Explored 1 file')!.getAttribute('aria-expanded')).toBe('false');
+        expect(status()?.getAttribute('aria-label')).toBe('Editing file foo.ts');
+        expect(status()?.querySelector('#progress-loader-a')).not.toBeNull();
+        expect(container.textContent).not.toContain('bar.ts');
 
-        await act(async () =>
-            root.render(
-                <StreamView
-                    items={[asked, bash(1, 'pwd'), bash(2, 'bun test'), said(3, 'Tests pass.', false)]}
-                    active
-                    working
-                />
-            )
-        );
+        await act(async () => root.render(<StreamView items={[asked, read, edit('done')]} active working />));
 
-        expect(group('Ran 2 commands')).toBeDefined();
-        expect(container.textContent).not.toContain('bun test');
+        expect(group('Explored 1 file, edited 1 file')!.getAttribute('aria-expanded')).toBe('false');
+        expect(status()?.getAttribute('aria-label')).toBe('Working…');
+        expect(container.textContent).not.toContain('foo.ts');
     });
 
     it('is closed in a stream that is over, whatever it ends with', async () => {
@@ -342,26 +326,22 @@ describe('runs of tool calls', () => {
         expect(container.textContent).not.toContain('whoami');
     });
 
-    it('keeps what the person chose when the run goes on', async () => {
-        const stream = (extra: StreamItem[] = []) => [asked, bash(1, 'pwd'), bash(2, 'whoami', 'running'), ...extra];
+    it('previews only the most recent running call and falls back to the previous one when it finishes', async () => {
+        const drawCalls = (state: 'running' | 'done') =>
+            act(async () =>
+                root.render(
+                    <StreamView items={[asked, bash(1, 'whoami', 'running'), bash(2, 'date', state)]} active working />
+                )
+            );
 
-        await act(async () => root.render(<StreamView items={stream()} active working />));
-        await act(async () => group('Running 2 commands')!.click());
-
+        await drawCalls('running');
+        expect(group('Tools')!.getAttribute('aria-expanded')).toBe('false');
+        expect(status()?.getAttribute('aria-label')).toBe('Running command date');
         expect(container.textContent).not.toContain('whoami');
 
-        // A third call joins the group: it stays closed, for the person closed it.
-        await act(async () =>
-            root.render(
-                <StreamView
-                    items={[asked, bash(1, 'pwd'), bash(2, 'whoami'), bash(3, 'date', 'running')]}
-                    active
-                    working
-                />
-            )
-        );
-
-        expect(group('Running 3 commands')).toBeDefined();
+        await drawCalls('done');
+        expect(group('Ran 1 command')!.getAttribute('aria-expanded')).toBe('false');
+        expect(status()?.getAttribute('aria-label')).toBe('Running command whoami');
         expect(container.textContent).not.toContain('date');
     });
 
@@ -380,14 +360,14 @@ describe('runs of tool calls', () => {
         expect(container.textContent).toContain('whoami');
     });
 
-    it('closes the run when the agent stops to ask the person, though the stream is still going', async () => {
+    it('removes the loader when the agent stops to ask the person', async () => {
         const question = item(3, { kind: 'question', questionId: 'q1', text: 'Which one?', options: [] });
 
         await act(async () =>
             root.render(<StreamView items={[asked, bash(1, 'pwd'), bash(2, 'whoami')]} active working />)
         );
 
-        expect(container.textContent).toContain('whoami');
+        expect(status()?.getAttribute('aria-label')).toBe('Working…');
 
         await act(async () =>
             root.render(<StreamView items={[asked, bash(1, 'pwd'), bash(2, 'whoami'), question]} active />)
@@ -395,10 +375,10 @@ describe('runs of tool calls', () => {
 
         expect(group('Ran 2 commands')).toBeDefined();
         expect(container.textContent).toContain('Which one?');
-        expect(container.textContent).not.toContain('whoami');
+        expect(status()).toBeNull();
     });
 
-    it('closes the run while the stream waits for something other than the agent: background work, a free slot, the person', async () => {
+    it('replaces the tool preview with the wait status when the agent stops working', async () => {
         const stream = [asked, bash(1, 'pwd'), bash(2, 'bun test', 'running')];
 
         await act(async () => root.render(<StreamView items={stream} active working />));
@@ -409,15 +389,16 @@ describe('runs of tool calls', () => {
         await act(async () => root.render(<StreamView items={stream} active working="Waiting for background work…" />));
 
         expect(container.textContent).not.toContain('bun test');
-        expect(group('Running 2 commands')!.getAttribute('aria-expanded')).toBe('false');
+        expect(group('Ran 1 command')!.getAttribute('aria-expanded')).toBe('false');
+        expect(status()?.getAttribute('aria-label')).toBe('Waiting for background work…');
 
         await act(async () => root.render(<StreamView items={[asked, bash(1, 'pwd'), bash(2, 'bun test')]} active />));
 
-        expect(container.textContent).not.toContain('bun test');
         expect(group('Ran 2 commands')).toBeDefined();
+        expect(status()).toBeNull();
     });
 
-    it('draws two phases with the commentary between them, and only the one at the end open while the agent works', async () => {
+    it('keeps successive phases folded and puts the latest action below the last summary', async () => {
         const stream = [
             asked,
             bash(1, 'pwd'),
@@ -432,13 +413,15 @@ describe('runs of tool calls', () => {
         const text = container.textContent ?? '';
 
         expect(group('Ran 2 commands')!.getAttribute('aria-expanded')).toBe('false');
-        expect(group('Running 2 commands')!.getAttribute('aria-expanded')).toBe('true');
+        expect(group('Ran 1 command')!.getAttribute('aria-expanded')).toBe('false');
         expect(text.indexOf('Ran 2 commands')).toBeLessThan(text.indexOf('That is the right box'));
-        expect(text.indexOf('That is the right box')).toBeLessThan(text.indexOf('Running 2 commands'));
+        expect(text.indexOf('That is the right box')).toBeLessThan(text.indexOf('Ran 1 command'));
         expect(text).not.toContain('whoami');
-        expect(text).toContain('bun run build');
+        expect(text).not.toContain('bun run build');
+        expect(status()?.textContent).toContain('bun test');
+        expect(status()?.nextElementSibling).toBeNull();
 
-        // The agent writes more: the second phase closes too, and a third begins.
+        // The agent writes more and starts a third phase.
         await act(async () =>
             root.render(
                 <StreamView
@@ -457,27 +440,31 @@ describe('runs of tool calls', () => {
 
         expect(container.querySelectorAll('button[aria-expanded]').length).toBeGreaterThanOrEqual(3);
         expect(container.textContent).not.toContain('bun run build');
-        expect(container.textContent).toContain('git status');
+        expect(container.textContent).not.toContain('git status');
+        expect(status()?.textContent).toContain('git diff');
     });
 
-    it('says on the line whether the calls show, and shimmers it only while a call runs', async () => {
+    it('hides the tool preview when the group opens and restores it when the group closes', async () => {
         await act(async () =>
             root.render(<StreamView items={[asked, bash(1, 'pwd'), bash(2, 'bun test', 'running')]} active working />)
         );
 
-        const running = group('Running 2 commands')!;
+        const trigger = group('Ran 1 command')!;
 
-        expect(running.getAttribute('aria-expanded')).toBe('true');
-        expect(running.querySelector('[style*="shimmer"]')).not.toBeNull();
+        expect(trigger.getAttribute('aria-expanded')).toBe('false');
+        expect(status()?.textContent).toContain('bun test');
 
-        await act(async () => running.click());
+        await act(async () => trigger.click());
 
-        expect(group('Running 2 commands')!.getAttribute('aria-expanded')).toBe('false');
+        expect(trigger.getAttribute('aria-expanded')).toBe('true');
+        expect(status()?.getAttribute('aria-label')).toBe('Working…');
+        expect(container.textContent).toContain('bun test');
+        expect(container.textContent).toContain('pwd');
 
-        await act(async () => root.render(<StreamView items={[asked, bash(1, 'pwd'), bash(2, 'bun test')]} active />));
-
-        expect(group('Ran 2 commands')!.getAttribute('aria-expanded')).toBe('false');
-        expect(group('Ran 2 commands')!.querySelector('[style*="shimmer"]')).toBeNull();
+        await act(async () => trigger.click());
+        expect(trigger.getAttribute('aria-expanded')).toBe('false');
+        expect(status()?.textContent).toContain('bun test');
+        expect(container.textContent).not.toContain('pwd');
     });
 
     it('keeps the group a person opened open when the agent goes on', async () => {
@@ -496,7 +483,7 @@ describe('runs of tool calls', () => {
         );
 
         expect(container.textContent).toContain('whoami');
-        expect(group('Running 2 commands')).toBeDefined();
+        expect(group('Ran 1 command')!.getAttribute('aria-expanded')).toBe('false');
     });
 
     it('puts the divider of a fork after the group that holds its point', async () => {
