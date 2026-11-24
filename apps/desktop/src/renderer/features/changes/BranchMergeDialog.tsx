@@ -18,6 +18,7 @@ import styles from './BranchMergeDialog.module.css';
 import { commitsWords } from './changesActions';
 import { confirmAbortMerge } from './confirmAbortMerge';
 import { type GitPlaceKey, gitFactsOf, placeRef } from './gitFacts';
+import { sourceControlPreferences } from './sourceControlPreferences';
 
 import type {
     GitBranches,
@@ -156,6 +157,7 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
     const previewRound = useRef(0);
 
     const fetchOrigin = direction === 'from' && hasOrigin;
+    const autoPush = sourceControlPreferences.autoPush;
     const choices = useMemo(
         () => choicesOf(listing, current, fetchOrigin && !fetchFailed),
         [listing, current, fetchOrigin, fetchFailed]
@@ -174,16 +176,27 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
         let active = true;
 
         const load = async () => {
+            const place = placeRef(placeKey);
             try {
                 if (fetchOrigin) {
-                    const fetch = await remote.run('fetch', { report: false });
+                    const wasSyncing = remote.running !== undefined;
+                    const fetching = remote.run('fetch', { report: false });
+
+                    if (wasSyncing) {
+                        // Local refs can be picked while the fetch waits for origin. The full list below retries if this read fails.
+                        const local = await transport.getGitBranches(projectId, place).catch(() => undefined);
+                        if (!active) return;
+                        if (local?.isRepository) setListing({ ...local, remote: [] });
+                    }
+
+                    const fetch = await fetching;
 
                     if (!active) return;
 
                     if (!fetch.ok) setFetchFailed({ message: "Couldn't fetch origin", hint: fetch.failure.message });
                 }
 
-                const branches = await transport.getGitBranches(projectId, placeRef(placeKey));
+                const branches = await transport.getGitBranches(projectId, place);
 
                 if (active) setListing(branches);
             } catch (error) {
@@ -249,19 +262,34 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
     const run = async (request: MergeAction) => {
         if (pending) return;
 
-        setPending(request.action);
+        let action = request.action;
+        setPending(action);
         setFailure(undefined);
 
         try {
-            const response = await transport.branchMergeGit(projectId, placeRef(placeKey), request);
+            const place = placeRef(placeKey);
+            let response = await transport.branchMergeGit(projectId, place, request);
 
-            if (response.state === 'preview') throw new Error("Couldn't apply the branch action");
-            const canPush = response.state === 'done' && direction === 'into' && response.canPush;
-            if (response.state === 'conflicts' || canPush) {
+            if (response.state === 'conflicts') {
                 setResult(response);
                 return;
             }
 
+            if (action === 'merge' && response.state === 'done' && response.canPush) {
+                if (autoPush || direction === 'into') setResult(response);
+                if (autoPush) {
+                    action = 'push';
+                    setPending(action);
+                    response = await transport.branchMergeGit(projectId, place, {
+                        action,
+                        target: response.target,
+                        commit: response.commit,
+                    });
+                    if (response.state !== 'pushed') throw new Error("Couldn't push the merged branch");
+                } else if (direction === 'into') return;
+            }
+
+            if (response.state === 'preview') throw new Error("Couldn't apply the branch action");
             modal.cancel();
             if (response.state === 'aborted') {
                 toast.info({
@@ -276,8 +304,9 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
                 toast.success({ message });
             }
         } catch (error) {
-            if (request.action === 'merge') setPreview(undefined);
-            setFailure(failureOf(error));
+            if (action === 'merge') setPreview(undefined);
+            const cause = failureOf(error);
+            setFailure(action === 'push' ? { ...cause, message: `Push failed: ${cause.message}` } : cause);
         } finally {
             gitFactsOf(transport).refreshFolder(placeKey);
             setPending(undefined);
@@ -423,7 +452,9 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
                             isPending={pending === 'merge'}
                             onPress={merge}
                         >
-                            {actionLabel}
+                            {autoPush && hasOrigin && preview && preview.mode !== 'up-to-date' && !blocked
+                                ? `${actionLabel} & Push`
+                                : actionLabel}
                         </Button>
                         <MenuTrigger>
                             <Button

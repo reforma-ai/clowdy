@@ -2,6 +2,8 @@
 
 ## Decisions
 
+- [Push after commits and branch merges](decisions/2026-11-24-push-after-commit-and-merge.md) records the default Source Control preference and the destination of each push. Status: accepted.
+
 - [Changes tab render performance](decisions/2026-11-24-changes-tab-render-performance.md) records why far diff cards are empty boxes and unchanged git answers keep their objects. Status: accepted.
 
 - [Durable provider questions](decisions/2026-11-24-durable-provider-questions.md) records provider capabilities and how questions survive an agent without form elicitation. Status: accepted.
@@ -14,6 +16,10 @@
 - [One provider for commit messages](decisions/2026-11-24-choose-one-commit-provider.md) records the Source Control selector and how older settings map to it. Status: accepted.
 
 ## Checks
+
+- [Source Control during fetch and push](checks/2026-11-24-source-control-during-sync.md) covers branch selection and queued actions while sync is pending. Status: passed.
+
+- [Automatic push in Source Control](checks/2026-11-24-auto-push-in-source-control.md) covers both merge directions, the saved setting and recovery after rejection. Status: passed with limits.
 
 - [Changes tab performance](checks/2026-11-24-changes-tab-performance.md) covers render time before and after for 200 files, and the tests. Status: passed with limits.
 

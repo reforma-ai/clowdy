@@ -57,8 +57,8 @@ function FailureLines({
                     color="secondary"
                     size="xs"
                     className={styles.fetch}
-                    isDisabled={remote.busy && remote.running !== 'fetch'}
-                    isPending={remote.running === 'fetch'}
+                    isDisabled={draft.model.facts.switching}
+                    isPending={remote.isPending('fetch')}
                     spinnerPlacement="start"
                     onPress={() => void draft.fetchAfterRejection()}
                 >
@@ -223,8 +223,8 @@ function ConflictActions({
 }
 
 /**
- * The sidebar's commit checklist and message. Cmd or Ctrl and Enter makes a local commit.
- * Hold Shift on the button or use its menu to commit and then push or publish the branch.
+ * The sidebar's commit checklist and message. Cmd or Ctrl and Enter uses the same action as the button.
+ * Shift or the menu offers the other action for this commit.
  * A clean checkout still has a message field and a disabled commit button.
  */
 export function CommitBox({ model }: { model: PlaceChanges }) {
@@ -290,12 +290,17 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
         ? mergeStatus.truncated && `Showing merge files from the first ${mergeStatus.entries.length} changed files`
         : draft.truncated && `Showing the first ${files.length} files`;
     const hasChangesToCommit = hasFiles || merging !== undefined;
-    const commitAndPush = shiftHeld && hasFiles && !merging;
+    const pushesByDefault = draft.pushesByDefault;
+    const commitAndPush = (merging ? draft.concluding : ticked > 0) && pushesByDefault !== shiftHeld;
     const target = commitTarget(status);
-    const label = merging ? 'Complete merge' : commitAndPush ? 'Commit & Push' : commitLabel(ticked);
+    const localLabel = merging ? 'Complete merge' : commitLabel(ticked);
+    const pushLabel = merging ? 'Complete merge & Push' : 'Commit & Push';
+    const label = commitAndPush ? pushLabel : localLabel;
+    const alternateBlock = pushesByDefault ? undefined : draft.pushBlock;
     const reason = hasChangesToCommit
         ? (draft.commitReason ?? (commitAndPush && draft.busy === undefined ? draft.pushBlock : undefined))
         : undefined;
+    const commit = (shift: boolean) => void draft.commit(shift ? !pushesByDefault : undefined);
 
     return (
         <section className={styles.root} aria-label="Commit">
@@ -402,7 +407,7 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
                 onKeyDown={event => {
                     if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
                         event.preventDefault();
-                        void draft.commit();
+                        commit(event.shiftKey);
                     }
                 }}
             />
@@ -422,12 +427,12 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
                                 : undefined
                         }
                         tooltipPlacement="top"
-                        onPress={event => void draft.commit(commitAndPush && event.shiftKey)}
+                        onPress={event => commit(event.shiftKey)}
                     >
                         {label}
                     </Button>
                 </Unavailable>
-                {!merging && (
+                {(!merging || draft.concluding) && (
                     <MenuTrigger>
                         <Button
                             variant="bordered"
@@ -442,14 +447,20 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
                             <ChevronDown aria-hidden="true" />
                         </Button>
                         <Popover placement="top end" spacing="xs" width={220}>
-                            <Menu aria-label="Commit" size="sm" onAction={() => void draft.commit(true)}>
+                            <Menu aria-label="Commit" size="sm" onAction={() => void draft.commit(!pushesByDefault)}>
                                 <MenuItem
-                                    id="commit-and-push"
-                                    icon={<ArrowUp />}
-                                    text="Commit & Push"
-                                    description={draft.pushBlock}
-                                    stacked={draft.pushBlock !== undefined}
-                                    isDisabled={draft.pushBlock !== undefined}
+                                    id={pushesByDefault ? 'local' : 'push'}
+                                    icon={pushesByDefault ? undefined : <ArrowUp />}
+                                    text={
+                                        pushesByDefault
+                                            ? merging
+                                                ? 'Complete merge locally'
+                                                : 'Commit locally'
+                                            : pushLabel
+                                    }
+                                    description={alternateBlock}
+                                    stacked={alternateBlock !== undefined}
+                                    isDisabled={alternateBlock !== undefined}
                                 />
                             </Menu>
                         </Popover>

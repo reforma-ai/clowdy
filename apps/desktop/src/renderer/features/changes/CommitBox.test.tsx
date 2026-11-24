@@ -20,6 +20,7 @@ import { CommitDraft, commitDraftOf } from './CommitDraft';
 import { type GitPlaceKey, gitFactsOf } from './gitFacts';
 import { placeChangesOf } from './PlaceChanges';
 import { type RemoteOutcome, remoteActionsOf } from './RemoteActions';
+import { sourceControlPreferences } from './sourceControlPreferences';
 
 import type { GitChangedFile, GitStatus } from '@clowdy/protocol';
 import type { FixtureGitWritesOptions } from '../../daemon/fixtureGitWrites';
@@ -142,6 +143,7 @@ afterEach(() => {
     container.remove();
     stop?.();
     store.dispose();
+    sourceControlPreferences.setAutoPush(true);
 });
 
 describe('the commit box', () => {
@@ -328,7 +330,7 @@ describe('the commit box', () => {
     });
 
     it.each(['metaKey', 'ctrlKey'] as const)(
-        'commits with Enter and the %s held in the message box',
+        'commits and pushes with Enter and the %s held in the message box',
         async modifier => {
             await start();
 
@@ -349,8 +351,10 @@ describe('the commit box', () => {
                 ['notes.md', 'src/booking/price.ts', 'src/limits.ts'],
                 'chore: notes'
             );
-            // The shortcut is Commit and no more: the branch is sent only from the menu's entry.
-            expect(push).not.toHaveBeenCalled();
+            expect(push).toHaveBeenCalledWith(FIXTURE_PROJECT_ID, PLACE, {
+                branch: 'clowdy/ab12cd34',
+                commit: expect.stringMatching(/^[0-9a-f]{40}$/),
+            });
         }
     );
 
@@ -529,7 +533,7 @@ describe('the commit box', () => {
 
             expect(box()?.textContent).toContain('No staged files');
             expect(message().value).toBe('Merge main');
-            expect(buttonOf('Complete merge')?.disabled).toBe(false);
+            expect(buttonOf('Complete merge & Push')?.disabled).toBe(false);
         } finally {
             status.mockRestore();
         }
@@ -620,10 +624,16 @@ describe('the commit box', () => {
             expect(tickOf('src/limits.ts').checked).toBe(true);
             expect(box()?.textContent).not.toContain('Conflicts resolved');
             expect(buttonOf('Abort merge')).toBeUndefined();
-            expect(buttonOf('Complete merge')?.disabled).toBe(false);
-            await press(buttonOf('Complete merge')!);
+            expect(buttonOf('Complete merge & Push')?.disabled).toBe(false);
+            const push = vi.spyOn(transport, 'pushGit');
+            await press(buttonOf('Complete merge & Push')!);
+            await settle();
             expect(commit).toHaveBeenCalledWith(FIXTURE_PROJECT_ID, PLACE, expect.any(Array), 'Merge both changes', {
                 conclude: true,
+            });
+            expect(push).toHaveBeenCalledWith(FIXTURE_PROJECT_ID, PLACE, {
+                branch: 'clowdy/ab12cd34',
+                commit: expect.stringMatching(/^[0-9a-f]{40}$/),
             });
         } finally {
             status.mockRestore();
@@ -662,6 +672,7 @@ describe('Commit & Push', () => {
 
     /** Opens the menu beside Commit. */
     async function openMenu() {
+        act(() => sourceControlPreferences.setAutoPush(false));
         await press(more());
         await settle();
     }
@@ -689,7 +700,10 @@ describe('Commit & Push', () => {
             'feat: surcharge'
         );
         expect(push).toHaveBeenCalledTimes(1);
-        expect(push).toHaveBeenCalledWith(FIXTURE_PROJECT_ID, PLACE);
+        expect(push).toHaveBeenCalledWith(FIXTURE_PROJECT_ID, PLACE, {
+            branch: 'clowdy/ab12cd34',
+            commit: expect.stringMatching(/^[0-9a-f]{40}$/),
+        });
         expect(message().value).toBe('');
         expect(commitButton()?.textContent).toBe('Commit 0 files');
         expect(alert()).toBeNull();
@@ -760,7 +774,34 @@ describe('Commit & Push', () => {
         expect(commit).not.toHaveBeenCalled();
     });
 
-    it('commits as Commit does when it is the Commit button that is pressed', async () => {
+    it.each(['Shift', 'menu'])('allows a one-time local commit through %s with automatic push on', async control => {
+        await start();
+        await type('feat: surcharge');
+
+        const push = vi.spyOn(transport, 'pushGit');
+
+        if (control === 'Shift') {
+            act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', shiftKey: true })));
+            expect(commitButton()?.textContent).toBe('Commit 3 files');
+            await press(commitButton()!, true);
+            act(() => window.dispatchEvent(new KeyboardEvent('keyup', { key: 'Shift' })));
+        } else {
+            await press(more());
+            const local = [...document.querySelectorAll('[role="menuitem"]')].find(
+                item => item.textContent?.trim() === 'Commit locally'
+            );
+            expect(local).toBeDefined();
+            await press(local!);
+        }
+        await settle();
+
+        expect(push).not.toHaveBeenCalled();
+        expect(message().value).toBe('');
+        expect(sourceControlPreferences.autoPush).toBe(true);
+    });
+
+    it('commits locally when automatic push is off', async () => {
+        sourceControlPreferences.setAutoPush(false);
         await start();
         await type('feat: surcharge');
 
@@ -777,7 +818,8 @@ describe('Commit & Push', () => {
 describe('the commit button and the line under the box', () => {
     const reasonStop = () => container.querySelector<HTMLElement>('[role="button"][aria-disabled="true"]');
 
-    it('counts the selected files', async () => {
+    it('counts the selected files for a local commit', async () => {
+        sourceControlPreferences.setAutoPush(false);
         await start();
 
         expect(commitButton()?.textContent).toBe('Commit 3 files');
@@ -789,7 +831,8 @@ describe('the commit button and the line under the box', () => {
         expect(commitButton()?.textContent).toBe('Commit 0 files');
     });
 
-    it('switches the contrast button to Commit & Push while Shift is held', async () => {
+    it('switches the contrast button to Commit & Push while Shift is held and automatic push is off', async () => {
+        sourceControlPreferences.setAutoPush(false);
         await start();
         await type('feat: surcharge');
         const commit = vi.spyOn(transport, 'commitGit');
@@ -839,7 +882,7 @@ describe('the commit button and the line under the box', () => {
         expect(reasonStop()?.contains(commitButton()!)).toBe(true);
         // One tab stop that reads out what the button is, and the reason is its description.
         expect(reasonStop()?.getAttribute('tabindex')).toBe('0');
-        expect(reasonStop()?.getAttribute('aria-label')).toBe('Commit 3 files');
+        expect(reasonStop()?.getAttribute('aria-label')).toBe('Commit & Push');
 
         await type('feat: surcharge');
         expect(draft.commitReason).toBeUndefined();
@@ -866,7 +909,6 @@ describe('the commit button and the line under the box', () => {
             },
         });
 
-        expect(commitButton()?.textContent).toBe('Commit 3 files');
         expect(container.querySelector('[role="note"]')?.textContent).toBe('Committing to main, the base branch');
     });
 });
@@ -875,13 +917,7 @@ describe('a push that origin turned down for newer commits, after a commit', () 
     it("has a Fetch origin button beside git's line, which fetches and takes the line away; the sidebar's button then says what to do", async () => {
         await start({ gitWrites: { remote: 'rejected' } });
         await type('feat: surcharge');
-        await press(container.querySelector<HTMLButtonElement>('button[aria-label="More ways to commit"]')!);
-        await settle();
-        await press(
-            [...document.querySelectorAll<HTMLElement>('[role="menu"] [role="menuitem"]')].find(item =>
-                item.textContent?.includes('Commit & Push')
-            )!
-        );
+        await press(commitButton()!);
         await settle();
         await settle();
 
@@ -909,13 +945,7 @@ describe('a push that origin turned down for newer commits, after a commit', () 
     it('has no Fetch origin button beside a push that failed for another cause', async () => {
         await start({ gitWrites: { remote: 'signing' } });
         await type('feat: surcharge');
-        await press(container.querySelector<HTMLButtonElement>('button[aria-label="More ways to commit"]')!);
-        await settle();
-        await press(
-            [...document.querySelectorAll<HTMLElement>('[role="menu"] [role="menuitem"]')].find(item =>
-                item.textContent?.includes('Commit & Push')
-            )!
-        );
+        await press(commitButton()!);
         await settle();
         await settle();
 
@@ -963,7 +993,6 @@ describe('the draft of a commit', () => {
         const generateGitMessage = vi.fn(async () => ({ message: 'feat: written' }));
         const refresh = vi.fn();
         const remote = {
-            busy: false,
             run: vi.fn(
                 async (action: RemoteActionId, _options?: { report?: boolean }): Promise<RemoteOutcome> => ({
                     ok: true,
@@ -1022,7 +1051,10 @@ describe('the draft of a commit', () => {
         pushed.draft.setMessage('feat: add');
         await pushed.draft.commit(true);
 
-        expect(pushed.remote.run).toHaveBeenCalledWith('push', { report: false });
+        expect(pushed.remote.run).toHaveBeenCalledWith('push', {
+            report: false,
+            expectedHead: { branch: 'feature', commit: 'a'.repeat(40) },
+        });
         expect(pushed.draft.failure).toBeUndefined();
         expect(pushed.draft.message).toBe('');
         expect(pushed.refresh).toHaveBeenCalledTimes(1);
@@ -1031,7 +1063,10 @@ describe('the draft of a commit', () => {
 
         published.draft.setMessage('feat: add');
         await published.draft.commit(true);
-        expect(published.remote.run).toHaveBeenCalledWith('publish', { report: false });
+        expect(published.remote.run).toHaveBeenCalledWith('publish', {
+            report: false,
+            expectedHead: { branch: 'feature', commit: 'a'.repeat(40) },
+        });
         expect(published.draft.failure).toBeUndefined();
     });
 
@@ -1087,7 +1122,7 @@ describe('the draft of a commit', () => {
         expect(slow.draft.busy).toBeUndefined();
     });
 
-    it('does not commit and push where the push would not be taken, and while another action of the place runs', async () => {
+    it('offers a local commit when the branch must pull before pushing', async () => {
         const behind = draftOver(['a.ts'], { upstream: { name: 'origin/feature', ahead: 0, behind: 2 } });
 
         behind.draft.setMessage('feat: add');
@@ -1098,15 +1133,6 @@ describe('the draft of a commit', () => {
         // A plain commit is still there.
         await behind.draft.commit();
         expect(behind.commitGit).toHaveBeenCalledTimes(1);
-
-        const busy = draftOver(['a.ts']);
-
-        busy.draft.setMessage('feat: add');
-        expect(busy.draft.canCommitAndPush).toBe(true);
-        busy.remote.busy = true;
-        expect(busy.draft.pushBlock).toBe('An action is running');
-        await busy.draft.commit(true);
-        expect(busy.commitGit).not.toHaveBeenCalled();
     });
 
     it('does nothing when it may not: no message, nothing ticked, or while something is going on', async () => {

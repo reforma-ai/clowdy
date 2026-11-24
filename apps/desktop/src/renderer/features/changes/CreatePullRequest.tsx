@@ -7,14 +7,12 @@ import { compareLink } from '../openWith/openTarget';
 import { CommitCountBadge } from './CommitCountBadge';
 import styles from './CreatePullRequest.module.css';
 import { canCreatePullRequest, commitsWords, githubBaseName } from './changesActions';
-import { useRemoteActions } from './useRemoteActions';
 
 import type { FolderGit } from '../openWith/openTarget';
 import type { PlaceFacts } from './gitFacts';
 
 /** Opens GitHub's compare page for a published branch that can be proposed and has no known pull request. */
 export function CreatePullRequest({ facts, git }: { facts: PlaceFacts; git: FolderGit | undefined }) {
-    const remote = useRemoteActions(facts);
     const status = facts.status.value;
 
     if (
@@ -44,7 +42,7 @@ export function CreatePullRequest({ facts, git }: { facts: PlaceFacts; git: Fold
             size="sm"
             className={styles.button}
             truncate
-            isDisabled={remote.busy}
+            isDisabled={facts.switching}
             aria-label="Create PR"
             aria-description={comparison}
             tooltip={comparison ? `${tooltip} · ${comparison}` : tooltip}

@@ -109,8 +109,8 @@ function SyncWords({ label, line, tone }: SyncCopy) {
 /**
  * The one button that moves the branch: its label is Publish, Pull or Push when the branch needs to sync. Otherwise it shows `Update from <base>` if the base is ahead, or `Fetch origin`.
  * Under the label is when the last fetch was (`Last fetched 3 minutes ago`, `Never fetched`) or the one thing to know of the state. A branch that diverged is `Pull origin`: the pull merges. It is
- * `syncButton`'s rule. While an action runs the label is its progress with a spinner, and nothing can be pressed; where there is nothing to press (no origin, no branch) it is off, and its
- * tooltip says why. The dropdown keeps the other actions, with Fetch first. When the base is ahead but an upstream action has priority, Update sits below the split button.
+ * `syncButton`'s rule. The oldest pending action gets the main button's spinner. The dropdown still offers the other actions, with Fetch first.
+ * When the base is ahead but an upstream action has priority, Update sits below the split button.
  * Git failures remain selectable and a push rejected for newer commits offers Fetch. Status and the pull request are read again when an action ends.
  */
 export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
@@ -123,19 +123,21 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
 
     if (!view) return null;
 
-    const actions = remoteActions(status, remote.busy);
+    const actions = remoteActions(status, facts.switching);
     const update = updateFromBase(status);
     const { running, failure, notice } = remote;
-    const off = view.action === undefined && running === undefined;
+    const off = running === undefined && (view.action === undefined || facts.switching);
+    const offHint = facts.switching ? 'The branch is being changed' : view.title;
     const current = status?.isRepository && status.head.kind === 'branch' ? status.head.name : undefined;
     const hasOrigin = status?.isRepository === true && status.origin;
     const updateCount = update ? `${commitsWords(update.behind)} to merge from the base` : undefined;
     const updateTooltip = update && `${update.label} · ${updateCount}`;
     const tooltip = view.kind === 'update' ? updateTooltip : view.title;
+    const updateBlocked = !hasOrigin || facts.switching || remote.isPending('update');
 
     const run = (key: string) => {
         if (key === 'merge-from' || key === 'merge-into') {
-            if (current !== undefined && !remote.busy) {
+            if (current !== undefined && !facts.switching) {
                 openBranchMergeDialog({
                     transport,
                     remote,
@@ -153,7 +155,7 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
     return (
         <div className={styles.root}>
             <div className={styles.split}>
-                <Unavailable label={view.label} hint={off ? view.title : undefined} className={styles.host}>
+                <Unavailable label={view.label} hint={off ? offHint : undefined} className={styles.host}>
                     <Tooltip
                         content={off || running !== undefined ? undefined : tooltip}
                         isDisabled={off || running !== undefined}
@@ -212,29 +214,24 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
                                             </Text>
                                         ) : undefined
                                     }
-                                    isDisabled={action.disabled}
+                                    isDisabled={action.disabled || remote.isPending(action.id)}
                                 />
                             ))}
                             <MenuSeparator />
                             {update && (
-                                <MenuItem
-                                    id="update"
-                                    icon={<Vsc />}
-                                    text={update.label}
-                                    isDisabled={!hasOrigin || remote.busy}
-                                />
+                                <MenuItem id="update" icon={<Vsc />} text={update.label} isDisabled={updateBlocked} />
                             )}
                             <MenuItem
                                 id="merge-from"
                                 icon={<ArrowDownRight />}
                                 text={MERGE_LABELS.from}
-                                isDisabled={current === undefined || remote.busy}
+                                isDisabled={current === undefined || facts.switching}
                             />
                             <MenuItem
                                 id="merge-into"
                                 icon={<ArrowUpRight />}
                                 text={MERGE_LABELS.into}
-                                isDisabled={current === undefined || remote.busy}
+                                isDisabled={current === undefined || facts.switching}
                             />
                         </Menu>
                     </Popover>
@@ -247,7 +244,7 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
                     size="sm"
                     className={styles.update}
                     contentClassName={styles.content}
-                    isDisabled={remote.busy}
+                    isDisabled={updateBlocked}
                     aria-label={update.label}
                     aria-description={updateCount}
                     tooltip={updateTooltip}
@@ -275,7 +272,7 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
                             color="secondary"
                             size="xs"
                             className={styles.fetch}
-                            isDisabled={remote.busy}
+                            isDisabled={facts.switching || remote.isPending('fetch')}
                             onPress={() => void remote.run('fetch')}
                         >
                             Fetch origin

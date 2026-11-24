@@ -21,6 +21,7 @@ import type {
     GitFileSides,
     GitMessage,
     GitPullRequestInfo,
+    GitPushRequest,
     GitRemoteResult,
     GitScope,
     GitStatus,
@@ -196,7 +197,11 @@ export interface Transport {
      * Sends the place's branch to its upstream on origin (`POST git/push`), or publishes it (`-u`, `published: true`) when it has none. Never forced, never with a tag. Rejects as `pullGit` does, and
      * with 409 and git's own line for a push that origin rejects (`! [rejected] main -> main (fetch first)`), a hook or no permission.
      */
-    pushGit: (projectId: ProjectId, place: PlaceRef) => Promise<GitRemoteResult>;
+    pushGit: (
+        projectId: ProjectId,
+        place: PlaceRef,
+        expectedHead?: GitPushRequest['expectedHead']
+    ) => Promise<GitRemoteResult>;
     /**
      * The branches a place can switch to (`GET git/branches`): the local ones with the current and the default one, the upstream and the worktree that has one checked out, the branches
      * only `origin` has, and the last few the place was on, newest first; or that the folder is no repository. Read when asked, never pushed, nothing fetched: a branch changes in a

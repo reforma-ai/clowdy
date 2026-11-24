@@ -1959,10 +1959,13 @@ describe('HttpTransport git remote actions', () => {
         expect(await transport.fetchGit('prj a', { folderId: 'fld/b' })).toEqual(done);
         expect(await transport.pullGit('prj a', { folderId: 'fld/b', workspaceId: 'wks 1' })).toEqual(done);
         expect(await transport.pushGit('prj_a', { folderId: 'fld_b' })).toEqual(done);
+        const expectedHead = { branch: 'feature', commit: 'a'.repeat(40) };
+        expect(await transport.pushGit('prj_a', { folderId: 'fld_b' }, expectedHead)).toEqual(done);
         expect(sent.map(request => [request.url, request.method, request.body])).toEqual([
             ['http://127.0.0.1:4310/v1/projects/prj%20a/git/fetch', 'POST', { folderId: 'fld/b' }],
             ['http://127.0.0.1:4310/v1/projects/prj%20a/git/pull', 'POST', { folderId: 'fld/b', workspaceId: 'wks 1' }],
             ['http://127.0.0.1:4310/v1/projects/prj_a/git/push', 'POST', { folderId: 'fld_b' }],
+            ['http://127.0.0.1:4310/v1/projects/prj_a/git/push', 'POST', { folderId: 'fld_b', expectedHead }],
         ]);
     });
 
