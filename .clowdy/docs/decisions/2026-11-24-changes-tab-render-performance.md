@@ -28,4 +28,4 @@ The render paths explain the slowdown during everyday work. Large lists also cos
 
 ## Consequences
 
-The visible behaviour of the tab stays the same. The cards far from the screen hold no controls until they come near. A regression test counts the renders of these events.
+The visible behaviour of the tab stays the same. The cards far from the screen hold no controls until they come near. Tests check that a card follows only its own file and that a far card is an empty box until it comes near.
