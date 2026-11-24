@@ -5,6 +5,7 @@ import { Modal, useModalContext } from '@clowdy/components/Modal';
 import { Popover } from '@clowdy/components/Popover';
 import { Spinner } from '@clowdy/components/Spinner';
 import { Text } from '@clowdy/components/Text';
+import { toast } from '@clowdy/components/Toast';
 import { AttentionCircle, Check, ChevronDown, Close } from '@clowdy/icons/14';
 import { errorMessage } from '@clowdy/lib';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
@@ -31,7 +32,7 @@ import type { RemoteActions } from './RemoteActions';
 export const MERGE_LABELS = { from: 'Merge from branch…', into: 'Merge into branch…' } as const;
 
 type MergeDirection = GitBranchMergeSelection['direction'];
-type MergeOutcome = Exclude<GitBranchMergeResult, GitBranchMergePreview>;
+type MergeOutcome = Extract<GitBranchMergeResult, { state: 'conflicts' | 'done' }>;
 type MergeAction = Exclude<GitBranchMergeRequest, { action: 'preview' }>;
 
 interface MergeOptions {
@@ -236,6 +237,15 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
         }
     };
 
+    const source = preview?.source ?? (direction === 'from' ? (choice?.label ?? '…') : current);
+    const target = preview?.target ?? (direction === 'into' ? (choice?.label ?? '…') : current);
+    const mergeMessage = (branch: string) =>
+        strategy === 'rebase'
+            ? `Rebased ${branch} onto ${source}`
+            : strategy === 'squash'
+              ? `Squashed into ${branch}`
+              : `Merged into ${branch}`;
+
     const run = async (request: MergeAction) => {
         if (pending) return;
 
@@ -246,7 +256,25 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
             const response = await transport.branchMergeGit(projectId, placeRef(placeKey), request);
 
             if (response.state === 'preview') throw new Error("Couldn't apply the branch action");
-            setResult(response);
+            const canPush = response.state === 'done' && direction === 'into' && response.canPush;
+            if (response.state === 'conflicts' || canPush) {
+                setResult(response);
+                return;
+            }
+
+            modal.cancel();
+            if (response.state === 'aborted') {
+                toast.info({
+                    message:
+                        response.operation === 'rebase'
+                            ? `Rebase of ${response.target} aborted`
+                            : `Merge into ${response.target} aborted`,
+                });
+            } else {
+                const message =
+                    response.state === 'pushed' ? `Pushed ${response.target} to origin` : mergeMessage(response.target);
+                toast.success({ message });
+            }
         } catch (error) {
             if (request.action === 'merge') setPreview(undefined);
             setFailure(failureOf(error));
@@ -269,8 +297,6 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
         });
     };
 
-    const source = preview?.source ?? (direction === 'from' ? (choice?.label ?? '…') : current);
-    const target = preview?.target ?? (direction === 'into' ? (choice?.label ?? '…') : current);
     const actionLabel =
         strategy !== 'merge'
             ? STRATEGIES[strategy].label
@@ -382,21 +408,7 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
             )}
             {result?.state === 'done' && (
                 <Text variant="sm" role="status">
-                    {strategy === 'rebase'
-                        ? `Rebased ${result.target} onto ${source}`
-                        : strategy === 'squash'
-                          ? `Squashed into ${result.target}`
-                          : `Merged into ${result.target}`}
-                </Text>
-            )}
-            {result?.state === 'pushed' && (
-                <Text variant="sm" role="status">{`Pushed ${result.target} to origin`}</Text>
-            )}
-            {result?.state === 'aborted' && (
-                <Text variant="sm" role="status">
-                    {result.operation === 'rebase'
-                        ? `Rebase of ${result.target} aborted`
-                        : `Merge into ${result.target} aborted`}
+                    {mergeMessage(result.target)}
                 </Text>
             )}
             {failure && <FailureText failure={failure} />}
@@ -481,7 +493,7 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
                         {result.operation === 'rebase' ? 'Abort rebase' : 'Abort merge'}
                     </Button>
                 )}
-                {result?.state === 'done' && direction === 'into' && result.canPush && (
+                {result?.state === 'done' && (
                     <Button
                         size="md"
                         color="contrast"
