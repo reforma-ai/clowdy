@@ -83,6 +83,27 @@ onPosix('runProgram, what a program leaves in its group', () => {
         await waitFor(() => !alive(pid), 'the leftover to be killed', 5000);
     });
 
+    test('does not spare what a stopped program left: the daemon stopping kills it as before, grace or not', async () => {
+        // The program goes on a TERM, as git does, and its leftover ignores it.
+        const fake = program(
+            "trap 'exit 0' TERM\n( trap '' TERM; exec sleep 30 ) > /dev/null 2>&1 &\necho $! > \"$1/leftover.pid\"\nwhile :; do sleep 0.05; done"
+        );
+        const stopper = new AbortController();
+        const running = run(fake, { signal: stopper.signal, stopSignal: 'SIGTERM', leftoverGraceMs: 8000 });
+
+        // A script that was just written can take a while to start the first time it runs.
+        await waitFor(
+            () => existsSync(join(fake.dir, 'leftover.pid')) && pidIn(fake.dir),
+            'the program to start',
+            10_000
+        );
+        stopper.abort();
+
+        expect((await running).error).toBe('stopped');
+        // Far inside the 8 s of the grace, and inside the 2 s the stop itself allows.
+        await waitFor(() => !alive(pidIn(fake.dir)), 'the leftover to be killed', 1500);
+    });
+
     test('kills a leftover at once when no grace is asked for, as every other caller gets', async () => {
         const fake = program('sleep 30 > /dev/null 2>&1 &\necho $! > "$1/leftover.pid"');
 

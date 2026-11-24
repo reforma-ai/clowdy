@@ -34,7 +34,8 @@ export interface RunOptions {
      * `maintenance run --auto --detach` and exits, and that child holds `objects/maintenance.lock` until it has left the group with `setsid` and finished; a kill that lands
      * first leaves the lock for good. The result does not wait for the grace: it comes when the pipes close, which is at the exit unless a leftover holds them, and then at the
      * end of the grace, when the leftover is killed. Not used on Windows, which has no groups: the tree of a pid that is gone is not worth a `taskkill` a second later, when
-     * the pid may be another process's.
+     * the pid may be another process's, nor after the program was stopped (`timeoutMs`, `signal`). The timer does not keep the daemon alive, so a leftover that is still there
+     * when the daemon exits within the grace is left to finish.
      */
     leftoverGraceMs?: number;
 }
@@ -44,9 +45,9 @@ const STOP_GRACE_MS = 2000;
 
 /**
  * The `leftoverGraceMs` of every `git` the daemon runs. Measured on a Linux container with git 2.56.1, six busy loops on one CPU and 960 fetches for each value: the pipes of a
- * git close after it exits with a median of 0 ms, p95 90 ms, p99 200 ms and a worst of 0.6 to 1.1 s; locks were left behind with no grace (2 of 16 repositories) and with 5 ms (1),
- * and by none from 20 ms up. A second is five times the p99 and as long as the worst, and it costs nothing when nothing is left: the call returns when the pipes close, not
- * when the grace ends.
+ * git close after it exits with a median of 0 ms, p95 90 ms, p99 200 ms and a worst of 0.6 to 1.1 s; locks were left behind with no grace (2 and 15 of 16 repositories in two runs)
+ * and with 5 ms (1), and by none from 20 ms up, though the pipes took longer than that now and then. A second is five times the p99 and fifty times the shortest grace that left
+ * nothing, and it costs nothing when nothing is left: the call returns when the pipes close, not when the grace ends.
  */
 export const LEFTOVER_GRACE_MS = 1000;
 
@@ -166,9 +167,10 @@ export function runProgram(
         });
         child.once('error', error => finish({ code: null, error: error.message }));
         // What the program left running goes with it, at once: a leftover that holds the pipes open would keep `close` from ever coming. With a grace it goes at the end of it, and
-        // the call is answered then too, with the program's own code, so a leftover that holds the pipes still cannot keep it waiting past the grace.
+        // the call is answered then too, with the program's own code, so a leftover that holds the pipes still cannot keep it waiting past the grace. A program that was stopped
+        // (the deadline, the daemon stopping) is not spared: it was told to go, and what it left goes with it as before.
         child.once('exit', code => {
-            if (!spare) {
+            if (!spare || settled) {
                 killGroup();
 
                 return;
@@ -184,7 +186,7 @@ export function runProgram(
             clearTimeout(grace);
 
             // With a grace, what is left in the group is killed at the end of it; when nothing is left (the common case), there is nothing to wait for and the timer goes.
-            if (!spare) {
+            if (leftover === undefined) {
                 killGroup();
             } else if (child.pid === undefined || !processGroupAlive(child.pid)) {
                 clearTimeout(leftover);
