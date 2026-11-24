@@ -1,8 +1,10 @@
 import { Checkbox, Commit, Terminal } from '@clowdy/icons/14';
 import { File, Folder, Settings } from '@clowdy/icons/16';
+import { useRef } from 'react';
 
 import { commandTooltip } from '../../hotkeys';
 import { RailItem } from '../../shared/RailItem';
+import { useFileDragHover } from '../../shared/useFileDragHover';
 import { useRootStore } from '../../stores';
 import { SETTINGS_COMMAND } from '../settings/commands';
 import { SIDE_PANEL_TAB_LABELS, sidePanelTabCommand } from './commands';
@@ -33,6 +35,17 @@ const TABS = {
 export function SidePanelRail() {
     const root = useRootStore();
     const { available, railShown, open, tab: shown, toggleTab } = useSidePanel();
+    const tabs = useRef<HTMLElement>(null);
+    useFileDragHover(
+        element => {
+            const button = element.closest<HTMLElement>('[data-drag-hover-key]');
+            return button && tabs.current?.contains(button) ? button.dataset.dragHoverKey : undefined;
+        },
+        key => {
+            const tab = key as SidePanelTab;
+            if (!open || tab !== shown) toggleTab(tab);
+        }
+    );
 
     if (!railShown) return null;
 
@@ -40,11 +53,12 @@ export function SidePanelRail() {
         <div className={styles.rail}>
             <SidePanelCorner />
             {available && (
-                <nav className={styles.tabs} aria-label="Panel tabs">
+                <nav ref={tabs} className={styles.tabs} aria-label="Panel tabs">
                     {panelOrder.order.map(tab => (
                         <RailItem
                             key={tab}
                             label={SIDE_PANEL_TAB_LABELS[tab]}
+                            dragHoverKey={tab}
                             icon={TABS[tab].icon}
                             size={TABS[tab].size}
                             current={open && tab === shown}

@@ -20,6 +20,7 @@ export interface RailItemProps {
     /** Beside which edge of the item the tooltip opens: away from the rail's own edge of the window. */
     tooltipPlacement?: ComponentProps<typeof Tooltip>['placement'];
     className?: string;
+    dragHoverKey?: string;
     onPress: () => void;
 }
 
@@ -34,6 +35,7 @@ export function RailItem({
     tooltip,
     tooltipPlacement = 'right',
     className,
+    dragHoverKey,
     onPress,
 }: RailItemProps) {
     return (
@@ -43,6 +45,7 @@ export function RailItem({
                 className={cn(styles.item, accent && styles.accent, className)}
                 disabled={disabled}
                 aria-current={current ? 'page' : undefined}
+                data-drag-hover-key={dragHoverKey}
                 onClick={onPress}
             >
                 <span className={styles.glyph}>

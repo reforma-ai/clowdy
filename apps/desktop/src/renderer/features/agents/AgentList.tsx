@@ -26,6 +26,7 @@ import {
 
 import { CommandHotkey, useCommands, useHotkeyScope } from '../../hotkeys';
 import { SidebarHeading } from '../../shared';
+import { useFileDragHover } from '../../shared/useFileDragHover';
 import { ProjectSelect } from '../../shell/ProjectSelect';
 import { NEW_CHAT_COMMAND } from '../../shell/shellCommands';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
@@ -154,6 +155,17 @@ export function AgentList({
     const grouped = ui.groupByFolder;
     // The new-chat row is the open one on every new-chat page, whatever folder it is for: the folder is told by the select under the message box.
     const selectedId = selection.draft ? NEW_CHAT_ROW : openChatId;
+    useFileDragHover(
+        element => {
+            const row = element.closest<HTMLElement>('[role="row"][data-key]');
+            const key = row?.dataset.key;
+            return row && list.current?.contains(row) && key && project.chats.has(key) ? key : undefined;
+        },
+        id => {
+            if (id !== selectedId) ui.openChat(id);
+            else if (isCovered) ui.showChat();
+        }
+    );
     const rowsOf = (roots: readonly Chat[]) =>
         agentRows({
             roots,
