@@ -1,4 +1,5 @@
 import { CodeHighlighter } from '@clowdy/components/CodeHighlighter';
+import { CopyButton } from '@clowdy/components/CopyButton';
 import { Show } from '@clowdy/components/Show';
 import { getLanguageFromPath } from '@clowdy/lib';
 
@@ -20,7 +21,8 @@ type StreamdownCodeProps = Omit<ExtraProps, keyof ExtraProps> &
 export function StreamdownCodeBlock(props: ExtraProps) {
     const { className, children, onScroll: _onScroll, ...rest } = sanitizeStreamdownProps(props) as StreamdownCodeProps;
     const parsed = parseCodeFenceInfo(className);
-    const code = children?.toString() ?? '';
+    // Markdown adds a line feed to fenced code. Keep the snippet's original whitespace for copying.
+    const code = (children?.toString() ?? '').replace(/\n$/, '');
     const file = parsed.kind === 'file' ? parsed : undefined;
     const language = file ? getLanguageFromPath(file.path) : parsed.kind === 'language' ? parsed.language : 'text';
     const lines = file?.startLine != null && file.endLine != null ? `${file.startLine}-${file.endLine}` : undefined;
@@ -46,6 +48,17 @@ export function StreamdownCodeBlock(props: ExtraProps) {
                 startingLineNumber={file?.startLine}
                 {...rest}
             />
+            {code !== '' && (
+                <CopyButton
+                    data-code-copy
+                    value={code}
+                    size="xs"
+                    variant="ghost"
+                    color="secondary"
+                    tooltip="Copy code"
+                    aria-label="Copy code"
+                />
+            )}
         </div>
     );
 }

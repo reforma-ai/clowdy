@@ -94,6 +94,7 @@ describe('Markdown', () => {
 
         expect(out).toContain('data-streamdown="code-block"');
         expect(out).not.toContain('data-streamdown="code-block-header"');
+        expect(out).toContain('aria-label="Copy code"');
     });
 
     describe('chips', () => {
@@ -120,6 +121,7 @@ describe('Markdown', () => {
 
             expect(out).not.toContain('inline-code-chip');
             expect(out.match(/data-streamdown="inline-code"/g)).toHaveLength(3);
+            expect(out).not.toContain('aria-label="Copy code"');
         });
 
         it('puts the file chip over a fenced block that names its file, with the lines it cites', () => {
@@ -127,6 +129,7 @@ describe('Markdown', () => {
 
             expect(out).toContain('data-streamdown="code-block-header"');
             expect(out).toContain('price.ts (12-20)');
+            expect(out).toContain('aria-label="Copy code"');
         });
     });
 

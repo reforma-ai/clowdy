@@ -171,6 +171,9 @@
 
     /* Code fences */
     [data-streamdown='code-block'] {
+        --code-copy-space: calc(var(--spacing-24) + var(--spacing-xs) * 2);
+
+        position: relative;
         max-width: 100%;
         min-width: 0;
         border-radius: calc(var(--radius-lg) * var(--squircle-radius-factor));
@@ -193,11 +196,31 @@
         align-items: center;
         margin: 0;
         padding: var(--spacing-sm);
+        padding-inline-end: var(--code-copy-space);
         border-bottom: 1px solid var(--color-secondary-muted);
     }
 
     [data-streamdown='code-block-body'] {
         margin: 0;
+    }
+
+    /* Keep the button clear of the first line, including when a long snippet scrolls sideways. */
+    [data-streamdown='code-block-body']:first-child {
+        margin-inline-end: var(--code-copy-space);
+    }
+
+    [data-streamdown='code-block'] > [data-code-copy] {
+        position: absolute;
+        inset-block-start: var(--spacing-xs);
+        inset-inline-end: var(--spacing-xs);
+        z-index: 1;
+    }
+
+    @media (hover: hover) {
+        [data-streamdown='code-block']:not(:hover, :has(:focus-visible)) > [data-code-copy] {
+            opacity: 0;
+            pointer-events: none;
+        }
     }
 
     /* Tables — horizontal scroll */
