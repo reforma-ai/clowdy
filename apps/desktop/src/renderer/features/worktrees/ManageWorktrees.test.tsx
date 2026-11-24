@@ -47,18 +47,23 @@ async function settle() {
     });
 }
 
-/** The tooltip that a keyboard focus opens: it is there once the library's own timer has run, which a loaded machine delays past a fixed wait. */
-const openTooltip = () =>
-    vi.waitFor(
-        () => {
-            const found = document.querySelector('[role="tooltip"]');
+/**
+ * The tooltip that a keyboard focus opens: it is there once the library's own timer has run, which a loaded machine delays past one `settle`. Each pause is
+ * inside `act`, which is what draws what the timer asked for; the wait ends as soon as the tooltip is, or fails with its own message before the test's limit.
+ */
+async function openTooltip(): Promise<Element> {
+    const deadline = Date.now() + 4000;
 
-            expect(found).not.toBeNull();
+    for (;;) {
+        await settle();
 
-            return found!;
-        },
-        { timeout: 5000 }
-    );
+        const found = document.querySelector('[role="tooltip"]');
+
+        if (found) return found;
+
+        if (Date.now() > deadline) throw new Error('The tooltip did not open');
+    }
+}
 
 /** The projects' state is loaded by the feed: the chats of the project are there once it has answered. */
 async function flush() {
