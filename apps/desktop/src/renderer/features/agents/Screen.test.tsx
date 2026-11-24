@@ -127,6 +127,12 @@ afterEach(() => {
 });
 
 describe('the list', () => {
+    it('keeps the chat panel from becoming a scroll container', () => {
+        const panel = container.querySelector<HTMLElement>('#main > div');
+
+        expect(panel?.style.overflow).toBe('clip');
+    });
+
     it('starts with the new-chat row, then the chats, and has no row for a run', () => {
         // The orchestrator is the chat, and a native sub-agent is a card on the call that started it: neither is a row.
         expect(rowKeys()).toEqual(['@new-chat', MAIN_GROUP, 'c-1', 'c-4', 'c-6', 'c-5', 'c-3', 'c-2']);
