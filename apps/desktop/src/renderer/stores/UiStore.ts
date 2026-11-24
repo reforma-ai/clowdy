@@ -67,7 +67,7 @@ interface StoredProjectUi {
     expandedChats: ChatId[];
     groupByFolder: boolean;
     collapsedFolders: FolderId[];
-    agentsFolded: boolean;
+    agentsExpanded: boolean;
     sidePanelOpen: boolean;
     sidePanelTab: SidePanelTab;
     sidePanelExpanded: boolean;
@@ -98,11 +98,10 @@ export type InitialProjectUi = Partial<
         | 'expandedChats'
         | 'groupByFolder'
         | 'collapsedFolders'
-        | 'agentsFolded'
         | 'sidePanelOpen'
         | 'sidePanelTab'
         | 'tasksView'
-    >
+    > & { agentsFolded: boolean }
 >;
 
 export function initialUiFromSearch(search: string): InitialProjectUi {
@@ -172,8 +171,8 @@ export class ProjectUi {
     groupByFolder = true;
     /** Agents: the folders whose group is folded in the list. A folder that is not here is open, which is how every group starts. */
     collapsedFolders: readonly FolderId[] = [];
-    /** Chats: the strip of running agents over the message box shows its line only, with the rows folded away. Kept for every chat of the project. */
-    agentsFolded = false;
+    /** Chats: the running-agents strip starts folded. The project remembers the person's choice. */
+    agentsFolded = true;
     /** The side panel at the right of the window is open for this project. Closed until the person opens it, and kept for the project, whichever chat is on show. */
     sidePanelOpen = false;
     /** The tab the side panel shows, kept for the project: the one it was left on. */
@@ -234,7 +233,8 @@ export class ProjectUi {
             this.collapsedFolders = Array.isArray(stored.collapsedFolders)
                 ? stored.collapsedFolders.filter(id => typeof id === 'string')
                 : [];
-            this.agentsFolded = stored.agentsFolded === true;
+            // Older versions saved the open default as agentsFolded: false on unrelated UI changes.
+            this.agentsFolded = stored.agentsExpanded !== true;
             this.sidePanelOpen = stored.sidePanelOpen === true;
             this.sidePanelTab = SIDE_PANEL_TABS.find(tab => tab === stored.sidePanelTab) ?? this.sidePanelTab;
             this.sidePanelExpanded = stored.sidePanelExpanded === true;
@@ -265,7 +265,7 @@ export class ProjectUi {
                 expandedChats: [...this.expandedChats],
                 groupByFolder: this.groupByFolder,
                 collapsedFolders: [...this.collapsedFolders],
-                agentsFolded: this.agentsFolded,
+                agentsExpanded: !this.agentsFolded,
                 sidePanelOpen: this.sidePanelOpen,
                 sidePanelTab: this.sidePanelTab,
                 sidePanelExpanded: this.sidePanelExpanded,

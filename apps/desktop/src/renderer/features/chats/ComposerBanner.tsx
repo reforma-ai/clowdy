@@ -87,7 +87,7 @@ export interface ComposerBannerHeaderProps {
     toggleLabel?: string;
 }
 
-/** The line above a group of rows: a label in muted words, a button for what applies to the whole group, and a chevron that folds the rows. */
+/** The line above a group of rows, with a group action and a disclosure chevron. */
 export function ComposerBannerHeader({
     children,
     action,
@@ -98,7 +98,7 @@ export function ComposerBannerHeader({
 }: ComposerBannerHeaderProps) {
     return (
         <div className={styles.status}>
-            <Text variant="xs" color="secondary" className={styles.text}>
+            <Text variant="xs" weight="medium" className={styles.text}>
                 {children}
             </Text>
             {action && (
@@ -116,7 +116,7 @@ export function ComposerBannerHeader({
             {onToggle && (
                 <Button
                     size="xs"
-                    variant="ghost"
+                    variant="filling"
                     color="secondary"
                     iconOnly
                     className={styles.action}
