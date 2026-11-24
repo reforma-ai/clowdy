@@ -524,6 +524,7 @@ describe('the sync button in the sidebar', () => {
 
 describe('merging branches from the sync menu', () => {
     const dialog = () => document.querySelector<HTMLElement>('[data-modal-window] [role="dialog"]')!;
+    const heading = () => dialog().querySelector('h2')?.textContent;
     const options = () => [...dialog().querySelectorAll<HTMLElement>('[role="option"]')];
     const option = (name: string) => options().find(candidate => candidate.textContent?.trim() === name)!;
     const button = (name: string) =>
@@ -547,19 +548,21 @@ describe('merging branches from the sync menu', () => {
         expect(fetch.mock.invocationCallOrder[0]!).toBeLessThan(branches.mock.invocationCallOrder[0]!);
         expect(merge).not.toHaveBeenCalled();
         expect(button('Merge into clowdy/ab12cd34').disabled).toBe(true);
+        expect(heading()).toBe('Merge … to clowdy/ab12cd34');
+        expect(option('origin/main')).toBeUndefined();
+        expect(option('origin/dev')).toBeUndefined();
 
-        await press(option('origin/main'));
+        await press(option('main'));
         await settle();
 
-        expect(dialog().textContent).toContain('origin/main → clowdy/ab12cd34');
-        expect(dialog().textContent).toContain('Creates a merge commit');
+        expect(heading()).toBe('Merge main to clowdy/ab12cd34');
+        expect(dialog().textContent).toContain('Fast-forward');
         expect(merge).toHaveBeenCalledTimes(1);
         expect(merge.mock.calls[0]?.[2]).toEqual({
             action: 'preview',
             direction: 'from',
             current: 'clowdy/ab12cd34',
             branch: 'main',
-            remote: true,
         });
 
         await press(button('Merge into clowdy/ab12cd34'));
@@ -570,7 +573,6 @@ describe('merging branches from the sync menu', () => {
             direction: 'from',
             current: 'clowdy/ab12cd34',
             branch: 'main',
-            remote: true,
             sourceCommit: expect.stringMatching(/^[0-9a-f]+$/),
             targetCommit: expect.stringMatching(/^[0-9a-f]+$/),
         });
@@ -578,7 +580,7 @@ describe('merging branches from the sync menu', () => {
     });
 
     it('keeps the source checkout and pushes only the selected destination on a separate press', async () => {
-        await start({ gitWrites: { clean: true, remote: 'level' } });
+        await start({ gitWrites: { clean: true, remote: 'level' }, branches: ['remote'] });
         const fetch = vi.spyOn(transport, 'fetchGit');
         const merge = vi.spyOn(transport, 'branchMergeGit');
         const push = vi.spyOn(transport, 'pushGit');
@@ -586,10 +588,12 @@ describe('merging branches from the sync menu', () => {
         await open('Merge into branch…');
         expect(fetch).not.toHaveBeenCalled();
         expect(option('origin/main')).toBeUndefined();
+        expect(option('origin/feature/search')).toBeUndefined();
+        expect(heading()).toBe('Merge clowdy/ab12cd34 to …');
 
         await press(option('main'));
         await settle();
-        expect(dialog().textContent).toContain('clowdy/ab12cd34 → main');
+        expect(heading()).toBe('Merge clowdy/ab12cd34 to main');
 
         await press(button('Merge into main'));
         await settle();
@@ -647,6 +651,8 @@ describe('merging branches from the sync menu', () => {
         await open('Merge from branch…');
         await press(option('origin/feature/search'));
         await settle();
+        expect(heading()).toBe('Merge origin/feature/search to clowdy/ab12cd34');
+        expect(merge.mock.calls[0]?.[2]).toMatchObject({ branch: 'feature/search', remote: true });
         await press(button('Merge into clowdy/ab12cd34'));
         await settle();
 

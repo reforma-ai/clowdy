@@ -2,6 +2,7 @@ import { Button } from '@clowdy/components/Button';
 import { Modal, useModalContext } from '@clowdy/components/Modal';
 import { Spinner } from '@clowdy/components/Spinner';
 import { Text } from '@clowdy/components/Text';
+import { Close } from '@clowdy/icons/14';
 import { errorMessage } from '@clowdy/lib';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 
@@ -48,18 +49,17 @@ function choicesOf(listing: GitBranches | undefined, current: string, includeOri
 
     const local = listing.local
         .filter(branch => branch.name !== current)
-        .map(({ name }) => ({ id: `refs/heads/${name}`, label: name, branch: name, group: 'Local' }));
+        .map(({ name }) => ({ id: `refs/heads/${name}`, label: name, branch: name }));
     const origin = includeOrigin
-        ? (listing.origin ?? listing.remote).map(({ name }) => ({
+        ? listing.remote.map(({ name }) => ({
               id: `refs/remotes/origin/${name}`,
               label: `origin/${name}`,
               branch: name,
-              group: 'Origin',
               remote: true as const,
           }))
         : [];
 
-    return [...origin, ...local];
+    return [...local, ...origin];
 }
 
 interface Failure {
@@ -225,9 +225,8 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
         });
     };
 
-    const title = direction === 'from' ? 'Merge from branch' : 'Merge into branch';
-    const source = preview?.source ?? (direction === 'from' ? (choice?.label ?? 'Source branch') : current);
-    const target = preview?.target ?? (direction === 'into' ? (choice?.label ?? 'Destination branch') : current);
+    const source = preview?.source ?? (direction === 'from' ? (choice?.label ?? '…') : current);
+    const target = preview?.target ?? (direction === 'into' ? (choice?.label ?? '…') : current);
     const isWorking = pending !== undefined;
     const { editor, fileManager } = chosenPrograms(apps);
     const openIn = editor ?? fileManager;
@@ -247,9 +246,19 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
         >
             <div className={styles.heading}>
                 <Text id={headingId} as="h2" variant="heading-3">
-                    {title}
+                    {`Merge ${source} to ${target}`}
                 </Text>
-                <Text weight="medium">{`${source} → ${target}`}</Text>
+                <Button
+                    size="sm"
+                    variant="filling"
+                    color="secondary"
+                    iconOnly
+                    aria-label="Close"
+                    isDisabled={isWorking}
+                    onPress={() => modal.cancel()}
+                >
+                    <Close />
+                </Button>
             </div>
             {loading && (
                 <div className={styles.loading} role="status">
@@ -326,7 +335,13 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
                         Abort merge
                     </Button>
                 )}
-                <Button size="sm" variant="filling" isDisabled={isWorking} onPress={() => modal.cancel()}>
+                <Button
+                    size="sm"
+                    variant="filled"
+                    color="secondary"
+                    isDisabled={isWorking}
+                    onPress={() => modal.cancel()}
+                >
                     {result ? 'Done' : 'Cancel'}
                 </Button>
                 {!result && choice && failure && (
