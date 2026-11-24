@@ -48,6 +48,9 @@ export function ComposerBannerList({
 export interface ComposerBannerStatusProps {
     children: ReactNode;
     icon?: ReactNode;
+    /** Optional trailing status or progress, kept visible beside a truncated name. */
+    detail?: ReactNode;
+    progress?: ReactNode;
     /** The words of the row's button, such as `Stop`. No button without it. */
     action?: string;
     onAction?: () => void;
@@ -61,6 +64,8 @@ export interface ComposerBannerStatusProps {
 export function ComposerBannerStatus({
     children,
     icon,
+    detail,
+    progress,
     action,
     onAction,
     onPress,
@@ -76,6 +81,20 @@ export function ComposerBannerStatus({
             <Text variant="xs" className={styles.text}>
                 {children}
             </Text>
+            {(detail || progress) && (
+                <span className={styles.details}>
+                    {detail && (
+                        <Text variant="xs" className={styles.detail}>
+                            {detail}
+                        </Text>
+                    )}
+                    {progress && (
+                        <Text variant="xs" className={styles.progress}>
+                            {progress}
+                        </Text>
+                    )}
+                </span>
+            )}
         </>
     );
 
