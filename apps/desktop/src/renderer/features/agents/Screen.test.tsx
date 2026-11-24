@@ -382,7 +382,11 @@ describe('grouped by folder', () => {
     /** The select under the new-chat page's message box, and the rows of its list. */
     const folderSelect = () => container.querySelector<HTMLButtonElement>('button[aria-label^="Folder:"]');
     /** The read only line of a chat that is made, in the place the select had. */
-    const folderLine = () => container.querySelector<HTMLElement>('[role="group"][aria-label="Folder"]');
+    const folderLine = () =>
+        container.querySelector<HTMLElement>(
+            '[role="group"][aria-label="Folder"], [role="group"][aria-label^="Folder:"]'
+        );
+    const folderLineName = () => folderLine()?.querySelector(':scope > span')?.textContent;
     const folderItem = (name: string) =>
         [...document.body.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find(row => row.textContent === name)!;
     const filtersMenu = async () => {
@@ -508,19 +512,26 @@ describe('grouped by folder', () => {
         } as never;
 
         try {
-            await restart();
+            await restart({ transport: new FixtureTransport({ data: withFixtureWorkspace(twoFolders()) }) });
             expect(name(MAIN)?.textContent).toBe('car-rental');
-            await draw(() => ui().openChat('c-1'));
+            await draw(() => ui().openChat(FIXTURE_WORKSPACE_CHAT_ID));
+            const workspace = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
+
+            await press(name(MAIN)!);
+            await press(menuItem('New chat'));
+            expect(ui().draftWorkspace).toEqual({ mode: 'existing', path: workspace.path });
+            await draw(() => ui().openChat(FIXTURE_WORKSPACE_CHAT_ID));
 
             await press(name(API.id)!);
-            expect([ui().draft, ui().chatId]).toEqual([false, 'c-1']);
-            expect(isSelected('c-1')).toBe(true);
+            expect([ui().draft, ui().chatId]).toEqual([false, FIXTURE_WORKSPACE_CHAT_ID]);
+            expect(isSelected(FIXTURE_WORKSPACE_CHAT_ID)).toBe(true);
             expect(menuItems()).toEqual(['New chat', 'Copy path', 'Open in…', 'Manage worktrees…']);
 
             await press(menuItem('New chat'));
             await draw();
 
             expect([ui().draft, ui().draftFolderId]).toEqual([true, API.id]);
+            expect(ui().draftWorkspace).toBeNull();
             expect(isSelected('@new-chat')).toBe(true);
 
             // The built-in tabs can open the folder when it matches the current draft.
@@ -742,6 +753,16 @@ describe('grouped by folder', () => {
         expect(folderSelect()?.textContent).toBe('car-rental');
     });
 
+    it('starts New chat in the active chat’s folder when it uses the folder checkout', async () => {
+        await restart();
+        await draw(() => ui().openChat('c-2'));
+        await press(rowOf('@new-chat'));
+        await draw();
+
+        expect(folderSelect()?.textContent).toBe('car-rental-api');
+        expect(ui().draftWorkspace).toBeNull();
+    });
+
     it("shows the main folder's page when the folder the new-chat page was for left the project", async () => {
         await restart();
         await draw(() => ui().openDraft([], 'fld_gone'));
@@ -885,7 +906,7 @@ describe('grouped by folder', () => {
             });
 
             expect(folderSelect()).toBeNull();
-            expect(folderLine()?.textContent).toBe(SINGLE);
+            expect(folderLineName()).toBe(SINGLE);
             expect(container.textContent).toContain('What should we work on?');
         });
 
@@ -927,7 +948,7 @@ describe('grouped by folder', () => {
             await restart();
             await draw(() => ui().openChat('c-2'));
 
-            expect(folderLine()?.textContent).toBe('car-rental-api');
+            expect(folderLineName()).toBe('car-rental-api');
             expect(folderLine()?.getAttribute('title')).toBe('~/car-rental-api');
             // Read only: nothing in it opens a list or takes a press.
             expect(folderSelect()).toBeNull();
@@ -936,7 +957,7 @@ describe('grouped by folder', () => {
             // A chat with no folder works in the main one.
             await draw(() => ui().openChat('c-1'));
 
-            expect(folderLine()?.textContent).toBe('car-rental');
+            expect(folderLineName()).toBe('car-rental');
         });
 
         it('is under the message box of the chat the page made, in the folder picked there', async () => {
@@ -956,7 +977,7 @@ describe('grouped by folder', () => {
 
             expect([...project().chats.keys()].some(id => !before.has(id))).toBe(true);
             expect(folderSelect()).toBeNull();
-            expect(folderLine()?.textContent).toBe('car-rental-api');
+            expect(folderLineName()).toBe('car-rental-api');
         });
 
         it('says when the folder is gone from the disk', async () => {
@@ -988,11 +1009,11 @@ describe('grouped by folder', () => {
             await restart({ grouping: false });
             await draw(() => ui().openChat('c-2'));
 
-            expect(folderLine()?.textContent).toBe('car-rental-api');
+            expect(folderLineName()).toBe('car-rental-api');
 
             await draw(() => ui().setGroupByFolder(true));
 
-            expect(folderLine()?.textContent).toBe('car-rental-api');
+            expect(folderLineName()).toBe('car-rental-api');
 
             // The fixture project has one folder.
             act(() => reactRoot.unmount());
@@ -1005,7 +1026,7 @@ describe('grouped by folder', () => {
                 ui().openChat('c-1');
             });
 
-            expect(folderLine()?.textContent).toBe(SINGLE);
+            expect(folderLineName()).toBe(SINGLE);
         });
     });
 
@@ -1681,17 +1702,40 @@ describe('a chat that works in a worktree', () => {
         );
         await vi.waitFor(() =>
             expect(
-                container.querySelector('[aria-label="Where it runs: Worktree, branch clowdy/ab12cd34"]')?.textContent
-            ).toBe('Worktreeclowdy/ab12cd34')
+                container.querySelector('[aria-label="Folder: car-rental, worktree, branch clowdy/ab12cd34"]')
+                    ?.textContent
+            ).toBe('car-rentalWorktree clowdy/ab12cd34')
         );
 
         await draw(() => ui().openChat('c-1'));
 
         await vi.waitFor(() =>
-            expect(
-                container.querySelector('[aria-label="Where it runs: Main worktree, branch main"]')?.textContent
-            ).toBe('main')
+            expect(container.querySelector('[aria-label="Folder: car-rental, branch main"]')?.textContent).toBe(
+                'car-rentalmain'
+            )
         );
+    });
+
+    it('shares the active chat’s worktree when the first message is sent from New chat', async () => {
+        await restart();
+        await draw(() => ui().openChat(FIXTURE_WORKSPACE_CHAT_ID));
+        const workspace = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
+
+        await press(rowOf('@new-chat'));
+        await draw();
+        await vi.waitFor(() => expect(ui().draftWorkspaceRow?.id).toBe(workspace.id));
+
+        const field = container.querySelector<HTMLElement & { editor: Editor }>('[contenteditable="true"]')!;
+
+        await act(async () => {
+            field.editor.commands.insertContent('Check the worktree');
+            field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+        });
+        await draw();
+
+        expect(ui().draft).toBe(false);
+        expect(ui().chatId).not.toBe(FIXTURE_WORKSPACE_CHAT_ID);
+        expect(project().chats.get(ui().chatId!)?.workspace?.id).toBe(workspace.id);
     });
 });
 

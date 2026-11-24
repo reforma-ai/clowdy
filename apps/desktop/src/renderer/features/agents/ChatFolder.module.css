@@ -16,10 +16,23 @@
     cursor: default;
 }
 
+.folder[data-detail] {
+    max-width: min(100%, 28rem);
+}
+
 .folder[data-missing] {
     color: var(--color-warning-text);
 }
 
 .folder svg {
     flex-shrink: 0;
+}
+
+.checkout {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    min-width: 0;
+    padding-inline-start: var(--spacing-xs);
+    color: var(--color-secondary-muted-text);
 }

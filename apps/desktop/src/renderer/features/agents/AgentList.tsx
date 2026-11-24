@@ -56,6 +56,7 @@ import {
 import { ChatIcon, ChatStatus } from './ChatIcon';
 import { chatListPreferences } from './chatListPreferences';
 import { GroupFolderName } from './GroupFolderName';
+import { openNewChat } from './openNewChat';
 import { StarCard } from './StarCard';
 
 import type { Chat, ChatId, ChatWorkspace, FolderId, ProjectWorkspaceInfo } from '@clowdy/protocol';
@@ -258,15 +259,14 @@ export function AgentList({
     };
 
     const select = (id: string) => {
-        if (id === NEW_CHAT_ROW) ui.openDraft();
+        if (id === NEW_CHAT_ROW) openNewChat(project, ui);
         // A heading is a label, not a page: only its chevron, and Right and Left on it, fold the group.
         else if (!id.startsWith(GROUP_PREFIX)) ui.openChat(id);
     };
 
     const renderGroup = (group: AgentGroup, isCollapsed: boolean) => {
         const isMissing = missing.has(group.folder.id);
-        // Chats in the main folder have no folder id of their own.
-        const openNewChat = () => ui.openDraft([], group.isMain ? null : group.folder.id);
+        const startChat = () => openNewChat(project, ui, group.folder.id);
 
         return (
             <GridListItem
@@ -287,7 +287,7 @@ export function AgentList({
                             isDisabled={isMissing}
                             preventFocusOnPress
                             data-show={listBoxItemDataShow.itemBoth}
-                            onPress={openNewChat}
+                            onPress={startChat}
                         >
                             <NewChat />
                         </Button>
@@ -302,7 +302,7 @@ export function AgentList({
                             name={group.name}
                             folder={group.folder}
                             missing={isMissing}
-                            onNewChat={openNewChat}
+                            onNewChat={startChat}
                         />
                     </span>
                     {/* The way to fold the group. On a folded group it is always there, which says it is folded; on an open one it comes with the pointer or the keyboard. */}
