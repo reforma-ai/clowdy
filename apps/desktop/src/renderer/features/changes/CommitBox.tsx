@@ -12,16 +12,17 @@ import { commitMessageAgent, writesCommitMessages } from '@clowdy/protocol';
 import { useEffect, useState } from 'react';
 
 import { Unavailable } from '../../shared/Unavailable';
-import { useAgents, useRootStore } from '../../stores';
+import { useAgents, useProjectUi, useRootStore } from '../../stores';
+import { quoteIntoComposer } from '../chats/composerBridge';
 import styles from './CommitBox.module.css';
 import { commitDraftOf } from './CommitDraft';
 import { commitLabel, commitTarget, isFetchFirst } from './changesActions';
+import { confirmAbortMerge } from './confirmAbortMerge';
 import { gitFactsOf } from './gitFacts';
 import { CHANGE_KIND_VIEW, splitPath } from './gitSummary';
-import { MergeFiles } from './MergeFiles';
 import { useRemoteActions } from './useRemoteActions';
 
-import type { GitChangedFile } from '@clowdy/protocol';
+import type { GitChangedFile, GitStatusEntry } from '@clowdy/protocol';
 import type { CommitDraft } from './CommitDraft';
 import type { PlaceChanges } from './PlaceChanges';
 import type { RemoteActions } from './RemoteActions';
@@ -68,8 +69,36 @@ function FailureLines({
     );
 }
 
-/** One file in the commit checklist. Press the row or its checkbox to change the selection. */
-function CommitFileRow({ file, draft }: { file: GitChangedFile; draft: CommitDraft }) {
+type CommitFile = Pick<GitChangedFile, 'path' | 'kind' | 'additions' | 'deletions'>;
+
+function mergeChecklist(entries: readonly GitStatusEntry[], files: readonly GitChangedFile[]) {
+    const diffs = new Map(files.map(file => [file.path, file]));
+    const conflicts: CommitFile[] = [];
+    const staged: CommitFile[] = [];
+
+    for (const { path, staged: kind, unstaged } of entries) {
+        if (unstaged === 'conflicted') {
+            conflicts.push({ path, kind: 'conflicted' });
+        } else if (kind !== undefined) {
+            // The uncommitted diff counts worktree edits too. Only show counts for index-only changes.
+            const diff = unstaged === undefined ? diffs.get(path) : undefined;
+            staged.push({ ...diff, path, kind });
+        }
+    }
+
+    return { conflicts, staged };
+}
+
+/** The same file row is used for selectable commits and for showing Git's merge index. */
+function CommitFileRow({
+    file,
+    draft,
+    mergeGroup,
+}: {
+    file: CommitFile;
+    draft: CommitDraft;
+    mergeGroup?: 'conflicts' | 'staged';
+}) {
     const kind = CHANGE_KIND_VIEW[file.kind];
     const { folder, name } = splitPath(file.path);
 
@@ -81,7 +110,8 @@ function CommitFileRow({ file, draft }: { file: GitChangedFile; draft: CommitDra
             icon={
                 <Checkbox
                     size="sm"
-                    isSelected={draft.isTicked(file.path)}
+                    isSelected={mergeGroup === undefined ? draft.isTicked(file.path) : mergeGroup === 'staged'}
+                    isReadOnly={mergeGroup !== undefined}
                     isDisabled={draft.writing}
                     aria-label={file.path}
                     onChange={on => draft.setTicked(file.path, on)}
@@ -110,6 +140,84 @@ function CommitFileRow({ file, draft }: { file: GitChangedFile; draft: CommitDra
                 )}
             </Text>
         </GridListItem>
+    );
+}
+
+function CommitFileList({
+    files,
+    draft,
+    mergeGroup,
+}: {
+    files: readonly CommitFile[];
+    draft: CommitDraft;
+    mergeGroup?: 'conflicts' | 'staged';
+}) {
+    if (files.length === 0) return null;
+
+    return (
+        <GridList
+            aria-label={mergeGroup === 'conflicts' ? 'Conflicting files' : 'Files to commit'}
+            size="sm"
+            onAction={key => {
+                const path = String(key);
+
+                if (mergeGroup === undefined) draft.setTicked(path, !draft.isTicked(path));
+                else draft.model.showUncommittedFile(path);
+            }}
+        >
+            <For each={[...files]}>
+                {file => <CommitFileRow key={file.path} file={file} draft={draft} mergeGroup={mergeGroup} />}
+            </For>
+        </GridList>
+    );
+}
+
+function ConflictActions({
+    conflicts,
+    writing,
+    remote,
+}: {
+    conflicts: readonly CommitFile[];
+    writing: boolean;
+    remote: RemoteActions;
+}) {
+    const ui = useProjectUi();
+
+    const ask = () => {
+        const quote =
+            conflicts.length === 0
+                ? 'Resolve the merge conflicts'
+                : `Resolve the merge conflicts in:\n${conflicts.map(({ path }) => `- \`${path}\``).join('\n')}`;
+
+        if (quoteIntoComposer(quote)) ui.showChat();
+    };
+
+    return (
+        <div className={styles.conflictActions}>
+            <Button
+                variant="filled"
+                color="secondary"
+                size="xs"
+                aria-label="Ask agent to resolve conflicts"
+                onPress={ask}
+            >
+                Ask agent
+            </Button>
+            <Button
+                variant="filling"
+                color="secondary"
+                size="xs"
+                isDisabled={writing || remote.busy}
+                isPending={remote.running === 'abort'}
+                onPress={() =>
+                    confirmAbortMerge(async () => {
+                        await remote.run('abort');
+                    })
+                }
+            >
+                Abort merge
+            </Button>
+        </div>
     );
 }
 
@@ -161,15 +269,25 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
     }, [draft, mergeSubject]);
 
     const status = model.facts.status.value;
-    const merging = status?.isRepository === true ? status.merging : undefined;
+    const mergeStatus = status?.isRepository && status.merging ? status : undefined;
+    const merging = mergeStatus?.merging;
 
     if (model.isRepository === false || (!draft.known && !merging)) return null;
 
     const { files, failure } = draft;
+    const mergeFiles = mergeStatus ? mergeChecklist(mergeStatus.entries, files) : undefined;
+    const commitFiles = mergeFiles?.staged ?? files;
+    const conflicts = merging?.conflicts ?? 0;
     const generating = draft.busy === 'generate';
     const generateLabel = generating ? 'Stop generating commit message' : 'Generate commit message';
-    const hasFiles = files.length > 0;
-    const ticked = draft.ticked.length;
+    const hasFiles = commitFiles.length > 0;
+    const ticked = mergeFiles ? commitFiles.length : draft.ticked.length;
+    const noStagedFiles = mergeStatus !== undefined && !hasFiles && !mergeStatus.truncated;
+    const heading =
+        !hasFiles && !mergeStatus ? '0 changed files' : noStagedFiles && conflicts === 0 ? 'No staged files' : 'Commit';
+    const truncationNotice = mergeStatus
+        ? mergeStatus.truncated && `Showing merge files from the first ${mergeStatus.entries.length} changed files`
+        : draft.truncated && `Showing the first ${files.length} files`;
     const hasChangesToCommit = hasFiles || merging !== undefined;
     const commitAndPush = shiftHeld && hasFiles && !merging;
     const target = commitTarget(status);
@@ -180,50 +298,58 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
 
     return (
         <section className={styles.root} aria-label="Commit">
-            {merging && status?.isRepository ? (
-                <Scrollable className={styles.mergeList} contentClass={styles.mergeRows}>
-                    <MergeFiles model={model} status={status} writing={draft.writing} />
-                </Scrollable>
-            ) : (
-                <>
-                    <div className={styles.header}>
-                        <Checkbox
-                            size="sm"
-                            isSelected={draft.allTicked}
-                            isIndeterminate={!draft.allTicked && !draft.noneTicked}
-                            isDisabled={!hasFiles || draft.writing}
-                            aria-label="Tick every file"
-                            onChange={on => draft.setAll(on)}
-                        />
-                        <Text variant="xs" weight="medium" color="secondary" truncate>
-                            {hasFiles ? 'Commit' : '0 changed files'}
-                        </Text>
-                        {hasFiles && (
-                            <Text
-                                variant="xs"
-                                color="secondary"
-                                className={styles.count}
-                            >{`${ticked} of ${files.length}`}</Text>
-                        )}
-                    </div>
+            <div className={styles.header}>
+                <Checkbox
+                    size="sm"
+                    isSelected={mergeFiles ? hasFiles : draft.allTicked}
+                    isIndeterminate={!mergeFiles && !draft.allTicked && !draft.noneTicked}
+                    isReadOnly={mergeFiles !== undefined}
+                    isDisabled={(!hasFiles && conflicts === 0) || draft.writing}
+                    aria-label={mergeFiles ? 'Staged files' : 'Tick every file'}
+                    onChange={on => draft.setAll(on)}
+                />
+                <Text variant="xs" weight="medium" color="secondary" truncate>
+                    {heading}
+                </Text>
+                {hasFiles && (
+                    <Text
+                        variant="xs"
+                        color="secondary"
+                        className={styles.count}
+                    >{`${ticked} of ${commitFiles.length}`}</Text>
+                )}
+            </div>
 
-                    {hasFiles && (
-                        <Scrollable className={styles.list} contentClass={styles.rows}>
-                            <GridList
-                                aria-label="Files to commit"
-                                size="sm"
-                                onAction={key => draft.setTicked(String(key), !draft.isTicked(String(key)))}
-                            >
-                                <For each={[...files]}>
-                                    {file => <CommitFileRow key={file.path} file={file} draft={draft} />}
-                                </For>
-                            </GridList>
-                        </Scrollable>
+            {(hasFiles || conflicts > 0) && (
+                <Scrollable className={styles.list} contentClass={styles.rows}>
+                    {mergeFiles && conflicts > 0 && (
+                        <>
+                            <div className={styles.fileGroupHeading}>
+                                <Text as="h3" variant="xs" weight="medium" color="secondary">
+                                    Conflicts
+                                </Text>
+                                <Text variant="xs" color="secondary" className={styles.count}>
+                                    {mergeFiles.conflicts.length < conflicts
+                                        ? `${mergeFiles.conflicts.length} of ${conflicts}`
+                                        : conflicts}
+                                </Text>
+                            </div>
+                            <ConflictActions conflicts={mergeFiles.conflicts} writing={draft.writing} remote={remote} />
+                            <CommitFileList files={mergeFiles.conflicts} draft={draft} mergeGroup="conflicts" />
+                            <div className={styles.fileGroupHeading}>
+                                <Text as="h3" variant="xs" weight="medium" color="secondary">
+                                    {noStagedFiles ? 'No staged files' : 'Files to commit'}
+                                </Text>
+                            </div>
+                        </>
                     )}
-                    {draft.truncated && (
-                        <Text variant="xs" color="secondary">{`Showing the first ${files.length} files`}</Text>
-                    )}
-                </>
+                    <CommitFileList files={commitFiles} draft={draft} mergeGroup={mergeFiles ? 'staged' : undefined} />
+                </Scrollable>
+            )}
+            {truncationNotice && (
+                <Text variant="xs" color="secondary">
+                    {truncationNotice}
+                </Text>
             )}
 
             <Textarea
@@ -273,14 +399,6 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
                     }
                 }}
             />
-
-            {merging !== undefined && merging.conflicts > 0 && (
-                <Text variant="xs" color="secondary">
-                    {merging.conflicts === 1
-                        ? 'Resolve 1 conflict to continue'
-                        : `Resolve ${merging.conflicts} conflicts to continue`}
-                </Text>
-            )}
 
             <div className={styles.commitGroup}>
                 <Unavailable label={label} hint={reason} className={styles.commitHost}>
