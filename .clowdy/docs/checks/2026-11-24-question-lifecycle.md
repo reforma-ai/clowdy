@@ -7,7 +7,7 @@ Related task: CLO-54
 ## Results
 
 - An isolated daemon using the real Codex adapter displayed a question, waited 65 seconds, accepted the answer and received the agent's response. Claude completed the same flow with a three-second wait.
-- Before the durable fallback, an isolated daemon using Cursor timed out before an answer at 65 seconds. After the fallback, two real Cursor runs waited 65 seconds, accepted an answer and continued with that answer.
+- Before the durable fallback, an isolated daemon using Cursor timed out before an answer at 65 seconds. After the fallback, two real Cursor runs waited 65 seconds, accepted an answer and continued with that answer. A third waited 75 seconds from question creation and also continued with the stored answer.
 - Targeted daemon tests cover cancellation, an agent ending a turn with a question open, a slot held by another run, MCP disconnection, provider capabilities, daemon restart, answer replay after a failure, Stop, and stopped background work. Renderer tests cover the waiting color and preparing or withdrawn questions.
 - A scripted agent that produces text or a tool-start event while its question call is pending is stopped, and its existing question remains answerable. An empty message-closing event does not trigger this transfer.
 - Recovery opens a question interrupted during preparation only after the recorded agent process is confirmed gone; a process whose identity cannot be confirmed leaves the card expired. Recovery also closes a partially streamed assistant message.
