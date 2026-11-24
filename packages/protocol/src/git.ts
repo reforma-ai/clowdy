@@ -228,7 +228,7 @@ export interface GitCommit {
 
 /**
  * How the branch stands against the branch it is meant for: the base of its worktree when it has one, else the folder's base (`FolderGit.defaultBranch`). The ref is picked
- * as GitHub Desktop and bb do: `origin/<name>` when the local branch of that name is equal to it, behind it or not there, the local branch when it is ahead of it or has
+ * so: `origin/<name>` when the local branch of that name is equal to it, behind it or not there, the local branch when it is ahead of it or has
  * diverged. A name that already says its remote (`origin/main`) or is a full ref is taken as it is. Everything is read from the refs the repository has: nothing is fetched,
  * so a base that moved on the remote shows when the person fetches.
  */

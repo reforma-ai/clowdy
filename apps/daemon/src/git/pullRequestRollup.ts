@@ -93,7 +93,7 @@ function checkOf(node: unknown): RawCheck | undefined {
           };
 }
 
-/** Whether `check` is the same check as `current` run at the same time or later, as bb has it: one that never began is the later of two that never did. */
+/** Whether `check` is the same check as `current` run at the same time or later: one that never began is the later of two that never did. */
 function isSameOrLater(check: RawCheck, current: RawCheck): boolean {
     if (check.at === undefined) return current.at === undefined;
 

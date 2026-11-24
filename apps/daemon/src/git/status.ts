@@ -61,7 +61,7 @@ interface ResolvedRef {
 }
 
 /**
- * The ref a base name means, picked as bb and GitHub Desktop do. A full ref (`refs/...`) is taken as it is. A name that is a local branch is `origin/<name>` when that
+ * The ref a base name means. A full ref (`refs/...`) is taken as it is. A name that is a local branch is `origin/<name>` when that
  * is where the local branch is or behind where it is (the person has not pulled; the remote's is the base that counts), and the local branch when it is ahead or has
  * diverged (its own commits are the base's). A name that is a remote branch already (`origin/main`) is taken as it is. A bare name with no local branch is `origin/<name>`.
  * Last, a hash is a commit. The refs are spelled out, `refs/heads/<name>` and `refs/remotes/<name>`, since a tag may be called `main` too.
