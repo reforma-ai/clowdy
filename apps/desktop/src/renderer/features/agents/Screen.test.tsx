@@ -1238,8 +1238,11 @@ describe('the archive', () => {
         expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe('c-1');
     });
 
-    it('is not offered from the row while an agent of the chat works', () => {
-        expect(rowOf('c-1').querySelector('button[aria-label="Archive"]')?.hasAttribute('disabled')).toBe(true);
+    it('shows a green status in place of the archive shortcut while the chat works', () => {
+        const busyActions = rowOf('c-1').querySelector('[slot="endAffix"]');
+
+        expect(busyActions?.querySelector('button[aria-label="Archive"]')).toBeNull();
+        expect(busyActions?.querySelector('[aria-label="Working"] [data-tone="success"]')).not.toBeNull();
         expect(rowOf('c-4').querySelector('button[aria-label="Archive"]')?.hasAttribute('disabled')).toBe(false);
     });
 
@@ -1458,7 +1461,10 @@ describe('threads', () => {
     it('offers no Archive on a chat whose threads work, and offers it on a finished thread', async () => {
         await draw(() => ui().toggleChatExpanded('c-6'));
 
-        expect(rowOf('c-6').querySelector('button[aria-label="Archive"]')?.hasAttribute('disabled')).toBe(true);
+        const busyActions = rowOf('c-6').querySelector('[slot="endAffix"]');
+
+        expect(busyActions?.querySelector('button[aria-label="Archive"]')).toBeNull();
+        expect(busyActions?.querySelector('[aria-label="Threads working"] [data-tone="success"]')).not.toBeNull();
         expect(rowOf('c-6b').querySelector('button[aria-label="Archive"]')?.hasAttribute('disabled')).toBe(false);
 
         await press(rowOf('c-6').querySelector<HTMLElement>('button[aria-label="Chat actions"]')!);
