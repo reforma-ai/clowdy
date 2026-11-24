@@ -13,11 +13,19 @@ import styles from './AgentList.module.css';
 import type { ProjectFolder } from '@clowdy/protocol';
 
 /**
- * The menu of a group's folder: what is under the message box when a chat works in it (`ChatFolder`), and `Manage worktrees…` last, under a separator. That item is always there, from
+ * The menu of a group's folder: New chat, the folder actions shared with `ChatFolder`, and `Manage worktrees…` last, under a separator. That item is always there, from
  * the first frame: it opens the dialog of the whole project, which has a group for each of its repositories and says so when none of its folders is one, so it needs no word from
  * the folder's git (which the menu reads as it opens, for the GitHub link, and which would have the item come in late and shift the menu). It is for a folder that is gone too.
  */
-function GroupFolderMenu({ folder, missing }: { folder: ProjectFolder; missing: boolean }) {
+function GroupFolderMenu({
+    folder,
+    missing,
+    onNewChat,
+}: {
+    folder: ProjectFolder;
+    missing: boolean;
+    onNewChat: () => void;
+}) {
     const root = useRootStore();
     const project = useProjectState();
     const git = useFolderGit(project.id, folder.id);
@@ -30,6 +38,7 @@ function GroupFolderMenu({ folder, missing }: { folder: ProjectFolder; missing: 
             missing={missing}
             repair={repair}
             git={git}
+            onNewChat={onNewChat}
             onManageWorktrees={() => openManageWorktrees({ root, projectId: project.id, folderId: folder.id })}
             aria-label="Open folder"
         />
@@ -37,27 +46,24 @@ function GroupFolderMenu({ folder, missing }: { folder: ProjectFolder; missing: 
 }
 
 /**
- * The name on the heading of a folder's group. In the desktop app a press on it opens the menu of the folder, the same as the folder under the message box has (Open in Files,
- * Open in Terminal, Copy path, Open in…), and the name tells the path on hover, or that the folder is gone from the disk; the name has the plate of an `xs` button, the chevron's
- * size, on hover to say it can be pressed. `onOpen` runs as the menu opens: the list uses it to show the new-chat page for the folder, which makes the folder the one the window
- * works in, so the menu can open it in the Files tab and the terminal, as the folder of a chat can. Anywhere else, with no desktop bridge (tests, the screenshot harness), there is
- * nothing to open the folder in, and the name is only a label.
+ * The name on the heading of a folder's group. In the desktop app it opens the folder's menu and shows the path on hover, or says the folder is gone.
+ * The selected chat stays open until the person chooses New chat. With no desktop bridge, the name is a label.
  */
 export function GroupFolderName({
     name,
     folder,
     missing,
-    onOpen,
+    onNewChat,
 }: {
     name: string;
     folder: ProjectFolder;
     missing: boolean;
-    onOpen?: () => void;
+    onNewChat: () => void;
 }) {
     if (!canOpenPaths()) return <span className={cn(styles.title, styles.groupPlainName)}>{name}</span>;
 
     return (
-        <MenuTrigger onOpenChange={isOpen => isOpen && onOpen?.()}>
+        <MenuTrigger>
             <Button
                 variant="filling"
                 color="inherit"
@@ -71,7 +77,7 @@ export function GroupFolderName({
                 <span className={styles.title}>{name}</span>
             </Button>
             <Popover placement="bottom start" spacing="xs">
-                <GroupFolderMenu folder={folder} missing={missing} />
+                <GroupFolderMenu folder={folder} missing={missing} onNewChat={onNewChat} />
             </Popover>
         </MenuTrigger>
     );

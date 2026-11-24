@@ -104,7 +104,7 @@ interface ChatActions {
  * The project's agents: the row that starts a chat, then the chats in use (in the order the menu of the heading's `⋯` asks for), each with the
  * threads its agents started below it, folded until the person opens them. Archived chats are not here, they are in the archive's list (the button
  * in the heading, beside the filters), and take their threads with them. `missing` are the folders gone from the disk (`Screen` reads them once for the list and the new-chat page): their group is marked and its button is off. With the menu's Group chats by folder on (it is, until the person turns it off), the
- * chats stand in a group for the folder they work in, under a heading that folds the group, has a button for a chat in that folder, and opens the folder's menu (`GroupFolderName`) from a press on its name, which also shows the new-chat page for that folder.
+ * chats stand in a group for the folder they work in, under a heading that folds the group. Its name opens the folder's menu (`GroupFolderName`), and the menu and heading both offer a new chat in that folder.
  * A chat that works in a worktree has a branch mark after its title, with its branch in the mark's title: the one the tree has checked out, from `workspaces` (`ProjectInfo.workspaces`, which `Screen` reads).
  */
 export function AgentList({
@@ -265,6 +265,8 @@ export function AgentList({
 
     const renderGroup = (group: AgentGroup, isCollapsed: boolean) => {
         const isMissing = missing.has(group.folder.id);
+        // Chats in the main folder have no folder id of their own.
+        const openNewChat = () => ui.openDraft([], group.isMain ? null : group.folder.id);
 
         return (
             <GridListItem
@@ -285,8 +287,7 @@ export function AgentList({
                             isDisabled={isMissing}
                             preventFocusOnPress
                             data-show={listBoxItemDataShow.itemBoth}
-                            // The main folder's chat has no folder of its own: it follows the main folder, as every chat did before groups.
-                            onPress={() => ui.openDraft([], group.isMain ? null : group.folder.id)}
+                            onPress={openNewChat}
                         >
                             <NewChat />
                         </Button>
@@ -297,14 +298,11 @@ export function AgentList({
             >
                 <span className={styles.groupTitle}>
                     <span className={styles.groupNameBox} {...ownEvents}>
-                        {/* The press also shows the new-chat page for the folder, so the window works in it and the menu can open it in Files and the terminal. A folder gone from the disk has no chat to start. */}
                         <GroupFolderName
                             name={group.name}
                             folder={group.folder}
                             missing={isMissing}
-                            onOpen={
-                                isMissing ? undefined : () => ui.openDraft([], group.isMain ? null : group.folder.id)
-                            }
+                            onNewChat={openNewChat}
                         />
                     </span>
                     {/* The way to fold the group. On a folded group it is always there, which says it is folded; on an open one it comes with the pointer or the keyboard. */}
