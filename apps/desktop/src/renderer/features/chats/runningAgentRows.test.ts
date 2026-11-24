@@ -130,19 +130,19 @@ describe('the rows of background items', () => {
         const workflow = { id: 'wf-1', kind: 'task' as const, title: 'Workflow', canStopAlone: true };
 
         expect(backgroundRows([stoppable(1), plain, workflow, stoppable(2)], [])).toEqual({
-            own: [stoppable(1), workflow, stoppable(2)],
+            own: [stoppable(1), plain, workflow, stoppable(2)],
             counted: [plain],
         });
-        expect(backgroundRows([plain], [])).toEqual({ own: [], counted: [plain] });
+        expect(backgroundRows([plain], [])).toEqual({ own: [plain], counted: [plain] });
         expect(backgroundRows([], [])).toEqual({ own: [], counted: [] });
     });
 
-    it('keeps the order of the list, and the rows past the cap go to the count', () => {
+    it('keeps every stoppable item in order', () => {
         const items = Array.from({ length: MAX_AGENT_ROWS + 2 }, (_, index) => stoppable(index + 1));
         const { own, counted } = backgroundRows([plain, ...items], []);
 
-        expect(own).toEqual(items.slice(0, MAX_AGENT_ROWS));
-        expect(counted).toEqual([plain, ...items.slice(MAX_AGENT_ROWS)]);
+        expect(own).toEqual([plain, ...items]);
+        expect(counted).toEqual([plain]);
     });
 
     it('never gives a sub-agent one: its row is its child run, and one with none is counted', () => {
