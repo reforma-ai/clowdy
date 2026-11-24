@@ -76,7 +76,9 @@ function whyUnread(repository: FolderRepository): string | undefined {
 
 /** Number of chats using a worktree. */
 function usersLine(chats: readonly Chat[]): string {
-    return `Used in ${chats.length} ${chats.length === 1 ? 'chat' : 'chats'}`;
+    if (chats.length === 0) return 'No chats';
+
+    return `${chats.length} ${chats.length === 1 ? 'chat' : 'chats'}`;
 }
 
 /**
@@ -345,7 +347,7 @@ function WorkspaceChip({ git, choice, chats, main, onChoose, onManage }: Workspa
                                     stacked
                                     icon={<Folder aria-hidden="true" />}
                                     text="Main worktree"
-                                    description="Work in the folder as it is"
+                                    description="Use the project folder"
                                     endAffix={
                                         shown ? (
                                             main && canMakeOne ? (
@@ -373,15 +375,13 @@ function WorkspaceChip({ git, choice, chats, main, onChoose, onManage }: Workspa
                                     text="New worktree"
                                     stacked
                                     description={
-                                        canMakeOne
-                                            ? 'A separate checkout on a branch of its own'
-                                            : 'The repository has no commit yet'
+                                        canMakeOne ? 'Use a new folder and branch' : 'The repository has no commit yet'
                                     }
                                     isDisabled={!canMakeOne}
                                     endAffix={
                                         canMakeOne && base !== undefined ? (
                                             <RowButton
-                                                name={base}
+                                                name={`From ${base}`}
                                                 aria-label={`Start from: ${base}`}
                                                 held={baseHeld}
                                                 onPress={event => openList(event.target as Element)}
