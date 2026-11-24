@@ -1,19 +1,7 @@
 import { turnScope } from '@clowdy/protocol';
 import { describe, expect, it } from 'vitest';
 
-import {
-    chevronWords,
-    hiddenRows,
-    isLastRunCurrent,
-    lastRunScope,
-    MAX_PLATE_ROWS,
-    plateFilesOf,
-    plateTitle,
-    plateTotals,
-    rowCounts,
-    rowLabel,
-    visibleRows,
-} from './lastRunRows';
+import { isLastRunCurrent, lastRunScope, plateFilesOf, plateTotals, rowCounts, rowLabel } from './lastRunRows';
 
 import type { GitChangedFile, GitChanges } from '@clowdy/protocol';
 import type { PlateFacts } from './lastRunRows';
@@ -133,28 +121,6 @@ describe('plateFilesOf', () => {
 });
 
 describe('the rows', () => {
-    it('are the first five files, and all of them once the chevron unfolds them', () => {
-        expect(MAX_PLATE_ROWS).toBe(5);
-        expect(visibleRows(files(7), false).map(entry => entry.path)).toEqual([
-            'src/f0.ts',
-            'src/f1.ts',
-            'src/f2.ts',
-            'src/f3.ts',
-            'src/f4.ts',
-        ]);
-        expect(visibleRows(files(7), true)).toHaveLength(7);
-        expect(visibleRows(files(3), false)).toHaveLength(3);
-        expect(hiddenRows(files(7))).toBe(2);
-        expect(hiddenRows(files(5))).toBe(0);
-        expect(hiddenRows(files(0))).toBe(0);
-    });
-
-    it('say how many are behind the chevron, and how to fold them again', () => {
-        expect(chevronWords({ files: files(7) }, false)).toBe('2 more files');
-        expect(chevronWords({ files: files(6) }, false)).toBe('1 more file');
-        expect(chevronWords({ files: files(7) }, true)).toBe('Show fewer');
-    });
-
     it("write a file's lines with the signs the Changes tab uses, and none for a binary file", () => {
         expect(rowCounts({ additions: 101, deletions: 15 })).toEqual({ additions: '+101', deletions: '−15' });
         expect(rowCounts({ additions: 0, deletions: 8 })).toEqual({ additions: '+0', deletions: '−8' });
@@ -179,12 +145,8 @@ describe('the rows', () => {
 });
 
 describe('the header', () => {
-    it('says Last run, how many files, and the totals as the Changes tab writes them, none of it ending in a period', () => {
-        const list = changes(files(7));
-
-        expect(plateTitle(list as Extract<GitChanges, { isRepository: true }>)).toBe('Last run · 7 files');
-        expect(plateTitle({ fileCount: 1 })).toBe('Last run · 1 file');
-        expect(plateTotals(list as Extract<GitChanges, { isRepository: true }>)).toEqual({
+    it('writes the totals with the signs the Changes tab uses', () => {
+        expect(plateTotals({ additions: 152, deletions: 22 })).toEqual({
             additions: '+152',
             deletions: '−22',
         });

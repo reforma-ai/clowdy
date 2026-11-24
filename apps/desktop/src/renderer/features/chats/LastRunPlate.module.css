@@ -5,37 +5,38 @@
  * plate's column as `ComposerBannerStatus` rows do: words 12px from the plate's edge, the hover plate and the focus 4px from it.
  */
 
-/* `Last run · 7 files` with the lines of the whole run at the end: as tall as a row of the plate, between its 2px insets. */
-.header {
-    display: flex;
+.header[data-size][data-variant] {
+    align-self: stretch;
+    width: auto;
+    margin: var(--spacing-xxs) var(--spacing-xs);
+    padding-inline: var(--spacing-md);
+}
+
+.headerContent {
+    justify-content: space-between;
+}
+
+.summary {
+    display: inline-flex;
     align-items: center;
     gap: var(--spacing-sm);
-    min-height: calc(var(--spacing-30) + var(--spacing-xxs) * 2);
-    padding: var(--spacing-xxs) var(--spacing-lg);
-}
-
-.icon {
-    display: flex;
-    flex-shrink: 0;
-    color: var(--color-secondary-muted-text);
-}
-
-.title {
-    flex: 1;
-    min-width: 0;
+    white-space: nowrap;
 }
 
 .counts {
     display: inline-flex;
     flex-shrink: 0;
     gap: var(--spacing-xs);
-    margin-inline-start: auto;
     white-space: nowrap;
 }
 
-/* The files: as many as they are, none of them cut. Unfolded, the rest is in a box that scrolls, so a run of hundreds of files does not push the chat off the screen. */
-.unfolded {
-    max-height: 40vh;
+/* Five small list rows, with four gaps and two insets. */
+.files {
+    max-height: min(40vh, calc(5 * var(--spacing-30) + 6 * var(--spacing-xxs)));
+}
+
+.fileScroll {
+    overscroll-behavior-y: contain;
 }
 
 .rows {
@@ -62,21 +63,4 @@
 .path {
     display: block;
     text-align: left;
-}
-
-/* The button at the bottom that unfolds the rest and folds it again: one row of the plate, its words in line with the rows'. */
-.footer {
-    padding: var(--spacing-xxs) var(--spacing-xs);
-}
-
-.more[data-size][data-variant] {
-    justify-content: flex-start;
-    width: 100%;
-    padding-inline: var(--spacing-md);
-}
-
-.moreContent {
-    flex: 1;
-    justify-content: flex-start;
-    gap: var(--spacing-sm);
 }

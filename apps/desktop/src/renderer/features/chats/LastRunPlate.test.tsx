@@ -84,10 +84,9 @@ async function draw({ chat = FIXTURE_LAST_RUN_CHAT_ID, run, items, chatFields }:
     await settle();
 }
 
-const plate = () => container.querySelector<HTMLElement>('[aria-label="Last run"]');
+const plate = () => container.querySelector<HTMLElement>('[aria-label="Changes from the last run"]');
 const rows = () => [...(plate()?.querySelectorAll<HTMLElement>('[role="row"]') ?? [])];
-const chevron = () => plate()?.querySelector<HTMLButtonElement>('button[aria-expanded]') ?? null;
-const header = () => plate()?.firstElementChild?.textContent;
+const header = () => plate()?.querySelector<HTMLButtonElement>('button[aria-expanded]') ?? null;
 
 beforeEach(async () => {
     data = withFixtureLastRun(withFixtureWorkspace(createFixtureData()));
@@ -108,68 +107,54 @@ afterEach(() => {
 });
 
 describe('the Last run plate', () => {
-    it('lists what the run changed after it ended: the header with its totals, the first five files with their letters and lines, and a chevron for the other two', async () => {
+    it('shows only the changes summary with its totals by default', async () => {
         await draw();
 
         expect(plate()).not.toBeNull();
-        expect(header()).toBe('Last run · 7 files+178−29');
-        expect(rows().map(row => row.getAttribute('aria-label'))).toEqual(FIXTURE_RUN_FILES.slice(0, 5).map(rowLabel));
-        expect(rows().map(row => row.textContent)).toEqual([
-            'Adocs/pricing/a/deeply/nested/folder/for/the/weekend-surcharge-rules/weekend-surcharge-calculation-notes.md+38−0',
-            'Msrc/booking/BookingForm.tsx+9−2',
-            'Msrc/booking/price.ts+101−15',
-            'Msrc/booking/weekend.ts+12−3',
-            'Asrc/db/migrations/0042_weekend_surcharge.sql+14−0',
-        ]);
-        expect(chevron()?.textContent).toBe('2 more files');
-        expect(chevron()?.getAttribute('aria-expanded')).toBe('false');
+        expect(header()?.textContent).toBe('Changes7 files+178−29');
+        expect(header()?.getAttribute('aria-expanded')).toBe('false');
+        expect(rows()).toHaveLength(0);
     });
 
-    it('unfolds the rest with the chevron, which says so to a screen reader, and folds them again', async () => {
+    it('unfolds the full file list from the header and folds it again', async () => {
         await draw();
-        await act(async () => chevron()!.click());
+        await act(async () => header()!.click());
 
-        expect(chevron()?.getAttribute('aria-expanded')).toBe('true');
-        expect(chevron()?.textContent).toBe('Show fewer');
+        expect(header()?.getAttribute('aria-expanded')).toBe('true');
         expect(rows().map(row => row.getAttribute('aria-label'))).toEqual(FIXTURE_RUN_FILES.map(rowLabel));
         // The button controls the rows it unfolds.
         expect(
             plate()
-                ?.querySelector(`[id="${chevron()!.getAttribute('aria-controls')}"]`)
+                ?.querySelector(`[id="${header()!.getAttribute('aria-controls')}"]`)
                 ?.querySelectorAll('[role="row"]')
         ).toHaveLength(7);
 
-        await act(async () => chevron()!.click());
-        expect(chevron()?.getAttribute('aria-expanded')).toBe('false');
-        expect(rows()).toHaveLength(5);
+        await act(async () => header()!.click());
+        expect(header()?.getAttribute('aria-expanded')).toBe('false');
+        expect(rows()).toHaveLength(0);
     });
 
-    it('has a chevron only when there is something behind it', async () => {
-        data.chats.find(chat => chat.id === FIXTURE_LAST_RUN_CHAT_ID)!.lastRun = {
-            ...FIXTURE_RUN_TREES,
-            seq: 2,
-            at: 1,
-        };
+    it('also starts collapsed when only one file changed', async () => {
         vi.spyOn(transport, 'getGitChanges').mockResolvedValue({
             isRepository: true,
             scope: FIXTURE_RUN_SCOPE,
-            files: FIXTURE_RUN_FILES.slice(0, 5),
-            fileCount: 5,
-            additions: 10,
-            deletions: 1,
+            files: FIXTURE_RUN_FILES.slice(0, 1),
+            fileCount: 1,
+            additions: 38,
+            deletions: 0,
             statsComplete: true,
         });
-        await store.load();
-        store.selectProject(FIXTURE_PROJECT_ID);
         await draw();
 
-        expect(header()).toBe('Last run · 5 files+10−1');
-        expect(rows()).toHaveLength(5);
-        expect(chevron()).toBeNull();
+        expect(header()?.textContent).toBe('Changes1 file+38−0');
+        expect(rows()).toHaveLength(0);
+        await act(async () => header()!.click());
+        expect(rows()).toHaveLength(1);
     });
 
     it("draws a row's path with the folder dimmed, the name after it, and the start cut when it is long, so the name stays", async () => {
         await draw();
+        await act(async () => header()!.click());
 
         const long = rows()[0]!;
         const path = long.querySelector<HTMLElement>('[dir="rtl"]')!;
@@ -243,6 +228,8 @@ describe('the Last run plate', () => {
         // The run ends.
         await draw({ run: { status: 'succeeded' } });
         expect(plate()).not.toBeNull();
+        await act(async () => header()!.click());
+        expect(rows()).not.toHaveLength(0);
 
         // The person writes: the message waits in the queue, then starts a turn.
         await draw({ chatFields: { queue: [{ id: 'q1', text: 'Next', mode: 'queue', createdAt: 5 } as never] } });
@@ -270,7 +257,8 @@ describe('the Last run plate', () => {
             ],
             chatFields: { lastRun: { ...FIXTURE_RUN_TREES, seq: 4, at: 9 } },
         });
-        expect(plate()).not.toBeNull();
+        expect(header()?.getAttribute('aria-expanded')).toBe('false');
+        expect(rows()).toHaveLength(0);
     });
 
     it('waits for the stream, and is drawn for a chat that cannot be written to as well, since it asks only what the chat holds', async () => {
@@ -311,6 +299,7 @@ describe('the Last run plate', () => {
 
         ui.closeSidePanel();
         await draw();
+        await act(async () => header()!.click());
 
         const chat = chatOf(FIXTURE_LAST_RUN_CHAT_ID);
         const place = chatPlace(
@@ -336,8 +325,7 @@ describe('the Last run plate', () => {
         expect(model.effectiveScope).toBe(FIXTURE_RUN_SCOPE);
         expect(model.followsRun).toBe(true);
         expect(model.revealRequest).toBe('src/booking/price.ts');
-        // A file past the chevron opens the same way.
-        await act(async () => chevron()!.click());
+        // A file below the initial viewport opens the same way.
         await act(async () => rows()[6]!.click());
         expect(model.revealRequest).toBe('src/mail/confirmation.ts');
     });
