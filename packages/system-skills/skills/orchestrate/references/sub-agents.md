@@ -27,4 +27,4 @@ Answer: at most 15 lines: what changed or what you found, with file paths, the c
 
 ## 3. Results
 
-A sub-agent's answer is a lead, not evidence: read its diff, run the check yourself. One that fails or answers off target is retried once with the reason in the prompt; then do it yourself. Sub-agents do not commit: you commit each verified task's own paths.
+A sub-agent's answer is a lead, not evidence: read its diff and run the check yourself. Retry one that fails or answers off target once with the reason, then do it yourself. Sub-agents do not commit: you commit each verified task's own paths.

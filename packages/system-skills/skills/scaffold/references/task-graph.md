@@ -4,7 +4,7 @@ Plan it after the skeleton passes its check, so Owns paths are real. The task te
 
 ## Slice catalog
 
-Take only the slices the first milestone needs. A slice is a coherent outcome you can build and check on its own. Typical ones:
+Take only slices the first milestone needs. Each is a coherent outcome built and checked on its own:
 
 | Slice | Owns (typical) | Usually depends on |
 | --- | --- | --- |
@@ -67,4 +67,4 @@ You build CLW-2 first. CLW-3 and CLW-5 own other paths, so two threads build the
 
 ## Replanning
 
-Slices reveal facts. When one does (a missing table, a wrong contract, a slice that is bigger than thought), stop the affected threads (`clowdy thread stop`) and sub-agents, fix `architecture.md` Contracts first, tell the threads that go on what changed (`clowdy thread tell`), then replan as in clowdy:orchestrate. Do not let two slices keep building against different versions of a contract.
+When a slice reveals new facts (a missing table, a wrong contract, a larger slice than expected), stop the affected threads (`clowdy thread stop`) and sub-agents, fix `architecture.md` Contracts first, tell the threads that go on what changed (`clowdy thread tell`), then replan as in clowdy:orchestrate. Do not let two slices keep building against different versions of a contract.

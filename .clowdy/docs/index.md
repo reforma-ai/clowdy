@@ -8,6 +8,8 @@
 
 ## Checks
 
+- [System skill edits](checks/2026-11-24-system-skill-edit.md) covers validation, integration tests and semantic review. Status: passed with limits.
+
 - [Manual chat ordering](checks/2026-11-24-manual-chat-order.md) covers native drag, grouping, and saved order after reload. Status: passed.
 
 - [Worktree branch switch](checks/2026-11-24-switch-merged-worktree-branches.md) covers the real Git and Electron checks. Status: passed.

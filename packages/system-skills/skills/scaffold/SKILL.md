@@ -5,9 +5,9 @@ description: "Start a new application from nothing for someone who describes a p
 
 # Scaffold a new application
 
-You turn "I want an app that does X" into a working skeleton that all later work builds on. ONE agent builds the skeleton first, so every later piece, yours, a sub-agent's or a thread's, finds the same layout, commands and conventions.
+Turn "I want an app that does X" into a working skeleton. ONE agent builds it first so later work shares the same layout, commands and conventions.
 
-Use it when the folder is empty (or holds only a README or licence) and the user wants a new application. If an app already exists, do not scaffold: read its documents (clowdy:docs) and plan with clowdy:orchestrate. Never overwrite existing files.
+Use this when the folder is empty (or holds only a README or licence) and the user wants a new application. If an app already exists, do not scaffold: read its documents (clowdy:docs) and plan with clowdy:orchestrate. Never overwrite existing files.
 
 Your first message says `Mode: autopilot` or `Mode: semi-manual`. It decides who answers the forks below (clowdy:autopilot, clowdy:semi-manual).
 
@@ -72,7 +72,7 @@ Load clowdy:docs. You wrote `product.md` and the stack decision in steps 1 and 2
 
 ### 5. Plan the first task graph
 
-After the skeleton passes its check, so that Owns paths are real. Slice catalog and rules: [task-graph](references/task-graph.md). In short:
+Plan after the skeleton passes its check, when Owns paths are real. Slice catalog and rules: [task-graph](references/task-graph.md):
 
 - Slice by what can be built and verified on its own: data model, API, UI shell, each feature screen, auth, deployment script, demo data. Not by layer for its own sake.
 - Create tasks with `clowdy task create`, in dependency order, each description in the five-part template of clowdy:orchestrate (Outcome, Owns, Needs, Check, Out of scope).

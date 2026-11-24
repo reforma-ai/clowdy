@@ -53,7 +53,6 @@ A thread is a chat below yours with an agent of its own, driven with `clowdy thr
 - **Steer and stop.** `clowdy thread tell <thread> --mode steer "<message>"` redirects a running thread (its running turn takes it when its agent can, else its next turn does); `--mode queue` waits for its next turn. `clowdy thread stop <thread>` when the plan changed. `clowdy thread output` and `clowdy thread log` are for diagnosis; `clowdy thread wait` only for a short wait when nothing else is left, since you hold your turn meanwhile.
 - **Verify** through a fresh thread for user flows and risky changes: the claim and the acceptance criteria, never the author's reasoning.
 - **Where.** One checkout with disjoint ownership by default; a git worktree when pieces overlap or the build will be broken for a while: `--worktree` (the daemon makes it) or one of your own passed as `--cwd`.
-- **Quota.** Every stop of a thread costs you a turn: prefer fewer, larger threads; 2-6 at once is normal. Do not message threads for acknowledgements or thanks, and do not answer their notices just to acknowledge them.
 
 ## Loop until done
 
@@ -65,7 +64,7 @@ A thread is a chat below yours with an agent of its own, driven with `clowdy thr
 
 ## Quota
 
-Subscription limits, not CPU, are the ceiling. Every sub-agent and every thread carries a context of its own, and every report of a thread costs you a turn: use few, with sharp prompts and briefs, and prefer fewer, larger threads (2-6 at once is normal, dozens is a smell). One that failed on a usage limit is not a code failure: do not start it again in a loop; keep the rest moving, and if nothing can move, report what is paused and why.
+Subscription limits, not CPU, are the ceiling. Each agent has its own context, and each thread report costs a turn: use few, with sharp briefs; prefer fewer, larger threads (2-6 at once is normal). Never message threads or answer notices just to acknowledge or thank them. A usage limit is not a code failure: do not retry in a loop; keep the rest moving, and report what is paused and why when nothing can move.
 
 ## Git
 
@@ -93,11 +92,9 @@ Autopilot adds a `Decided for you` line and semi-manual a `Decided with you` lin
 
 Manager, `Mode: autopilot`: "Customers want to export the invoices list as CSV."
 
-1. Larger work (API, UI, file format). `clowdy task list --query "export"`: nothing similar. `architecture.md`: API in `apps/api`, UI in `apps/web`. Baseline: tests green.
-2. Tell the manager: "Invoices page gets an Export CSV button; the file opens correctly in Excel. I will check export of a real list, including names with commas." Significant fork, decided now and recorded in `decisions/2026-11-17-csv-encoding.md`: UTF-8 with BOM so Excel reads accents.
-3. Tasks: CLW-21 "CSV export endpoint" (Owns `apps/api/src/invoices/export*`, Check: tests and `curl`) and CLW-22 "Export button" (Owns `apps/web/src/invoices/`, contract: `GET /invoices/export.csv?status=`). No dependency: the contract is fixed in both.
-4. Do CLW-21 yourself, then CLW-22, each In progress and then Review. Run build, typecheck and tests on the whole: green.
-5. Verify. Criteria first: the button shows, the click downloads `invoices.csv`, one row per invoice, commas and accents right, the status filter applies. Run the gates, export a real list through the app, probe a customer named `Smith, Jo`: the columns break. Repro in hand.
-6. Reopen CLW-21, quote the field, add a test, run the gates and the flow again: green and correct.
-7. Set both Done. Write the check report, update `product.md`, link the decision and the report in `index.md`.
-8. Report: "Done: the invoices page can export CSV; names with commas and accents are handled. Checked: ... Open: nothing."
+1. Search for existing work, read the architecture and run baseline checks. No export exists; the baseline is green.
+2. Tell the manager the goal and checks. Record the significant decision: UTF-8 with BOM lets Excel read accents.
+3. Create tasks for the endpoint and button. Both use the fixed contract `GET /invoices/export.csv?status=`, so neither depends on the other.
+4. Build both, moving each through In progress and Review. Run build, typecheck and tests on the combined result.
+5. Check the download, rows, accents and filter in the app. A name like `Smith, Jo` breaks the columns: reopen the endpoint task, quote the field, add a test and repeat the checks.
+6. Set both tasks Done after verification; record the decision and check report, update the docs and report the outcome.

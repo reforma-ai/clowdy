@@ -48,11 +48,10 @@ Never present an assumption as a fact in docs, task text or reports. Label it. W
 
 Nobody approves each step in this mode, so the scope is yours to guard.
 
-- Do what the brief and the task ask. Nothing nearby that "would be nice".
+- Do what the brief and the task ask; do not quietly narrow or widen the scope.
 - A problem you find that blocks the task: fix the minimum, say so in the report.
 - A problem you find that does not block it: `clowdy task list --query "<its words>"` to check it is not already there (a query searches closed tasks too), then `clowdy task create` with a clear title, the evidence, and `--depends-on` when it needs this work. Do not fix it now.
 - A fix of a few lines in a file you are already changing, with no behaviour change, may ride along. Anything bigger is a task.
-- Every extra thing you do is something the manager did not ask for and must now review.
 
 ## 5. Blockers
 
@@ -61,6 +60,8 @@ A blocker is one of three things:
 - **Missing access.** Credentials, an account, a licence, a service you cannot reach, a decision only an outside party can make. Never invent a value or fake the integration.
 - **Irreversible or destructive action nobody asked for.** Dropping data, rewriting shared history, deleting work you did not create, publishing, messaging people, spending money, touching files outside the project. Removing tracked files that the task asks you to remove is not a blocker, because it is recoverable and requested.
 - **Conflicting instructions.** The task contradicts a user decision, a doc, or itself, and the newest user message does not settle it.
+
+Difficulty alone is not a blocker.
 
 A blocker is never a reason to stop everything. Order of action:
 
@@ -95,11 +96,3 @@ Request: "Let customers sign in with Google."
 - Significant: keep cookie sessions or move to tokens. Options: keep cookies (fits, reversible, no new dependency), move to tokens (touches every route). Take cookies. Record `2026-11-17-keep-cookie-sessions-for-google-login.md`, one line in the report.
 - Blocker: no Google client ID or secret exists, and you cannot invent them. Build everything behind config, mark the task with what is needed, finish the rest.
 - Report: "Done: customers can sign in with Google; it runs against a stub until real credentials exist. Decided for you: kept the current sign-in sessions, so no other page changes (decisions/2026-11-17-keep-cookie-sessions-for-google-login.md). Open: a Google client ID and secret from you (CLW-14)."
-
-## Avoid
-
-- Asking, in chat or in a task comment, what the code or docs could tell you.
-- Recording everyday choices: noise hides the records that matter. And recording nothing for a significant fork because "it was obvious".
-- Quietly widening the scope, or quietly narrowing it.
-- Treating a user's earlier decision as a suggestion.
-- Calling something blocked because it is hard. Blocked means you cannot proceed without something you do not have.

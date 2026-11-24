@@ -2,7 +2,7 @@
 
 Load this when the project is the repository Clowdy itself runs from. Signs: the folder contains `apps/daemon`, `apps/desktop` and `packages/system-skills`, or AGENTS.md or the docs say the running app is built from this checkout. For any other project this file does not apply.
 
-The reason: the manager is using the running app while you change its source. Replacing files of the running build can kill the app, and a change that breaks the build leaves the manager with nothing.
+The manager is using the app while you change its source. Replacing its running build can kill it; a broken build leaves the manager with nothing.
 
 ## Rules
 
@@ -13,7 +13,7 @@ The reason: the manager is using the running app while you change its source. Re
 5. **Do not merge into the running checkout** unless the manager asks. Leave the work in the copy and say so.
 6. **Say when stored data changes.** A migration or a changed schema means: back up first, and the old version may not read the new data.
 
-Sub-agents and threads work as usual inside the copy: disjoint file ownership, the copy's path in each prompt and brief.
+Sub-agents and threads work inside the copy with disjoint ownership; give each prompt and brief its path.
 
 ## Handing over
 

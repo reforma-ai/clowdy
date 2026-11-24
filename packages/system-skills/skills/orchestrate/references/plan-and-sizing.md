@@ -18,7 +18,7 @@ A task without a Check is not ready to start. A task without Owns cannot be shar
 
 ## Size
 
-One task is one coherent outcome that you can build and check as one piece. Typical: 30-120 minutes of agent work, one area, a handful to a dozen files.
+One task is a coherent outcome built and checked as one piece. Typical: 30-120 minutes of agent work, one area, a handful to a dozen files.
 
 - Too small: rename a function, add one test, update imports, "write docs" for code another task writes. Merge it into the task that owns the code.
 - Too big: spans unrelated areas, has no single Check, or would end as "partly done". Split by ownership (area or file set), not by activity (code, tests, docs).
@@ -45,7 +45,7 @@ A task can contain tasks. Larger work that splits is one whole (the bound task, 
 - **Child task**: a stage that is delegated to a thread or a sub-agent, checked on its own, waited for by another task, or should show on its own on the board. One level of stages is usual.
 - **Checklist**: the steps one owner takes, as Markdown lines in the description (`- [ ] step`; nothing else counts). Listings show how many are ticked. No tool ticks a line: read the description, change the line to `- [x]` and send the whole text with `clowdy task update <key> --description-file -`.
 
-Never list the same step both ways.
+Never list a step both ways.
 
 ## Status flow
 
@@ -59,7 +59,7 @@ Statuses are the project's columns; the default is To do, In progress, Review, D
 | Any -> Canceled | The task is dropped; leave the reason as a comment |
 | Review or Done -> In progress | Verification failed; leave the failure as a comment |
 
-Do not delete tasks to replan: cancel with a reason and create the new one. History is how the manager follows what happened.
+To replan, cancel tasks with a reason and create new ones; do not delete them. History lets the manager follow what happened.
 
 ## Replanning
 
