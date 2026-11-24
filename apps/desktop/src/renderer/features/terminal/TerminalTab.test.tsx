@@ -13,7 +13,9 @@ import {
 } from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../../stores';
+import { codeQuote } from '../chats/codeQuote';
 import TerminalTab, { TerminalShell } from './TerminalTab';
+import { selectedBufferRows } from './terminalSelection';
 import { terminalsStoreOf } from './useTerminalsStore';
 
 import type { Chat } from '@clowdy/protocol';
@@ -47,6 +49,7 @@ vi.mock('./TerminalView', () => ({
 
         fit() {}
         syncTheme() {}
+        setAddToChat() {}
 
         dispose() {
             this.disposed = true;
@@ -387,5 +390,36 @@ describe("the Terminal tab in a chat's worktree", () => {
         expect(container.textContent).not.toContain('The worktree is not made yet');
         expect(labels()).toEqual(['zsh']);
         expect(terminals.sessions[0]?.info.workspaceId).toBe(chat.workspace!.id);
+    });
+});
+
+describe('a terminal selection quoted into the chat', () => {
+    const rows = ['abcdefghij', 'KLM', '   '];
+    const lineAt = (index: number) => ({
+        translateToString: (_trim?: boolean, start = 0, end?: number) => (rows[index] ?? '').slice(start, end).trimEnd(),
+    });
+
+    it('quotes each buffer row on its own line, numbered as the log numbers them', () => {
+        const selected = selectedBufferRows(lineAt, { start: { x: 0, y: 0 }, end: { x: 3, y: 1 } });
+
+        expect(selected).toEqual({ from: 1, to: 2, text: 'abcdefghij\nKLM' });
+        expect(codeQuote('/logs/trm_1.log', selected!)).toBe(
+            '`/logs/trm_1.log:1-2`\n```log\nabcdefghij\nKLM\n```'
+        );
+    });
+
+    it('keeps a partial row partial, and offers nothing for a blank selection', () => {
+        expect(selectedBufferRows(lineAt, { start: { x: 3, y: 0 }, end: { x: 2, y: 1 } })).toEqual({
+            from: 1,
+            to: 2,
+            text: 'defghij\nKL',
+        });
+        expect(selectedBufferRows(lineAt, { start: { x: 0, y: 1 }, end: { x: 0, y: 2 } })).toEqual({
+            from: 2,
+            to: 2,
+            text: 'KLM',
+        });
+        expect(selectedBufferRows(lineAt, { start: { x: 0, y: 2 }, end: { x: 3, y: 2 } })).toBeUndefined();
+        expect(selectedBufferRows(lineAt, { start: { x: 1, y: 0 }, end: { x: 1, y: 0 } })).toBeUndefined();
     });
 });

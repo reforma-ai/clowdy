@@ -10,6 +10,8 @@ import { Plus } from '@clowdy/icons/16';
 import { useCallback, useEffect, useRef } from 'react';
 
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
+import { codeQuote } from '../chats/codeQuote';
+import { quoteIntoComposer, useHasComposer } from '../chats/composerBridge';
 import { currentPlace, isPlaceReady } from '../sidePanel/currentPlace';
 import { PlaceWaiting } from '../sidePanel/PlaceWaiting';
 import styles from './TerminalTab.module.css';
@@ -28,7 +30,9 @@ import type { TerminalSession } from './TerminalsStore';
  */
 export function TerminalShell({ session, onEmptied }: { session: TerminalSession; onEmptied?: () => void }) {
     const { transport } = useRootStore();
+    const ui = useProjectUi();
     const store = useTerminalsStore();
+    const hasComposer = useHasComposer();
     const hostRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -68,6 +72,28 @@ export function TerminalShell({ session, onEmptied }: { session: TerminalSession
             view.unmount();
         };
     }, [session, store, transport, onEmptied]);
+
+    useEffect(() => {
+        const view = session.view;
+
+        if (!(view instanceof TerminalView)) return undefined;
+
+        const logPath = session.info.logPath;
+
+        view.setAddToChat(
+            hasComposer && logPath
+                ? selected => {
+                      const taken = quoteIntoComposer(codeQuote(logPath, selected));
+
+                      if (taken) ui.showChat();
+
+                      return taken;
+                  }
+                : undefined
+        );
+
+        return () => view.setAddToChat(undefined);
+    }, [session, hasComposer, ui]);
 
     return (
         <>

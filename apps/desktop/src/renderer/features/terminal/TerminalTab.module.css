@@ -27,6 +27,7 @@
 
 /* The xterm is fitted to this box, so the box carries no padding of its own: the stage does. Its font is the code font, which xterm reads from here. */
 .host {
+    position: relative;
     flex: 1;
     min-width: 0;
     min-height: 0;
@@ -43,6 +44,13 @@
 .host :global(.xterm) :global(.xterm-viewport) {
     background-color: transparent;
     scrollbar-width: thin;
+}
+
+.quote {
+    position: absolute;
+    z-index: 2;
+    top: var(--spacing-sm);
+    right: var(--spacing-sm);
 }
 
 .banner {

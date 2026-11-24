@@ -1,13 +1,20 @@
+import { Button } from '@clowdy/components/Button';
+import { Hotkey } from '@clowdy/components/Hotkey';
+import { Message } from '@clowdy/icons/14';
 import { TERMINAL_SCROLLBACK } from '@clowdy/protocol';
 import { FitAddon } from '@xterm/addon-fit';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { Terminal as XTerm } from '@xterm/xterm';
+import { createElement } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
 
 import { hotkeys } from '../../hotkeys/registry';
 import { isAppShortcut, shellSequence } from './shellKeys';
+import styles from './TerminalTab.module.css';
 import { terminalTheme } from './terminalTheme';
+import { selectedBufferRows, type QuotedRows } from './terminalSelection';
 
 import type { TerminalScreen } from '@clowdy/protocol';
 import type { TerminalStream } from '../../daemon/terminalStream';
@@ -63,6 +70,11 @@ export class TerminalView implements TerminalViewHandle {
     #stream: TerminalStream | undefined;
     #resizeTimer: ReturnType<typeof setTimeout> | undefined;
     #disposed = false;
+    /** Set while a message box can take a quote. Absent, and the selection offers nothing, so Mod-i is not taken either. */
+    #quote: ((selected: QuotedRows) => boolean) | undefined;
+    #quoteButton: { host: HTMLElement; root: Root } | undefined;
+    /** A drag is still choosing the words: the button waits until the mouse is let go. */
+    #selecting = false;
 
     constructor(session: TerminalSession, options: TerminalViewOptions) {
         this.#session = session;
@@ -87,12 +99,28 @@ export class TerminalView implements TerminalViewHandle {
         }
 
         this.#xterm?.focus();
+        this.#syncQuote();
     }
 
     /** Leaves the host and takes the xterm's element along. */
     unmount(): void {
+        this.#quoteButton?.host.remove();
         this.#host = undefined;
         this.#xterm?.element?.remove();
+    }
+
+    /**
+     * Offers Add to chat for a selection, the button and Mod-i, or nothing when `quote` is absent (no message box is mounted). `quote` returns whether it took
+     * the words; a selection it took is cleared.
+     */
+    setAddToChat(quote: ((selected: QuotedRows) => boolean) | undefined): void {
+        this.#quote = quote;
+        this.#syncQuote();
+    }
+
+    /** The selected buffer rows, as the log numbers them, or nothing when the selection is empty or blank. */
+    selection(): QuotedRows | undefined {
+        return this.#readSelection();
     }
 
     focus(): void {
@@ -132,6 +160,9 @@ export class TerminalView implements TerminalViewHandle {
     dispose(): void {
         this.#disposed = true;
         clearTimeout(this.#resizeTimer);
+        this.#xterm?.element?.removeEventListener('mousedown', this.#onMouseDown);
+        document.removeEventListener('mouseup', this.#onMouseUp);
+        this.#dropQuote();
         this.#stream?.close();
         this.#xterm?.dispose();
         this.#stream = undefined;
@@ -151,7 +182,10 @@ export class TerminalView implements TerminalViewHandle {
         xterm.unicode.activeVersion = '11';
         xterm.loadAddon(new WebLinksAddon((event, uri) => this.#openLink(event, uri)));
         xterm.attachCustomKeyEventHandler(event => this.#handleKey(xterm, event));
+        xterm.onSelectionChange(() => this.#syncQuote());
         xterm.open(host);
+        xterm.element?.addEventListener('mousedown', this.#onMouseDown);
+        document.addEventListener('mouseup', this.#onMouseUp);
         this.#loadWebgl(xterm);
         xterm.onData(data => void this.#stream?.write(data));
         this.#xterm = xterm;
@@ -222,6 +256,13 @@ export class TerminalView implements TerminalViewHandle {
 
     /** `false` keeps xterm from handling the key. */
     #handleKey(xterm: XTerm, event: KeyboardEvent): boolean {
+        if (this.#isAddToChatKey(event) && this.#readSelection()) {
+            event.preventDefault();
+            this.#addToChat();
+
+            return false;
+        }
+
         // The app's own keys go on to the window's hotkeys.
         if (isAppShortcut(event, hotkeys.platform)) return false;
 
@@ -249,5 +290,89 @@ export class TerminalView implements TerminalViewHandle {
         }
 
         return event.code !== 'KeyV';
+    }
+
+    #onMouseDown = (event: MouseEvent): void => {
+        if (event.button !== 0) return;
+
+        this.#selecting = true;
+        this.#syncQuote();
+    };
+
+    #onMouseUp = (): void => {
+        if (!this.#selecting) return;
+
+        this.#selecting = false;
+        this.#syncQuote();
+    };
+
+    /** Mod-i: ⌘I on a Mac, Ctrl+I elsewhere. */
+    #isAddToChatKey(event: KeyboardEvent): boolean {
+        if (event.type !== 'keydown' || event.code !== 'KeyI' || event.altKey || event.shiftKey || !this.#quote) return false;
+
+        return hotkeys.platform === 'darwin' ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+    }
+
+    #readSelection(): QuotedRows | undefined {
+        const range = this.#xterm?.getSelectionPosition();
+
+        if (!this.#xterm || !range) return undefined;
+
+        return selectedBufferRows(index => this.#xterm?.buffer.active.getLine(index) ?? undefined, range);
+    }
+
+    #addToChat(): void {
+        const selected = this.#readSelection();
+
+        if (!selected || !this.#quote?.(selected)) return;
+
+        this.#xterm?.clearSelection();
+        this.#syncQuote();
+    }
+
+    #syncQuote(): void {
+        const show = Boolean(this.#quote) && !this.#selecting && this.#readSelection() !== undefined;
+
+        if (!show || !this.#host) {
+            this.#quoteButton?.host.remove();
+
+            return;
+        }
+
+        if (!this.#quoteButton) {
+            const host = document.createElement('div');
+            const root = createRoot(host);
+
+            host.className = styles.quote;
+            // The press would move the focus and clear the selection before the button acts.
+            host.addEventListener('mousedown', event => event.preventDefault());
+            root.render(
+                createElement(
+                    Button,
+                    {
+                        variant: 'filling',
+                        size: 'sm',
+                        preventFocusOnPress: true,
+                        'aria-label': 'Add to chat',
+                        onPress: () => this.#addToChat(),
+                    },
+                    createElement(Message),
+                    'Add to chat',
+                    createElement(Hotkey, { hotkey: ['mod', 'i'] })
+                )
+            );
+            this.#quoteButton = { host, root };
+        }
+
+        if (this.#quoteButton.host.parentElement !== this.#host) this.#host.append(this.#quoteButton.host);
+    }
+
+    #dropQuote(): void {
+        const button = this.#quoteButton;
+
+        this.#quoteButton = undefined;
+        button?.host.remove();
+
+        if (button) queueMicrotask(() => button.root.unmount());
     }
 }
