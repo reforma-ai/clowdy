@@ -654,6 +654,38 @@ describe('merging branches from the sync menu', () => {
         expect(dialog().querySelector('[role="status"]')?.textContent).toBe('Merged into clowdy/ab12cd34');
     });
 
+    it('filters the destination branches with text entered while they were loading', async () => {
+        await start();
+        const place = { folderId: WORKTREE.folderId, workspaceId: WORKTREE.workspaceId };
+        const listing = await transport.getGitBranches(FIXTURE_PROJECT_ID, place);
+        let finish = () => {};
+        vi.spyOn(transport, 'getGitBranches').mockImplementationOnce(
+            () =>
+                new Promise(resolve => {
+                    finish = () => resolve(listing);
+                })
+        );
+
+        await open('Merge into branch…');
+        const filter = () => dialog().querySelector<HTMLInputElement>('input[placeholder="Filter branches"]')!;
+        const spinner = () => dialog().querySelector('[role="status"][aria-label="Loading branches"]');
+        const input = filter();
+
+        expect(spinner()).not.toBeNull();
+        expect(button('Merge').disabled).toBe(true);
+        await act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, 'main');
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            finish();
+        });
+        await settle();
+
+        expect(spinner()).toBeNull();
+        expect(filter()).toBe(input);
+        expect(input.value).toBe('main');
+        expect(options().map(row => row.textContent?.trim())).toEqual(['main']);
+    });
+
     it('keeps the source checkout and pushes only the selected destination on a separate press', async () => {
         await start({ gitWrites: { clean: true, remote: 'level' }, branches: ['remote'] });
         const fetch = vi.spyOn(transport, 'fetchGit');

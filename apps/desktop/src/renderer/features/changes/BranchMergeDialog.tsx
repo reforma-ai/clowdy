@@ -231,6 +231,15 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
     const isWorking = pending !== undefined;
     const { editor, fileManager } = chosenPrograms(apps);
     const openIn = canOpenPaths() ? (editor ?? fileManager) : undefined;
+    const empty = loading ? (
+        <Spinner
+            size="xxs"
+            className={styles.loading}
+            aria-label={fetchOrigin ? 'Fetching branches from origin' : 'Loading branches'}
+        />
+    ) : choices.length === 0 ? (
+        'No branches available'
+    ) : undefined;
 
     return (
         <div
@@ -261,22 +270,15 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
                     <Close />
                 </Button>
             </div>
-            {loading && (
-                <div className={styles.loading} role="status">
-                    <Spinner size="xs" aria-hidden />
-                    <Text color="secondary">
-                        {fetchOrigin ? 'Fetching branches from origin…' : 'Loading branches…'}
-                    </Text>
-                </div>
-            )}
-            {!result && listing && (
+            {!result && (loading || listing) && (
                 <div inert={isWorking}>
                     <PickerList
                         options={choices}
                         aria-label={direction === 'from' ? 'Source branch' : 'Destination branch'}
                         selectedIds={selected ? [selected] : []}
                         placeholder="Filter branches"
-                        empty={choices.length === 0 ? 'No branches available' : undefined}
+                        empty={empty}
+                        listClassName={styles.branches}
                         onPick={id => void pick(id)}
                     />
                 </div>

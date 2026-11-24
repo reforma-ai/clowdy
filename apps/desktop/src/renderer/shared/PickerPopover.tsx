@@ -2,6 +2,7 @@ import { Autocomplete, useAutocompleteEnterAction } from '@clowdy/components/Aut
 import { ListBox, ListBoxHeader, ListBoxItem, ListBoxSection } from '@clowdy/components/List';
 import { Popover } from '@clowdy/components/Popover';
 import { Check } from '@clowdy/icons/14';
+import { cn } from '@clowdy/lib';
 import { type KeyboardEvent, type ReactNode, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Collection } from 'react-aria-components';
 
@@ -34,8 +35,10 @@ export interface PickerListProps {
     'aria-label': string;
     /** The hint in the search field. */
     placeholder?: string;
-    /** What the list says when no option is left (`Nothing found` when absent): a list that has none yet says why, as `Loading branches`. */
-    empty?: string;
+    /** Content shown when no options match or the list is still loading. Defaults to `Nothing found`. */
+    empty?: ReactNode;
+    /** Styles for the list area below the filter. */
+    listClassName?: string;
     /** The person chose an option that is not disabled. The list does not close anything: its owner does. */
     onPick: (id: string) => void;
 }
@@ -98,6 +101,7 @@ export function PickerList({
     'aria-label': ariaLabel,
     placeholder,
     empty = 'Nothing found',
+    listClassName,
     onPick,
 }: PickerListProps) {
     const [query, setQuery] = useState('');
@@ -144,7 +148,7 @@ export function PickerList({
                 aria-label={ariaLabel}
                 ref={list}
                 size="sm"
-                className={styles.list}
+                className={cn(styles.list, listClassName)}
                 autoFocus={false}
                 items={groups}
                 dependencies={dependencies}
@@ -197,6 +201,7 @@ export function PickerPopover({
     'aria-label': ariaLabel,
     placeholder,
     empty,
+    listClassName,
     footer,
     placement,
     onPick,
@@ -234,6 +239,7 @@ export function PickerPopover({
                     aria-label={ariaLabel}
                     placeholder={placeholder}
                     empty={empty}
+                    listClassName={listClassName}
                     onPick={pick}
                 />
                 {footer}
