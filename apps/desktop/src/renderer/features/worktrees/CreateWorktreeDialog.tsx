@@ -9,6 +9,7 @@ import { branchNameProblem } from '@clowdy/protocol';
 import { type FormEvent, useState } from 'react';
 
 import { branchPrefix } from '../chats/branchPrefix';
+import { refreshFolderGit } from '../openWith';
 import styles from './ManageWorktrees.module.css';
 
 import type { CreatedWorktree, FolderId, ProjectId } from '@clowdy/protocol';
@@ -59,6 +60,8 @@ function CreateWorktreeForm({ root, projectId, folderId, reload }: CreateWorktre
             branchPrefix: branchPrefix.value,
         });
 
+        if (result.ok) refreshFolderGit(projectId, folderId);
+
         await reload();
         setPending(false);
 
@@ -71,6 +74,7 @@ function CreateWorktreeForm({ root, projectId, folderId, reload }: CreateWorktre
         const { warning } = result.data as CreatedWorktree;
 
         if (warning) toast.warning({ title: 'Worktree created', message: warning });
+        else toast.success({ title: 'Worktree ready' });
 
         modal.cancel();
     };
@@ -116,8 +120,14 @@ function CreateWorktreeForm({ root, projectId, folderId, reload }: CreateWorktre
                 <Button variant="filled" color="secondary" onPress={() => modal.cancel()} isDisabled={pending}>
                     Cancel
                 </Button>
-                <Button type="submit" color="primary" isDisabled={!branchName || !!problem} isPending={pending}>
-                    Create worktree
+                <Button
+                    type="submit"
+                    color="primary"
+                    isDisabled={!branchName || !!problem}
+                    isPending={pending}
+                    spinnerPlacement="start"
+                >
+                    {pending ? 'Preparing worktree…' : 'Create worktree'}
                 </Button>
             </Box>
         </form>

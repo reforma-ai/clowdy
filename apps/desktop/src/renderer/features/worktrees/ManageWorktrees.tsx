@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef } from 'react';
 
 import { RootStoreProvider, useRootStore } from '../../stores';
 import { openChat } from '../chats/archiveChat';
+import { refreshFolderGit } from '../openWith';
 import { openCreateWorktree } from './CreateWorktreeDialog';
 import styles from './ManageWorktrees.module.css';
 import { openRemoveWorktree } from './RemoveWorktreeDialog';
@@ -102,6 +103,8 @@ function ManageWorktrees({ projectId, folderId }: Omit<ManageWorktreesProps, 'ro
     const actions: WorktreeRowActions = {
         onNewChat: (folder, worktree) => {
             show();
+            if (!worktree.main) refreshFolderGit(projectId, folder.id);
+
             // The main folder's chat has no folder of its own: it follows the main folder, as the sidebar's New chat does. The folder's own checkout is no worktree to choose.
             root.ui
                 .forProject(projectId)

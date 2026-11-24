@@ -23,7 +23,7 @@ import {
     toChatWorkspace,
     updateWorkspace,
 } from '../db/workspaces';
-import { conflict, invalid, notFound } from '../errors';
+import { conflict, errorMessage, invalid, notFound } from '../errors';
 import { baseOf, parseBranches, parseWorktrees, pickBase, pickDefaultBranch, workingTreeRoot } from '../git/state';
 import { newId } from '../ids';
 import { git, gitOutput, gitRead } from './git';
@@ -209,6 +209,10 @@ export function workspaceLayout(
 export const ownsWorktree = (chat: { id: string }, workspace: Pick<ChatWorkspace, 'managed' | 'path'>): boolean =>
     workspace.managed && basename(dirname(workspace.path)) === chatKey(chat.id);
 
+/** Standalone worktrees use their own ID in the layout, so their lifetime does not depend on a chat. */
+export const isStandaloneWorktree = (workspace: Pick<ChatWorkspace, 'id' | 'managed' | 'path'>): boolean =>
+    workspace.managed && basename(dirname(workspace.path)) === chatKey(workspace.id);
+
 /* --------------------------- Reading a repository -------------------------- */
 
 /*
@@ -330,10 +334,10 @@ export interface WorkspaceRequest {
     choice: ChatWorktreeChoice;
 }
 
-/** Makes a named checkout immediately. A chat that later picks it opens it like any other existing worktree. */
+/** Checks out and applies the folder's setup before returning a new standalone worktree. */
 export async function createStandaloneWorktree(
     store: Store,
-    config: Pick<Config, 'workspacesDir'>,
+    config: Pick<Config, 'workspacesDir' | 'timings'>,
     project: Project,
     request: { folderId: string; branchName: string; branchPrefix?: string }
 ): Promise<CreatedWorktree> {
@@ -349,49 +353,106 @@ export async function createStandaloneWorktree(
 
     if (!root) throw invalid('A worktree needs the root of a git repository, and this folder is not one');
 
-    const layout = workspaceLayout(config, project, folder, newId('wks'), request.branchPrefix, request.branchName);
-    const { path, branch } = layout;
+    const id = newId('wks');
+    const planned = workspaceLayout(config, project, folder, id, request.branchPrefix, request.branchName);
+    const { branch } = planned;
+    const path = placeOf(planned.path);
+    const layout = { path, branch };
+    const log = () => undefined;
 
-    return exclusive(store, `repository:${pathKey(root)}`, undefined, async () => {
-        const base = await baseOf(folder);
-        const start = base && (await resolveBase(root, base));
+    return exclusive(store, pathKey(path), undefined, async () => {
+        const gitWarning = await exclusive(store, `repository:${pathKey(root)}`, undefined, async () => {
+            const base = await baseOf(folder);
+            const start = base && (await resolveBase(root, base));
 
-        if (!start) throw invalid('The repository has no commit to start a worktree from');
+            if (!base || !start) throw invalid('The repository has no commit to start a worktree from');
+            if (await isThere(path)) throw conflict(`${path} already exists`);
 
-        if (branchTaken(store, project, folder, branch)) throw conflict(`The branch name ${branch} is taken`);
-
-        if (await isThere(path)) throw conflict(`${path} already exists`);
-
-        try {
-            // Git also checks for branch name conflicts, including changes made outside the daemon.
-            await mustGit(
-                root,
-                ['-c', 'core.longpaths=true', 'worktree', 'add', '-b', branch, '--', path, start.commit],
-                { log: () => undefined },
-                ADD_TIMEOUT_MS,
-                'create the worktree'
+            // A daemon stopped before checkout may have left a reservation with no worktree on disk.
+            const prior = listWorkspacesOfProject(store.db, project.id).find(
+                row => row.folderId === folder.id && row.branch === branch && !row.ready && isStandaloneWorktree(row)
             );
-        } catch (error) {
-            if (!(error instanceof WorkspaceError)) throw error;
+            if (prior && !(await isThere(prior.path))) {
+                const listed = await listWorktrees(root);
 
-            // A post-checkout hook can fail after Git has created the worktree. Only accept a completed checkout.
-            const listed = await listWorktrees(root).catch(() => []);
-            const completed = listed.some(
-                entry =>
-                    !entry.bare &&
-                    !entry.prunable &&
-                    entry.locked !== 'initializing' &&
-                    entry.branch === branch &&
-                    entry.head === start.commit &&
-                    samePlace(entry.path, path)
+                if (
+                    !listed.some(entry => samePlace(entry.path, prior.path)) &&
+                    chatsOfWorkspace(store.db, prior.id).length === 0
+                ) {
+                    store.tx(() => deleteWorkspace(store.db, prior.id));
+                }
+            }
+
+            if (branchTaken(store, project, folder, branch)) throw conflict(`The branch name ${branch} is taken`);
+
+            // A chat that picks the worktree during setup must share its pending row and wait on the path lock.
+            store.tx(() =>
+                insertWorkspace(store.db, {
+                    id,
+                    projectId: project.id,
+                    folderId: folder.id,
+                    ...layout,
+                    base,
+                    managed: true,
+                    ready: false,
+                    createdAt: Date.now(),
+                })
             );
 
-            if (completed) return { ...layout, warning: error.message };
+            try {
+                await mustGit(
+                    root,
+                    ['-c', 'core.longpaths=true', 'worktree', 'add', '-b', branch, '--', path, start.commit],
+                    { log },
+                    ADD_TIMEOUT_MS,
+                    'create the worktree'
+                );
+            } catch (error) {
+                // A post-checkout hook may fail after Git successfully made the worktree.
+                const listed = await listWorktrees(root).catch(() => []);
+                const completed = listed.some(
+                    entry =>
+                        !entry.bare &&
+                        !entry.prunable &&
+                        entry.locked !== 'initializing' &&
+                        entry.branch === branch &&
+                        entry.head === start.commit &&
+                        samePlace(entry.path, path)
+                );
 
-            throw conflict(error.message);
+                if (completed && error instanceof WorkspaceError) return error.message;
+
+                store.tx(() => {
+                    if (chatsOfWorkspace(store.db, id).length === 0) deleteWorkspace(store.db, id);
+                });
+
+                throw error instanceof WorkspaceError ? conflict(error.message) : error;
+            }
+
+            return undefined;
+        });
+
+        if (folder.settings?.setup) {
+            try {
+                await runSetup({
+                    root,
+                    workspace: path,
+                    branch,
+                    setup: folder.settings.setup,
+                    timeoutMs: config.timings.setupMs,
+                    log,
+                });
+            } catch (error) {
+                // Keep the checkout and the pending row so the next chat turn can retry the setup.
+                const warning = [gitWarning, errorMessage(error)].filter(Boolean).join('. ');
+
+                return { ...layout, warning };
+            }
         }
 
-        return layout;
+        markReady(store, id);
+
+        return gitWarning ? { ...layout, warning: gitWarning } : layout;
     });
 }
 
