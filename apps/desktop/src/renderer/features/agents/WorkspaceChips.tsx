@@ -3,7 +3,7 @@ import { Menu, MenuItem, MenuSection, MenuSeparator, MenuTrigger } from '@clowdy
 import { Popover, PopoverScroll } from '@clowdy/components/Popover';
 import { Text } from '@clowdy/components/Text';
 import { ChevronRight } from '@clowdy/icons/8';
-import { Folder, Settings, Version, VersionPlus } from '@clowdy/icons/14';
+import { Settings, Split, Version } from '@clowdy/icons/14';
 import { capitalize } from '@clowdy/lib';
 import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { OverlayTriggerStateContext, PopoverContext, type PressEvent } from 'react-aria-components';
@@ -25,7 +25,7 @@ import type { FolderRepository } from './useFolderRepository';
 
 /**
  * Where a chat that has started works, read only, in one label: the branch the tree has checked out now (`git`, from `useFolderGit`; the short hash of a detached HEAD)
- * after the git mark, and for a worktree the word `Worktree` before it in a dimmer tone, the worktree's path on hover. In the folder's own checkout the label is the branch
+ * after the branch or Split mark, and for a worktree the word `Worktree` before it in a dimmer tone, the worktree's path on hover. In the folder's own checkout the label is the branch
  * alone, since that is where a chat works unless it was sent into a worktree. Nothing while no branch is known and the chat is not in a worktree (the folder is no repository,
  * or the read has not answered); a worktree whose branch is not known says `Worktree` alone. The control of the new-chat page (`WorkspaceChips`) becomes this one when the first
  * message is sent, and stays in its place.
@@ -47,7 +47,7 @@ export function WorkspaceLabel({ worktree, git }: { worktree: string | undefined
             title={title}
             aria-label={`Where it runs: ${worktree ? 'Worktree' : 'Main worktree'}${branch ? `, ${branchWords(branch, detached)}` : ''}`}
         >
-            <Version aria-hidden="true" />
+            {worktree ? <Split aria-hidden="true" /> : <Version aria-hidden="true" />}
             {worktree && (
                 <Text className={styles.lead} color="secondary">
                     Worktree
@@ -192,7 +192,7 @@ function WorkspaceChip({ git, choice, chats, main, onChoose, onManage }: Workspa
             stacked
             data-align="center"
             data-worktree=""
-            icon={<Version aria-hidden="true" />}
+            icon={<Split aria-hidden="true" />}
             text={worktreeLabel(worktree)}
             description={usersLine(chatsUsing(chats.values(), worktree.path))}
         />
@@ -280,7 +280,9 @@ function WorkspaceChip({ git, choice, chats, main, onChoose, onManage }: Workspa
             >
                 <ChipTrigger
                     ref={pill}
-                    icon={<Version aria-hidden="true" />}
+                    icon={
+                        choice?.mode === 'new' || chosen ? <Split aria-hidden="true" /> : <Version aria-hidden="true" />
+                    }
                     lead={'lead' in trigger ? trigger.lead : undefined}
                     label={trigger.label}
                     trail={'trail' in trigger ? trigger.trail : undefined}
@@ -345,7 +347,7 @@ function WorkspaceChip({ git, choice, chats, main, onChoose, onManage }: Workspa
                                     // The row shuts the menu itself (`onAction`): a press on the branch inside it must not.
                                     shouldCloseOnSelect={false}
                                     stacked
-                                    icon={<Folder aria-hidden="true" />}
+                                    icon={<Version aria-hidden="true" />}
                                     text="Main worktree"
                                     description="Use the project folder"
                                     endAffix={
@@ -371,7 +373,7 @@ function WorkspaceChip({ git, choice, chats, main, onChoose, onManage }: Workspa
                                     data-new-worktree=""
                                     // The row shuts the menu itself (`onAction`): a press on the base inside it must not.
                                     shouldCloseOnSelect={false}
-                                    icon={<VersionPlus aria-hidden="true" />}
+                                    icon={<Split aria-hidden="true" />}
                                     text="New worktree"
                                     stacked
                                     description={
