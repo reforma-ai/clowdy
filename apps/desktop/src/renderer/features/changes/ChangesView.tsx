@@ -85,7 +85,7 @@ function Sidebar({
 /**
  * The tab's view of one place that is ready: the diffs at the left and, at their right on an edge to drag, the sidebar; the edge and the sidebar's visibility are the window's
  * choice, as the file tree's are. It reads the place's git facts (`useGitFacts`, which the strip and Info read too) and reads the list of its scope when it appears, when the
- * scope changes and when the facts start a new round of reads, which is all the triggers the tab has. A card is open when the tab appears.
+ * scope changes and when the facts start a new round of reads, which is all the triggers the tab has. The fold state resets to the Source Control preference when the view opens.
  */
 export function ChangesView({
     projectId,
@@ -119,7 +119,7 @@ export function ChangesView({
         if (!model) return;
 
         model.sync(model.facts.generation);
-        // The uncommitted files too, whichever scope is shown: `Discard changes…` on a card and a row is offered by that list, which the commit box reads only while the sidebar is shown.
+        // The uncommitted files too, whichever scope is shown: `Discard changes…` on a diff card is offered by that list, which the commit box reads only while the sidebar is shown.
         model.syncUncommitted(model.facts.generation);
     }, [model, scope, generation]);
 
@@ -172,10 +172,6 @@ export function ChangesView({
                                 place={place}
                                 projectId={projectId}
                                 toggle={<SidebarToggle open onPress={toggle} />}
-                                onOpenFile={path => {
-                                    model.reveal(path);
-                                    list.current?.scrollToFile(path);
-                                }}
                             />
                         </Sidebar>
                     </Show>

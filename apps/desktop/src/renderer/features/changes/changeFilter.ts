@@ -10,7 +10,7 @@
 // - A pattern that starts with `!` leaves out what it matches. A file is shown when it matches some pattern that does not start with `!` (or there is none) and none that does.
 // - Nothing typed, or only commas and spaces, shows every file.
 //
-// It is a plain function over paths, so the cards and the sidebar's list read one answer and the tests drive it with no view.
+// It is a plain function over paths, so the tests can drive it without the view.
 
 import { Minimatch } from 'minimatch';
 

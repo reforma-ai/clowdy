@@ -45,17 +45,23 @@ const settle = () =>
     act(async () => {
         await new Promise(resolve => setTimeout(resolve, 0));
     });
-const press = (target: Element) =>
+const press = (target: Element, shiftKey = false) =>
     act(async () => {
         target.dispatchEvent(
-            new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+            new PointerEvent('pointerdown', {
+                bubbles: true,
+                pointerType: 'mouse',
+                button: 0,
+                isPrimary: true,
+                shiftKey,
+            })
         );
-        target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+        target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, shiftKey }));
         target.dispatchEvent(
-            new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+            new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true, shiftKey })
         );
-        target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
-        (target as HTMLElement).click();
+        target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0, shiftKey }));
+        target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, shiftKey }));
     });
 
 const box = () => container.querySelector('[aria-label="Commit"]');
@@ -69,7 +75,7 @@ const buttonOf = (label: string) =>
     [...container.querySelectorAll<HTMLButtonElement>('button')].find(
         candidate => candidate.textContent?.trim() === label
     );
-/** The Commit button, which names the files and the branch (`Commit 3 files to clowdy/ab12cd34`). */
+/** The Commit button, which counts the selected files. */
 const commitButton = () =>
     [...container.querySelectorAll<HTMLButtonElement>('button')].find(candidate =>
         candidate.textContent?.trim().startsWith('Commit')
@@ -595,27 +601,49 @@ describe('Commit & Push', () => {
 describe('the commit button and the line under the box', () => {
     const reasonStop = () => container.querySelector<HTMLElement>('[role="button"][aria-disabled="true"]');
 
-    it('names the files that are ticked and the branch: Commit 3 files to clowdy/ab12cd34, Commit 1 file to it, and Commit to it with none', async () => {
+    it('counts the selected files', async () => {
         await start();
 
-        expect(commitButton()?.textContent).toBe('Commit 3 files to clowdy/ab12cd34');
+        expect(commitButton()?.textContent).toBe('Commit 3 files');
         await press(tickOf('src/limits.ts'));
-        expect(commitButton()?.textContent).toBe('Commit 2 files to clowdy/ab12cd34');
+        expect(commitButton()?.textContent).toBe('Commit 2 files');
         await press(tickOf('notes.md'));
-        expect(commitButton()?.textContent).toBe('Commit 1 file to clowdy/ab12cd34');
+        expect(commitButton()?.textContent).toBe('Commit 1 file');
         await press(tickOf('src/booking/price.ts'));
-        expect(commitButton()?.textContent).toBe('Commit to clowdy/ab12cd34');
+        expect(commitButton()?.textContent).toBe('Commit');
     });
 
-    it('cuts a long branch name in its middle and keeps the whole of it in the tooltip', async () => {
-        await start({
-            tweak: data => {
-                data.chats.find(chat => chat.workspace)!.workspace!.branch =
-                    'maksim-kachurin/feat/a-very-long-branch-name';
-            },
-        });
+    it('switches the contrast button to Commit & Push while Shift is held', async () => {
+        await start();
+        await type('feat: surcharge');
+        const commit = vi.spyOn(transport, 'commitGit');
+        const push = vi.spyOn(transport, 'pushGit');
 
-        expect(commitButton()?.textContent).toBe('Commit 3 files to maksim-kachu…branch-name');
+        expect(commitButton()?.getAttribute('data-color')).toBe('contrast');
+        act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', shiftKey: true })));
+        expect(commitButton()?.textContent).toBe('Commit & Push');
+        act(() => window.dispatchEvent(new KeyboardEvent('keyup', { key: 'Shift' })));
+        expect(commitButton()?.textContent).toBe('Commit 3 files');
+        act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', shiftKey: true })));
+        await press(commitButton()!, true);
+        await settle();
+        await settle();
+
+        expect(commit).toHaveBeenCalledTimes(1);
+        expect(push).toHaveBeenCalledTimes(1);
+    });
+
+    it('disables Commit & Push when the remote blocks pushing and clears the modifier on blur', async () => {
+        await start({ gitWrites: { remote: 'no_origin' } });
+        await type('feat: surcharge');
+
+        act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', shiftKey: true })));
+        expect(commitButton()?.textContent).toBe('Commit & Push');
+        expect(commitButton()?.disabled).toBe(true);
+
+        act(() => window.dispatchEvent(new Event('blur')));
+        expect(commitButton()?.textContent).toBe('Commit 3 files');
+        expect(commitButton()?.disabled).toBe(false);
     });
 
     it("says why it cannot be pressed in GitHub Desktop's words: the summary first, then the files", async () => {
@@ -635,7 +663,7 @@ describe('the commit button and the line under the box', () => {
         expect(reasonStop()?.contains(commitButton()!)).toBe(true);
         // One tab stop that reads out what the button is, and the reason is its description.
         expect(reasonStop()?.getAttribute('tabindex')).toBe('0');
-        expect(reasonStop()?.getAttribute('aria-label')).toBe('Commit 3 files to clowdy/ab12cd34');
+        expect(reasonStop()?.getAttribute('aria-label')).toBe('Commit 3 files');
 
         await type('feat: surcharge');
         expect(draft.commitReason).toBeUndefined();
@@ -662,7 +690,7 @@ describe('the commit button and the line under the box', () => {
             },
         });
 
-        expect(commitButton()?.textContent).toBe('Commit 3 files to main');
+        expect(commitButton()?.textContent).toBe('Commit 3 files');
         expect(container.querySelector('[role="note"]')?.textContent).toBe('Committing to main, the base branch');
     });
 });

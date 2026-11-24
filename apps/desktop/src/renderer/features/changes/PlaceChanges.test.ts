@@ -112,12 +112,12 @@ function transportOf(
 }
 
 /** The changes model of a place, with its status read so that its base is known. */
-async function modelOf(transport: ReturnType<typeof transportOf>) {
+async function modelOf(transport: ReturnType<typeof transportOf>, collapseDiffs = false) {
     const facts = new PlaceFacts(KEY, transport);
 
     await facts.status.refresh();
 
-    return { facts, model: new PlaceChanges(facts, transport) };
+    return { facts, model: new PlaceChanges(facts, transport, { collapseDiffs }) };
 }
 
 const tick = () => new Promise(resolve => setTimeout(resolve, 0));
@@ -330,7 +330,7 @@ describe('the filter and the cards', () => {
         return model;
     }
 
-    it('narrows the files by the filter text, for the cards and the sidebar alike', async () => {
+    it('narrows the files by the filter text, for the cards', async () => {
         const model = await filled();
 
         expect(model.files).toHaveLength(4);
@@ -342,7 +342,7 @@ describe('the filter and the cards', () => {
         expect(model.files).toHaveLength(4);
     });
 
-    it('has every card open, shuts them all and opens them all, and a press on a file in the sidebar opens its card', async () => {
+    it('has every card open, shuts them all and opens them all, and reveals one by path', async () => {
         const model = await filled();
 
         expect(model.allFolded).toBe(false);
@@ -370,14 +370,31 @@ describe('the filter and the cards', () => {
 
         model.setFilter('*.md');
         model.foldAll();
-        expect([...model.folded].sort()).toEqual(['README.md', 'docs/guide.md']);
+        expect(model.files.every(file => model.isFolded(file.path))).toBe(true);
         expect(model.allFolded).toBe(true);
 
         model.setFilter('');
         expect(model.allFolded).toBe(false);
 
         model.unfoldAll();
-        expect(model.folded.size).toBe(0);
+        expect(model.files.every(file => !model.isFolded(file.path))).toBe(true);
+    });
+
+    it('folds new files after a refresh while preserving cards opened by hand', async () => {
+        let current = list('all', files.slice(0, 1));
+        const { model } = await modelOf(transportOf({ all: () => current }), true);
+
+        model.sync(1);
+        await tick();
+        expect(model.allFolded).toBe(true);
+        model.reveal(files[0]!.path);
+
+        current = list('all', files);
+        model.sync(2);
+        await tick();
+
+        expect(model.files).toHaveLength(files.length);
+        expect(model.files.filter(file => !model.isFolded(file.path))).toEqual([files[0]]);
     });
 
     it("asks the cache for a file with the list's own start and the file's revision, and a refresh reads only the files whose revision changed", async () => {
@@ -555,7 +572,6 @@ describe('the viewed files', () => {
 
         expect(model.isFolded('src/a.ts')).toBe(true);
         expect(model.isFolded('src/b.ts')).toBe(false);
-        expect(model.folded.has('src/a.ts')).toBe(false);
 
         model.toggleFolded('src/a.ts');
         expect(model.isFolded('src/a.ts')).toBe(false);
@@ -638,7 +654,7 @@ describe('the viewed files', () => {
         expect(transport.setGitViewed).toHaveBeenCalledWith('p1', PLACE, 'uncommitted', 'src/a.ts', 'rev-u');
     });
 
-    it('leave the files out of the list and the sidebar while they are hidden, and bring them back, the filter counting as before', async () => {
+    it('leave the files out of the list while they are hidden, and bring them back, the filter counting as before', async () => {
         const { model } = await viewedModel([
             { path: 'src/a.ts', revision: 'r1' },
             { path: 'README.md', revision: 'r1' },

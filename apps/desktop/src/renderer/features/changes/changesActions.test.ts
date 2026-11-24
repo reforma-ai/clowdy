@@ -12,7 +12,6 @@ import {
     isFetchFirst,
     lastFetchedWords,
     mergeBanner,
-    middleCut,
     pushOrPublish,
     RUNNING_WORDS,
     remoteActions,
@@ -49,8 +48,8 @@ function status(fields: Partial<RepositoryStatus> = {}, upstream: Partial<GitUps
     };
 }
 
-const reasons = (value: GitStatus | undefined, busy = false) =>
-    remoteActions(value, busy).map(action => [action.id, action.reason ?? null, action.count ?? null]);
+const menuStates = (value: GitStatus | undefined, busy = false) =>
+    remoteActions(value, busy).map(action => [action.id, action.disabled, action.count ?? null]);
 
 describe('remoteActions', () => {
     it('lists nothing for a place that is not a repository, and for one that has not been read', () => {
@@ -58,32 +57,32 @@ describe('remoteActions', () => {
         expect(remoteActions(undefined, false)).toEqual([]);
     });
 
-    it('lists Fetch, Pull and Push for a branch that is on origin and level, with a reason for the two that have nothing to do', () => {
-        expect(reasons(status())).toEqual([
-            ['fetch', null, null],
-            ['pull', 'Nothing to pull', null],
-            ['push', 'Nothing to push', null],
+    it('lists Fetch, Pull and Push for a branch that is on origin and level, disabling the two with nothing to do', () => {
+        expect(menuStates(status())).toEqual([
+            ['fetch', false, null],
+            ['pull', true, null],
+            ['push', true, null],
         ]);
     });
 
-    it('counts what Pull takes and Push sends, and has no reason for them', () => {
-        expect(reasons(status({}, { behind: 3 }))).toEqual([
-            ['fetch', null, null],
-            ['pull', null, 3],
-            ['push', 'Nothing to push', null],
+    it('counts what Pull takes and Push sends, when they are available', () => {
+        expect(menuStates(status({}, { behind: 3 }))).toEqual([
+            ['fetch', false, null],
+            ['pull', false, 3],
+            ['push', true, null],
         ]);
-        expect(reasons(status({}, { ahead: 1 }))).toEqual([
-            ['fetch', null, null],
-            ['pull', 'Nothing to pull', null],
-            ['push', null, 1],
+        expect(menuStates(status({}, { ahead: 1 }))).toEqual([
+            ['fetch', false, null],
+            ['pull', true, null],
+            ['push', false, 1],
         ]);
     });
 
     it('pulls a branch that diverged, which merges, and holds the push until that pull', () => {
-        expect(reasons(status({}, { ahead: 1, behind: 2 }))).toEqual([
-            ['fetch', null, null],
-            ['pull', null, 2],
-            ['push', 'Pull first', 1],
+        expect(menuStates(status({}, { ahead: 1, behind: 2 }))).toEqual([
+            ['fetch', false, null],
+            ['pull', false, 2],
+            ['push', true, 1],
         ]);
         expect(isDiverged({ name: 'origin/feature', ahead: 1, behind: 2 })).toBe(true);
         expect(isDiverged({ name: 'origin/feature', ahead: 1, behind: 0 })).toBe(false);
@@ -92,64 +91,64 @@ describe('remoteActions', () => {
     });
 
     it('offers Publish in place of Push for a branch that is not on origin, with nothing to pull from', () => {
-        expect(reasons(status({}, null))).toEqual([
-            ['fetch', null, null],
-            ['pull', 'Not published yet', null],
-            ['publish', null, null],
+        expect(menuStates(status({}, null))).toEqual([
+            ['fetch', false, null],
+            ['pull', true, null],
+            ['publish', false, null],
         ]);
         // An upstream that is gone from origin is published again, not pushed.
-        expect(reasons(status({}, { gone: true }))).toEqual([
-            ['fetch', null, null],
-            ['pull', 'Upstream gone from origin', null],
-            ['publish', null, null],
+        expect(menuStates(status({}, { gone: true }))).toEqual([
+            ['fetch', false, null],
+            ['pull', true, null],
+            ['publish', false, null],
         ]);
     });
 
-    it('turns every action off with the reason when there is no origin, and all but Fetch for a HEAD that is on no branch', () => {
-        expect(reasons(status({ origin: false }, null))).toEqual([
-            ['fetch', 'No origin', null],
-            ['pull', 'No origin', null],
-            ['publish', 'No origin', null],
+    it('turns every action off when there is no origin, and all but Fetch for a HEAD that is on no branch', () => {
+        expect(menuStates(status({ origin: false }, null))).toEqual([
+            ['fetch', true, null],
+            ['pull', true, null],
+            ['publish', true, null],
         ]);
-        expect(reasons(status({ head: { kind: 'detached', commit: 'a'.repeat(40) } }, null))).toEqual([
-            ['fetch', null, null],
-            ['pull', 'HEAD is detached', null],
-            ['publish', 'HEAD is detached', null],
+        expect(menuStates(status({ head: { kind: 'detached', commit: 'a'.repeat(40) } }, null))).toEqual([
+            ['fetch', false, null],
+            ['pull', true, null],
+            ['publish', true, null],
         ]);
-        expect(reasons(status({ head: { kind: 'unborn', name: 'main' } }, null))).toEqual([
-            ['fetch', null, null],
-            ['pull', 'No commits yet', null],
-            ['publish', 'No commits yet', null],
+        expect(menuStates(status({ head: { kind: 'unborn', name: 'main' } }, null))).toEqual([
+            ['fetch', false, null],
+            ['pull', true, null],
+            ['publish', true, null],
         ]);
     });
 
     it('turns every action off while one runs', () => {
-        expect(reasons(status({}, { ahead: 1 }), true)).toEqual([
-            ['fetch', 'An action is running', null],
-            ['pull', 'An action is running', null],
-            ['push', 'An action is running', 1],
+        expect(menuStates(status({}, { ahead: 1 }), true)).toEqual([
+            ['fetch', true, null],
+            ['pull', true, null],
+            ['push', true, 1],
         ]);
     });
 
-    it('turns Pull and Push off for a branch that tracks something that is not on origin, and says what', () => {
-        expect(reasons(status({}, { name: 'upstream/main', ahead: 1 }))).toEqual([
-            ['fetch', null, null],
-            ['pull', 'Tracks upstream/main, not origin', null],
-            ['push', 'Tracks upstream/main, not origin', 1],
+    it('turns Pull and Push off for a branch that tracks something that is not on origin', () => {
+        expect(menuStates(status({}, { name: 'upstream/main', ahead: 1 }))).toEqual([
+            ['fetch', false, null],
+            ['pull', true, null],
+            ['push', true, 1],
         ]);
     });
 
-    it('does not offer to publish a branch whose upstream is gone from another remote: the daemon refuses it, so the reason is the remote and not a gone origin', () => {
-        expect(reasons(status({}, { name: 'upstream/main', gone: true }))).toEqual([
-            ['fetch', null, null],
-            ['pull', 'Tracks upstream/main, not origin', null],
-            ['publish', 'Tracks upstream/main, not origin', null],
+    it('does not offer to publish a branch whose upstream is gone from another remote', () => {
+        expect(menuStates(status({}, { name: 'upstream/main', gone: true }))).toEqual([
+            ['fetch', false, null],
+            ['pull', true, null],
+            ['publish', true, null],
         ]);
         // The same upstream gone from origin is published again.
-        expect(reasons(status({}, { gone: true }))).toEqual([
-            ['fetch', null, null],
-            ['pull', 'Upstream gone from origin', null],
-            ['publish', null, null],
+        expect(menuStates(status({}, { gone: true }))).toEqual([
+            ['fetch', false, null],
+            ['pull', true, null],
+            ['publish', false, null],
         ]);
     });
 
@@ -390,7 +389,7 @@ describe('the words of the sidebar', () => {
         const texts = new Set<string>([
             'A commit summary is required to commit',
             'Select one or more files to commit',
-            commitLabel(3, 'main'),
+            commitLabel(3),
             ...Object.values(RUNNING_WORDS),
         ]);
 
@@ -398,8 +397,7 @@ describe('the words of the sidebar', () => {
             for (const view of [syncButton(value, undefined, NOW)])
                 for (const text of [view?.label, view?.line, view?.reason, view?.title]) if (text) texts.add(text);
 
-            for (const action of remoteActions(value, false))
-                for (const text of [action.label, action.reason]) if (text) texts.add(text);
+            for (const action of remoteActions(value, false)) texts.add(action.label);
 
             const block = commitAndPushBlock(value);
 
@@ -414,36 +412,10 @@ describe('the words of the sidebar', () => {
 });
 
 describe('the commit button', () => {
-    it('counts the ticked files and names the branch: Commit 3 files to main, Commit 1 file to main', () => {
-        expect(commitLabel(3, 'main')).toBe('Commit 3 files to main');
-        expect(commitLabel(1, 'main')).toBe('Commit 1 file to main');
-        expect(commitLabel(0, 'main')).toBe('Commit to main');
-        expect(commitLabel(2, undefined)).toBe('Commit 2 files');
-    });
-
-    it('cuts a long branch name in its middle and keeps its start and its end', () => {
-        expect(middleCut('main', 24)).toBe('main');
-        expect(middleCut('a'.repeat(24), 24)).toBe('a'.repeat(24));
-        expect(middleCut('clowdy/ab12cd34-weekend-surcharge', 24)).toBe('clowdy/ab12c…d-surcharge');
-        expect(middleCut('clowdy/ab12cd34-weekend-surcharge', 24)).toHaveLength(24);
-        expect(commitLabel(12, 'maksim-kachurin/feat/long-branch-name')).toBe(
-            'Commit 12 files to maksim-kachu…branch-name'
-        );
-        expect(middleCut('abcdefghij', 6)).toBe('abc…ij');
-    });
-
-    it('never cuts a character in two: an emoji or an accented letter on the cut stays whole', () => {
-        const wide = `😀${'a'.repeat(30)}😀`;
-
-        // Each smiley is one character, though two UTF-16 units: cut by units, the end would start with half of one.
-        expect(middleCut(wide, 24)).toBe(`😀${'a'.repeat(11)}…${'a'.repeat(10)}😀`);
-        expect(middleCut('😀'.repeat(30), 24)).toBe(`${'😀'.repeat(12)}…${'😀'.repeat(11)}`);
-        // The accent is the last character of the kept start: it goes with its letter.
-        expect(middleCut(`${'a'.repeat(11)}e\u0301${'b'.repeat(25)}`, 24)).toBe(
-            `${'a'.repeat(11)}e\u0301…${'b'.repeat(11)}`
-        );
-        // A text that fits is left as it is, whatever its characters are made of.
-        expect(middleCut('😀'.repeat(24), 24)).toBe('😀'.repeat(24));
+    it('counts the selected files in the commit label', () => {
+        expect(commitLabel(3)).toBe('Commit 3 files');
+        expect(commitLabel(1)).toBe('Commit 1 file');
+        expect(commitLabel(0)).toBe('Commit');
     });
 
     it("says why it cannot be pressed in GitHub Desktop's tooltips: the summary first, then the files", () => {
@@ -587,10 +559,10 @@ describe('a branch that tracks a branch of another name', () => {
             kind: 'publish',
             line: 'Tracks origin/main',
         });
-        expect(reasons(renamed())).toEqual([
-            ['fetch', null, null],
-            ['pull', 'Tracks origin/main', null],
-            ['publish', null, null],
+        expect(menuStates(renamed())).toEqual([
+            ['fetch', false, null],
+            ['pull', true, null],
+            ['publish', false, null],
         ]);
     });
 

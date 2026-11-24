@@ -16,6 +16,7 @@ import { RootStore, RootStoreProvider } from '../../stores';
 import { registerComposer } from '../chats/composerBridge';
 import ChangesTab from './ChangesTab';
 import { changesSidebarLayout } from './sidebarLayout';
+import { sourceControlPreferences } from './sourceControlPreferences';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -128,6 +129,7 @@ async function draw() {
 
 beforeEach(() => {
     localStorage.clear();
+    sourceControlPreferences.setCollapseDiffs(false);
     watchers.clear();
     vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver);
     HTMLElement.prototype.scrollIntoView = () => undefined;

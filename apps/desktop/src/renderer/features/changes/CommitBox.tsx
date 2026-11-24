@@ -8,7 +8,7 @@ import { Text } from '@clowdy/components/Text';
 import { Textarea } from '@clowdy/components/Textarea';
 import { AiStar, ArrowUp, ChevronDown } from '@clowdy/icons/14';
 import { writesCommitMessages } from '@clowdy/protocol';
-import { type ReactNode, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 import { Unavailable } from '../../shared/Unavailable';
 import { useAgents, useRootStore } from '../../stores';
@@ -75,17 +75,7 @@ function FailureLines({
     );
 }
 
-/** A text that may break after each slash, where a branch name (`clowdy/ab12cd34`) is cut by the edge of a narrow button, and nowhere inside a word. It says the same words. */
-function breakable(text: string): ReactNode[] {
-    return text
-        .split('/')
-        .flatMap((part, index, parts) => [part, ...(index < parts.length - 1 ? ['/', <wbr key={index} />] : [])]);
-}
-
-/**
- * One file of the commit, a row of the design system's list as the sidebar's files are: a tick, what happened to it, its name with its folder dimmed after it, and its lines. The
- * row's action (a press anywhere on it, or Enter) ticks or unticks it, and so does the tick itself, which is a real checkbox named by the path.
- */
+/** One file in the commit checklist. Press the row or its checkbox to change the selection. */
 function CommitFileRow({ file, draft }: { file: GitChangedFile; draft: CommitDraft }) {
     const kind = CHANGE_KIND_VIEW[file.kind];
     const { folder, name } = splitPath(file.path);
@@ -131,21 +121,15 @@ function CommitFileRow({ file, draft }: { file: GitChangedFile; draft: CommitDra
 }
 
 /**
- * The commit of the sidebar: the place's uncommitted files as a checklist (all ticked at first, new files included), the message and the buttons. It is there whichever scope the tab
- * shows, since what is committed is what is not committed yet, and the list inside it is its own: the sidebar's `Changed files` is the scope's list for finding a card, this one is for
- * choosing what goes in. Generate is offered only while an agent that the person turned `Commit messages` on for is signed in (`writesCommitMessages` of the agents the app already
- * knows; the daemon decides again when it is asked), and writes only into an empty box or over what it wrote itself. Commit is the one filled primary action of the place and names what it
- * does as GitHub Desktop's does (`Commit 3 files to main`), with the tooltips `A commit summary is required to commit` and `Select one or more files to commit` while it is off, and a line under
- * the box (`Committing to main, the base branch`) when the branch is the one the work is compared with; Cmd or Ctrl and Enter in the box does the same. What git or the agent said is shown as it
- * said it, and the box is as it was. Beside Commit is a menu with **Commit & Push**: it commits as Commit does, then sends the branch (a push, or its publishing when it is not on origin); the
- * commit stands whatever the push comes to, the box is clear, and a push that failed is said with it (`Committed 1a2b3c4, push failed: <git's line>`, with a Fetch origin button when origin has
- * newer commits), the sidebar's sync button then saying what to do. The entry is off, with the reason under it, where the push after the commit would not be taken (no origin, a detached HEAD,
- * a branch that is behind or has diverged). With nothing to commit, only commit results and errors are shown.
+ * The sidebar's commit checklist and message. Cmd or Ctrl and Enter makes a local commit.
+ * Hold Shift on the button or use its menu to commit and then push or publish the branch.
+ * Commit results and errors stay visible after the form empties.
  */
 export function CommitBox({ model }: { model: PlaceChanges }) {
     const root = useRootStore();
     const { agents } = useAgents();
     const remote = useRemoteActions(model.facts);
+    const [shiftHeld, setShiftHeld] = useState(false);
     const draft = commitDraftOf(
         model,
         root.transport,
@@ -156,6 +140,21 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
     const { generation } = model.facts;
     const scope = model.effectiveScope;
     const names = draft.files.map(file => file.path).join('\0');
+
+    useEffect(() => {
+        const trackShift = (event: KeyboardEvent) => setShiftHeld(event.shiftKey);
+        const releaseShift = () => setShiftHeld(false);
+
+        window.addEventListener('keydown', trackShift, true);
+        window.addEventListener('keyup', trackShift, true);
+        window.addEventListener('blur', releaseShift);
+
+        return () => {
+            window.removeEventListener('keydown', trackShift, true);
+            window.removeEventListener('keyup', trackShift, true);
+            window.removeEventListener('blur', releaseShift);
+        };
+    }, []);
 
     // The list is read for each round of the facts, as the scope's list is; a scope that is the uncommitted one is read by the tab itself.
     useEffect(() => model.syncUncommitted(generation), [model, generation, scope]);
@@ -193,7 +192,8 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
     }
 
     const target = commitTarget(model.facts.status.value);
-    const reason = draft.commitReason;
+    const label = shiftHeld ? 'Commit & Push' : draft.concluding ? 'Commit merge' : commitLabel(ticked);
+    const reason = draft.commitReason ?? (shiftHeld && !busy ? draft.pushBlock : undefined);
 
     return (
         <section className={styles.root} aria-label="Commit">
@@ -261,25 +261,21 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
                 )}
                 {/* Commit and its menu wrap together, so the menu's button is never left alone on a line. */}
                 <div className={styles.commitGroup}>
-                    <Unavailable
-                        label={draft.concluding ? 'Commit merge' : commitLabel(ticked, target?.name)}
-                        hint={reason}
-                        className={styles.commitHost}
-                    >
+                    <Unavailable label={label} hint={reason} className={styles.commitHost}>
                         <Button
-                            color="primary"
+                            color="contrast"
                             size="sm"
                             className={styles.commit}
                             contentClassName={styles.commitContent}
-                            isDisabled={!draft.canCommit}
+                            isDisabled={!(shiftHeld ? draft.canCommitAndPush : draft.canCommit)}
                             isPending={draft.writing}
-                            tooltip={reason === undefined && target ? `Commit to ${target.name}` : undefined}
+                            tooltip={
+                                reason === undefined && !shiftHeld && target ? `Commit to ${target.name}` : undefined
+                            }
                             tooltipPlacement="top"
-                            onPress={() => void draft.commit()}
+                            onPress={event => void draft.commit(shiftHeld && event.shiftKey)}
                         >
-                            <span className={styles.commitText}>
-                                {breakable(draft.concluding ? 'Commit merge' : commitLabel(ticked, target?.name))}
-                            </span>
+                            {label}
                         </Button>
                     </Unavailable>
                     <MenuTrigger>

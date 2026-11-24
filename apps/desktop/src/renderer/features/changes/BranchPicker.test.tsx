@@ -105,13 +105,7 @@ async function draw(place = currentPlace) {
     act(() =>
         root.render(
             <RootStoreProvider value={store}>
-                <Sidebar
-                    model={model}
-                    place={place}
-                    projectId={FIXTURE_PROJECT_ID}
-                    onOpenFile={() => undefined}
-                    toggle={null}
-                />
+                <Sidebar model={model} place={place} projectId={FIXTURE_PROJECT_ID} toggle={null} />
             </RootStoreProvider>
         )
     );

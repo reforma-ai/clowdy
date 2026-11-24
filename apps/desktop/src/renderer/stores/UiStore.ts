@@ -19,6 +19,7 @@ export const SETTINGS_PAGES = [
     'appearance',
     'chat',
     'files',
+    'source-control',
     'shortcuts',
     'projects',
     'providers',

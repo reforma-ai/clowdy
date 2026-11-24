@@ -131,13 +131,7 @@ async function draw(place = currentPlace) {
     act(() =>
         root.render(
             <RootStoreProvider value={store}>
-                <Sidebar
-                    model={model}
-                    place={place}
-                    projectId={FIXTURE_PROJECT_ID}
-                    onOpenFile={() => undefined}
-                    toggle={null}
-                />
+                <Sidebar model={model} place={place} projectId={FIXTURE_PROJECT_ID} toggle={null} />
             </RootStoreProvider>
         )
     );
@@ -169,7 +163,7 @@ afterEach(() => {
 });
 
 describe('the sync button in the sidebar', () => {
-    it('says Publish branch for a branch that is not on origin, with the dropdown listing Fetch origin, Pull origin off with the reason, and Publish branch', async () => {
+    it('says Publish branch for a branch that is not on origin, with the dropdown listing Fetch origin, Pull origin disabled, and Publish branch', async () => {
         await start();
 
         expect(syncButton().getAttribute('data-sync')).toBe('publish');
@@ -179,7 +173,7 @@ describe('the sync button in the sidebar', () => {
 
         expect(items().map(candidate => candidate.textContent)).toEqual([
             'Fetch origin',
-            'Pull originNot published yet',
+            'Pull origin',
             'Publish branch',
         ]);
         expect(isOff('Fetch origin')).toBe(false);
@@ -205,11 +199,7 @@ describe('the sync button in the sidebar', () => {
         expect(syncButton().textContent).toBe('Fetch originLast fetched 3 minutes ago');
 
         await openMenu();
-        expect(items().map(candidate => candidate.textContent)).toEqual([
-            'Fetch origin',
-            'Pull originNothing to pull',
-            'Push originNothing to push',
-        ]);
+        expect(items().map(candidate => candidate.textContent)).toEqual(['Fetch origin', 'Pull origin', 'Push origin']);
     });
 
     it('is Fetch origin for a branch that is level, a press fetches and the line says just now, and Never fetched where the repository has not', async () => {
@@ -297,7 +287,7 @@ describe('the sync button in the sidebar', () => {
 
         expect(items().map(candidate => candidate.textContent)).toEqual([
             'Fetch origin',
-            'Pull originTracks origin/main',
+            'Pull origin',
             'Publish branch',
         ]);
         expect(isOff('Pull origin')).toBe(true);
@@ -319,8 +309,8 @@ describe('the sync button in the sidebar', () => {
         await openMenu();
         expect(items().map(candidate => candidate.textContent)).toEqual([
             'Fetch origin',
-            'Pull origin2',
-            'Push originNothing to push',
+            'Pull origin2 commits',
+            'Push origin',
         ]);
         await press(item('Pull origin'));
         await settle();
@@ -364,7 +354,8 @@ describe('the sync button in the sidebar', () => {
         expect(isOff('Fetch origin')).toBe(false);
         expect(isOff('Pull origin')).toBe(false);
         expect(isOff('Push origin')).toBe(true);
-        expect(item('Push origin').textContent).toContain('Pull first');
+        expect(item('Push origin').textContent).toBe('Push origin1 commit');
+        expect(item('Pull origin').textContent).toBe('Pull origin2 commits');
         await press(item('Pull origin'));
         await settle();
         expect(pull).toHaveBeenCalledTimes(1);
@@ -495,15 +486,11 @@ describe('the sync button in the sidebar', () => {
         await settle();
     });
 
-    it('lists every action off with the reason when there is no origin', async () => {
+    it('lists every action disabled when there is no origin', async () => {
         await start({ gitWrites: { remote: 'no_origin' } });
         await openMenu();
 
-        expect(items().map(candidate => candidate.textContent)).toEqual([
-            'Fetch originNo origin',
-            'Pull originNo origin',
-            'Push originNo origin',
-        ]);
+        expect(items().map(candidate => candidate.textContent)).toEqual(['Fetch origin', 'Pull origin', 'Push origin']);
         expect(items().every(candidate => candidate.getAttribute('aria-disabled') === 'true')).toBe(true);
     });
 });

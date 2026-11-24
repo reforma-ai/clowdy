@@ -6,6 +6,7 @@ import { isCommitScope, usableScope } from './changeScopes';
 import { discardableFiles } from './discardRules';
 import { SidesCache, type SidesRequest } from './fileSides';
 import { Fact, type PlaceFacts, placeRef } from './gitFacts';
+import { sourceControlPreferences } from './sourceControlPreferences';
 import { ViewedMarks, type ViewedTransport } from './viewedMarks';
 
 import type { GitBase, GitChangedFile, GitChanges, GitScope } from '@clowdy/protocol';
@@ -33,12 +34,10 @@ export class PlaceChanges {
     scope: GitScope = 'all';
     /** The text of the filter field. */
     filter = '';
-    /** Viewed files are not drawn from the list: the cards of the files the person marked as viewed are gone from the list and from the sidebar. */
+    /** Viewed files are omitted from the diff list while this is on. */
     hideViewed = false;
-    /** The paths of the cards the person shut; every other card is open, so a file that comes with a refresh is open. A viewed file's card is shut as well (`isFolded`). */
-    readonly folded = observable.set<string>();
-    /** The paths of viewed files whose card the person opened: a viewed card is shut until they do. */
-    readonly openedViewed = observable.set<string>();
+    /** The explicit fold choices for this view, by path. */
+    readonly #folds = observable.map<string, boolean>();
     /** The scope of the open chat's latest run (`turnScope`), which the tab is told (`setRun`) and the scope menu offers as `Last run`; none while the chat has no run that changed files. */
     runScope: GitScope | undefined = undefined;
     /** The chat `runScope` is the run of. */
@@ -59,7 +58,8 @@ export class PlaceChanges {
 
     constructor(
         readonly facts: PlaceFacts,
-        private readonly transport: PlaceChangesTransport
+        private readonly transport: PlaceChangesTransport,
+        private readonly preferences: { readonly collapseDiffs: boolean } = sourceControlPreferences
     ) {
         const { key } = facts;
         const place = placeRef(key);
@@ -68,12 +68,11 @@ export class PlaceChanges {
             transport.getGitFile(key.projectId, place, scope, path, oldPath, from)
         );
         this.viewed = new ViewedMarks(key, transport);
-        makeAutoObservable<PlaceChanges, 'transport'>(this, {
+        makeAutoObservable<PlaceChanges, 'transport' | 'preferences'>(this, {
             facts: false,
             transport: false,
             sides: false,
-            folded: false,
-            openedViewed: false,
+            preferences: false,
             viewed: false,
         });
     }
@@ -132,7 +131,7 @@ export class PlaceChanges {
         return filter.isEmpty ? files : files.filter(file => filter.matches(file.path));
     }
 
-    /** The files the list and the sidebar show: the ones the filter lets through, without the viewed ones while they are hidden. */
+    /** The files the diff list shows: the ones the filter lets through, without the viewed ones while they are hidden. */
     get files(): readonly GitChangedFile[] {
         return this.hideViewed ? this.matchingFiles.filter(file => !this.isViewed(file.path)) : this.matchingFiles;
     }
@@ -156,7 +155,7 @@ export class PlaceChanges {
         return this.viewedPaths.size;
     }
 
-    /** Hides the viewed files from the list and the sidebar, or shows them again. */
+    /** Hides the viewed files from the list, or shows them again. */
     setHideViewed(hide: boolean): void {
         this.hideViewed = hide;
     }
@@ -167,21 +166,22 @@ export class PlaceChanges {
      */
     async setViewed(file: Pick<GitChangedFile, 'path' | 'revision'>, viewed: boolean): Promise<void> {
         const { path } = file;
-        const wasFolded = this.folded.has(path);
-        const wasOpened = this.openedViewed.has(path);
+        const previous = this.#folds.get(path);
         const scope = this.effectiveScope;
 
-        this.folded.delete(path);
-        this.openedViewed.delete(path);
+        if (viewed) this.#folds.delete(path);
+        else this.reveal(path);
 
+        const pending = this.#folds.get(path);
         const kept = await (viewed ? this.viewed.mark(scope, file) : this.viewed.unmark(scope, path));
 
         if (kept) return;
 
         runInAction(() => {
-            if (wasFolded && !this.folded.has(path)) this.folded.add(path);
+            if (this.effectiveScope !== scope || this.#folds.get(path) !== pending) return;
 
-            if (wasOpened && !this.openedViewed.has(path)) this.openedViewed.add(path);
+            if (previous === undefined) this.#folds.delete(path);
+            else this.#folds.set(path, previous);
         });
     }
 
@@ -198,9 +198,8 @@ export class PlaceChanges {
         };
     }
 
-    /** Whether the card of the file is shut: the person shut it, or the file is viewed and the person has not opened it since. */
     isFolded(path: string): boolean {
-        return this.folded.has(path) || (this.isViewed(path) && !this.openedViewed.has(path));
+        return this.#folds.get(path) ?? (this.preferences.collapseDiffs || this.isViewed(path));
     }
 
     toggleFolded(path: string): void {
@@ -211,20 +210,14 @@ export class PlaceChanges {
         }
     }
 
-    /** Shuts a card: a viewed file's goes back to being shut by being viewed, so it opens by itself once the file is edited and is no longer viewed; any other is shut by the person. */
     #fold(path: string): void {
-        if (this.isViewed(path)) {
-            this.openedViewed.delete(path);
-        } else {
-            this.folded.add(path);
-        }
+        if (this.isViewed(path)) this.#folds.delete(path);
+        else this.#folds.set(path, true);
     }
 
-    /** Opens a card, for a click on its file in the sidebar. */
+    /** Opens a card, including one linked from the last run summary. */
     reveal(path: string): void {
-        this.folded.delete(path);
-
-        if (this.isViewed(path)) this.openedViewed.add(path);
+        this.#folds.set(path, false);
     }
 
     /** Shuts the cards the filter shows. */
@@ -232,17 +225,16 @@ export class PlaceChanges {
         for (const file of this.files) this.#fold(file.path);
     }
 
-    /** Opens every card, those the filter hides and the viewed ones too. */
+    /** Opens every card, including the ones the filter hides. */
     unfoldAll(): void {
-        this.folded.clear();
+        this.#folds.clear();
 
-        for (const path of this.viewedPaths) this.openedViewed.add(path);
+        for (const file of this.changes?.files ?? []) this.reveal(file.path);
     }
 
-    /** The cards as they are when the tab appears: the viewed ones are shut and every other is open. */
+    /** Restore the default fold state when the view is opened again. */
     resetFolds(): void {
-        this.folded.clear();
-        this.openedViewed.clear();
+        this.#folds.clear();
     }
 
     /** Every card the filter shows is shut. */

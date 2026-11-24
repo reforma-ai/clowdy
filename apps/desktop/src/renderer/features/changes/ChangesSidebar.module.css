@@ -22,7 +22,7 @@
     color: var(--color-secondary-muted-text);
 }
 
-/* The branch facts, changed files and commit box sit below the header. */
+/* The branch facts and commit box sit below the header. */
 .body {
     display: flex;
     flex: 1;
@@ -44,118 +44,4 @@
 /* The lines of the facts are cut by the sidebar's edge with an ellipsis, as narrow as it is dragged: a column that lines its items up at the start leaves each as wide as its text. */
 .facts > * {
     max-width: 100%;
-}
-
-/* The changed files scroll in the space above the commit box. */
-.files {
-    display: flex;
-    flex: 1 1 0;
-    flex-direction: column;
-    min-height: var(--spacing-96);
-}
-
-/*
- * The title of a list, as the design system's list headers are (`ListBoxHeader`: small, medium, muted): a row as tall as the list's rows, its words in line with theirs (the list's
- * inset and a row's own padding).
- */
-.sectionHeader {
-    display: flex;
-    flex-shrink: 0;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--spacing-md);
-    min-height: var(--spacing-30);
-    padding-inline: calc(var(--spacing-xs) + var(--spacing-lg));
-}
-
-.list {
-    flex: 1;
-    min-height: 0;
-}
-
-/* The lists are the design system's (`GridList`): their plates stand off the sidebar's edges by the file tree's inset. */
-.rows {
-    padding: 0 var(--spacing-xs) var(--spacing-xs);
-}
-
-/* The letter that says what happened to the file, in the row's icon slot: a box of its own, so the names start at one place whichever letter it is. */
-.glyph {
-    display: inline-flex;
-    flex-shrink: 0;
-    align-items: center;
-    justify-content: center;
-    width: var(--spacing-14);
-}
-
-/* The row's label: the name first, strong, and the folder after it, dimmed; the folder is cut before the name is. */
-.fileName {
-    display: flex;
-    align-items: baseline;
-    gap: var(--spacing-sm);
-}
-
-.name {
-    flex-shrink: 0;
-    max-width: 100%;
-}
-
-.folderHint {
-    flex: 0 1 auto;
-    min-width: 0;
-}
-
-/* The end of a row: the lines, then the place of the tick, close to them, since the place is as wide as a button and the tick stands in its middle. */
-.rowEnd {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--spacing-xxs);
-}
-
-/*
- * The tick and `Discard changes…` share the place at the row's end, as the time and the actions of a chat's row do: the list shows the button and hides the tick while the row is
- * hovered (`data-show`), and here while the focus is in the row too, so the two are never drawn on each other. The place is as wide as the button in every row, so the counts of
- * all the rows stand in one column, and the button stands where the list puts a row's action: as far from the row's end as from its top.
- */
-.mark {
-    display: inline-grid;
-    flex-shrink: 0;
-    grid-template-columns: var(--spacing-24);
-    place-items: center;
-}
-
-.mark > * {
-    grid-area: 1 / 1;
-}
-
-[role='row']:focus-within .tick[data-show] {
-    opacity: 0;
-}
-
-.discard {
-    display: inline-flex;
-}
-
-.counts {
-    display: inline-flex;
-    flex-shrink: 0;
-    gap: var(--spacing-xs);
-    white-space: nowrap;
-}
-
-/* The tick of a viewed file: a place of its own at the row's end, empty for a file that is not, so the counts stand in one column and the list reads as a checklist. */
-.tick {
-    display: inline-flex;
-    flex-shrink: 0;
-    align-items: center;
-    justify-content: center;
-    width: var(--spacing-14);
-    color: var(--color-success-text);
-}
-
-/* In a sidebar dragged to its narrowest the folders and the counts go, and the names stay. */
-@container (max-width: 12rem) {
-    .folderHint,
-    .counts {
-        display: none;
-    }
 }

@@ -106,17 +106,10 @@ const press = (target: Element) =>
 
 const cardPaths = () => [...container.querySelectorAll<HTMLElement>('[data-card]')].map(card => card.dataset.card);
 const card = (path: string) => container.querySelector<HTMLElement>(`[data-card="${path}"]`)!;
-const rowPaths = () =>
-    [...container.querySelectorAll('[aria-label="Changed files"] [role="row"]')].map(
-        row => row.querySelector('[class*="name"]')?.textContent
-    );
-/** The `Discard changes…` buttons of the sidebar's rows and of the cards, by the path of the file they name. */
 const discardButtons = (inside: ParentNode = container) => [
     ...inside.querySelectorAll<HTMLButtonElement>('button[data-discard]'),
 ];
 const discardPathsIn = (inside: ParentNode) => discardButtons(inside).map(item => item.dataset.discard);
-const sidebar = () => container.querySelector('[aria-label="Changes sidebar"]')!;
-const rowButton = (path: string) => sidebar().querySelector<HTMLButtonElement>(`button[data-discard="${path}"]`)!;
 const cardButton = (path: string) => card(path).querySelector<HTMLButtonElement>('button[data-discard]')!;
 
 /** The dialog the discard opens, and its parts. */
@@ -215,8 +208,8 @@ afterEach(async () => {
     document.body.innerHTML = '';
 });
 
-describe('Discard changes… on the rows and the cards', () => {
-    it('is on the rows and the cards of the uncommitted files in All changes, and not on the files that are only committed', async () => {
+describe('Discard changes… on the diff cards', () => {
+    it('is on the diff cards of the uncommitted files in All changes, and not on the files that are only committed', async () => {
         await start();
 
         expect(cardPaths()).toEqual([
@@ -228,18 +221,15 @@ describe('Discard changes… on the rows and the cards', () => {
             'src/limits.ts',
         ]);
         // The three the worktree has uncommitted; the others were committed with the branch.
-        expect(discardPathsIn(sidebar())).toEqual(['notes.md', 'src/booking/price.ts', 'src/limits.ts']);
+        expect(discardPathsIn(container)).toEqual(['notes.md', 'src/booking/price.ts', 'src/limits.ts']);
         expect(discardPathsIn(container.querySelector('[data-card="notes.md"]')!)).toEqual(['notes.md']);
         expect(discardPathsIn(card('assets/logo.png'))).toEqual([]);
-        expect(rowPaths()).toHaveLength(6);
 
-        const button = rowButton('notes.md');
+        const button = cardButton('notes.md');
 
         expect(button.getAttribute('aria-label')).toBe('Discard changes to notes.md');
-        // Reachable from its row with the right arrow, as the list's row actions are, and shown by the list while the row has the pointer or the focus.
         expect(button.disabled).toBe(false);
         expect(button.getAttribute('tabindex')).not.toBe('-1');
-        expect(button.closest('[data-show]')?.getAttribute('data-show')).toBe('item-both');
         expect(button.getAttribute('data-variant')).toBe('filling');
     });
 
@@ -247,9 +237,9 @@ describe('Discard changes… on the rows and the cards', () => {
         await start();
         await chooseScope('uncommitted');
 
-        expect(discardPathsIn(sidebar())).toEqual(['notes.md', 'src/booking/price.ts', 'src/limits.ts']);
+        expect(discardPathsIn(container)).toEqual(['notes.md', 'src/booking/price.ts', 'src/limits.ts']);
         expect(cardPaths()).toEqual(['notes.md', 'src/booking/price.ts', 'src/limits.ts']);
-        expect(discardButtons()).toHaveLength(6);
+        expect(discardButtons()).toHaveLength(3);
 
         await chooseScope('branch');
 
@@ -292,15 +282,15 @@ describe('Discard changes… on the rows and the cards', () => {
         });
         await chooseScope('uncommitted');
 
-        expect(rowPaths()).toContain('both.ts');
-        expect(rowPaths()).toContain('sub');
-        expect(discardPathsIn(sidebar())).toEqual(['notes.md', 'src/booking/price.ts', 'src/limits.ts']);
+        expect(cardPaths()).toContain('src/both.ts');
+        expect(cardPaths()).toContain('vendor/sub');
+        expect(discardPathsIn(container)).toEqual(['notes.md', 'src/booking/price.ts', 'src/limits.ts']);
     });
 
     it('is taken away while the branch is being changed, and comes back when it is done', async () => {
         await start();
 
-        expect(discardButtons(sidebar())).toHaveLength(3);
+        expect(discardButtons()).toHaveLength(3);
 
         act(() => {
             model().facts.switching = true;
@@ -314,7 +304,7 @@ describe('Discard changes… on the rows and the cards', () => {
         });
         await settle();
 
-        expect(discardButtons(sidebar())).toHaveLength(3);
+        expect(discardButtons()).toHaveLength(3);
     });
 });
 
@@ -324,7 +314,7 @@ describe('the confirmation', () => {
 
         const discard = vi.spyOn(transport, 'discardGit');
 
-        await press(rowButton('src/booking/price.ts'));
+        await press(cardButton('src/booking/price.ts'));
         await settleDialog();
 
         expect(dialogText()).toContain('Discard changes to price.ts?');
@@ -364,7 +354,7 @@ describe('the confirmation', () => {
 
         const discard = vi.spyOn(transport, 'discardGit');
 
-        await press(rowButton('notes.md'));
+        await press(cardButton('notes.md'));
         await settleDialog();
         await act(async () => {
             dialog()?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
@@ -381,7 +371,7 @@ describe('the confirmation', () => {
                 data.runs.find(run => run.id === FIXTURE_WORKSPACE_RUN_ID)!.status = 'running';
             },
         });
-        await press(rowButton('notes.md'));
+        await press(cardButton('notes.md'));
         await settleDialog();
 
         expect(dialog()?.querySelector('[role="note"]')?.textContent).toBe('An agent is working here');
@@ -407,7 +397,7 @@ describe('the confirmation', () => {
         const changes = vi.spyOn(transport, 'getGitChanges');
         const status = vi.spyOn(transport, 'getGitStatus');
 
-        await press(rowButton('notes.md'));
+        await press(cardButton('notes.md'));
         await settleDialog();
         await press(dialogButton('Discard changes'));
 
@@ -429,7 +419,7 @@ describe('the confirmation', () => {
         // The facts' next round: the status, and the lists of the scope that is shown and of the uncommitted files.
         expect(status.mock.calls.length).toBeGreaterThan(statuses);
         expect(changes.mock.calls.length).toBeGreaterThan(reads);
-        // The card and the row of the file are gone with its changes, and the others stay.
+        // The card is gone with its changes, and the others stay.
         expect(cardPaths()).toEqual([
             'assets/logo.png',
             'src/booking/price.test.ts',
@@ -437,8 +427,7 @@ describe('the confirmation', () => {
             'src/booking/weekend.ts',
             'src/limits.ts',
         ]);
-        expect(rowPaths()).not.toContain('notes.md');
-        expect(discardPathsIn(sidebar())).toEqual(['src/booking/price.ts', 'src/limits.ts']);
+        expect(discardPathsIn(container)).toEqual(['src/booking/price.ts', 'src/limits.ts']);
     });
 
     it('asks the daemon for that one file, in the place of the tab', async () => {
@@ -460,7 +449,7 @@ describe('the confirmation', () => {
 
         const status = vi.spyOn(transport, 'getGitStatus');
 
-        await press(rowButton('src/limits.ts'));
+        await press(cardButton('src/limits.ts'));
         await settleDialog();
 
         const before = status.mock.calls.length;
@@ -495,7 +484,7 @@ describe('the confirmation', () => {
                     },
                 }),
         });
-        await press(rowButton('src/limits.ts'));
+        await press(cardButton('src/limits.ts'));
         await settleDialog();
         await press(dialogButton('Discard changes'));
         await settleDialog();
@@ -520,7 +509,7 @@ describe('the confirmation', () => {
         const success = vi.spyOn(toast, 'success').mockImplementation(() => 'toast');
 
         try {
-            await press(rowButton('src/limits.ts'));
+            await press(cardButton('src/limits.ts'));
             await settleDialog();
             await press(dialogButton('Discard changes'));
             await settleDialog();
@@ -543,7 +532,7 @@ describe('the confirmation', () => {
         const warning = vi.spyOn(toast, 'warning').mockImplementation(() => 'toast');
 
         try {
-            await press(rowButton('src/limits.ts'));
+            await press(cardButton('src/limits.ts'));
             await settleDialog();
             await press(dialogButton('Discard changes'));
             await settleDialog();
@@ -577,18 +566,18 @@ describe('the confirmation', () => {
 
         expect(all.isViewed(file.path)).toBe(true);
 
-        await press(rowButton(file.path));
+        await press(cardButton(file.path));
         await settleDialog();
         await press(dialogButton('Discard changes'));
         await settleDialog();
         await settle();
 
-        // The branch's own changes to the file stay, so its card and its row do too, with what was committed.
+        // The branch's own changes to the file stay, so its card does too, with what was committed.
         expect(cardPaths()).toContain(file.path);
         expect(all.changes!.files.find(item => item.path === file.path)).toMatchObject({ additions: 23, deletions: 5 });
         expect(all.isViewed(file.path)).toBe(false);
         // And the file is no longer one whose changes can be discarded.
-        expect(discardPathsIn(sidebar())).toEqual(['notes.md', 'src/limits.ts']);
+        expect(discardPathsIn(container)).toEqual(['notes.md', 'src/limits.ts']);
     });
 });
 
@@ -605,35 +594,6 @@ describe('the focus after a discard', () => {
             await new Promise(resolve => setTimeout(resolve, 100));
         });
     };
-    const rowOf = (path: string) => sidebar().querySelector<HTMLElement>(`[data-path="${path}"]`);
-
-    it("goes to the next row of the sidebar's list when the file's row goes", async () => {
-        await start();
-        await discardThrough(rowButton('notes.md'));
-
-        expect(rowOf('notes.md')).toBeNull();
-        expect(document.activeElement).toBe(rowOf('src/booking/price.test.ts'));
-    });
-
-    it('goes to the row before it when the row that went was the last', async () => {
-        await start();
-        await discardThrough(rowButton('src/limits.ts'));
-
-        expect(rowOf('src/limits.ts')).toBeNull();
-        expect(document.activeElement).toBe(rowOf('src/booking/weekend.ts'));
-    });
-
-    it('goes to the list of files when the row that went was the only one', async () => {
-        await start();
-        act(() => model().setFilter('src/limits.ts'));
-        await settle();
-
-        await discardThrough(rowButton('src/limits.ts'));
-
-        expect(sidebar().querySelector('[data-path]')).toBeNull();
-        expect(document.activeElement).toBe(sidebar().querySelector('section[aria-label="Changed files"]'));
-    });
-
     it("goes to the next card's fold button when the file's card goes", async () => {
         await start();
         await discardThrough(cardButton('notes.md'));
@@ -653,11 +613,11 @@ describe('the focus after a discard', () => {
         expect(document.activeElement).toBe(container.querySelector('input[aria-label="Filter files"]'));
     });
 
-    it('stays on the row of a file that keeps its row, whose button went with its changes', async () => {
+    it('returns focus to the surviving card when its discard button goes', async () => {
         await start();
-        await discardThrough(rowButton('src/booking/price.ts'));
+        await discardThrough(cardButton('src/booking/price.ts'));
 
-        expect(rowButton('src/booking/price.ts')).toBeNull();
-        expect(document.activeElement).toBe(rowOf('src/booking/price.ts'));
+        expect(cardButton('src/booking/price.ts')).toBeNull();
+        expect(document.activeElement).toBe(card('src/booking/price.ts').querySelector('button[aria-expanded]'));
     });
 });
