@@ -60,6 +60,7 @@
 }
 
 .chatActions {
+    position: relative;
     pointer-events: none;
 }
 
@@ -80,11 +81,25 @@
     height: var(--spacing-6);
 }
 
-/* Remove hidden controls from the layout so the title can reach the row's edge. */
+/* Keep hidden tooltip anchors measurable while freeing the title's space. */
 .chatRow:not(:is(:hover, :focus-visible, :has(.rowAction:focus), [data-hovered], [data-open], [data-renaming])) {
-    & .rowAction,
+    & .rowAction {
+        visibility: hidden;
+        pointer-events: none;
+    }
+
     & [slot='endAffix']:not(:has(.archiveStatus)) {
-        display: none;
+        position: absolute;
+        inset-inline-end: calc((var(--clowdy-listbox-item-height) - var(--spacing-24)) / 2);
+    }
+
+    & .chatActions:has(.archiveStatus) .rowAction {
+        position: absolute;
+        inset-inline-end: 0;
+    }
+
+    & .chatActions:has(.archiveStatus) .rowAction[aria-label='Archive'] {
+        inset-inline-end: calc(var(--spacing-24) + var(--spacing-xs));
     }
 }
 
