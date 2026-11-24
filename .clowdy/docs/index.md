@@ -2,6 +2,8 @@
 
 ## Decisions
 
+- [Changes tab render performance](decisions/2026-11-24-changes-tab-render-performance.md) records why far diff cards are empty boxes and unchanged git answers keep their objects. Status: accepted.
+
 - [Provider question capabilities](decisions/2026-11-24-provider-question-capabilities.md) records how agents opt into form elicitation and its current limits. Status: accepted.
 
 - [Stage coordination follows Briefback](decisions/2026-11-24-briefback-stage-coordination.md) records the stage, review and delegation model. Status: accepted.
@@ -12,6 +14,8 @@
 - [One provider for commit messages](decisions/2026-11-24-choose-one-commit-provider.md) records the Source Control selector and how older settings map to it. Status: accepted.
 
 ## Checks
+
+- [Changes tab performance](checks/2026-11-24-changes-tab-performance.md) covers render time before and after for 200 files, and the tests. Status: passed with limits.
 
 - [Question lifecycle](checks/2026-11-24-question-lifecycle.md) covers provider questions, cancellation, and the remaining Cursor timeout. Status: partial.
 
