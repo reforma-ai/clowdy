@@ -189,10 +189,10 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
             )}
 
             <ContentColumn className={styles.composer}>
-                {progress && <TasksBanner key={chat.id} progress={progress} />}
                 <RunningAgents chat={chat} />
                 {/* What the chat's latest run changed, once it is at rest and the person has not written since; for a read only chat too. */}
                 <LastRunPlate chat={chat} run={run} items={stream?.status === 'ready' ? items : undefined} />
+                {progress && <TasksBanner key={chat.id} progress={progress} />}
                 {/* The composer draws the line under its box itself, with the mode at the end of it; a chat that is read only has no mode to show. */}
                 {writability.writable ? (
                     <Composer ref={composer} chat={chat} run={run} controls={controls} />
