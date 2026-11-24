@@ -45,6 +45,7 @@ beforeEach(() => {
             get phase() {
                 return loading.phase;
             },
+            selectedProject: undefined,
             selectedProjectId: 'p' as string | null,
             get selectedProjectUi() {
                 return this.selectedProjectId ? ui.forProject(this.selectedProjectId) : undefined;
