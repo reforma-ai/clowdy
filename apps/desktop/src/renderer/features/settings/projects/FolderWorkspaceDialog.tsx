@@ -4,6 +4,7 @@ import { Input } from '@clowdy/components/Input';
 import { Modal, useModalContext } from '@clowdy/components/Modal';
 import { Text } from '@clowdy/components/Text';
 import { Textarea } from '@clowdy/components/Textarea';
+import { folderNames } from '@clowdy/protocol';
 import { type FormEvent, useEffect, useId, useState } from 'react';
 
 import styles from './FolderWorkspaceDialog.module.css';
@@ -46,9 +47,18 @@ function FolderWorkspaceForm({ root, projectId, folderId, name }: FolderWorkspac
     const filesHintId = useId();
     const commandId = useId();
     const commandHintId = useId();
-    const folder = root.projects
-        .find(project => project.id === projectId)
-        ?.folders.find(candidate => candidate.id === folderId);
+    const project = root.projects.find(candidate => candidate.id === projectId);
+    const folder = project?.folders.find(candidate => candidate.id === folderId);
+    const defaultName =
+        project &&
+        folderNames(
+            project.folders.map(candidate =>
+                candidate.id === folderId
+                    ? { ...candidate, settings: { ...candidate.settings, name: undefined } }
+                    : candidate
+            )
+        )[project.folders.findIndex(candidate => candidate.id === folderId)];
+    const [folderName, setFolderName] = useState(() => folder?.settings?.name ?? '');
     const [fields, setFields] = useState<WorkspaceFields>(() => workspaceFields(folder?.settings));
     const [git, setGit] = useState<FolderGit>();
     const [isPending, setIsPending] = useState(false);
@@ -71,7 +81,8 @@ function FolderWorkspaceForm({ root, projectId, folderId, name }: FolderWorkspac
     }, [root, projectId, folderId]);
 
     const saved = folder?.settings;
-    const canSubmit = folder !== undefined && !isWorkspaceSaved(fields, saved);
+    const canSubmit =
+        folder !== undefined && (!isWorkspaceSaved(fields, saved) || folderName.trim() !== (saved?.name ?? ''));
     // The daemon answers `defaultBranch` as the folder's base: with a base set that the repository has, it is that base, not the repository's own default.
     const detected = git?.isRepository ? git.defaultBranch : undefined;
     const typed = fields.baseBranch.trim();
@@ -88,7 +99,15 @@ function FolderWorkspaceForm({ root, projectId, folderId, name }: FolderWorkspac
 
         setIsPending(true);
 
-        const done = await setFolderSettings(root, { id: projectId }, { id: folderId }, workspacePatch(fields));
+        const done = await setFolderSettings(
+            root,
+            { id: projectId },
+            { id: folderId },
+            {
+                ...workspacePatch(fields),
+                ...(folderName.trim() !== (saved?.name ?? '') && { name: folderName.trim() || null }),
+            }
+        );
 
         setIsPending(false);
 
@@ -103,6 +122,20 @@ function FolderWorkspaceForm({ root, projectId, folderId, name }: FolderWorkspac
             </div>
 
             <FormField layout="vertical">
+                <FormField.Label>Folder name</FormField.Label>
+                <FormField.Description>Optional name shown in this project</FormField.Description>
+                <Input
+                    type="text"
+                    aria-label="Folder name"
+                    value={folderName}
+                    onChange={setFolderName}
+                    placeholder={defaultName ?? name}
+                    maxLength={100}
+                    autoFocus
+                />
+            </FormField>
+
+            <FormField layout="vertical">
                 <FormField.Label>Base branch</FormField.Label>
                 <FormField.Description>Empty uses the default branch of the repository</FormField.Description>
                 <Input
@@ -111,7 +144,6 @@ function FolderWorkspaceForm({ root, projectId, folderId, name }: FolderWorkspac
                     value={fields.baseBranch}
                     onChange={baseBranch => change({ baseBranch })}
                     placeholder={detected && detected !== saved?.baseBranch ? detected : 'Default branch'}
-                    autoFocus
                 />
             </FormField>
             {lacksBranch && (

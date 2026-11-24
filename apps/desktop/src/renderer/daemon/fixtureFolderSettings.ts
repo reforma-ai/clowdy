@@ -30,6 +30,23 @@ export function applyFolderSettings(
 
     const settings: FolderSettings = { ...folder.settings };
 
+    if (patch.name === null) {
+        delete settings.name;
+    } else if (patch.name !== undefined) {
+        const name = patch.name.trim();
+
+        if (
+            !name ||
+            name === '.' ||
+            name === '..' ||
+            name.length > 100 ||
+            /[\\/\p{Cc}\p{Zl}\p{Zp}\u202a-\u202e\u2066-\u2069]/u.test(name)
+        )
+            return fail('invalid', 'The folder name must be 1 to 100 characters without slashes or control characters');
+
+        settings.name = name;
+    }
+
     if (patch.baseBranch === null) {
         delete settings.baseBranch;
     } else if (patch.baseBranch !== undefined) {

@@ -934,6 +934,21 @@ describe('project.updateFolder', () => {
     const settingsOf = (h: Harness, projectId: string, folderId: string) =>
         projectOf(h, projectId).folders.find(folder => folder.id === folderId)?.settings;
 
+    test('saves, reads and clears a folder name without changing its path or other settings', async () => {
+        const { h, project, web, infra } = await twoFolders();
+        h.ok('project.updateFolder', {
+            projectId: project.id,
+            folderId: web.id,
+            settings: { baseBranch: 'main', name: '  Front end  ' },
+        });
+        expect(settingsOf(h, project.id, web.id)).toEqual({ baseBranch: 'main', name: 'Front end' });
+        expect(projectOf(h, project.id).folders.map(folder => folder.path)).toEqual([web.path, infra.path]);
+        expect(update(h, project.id, web.id, { name: 'bad/name' }).ok).toBe(false);
+        expect(settingsOf(h, project.id, web.id)?.name).toBe('Front end');
+        h.ok('project.updateFolder', { projectId: project.id, folderId: web.id, settings: { name: null } });
+        expect(settingsOf(h, project.id, web.id)).toEqual({ baseBranch: 'main' });
+    });
+
     test('sets the base branch and the setup of one folder, answers the project and publishes it', async () => {
         const { h, project, web, infra } = await twoFolders();
         const cursor = h.store.headCursor();

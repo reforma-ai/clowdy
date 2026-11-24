@@ -23,6 +23,16 @@ describe('folderNames', () => {
         expect(named('/work/web', '/work/api/', 'C:\\code\\docs')).toEqual(['web', 'api', 'docs']);
     });
 
+    test('uses custom names and keeps them distinct', () => {
+        expect(
+            folderNames([
+                { path: '/a/app', settings: { name: 'Client' } },
+                { path: '/b/app' },
+                { path: '/c/app', settings: { name: 'Client' } },
+            ])
+        ).toEqual(['Client', 'app', 'Client-2']);
+    });
+
     test('numbers a name an earlier folder already has, and never repeats one', () => {
         expect(named('/a/app', '/b/app', '/c/app')).toEqual(['app', 'app-2', 'app-3']);
         expect(named('/a/app', '/b/app', '/c/app-2')).toEqual(['app', 'app-2', 'app-2-2']);
