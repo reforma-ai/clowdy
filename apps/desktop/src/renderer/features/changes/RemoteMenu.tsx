@@ -1,6 +1,7 @@
 import { Button } from '@clowdy/components/Button';
 import { Menu, MenuItem, MenuTrigger } from '@clowdy/components/List';
 import { Popover } from '@clowdy/components/Popover';
+import { Spinner } from '@clowdy/components/Spinner';
 import { Text } from '@clowdy/components/Text';
 import { ArrowDown, ArrowUp, ChevronDown, Refresh } from '@clowdy/icons/14';
 
@@ -84,7 +85,7 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
                         contentClassName={styles.content}
                         isDisabled={off}
                         isPending={running !== undefined}
-                        spinnerPlacement="start"
+                        spinnerPlacement="none"
                         aria-label={view.title}
                         data-sync={view.kind}
                         tooltip={off || running !== undefined ? undefined : view.title}
@@ -115,6 +116,7 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
                                 </Text>
                             )}
                         </span>
+                        {running !== undefined && <Spinner size="xs" className={styles.spinner} aria-hidden />}
                     </Button>
                 </Unavailable>
 
