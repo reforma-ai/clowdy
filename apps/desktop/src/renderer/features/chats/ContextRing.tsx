@@ -152,7 +152,7 @@ function ContextPanel({ chat, fill, running, canCompact }: PanelProps) {
                     <Show when={running && !queued}>
                         <Text variant="xs" color="secondary" align="center">
                             {chat.queuePaused
-                                ? 'Joins the paused queue. Use Send now on it once the agent finishes.'
+                                ? 'Joins the paused queue. Use its up arrow once the agent finishes.'
                                 : 'Waits in the queue until the agent finishes'}
                         </Text>
                     </Show>

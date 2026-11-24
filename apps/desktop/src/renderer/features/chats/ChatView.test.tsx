@@ -513,15 +513,22 @@ describe('a thread', () => {
         );
     });
 
-    it('has no such line on a chat the person made', async () => {
+    it('has no parent crumb on a top-level chat and folds its active threads by default', async () => {
         await start();
         await draw('c-6');
 
         expect(crumb()).toBeNull();
-        // Its threads at work are rows above the message box.
-        expect(container.querySelector('[aria-label="Work in progress"]')?.textContent).toContain(
-            'Fix the price rounding'
-        );
+        const banner = container.querySelector('[aria-label="Work in progress"]')!;
+        const toggle = banner.querySelector<HTMLButtonElement>('button[aria-expanded]')!;
+
+        expect(toggle.getAttribute('aria-expanded')).toBe('false');
+        expect(banner.textContent).toContain('Agents running · 2');
+        expect(banner.textContent).not.toContain('Fix the price rounding');
+
+        await act(async () => toggle.click());
+        await draw('c-6');
+
+        expect(banner.textContent).toContain('Fix the price rounding');
     });
 });
 

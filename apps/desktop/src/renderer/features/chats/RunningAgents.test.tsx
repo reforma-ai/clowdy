@@ -36,7 +36,10 @@ let data: ReturnType<typeof createFixtureData>;
 
 beforeEach(async () => {
     data = createFixtureData();
-    store = new RootStore(new FixtureTransport({ data }), { storage: memoryStorage() });
+    store = new RootStore(new FixtureTransport({ data }), {
+        storage: memoryStorage(),
+        initialUi: { agentsFolded: false },
+    });
     await store.load();
     container = document.createElement('div');
     document.body.append(container);

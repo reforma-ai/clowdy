@@ -6,7 +6,14 @@ import { ArrowDown, ArrowUp, ChevronDown, Refresh } from '@clowdy/icons/14';
 
 import { Unavailable } from '../../shared/Unavailable';
 import { useNow } from '../../shared/useNow';
-import { isFetchFirst, type RemoteActionId, remoteActions, type SyncView, syncButton } from './changesActions';
+import {
+    commitsWords,
+    isFetchFirst,
+    type RemoteActionId,
+    remoteActions,
+    type SyncView,
+    syncButton,
+} from './changesActions';
 import styles from './RemoteMenu.module.css';
 import { useRemoteActions } from './useRemoteActions';
 
@@ -133,15 +140,13 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
                                     icon={ICONS[action.id]}
                                     text={action.label}
                                     endAffix={
-                                        action.count !== undefined && action.reason === undefined ? (
+                                        action.count !== undefined ? (
                                             <Text variant="xs" color="secondary">
-                                                {action.count}
+                                                {commitsWords(action.count)}
                                             </Text>
                                         ) : undefined
                                     }
-                                    description={action.reason}
-                                    stacked={action.reason !== undefined}
-                                    isDisabled={action.reason !== undefined}
+                                    isDisabled={action.disabled}
                                 />
                             ))}
                         </Menu>

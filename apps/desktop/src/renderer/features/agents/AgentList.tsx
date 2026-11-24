@@ -34,6 +34,8 @@ import { archiveChat } from '../chats/archiveChat';
 import { ChatMenu } from '../chats/ChatMenu';
 import { isRunActive } from '../chats/chatRun';
 import { perform } from '../chats/commands';
+import { draftOf, messageOf, useDraftRevision } from '../chats/composerDrafts';
+import { filesOf, useDraftFilesRevision } from '../chats/composerFiles';
 import { deleteChat } from '../chats/deleteChat';
 import { workspaceHead } from '../openWith';
 import styles from './AgentList.module.css';
@@ -122,9 +124,12 @@ export function AgentList({
     isCovered: boolean;
 }) {
     const root = useRootStore();
+    useDraftRevision();
+    useDraftFilesRevision();
     const project = useProjectState();
     const ui = useProjectUi();
     const [renamingId, setRenamingId] = useState<ChatId | null>(null);
+    const saveRename = useRef<() => void>(() => {});
     const [menuChat, setMenuChat] = useState<Chat | null>(null);
     // The chat whose `⋯` menu is open: its row keeps the hover plate while the pointer is in the menu.
     const [menuOpenId, setMenuOpenId] = useState<ChatId | null>(null);
@@ -347,15 +352,16 @@ export function AgentList({
         const { chat } = row;
         const run = runOf(chat);
         const busy = actions.busy(chat);
-        const threads = busy
-            ? project
-                  .threadsBelow(chat.id)
-                  .some(thread => thread.archivedAt === undefined && asksThePerson(thread, project.runs))
-                ? ('asking' as const)
-                : ('working' as const)
-            : undefined;
-        const status = busy ? <ChatStatus run={run} threads={threads} className={styles.archiveStatus} /> : undefined;
-        const icon = <ChatIcon chat={chat} run={run} threads={threads} showStatus={!busy || renamingId === chat.id} />;
+        const threads = project
+            .threadsBelow(chat.id)
+            .some(thread => thread.archivedAt === undefined && asksThePerson(thread, project.runs))
+            ? ('asking' as const)
+            : project.threadsBelow(chat.id).some(thread => isActiveThread(thread, project.runs))
+              ? ('working' as const)
+              : undefined;
+        const draft = messageOf(draftOf(chat.id)) !== '' || filesOf(chat.id).length > 0;
+        const status = <ChatStatus run={run} threads={threads} draft={draft} className={styles.archiveStatus} />;
+        const icon = <ChatIcon chat={chat} run={run} threads={threads} showStatus={false} />;
 
         return (
             <GridListItem
@@ -364,14 +370,29 @@ export function AgentList({
                 text={chat.title}
                 // Only a row with threads below it has a chevron: on hover it takes the place of the icon, so the row needs no room for it.
                 icon={
-                    row.childCount > 0 ? (
+                    row.childCount > 0 && renamingId !== chat.id ? (
                         <Fold row={row} icon={icon} onToggle={() => ui.toggleChatExpanded(chat.id)} />
                     ) : (
                         icon
                     )
                 }
                 endAffix={
-                    renamingId === chat.id ? undefined : (
+                    renamingId === chat.id ? (
+                        <span {...ownEvents}>
+                            <Button
+                                variant="filling"
+                                color="secondary"
+                                size="xs"
+                                iconOnly
+                                aria-label="Save chat title"
+                                tooltip="Save"
+                                preventFocusOnPress
+                                onPress={() => saveRename.current()}
+                            >
+                                <Check />
+                            </Button>
+                        </span>
+                    ) : (
                         <RowEnd
                             chat={chat}
                             actions={actions}
@@ -386,10 +407,11 @@ export function AgentList({
                 style={{ '--depth': row.depth } as CSSProperties}
                 // The row of an open menu, from its button or the right click, stays as if hovered: the pointer is in the menu, not on the row.
                 data-open={menuOpenId === chat.id || (contextMenu.isOpen && menuChat?.id === chat.id) || undefined}
+                data-renaming={renamingId === chat.id || undefined}
                 data-depth={row.depth}
             >
                 {renamingId === chat.id ? (
-                    <RenameField chat={chat} onDone={() => setRenamingId(null)} />
+                    <RenameField chat={chat} onDone={() => setRenamingId(null)} saveRename={saveRename} />
                 ) : (
                     <span className={styles.titleLine}>
                         <span className={styles.title} onDoubleClick={() => setRenamingId(chat.id)}>
@@ -627,7 +649,8 @@ function RowEnd({
     return (
         // The buttons and the popover are React children of the row, so their clicks and keys would reach the row through the tree.
         <span className={styles.chatActions} {...ownEvents}>
-            {status ?? (
+            {status}
+            {!busy && (
                 <Button
                     className={styles.rowAction}
                     variant="filling"
@@ -669,18 +692,41 @@ function RowEnd({
 }
 
 /** The title as a field in the title's own place: Enter or leaving it renames, Escape keeps the old name. */
-function RenameField({ chat, onDone }: { chat: Chat; onDone: () => void }) {
+function RenameField({
+    chat,
+    onDone,
+    saveRename,
+}: {
+    chat: Chat;
+    onDone: () => void;
+    saveRename: { current: () => void };
+}) {
     const root = useRootStore();
-    const edit = useCellEditMode();
     const [title, setTitle] = useState(chat.title);
+    const finished = useRef(false);
+    const inputRef = useRef<HTMLInputElement>(null);
 
     const commit = () => {
+        if (finished.current) return;
+        finished.current = true;
         const next = title.trim();
 
         onDone();
 
         if (next && next !== chat.title) void perform(root, { type: 'chat.rename', chatId: chat.id, title: next });
     };
+    saveRename.current = commit;
+    const edit = useCellEditMode(event => {
+        if (event.isComposing) return;
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            commit();
+        } else if (event.key === 'Escape') {
+            event.preventDefault();
+            finished.current = true;
+            onDone();
+        }
+    }, inputRef);
 
     return (
         <Input
@@ -689,16 +735,13 @@ function RenameField({ chat, onDone }: { chat: Chat; onDone: () => void }) {
             aria-label="Chat title"
             autoFocus
             autoSelect
+            inputRef={inputRef}
             value={title}
             onChange={setTitle}
             onFocus={edit.onFocus}
             onBlur={event => {
                 edit.onBlur(event);
                 commit();
-            }}
-            onKeyDown={event => {
-                if (event.key === 'Enter') commit();
-                else if (event.key === 'Escape') onDone();
             }}
         />
     );

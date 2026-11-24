@@ -15,14 +15,13 @@ export type RemoteActionId = 'fetch' | 'pull' | 'push' | 'publish' | 'update' | 
 /** The transport call an action makes. */
 export const remoteCall = (id: RemoteActionId): GitRemoteAction => (id === 'publish' ? 'push' : id);
 
-/** One entry of the menu: what it is called, how many commits it moves, and why it cannot run right now. */
+/** One entry of the menu: what it is called, how many commits it moves and whether it is available. */
 export interface RemoteActionView {
     id: Exclude<RemoteActionId, 'update' | 'abort'>;
     label: string;
     /** `Pull`: the commits the upstream has that the branch lacks; `Push`: the commits the branch has that the upstream lacks. */
     count?: number;
-    /** Why it cannot run, in a few words; absent when it can. */
-    reason?: string;
+    disabled: boolean;
 }
 
 /** The branch a status is on, nothing for a HEAD that is on none. */
@@ -62,93 +61,48 @@ const foreignWords = (upstream: GitUpstream): string => `Tracks ${upstream.name}
 export const isDiverged = (upstream: GitUpstream | undefined): boolean =>
     upstream !== undefined && !upstream.gone && upstream.ahead > 0 && upstream.behind > 0;
 
-/** Why a branch that is not published has nothing to pull from, in a few words. */
-const unpublishedWords = (tracking: Tracking): string =>
-    tracking.kind === 'none'
-        ? 'Not published yet'
-        : tracking.kind === 'gone'
-          ? `Upstream gone from ${ORIGIN}`
-          : `Tracks ${tracking.upstream.name}`;
-
-/**
- * What stops any move of the branch right now, as a few words: the repository has no `origin`, or another action is running. Nothing when neither is so.
- */
-function blockOf(status: RepositoryStatus, busy: boolean): string | undefined {
-    if (!status.origin) return 'No origin';
-
-    return busy ? 'An action is running' : undefined;
-}
-
-/** What stops a pull or a push, beyond what stops any move: a HEAD that is on no branch, a branch with no commit, an upstream that is not on `origin`. */
-function branchBlock(status: RepositoryStatus, tracking: Tracking): string | undefined {
-    if (status.head.kind === 'detached') return 'HEAD is detached';
-
-    if (status.head.kind === 'unborn') return 'No commits yet';
-
-    return tracking.kind === 'foreign' ? foreignWords(tracking.upstream) : undefined;
-}
-
-/**
- * The menu of the sidebar for a place: Fetch, Pull and, last, Publish while the branch is not published (no upstream, one that is gone from origin, or one under another name than the
- * branch's) and Push once it is. Each action is listed with the reason it cannot run (no origin, an action running, a detached HEAD, nothing to pull, nothing to push, not published, pull
- * first), so a person sees why and not only that it is off. A branch that diverged can be pulled: the pull merges. Nothing for a place that is not a repository. The commit counts are those
- * of the last fetch: Fetch is how they are brought up to date.
- */
+/** Fetch, Pull and either Push or Publish. A diverged branch can be pulled to merge. */
 export function remoteActions(status: GitStatus | undefined, busy: boolean): RemoteActionView[] {
     if (status?.isRepository !== true) return [];
 
-    const block = blockOf(status, busy);
+    const blocked = !status.origin || busy;
     const tracking = trackingOf(status);
-    const moves = block ?? branchBlock(status, tracking);
-    const fetch: RemoteActionView = { id: 'fetch', label: 'Fetch origin', ...(block && { reason: block }) };
-
-    // A branch that tracks something that is not on origin is listed with its counts and the reason, as a branch that is there. One that is not published has nothing to pull from, and is
-    // published in place of being pushed.
-    const live =
+    const movesBlocked = blocked || status.head.kind !== 'branch' || tracking.kind === 'foreign';
+    const fetch: RemoteActionView = { id: 'fetch', label: 'Fetch origin', disabled: blocked };
+    const upstream =
         tracking.kind === 'published' || (tracking.kind === 'foreign' && !tracking.upstream.gone)
             ? tracking.upstream
             : undefined;
 
-    if (!live) {
-        const pull: RemoteActionView = {
-            id: 'pull',
-            label: 'Pull origin',
-            reason: moves ?? unpublishedWords(tracking),
-        };
-
-        return [fetch, pull, { id: 'publish', label: 'Publish branch', ...(moves && { reason: moves }) }];
+    if (!upstream) {
+        return [
+            fetch,
+            { id: 'pull', label: 'Pull origin', disabled: true },
+            { id: 'publish', label: 'Publish branch', disabled: movesBlocked },
+        ];
     }
 
-    const published = live;
-    const pullReason = moves ?? (published.behind === 0 ? 'Nothing to pull' : undefined);
-    // A push of a branch that is also behind is rejected: the pull (which merges, when the branch has commits of its own) comes first.
-    const pushReason =
-        moves ??
-        (published.behind > 0 && published.ahead > 0
-            ? 'Pull first'
-            : published.ahead === 0
-              ? 'Nothing to push'
-              : undefined);
+    const { ahead, behind } = upstream;
 
     return [
         fetch,
         {
             id: 'pull',
             label: 'Pull origin',
-            ...(published.behind > 0 && { count: published.behind }),
-            ...(pullReason && { reason: pullReason }),
+            ...(behind > 0 && { count: behind }),
+            disabled: movesBlocked || behind === 0,
         },
         {
             id: 'push',
             label: 'Push origin',
-            ...(published.ahead > 0 && { count: published.ahead }),
-            ...(pushReason && { reason: pushReason }),
+            ...(ahead > 0 && { count: ahead }),
+            disabled: movesBlocked || ahead === 0 || behind > 0,
         },
     ];
 }
 
 /** `1 commit`, `2 commits`. */
-const commitsWords = (count: number): string => `${count} ${count === 1 ? 'commit' : 'commits'}`;
+export const commitsWords = (count: number): string => `${count} ${count === 1 ? 'commit' : 'commits'}`;
 
 /**
  * When the last fetch was, in GitHub Desktop's words: `Last fetched 3 minutes ago`, `Last fetched just now` under a minute, and `Never fetched` for a repository that has not fetched
@@ -471,155 +425,17 @@ export function mergeBanner(status: GitStatus | undefined): { words: string; ask
     };
 }
 
-/** What Create PR is, for a place and its branch. */
-export type CreatePullRequestState =
-    /** The branch is on origin and has work: the button opens the compare page. */
-    | { kind: 'ready'; label: 'Create PR' }
-    /** The branch is not on origin: publishing it comes first, and then the page can be opened. */
-    | { kind: 'publish'; label: 'Publish first' }
-    /** The branch is on origin and has commits that are not: they are pushed first. */
-    | { kind: 'push'; label: 'Push first' }
-    /** Create PR is shown and cannot be pressed, with the reason. */
-    | { kind: 'blocked'; label: 'Create PR'; reason: string };
+/** Whether the published branch can be proposed against the base shown in Changes. */
+export function canCreatePullRequest(status: GitStatus | undefined): boolean {
+    if (status?.isRepository !== true || !status.origin || status.head.kind !== 'branch') return false;
 
-export interface CreatePullRequestInput {
-    status: GitStatus | undefined;
-    /** The branch already has a pull request: Create PR is then the chip's link and not a button. */
-    hasPullRequest: boolean;
-    /** The remote has a compare page: it is a GitHub one (`compareLink` builds the address of it). */
-    onGitHub: boolean;
-}
+    const { base, head } = status;
 
-/**
- * Whether Create PR is offered for a place, and in what state. Nothing (no button) for a place that is not a repository, one with no `origin` or a remote that is not on GitHub, a HEAD on no
- * branch, and a branch that has a pull request already. Otherwise: **blocked** on the branch the work is compared with (`Switch to a feature branch`), on one with no commits ahead of it, on
- * one that diverged from its upstream (it is pulled first, which merges) and on one that tracks another remote; **publish first** for a branch that is not on origin; **push first** for one with commits that are not; else **ready**.
- * The compare page is never offered for a branch GitHub does not have.
- */
-export function createPullRequest({
-    status,
-    hasPullRequest,
-    onGitHub,
-}: CreatePullRequestInput): CreatePullRequestState | undefined {
-    if (status?.isRepository !== true || !status.origin || hasPullRequest || !onGitHub) return undefined;
-
-    const branch = branchOf(status);
-
-    if (branch === undefined || status.head.kind === 'unborn') return undefined;
-
-    const { base } = status;
-    const tracking = trackingOf(status);
-
-    // The branch the work is compared with is the branch itself: there is no pull request to make from it.
-    if (githubBaseName(base) === branch)
-        return { kind: 'blocked', label: 'Create PR', reason: 'Switch to a feature branch' };
-
-    if (base.state === 'ready' && base.ahead === 0)
-        return { kind: 'blocked', label: 'Create PR', reason: `No commits ahead of ${base.name}` };
-
-    if (tracking.kind === 'foreign')
-        return { kind: 'blocked', label: 'Create PR', reason: foreignWords(tracking.upstream) };
-
-    // GitHub has the branch only once it is published under its own name: one that tracks another (`origin/main`) is not there.
-    if (tracking.kind !== 'published') return { kind: 'publish', label: 'Publish first' };
-
-    const { upstream: published } = tracking;
-
-    if (isDiverged(published)) return { kind: 'blocked', label: 'Create PR', reason: 'Pull first' };
-
-    return published.ahead > 0 ? { kind: 'push', label: 'Push first' } : { kind: 'ready', label: 'Create PR' };
-}
-
-/** What the empty state of the commit box suggests: the next thing to do with a branch that has nothing uncommitted. */
-export type NextStepKind = 'publish' | 'pull' | 'push' | 'pullRequest';
-
-export interface NextStep {
-    kind: NextStepKind;
-    /** GitHub Desktop's words for the action: `Publish your branch`, `Pull 2 commits from the origin remote`, `Push 1 commit to the origin remote`, `Create a Pull Request from your current branch`. */
-    title: string;
-    /** One phrase on why, under the action. */
-    description: string;
-}
-
-/**
- * The one step the empty state of the commit box suggests, as GitHub Desktop's `No local changes` does and in its order: **publish** a branch that is not on origin (or whose upstream is
- * gone, or is another branch's), **pull** the commits origin has, **push** the commits the branch has, and **create a pull request** from a branch that is published and level and has none. Nothing when none
- * applies: no `origin`, a HEAD on no branch or a branch with no commit, an upstream that is not on origin, and a branch that is level and
- * is the base or has a pull request. `pullRequest` is the state of Create PR for the place (`createPullRequest`): the last step is its `ready` state and no other, so it is offered
- * exactly where that button would open the compare page.
- */
-export function nextStep(
-    status: GitStatus | undefined,
-    pullRequest: CreatePullRequestState | undefined
-): NextStep | undefined {
-    if (status?.isRepository !== true || !status.origin) return undefined;
-
-    const branch = branchOf(status);
-
-    if (branch === undefined || status.head.kind === 'unborn') return undefined;
+    if (githubBaseName(base) === head.name || (base.state === 'ready' && base.ahead === 0)) return false;
 
     const tracking = trackingOf(status);
 
-    // What the branch tracks is not on origin: the app moves nothing of it, and publishing it is refused.
-    if (tracking.kind === 'foreign') return undefined;
-
-    if (tracking.kind !== 'published') {
-        return {
-            kind: 'publish',
-            title: 'Publish your branch',
-            description:
-                tracking.kind === 'renamed'
-                    ? `${branch} tracks ${tracking.upstream.name}, not a branch of its own`
-                    : `${branch} is not on ${ORIGIN} yet`,
-        };
-    }
-
-    const { upstream: published } = tracking;
-
-    if (published.behind > 0)
-        return {
-            kind: 'pull',
-            title: `Pull ${commitsWords(published.behind)} from the ${ORIGIN} remote`,
-            description:
-                published.ahead > 0
-                    ? `${branch} and ${ORIGIN} each have commits the other lacks`
-                    : `${ORIGIN} has ${published.behind === 1 ? 'a commit' : 'commits'} that ${branch} lacks`,
-        };
-
-    if (published.ahead > 0)
-        return {
-            kind: 'push',
-            title: `Push ${commitsWords(published.ahead)} to the ${ORIGIN} remote`,
-            description: `${published.ahead === 1 ? 'A commit is' : 'Commits are'} waiting to be sent to ${ORIGIN}`,
-        };
-
-    return pullRequest?.kind === 'ready'
-        ? {
-              kind: 'pullRequest',
-              title: 'Create a Pull Request from your current branch',
-              description: `${branch} is on ${ORIGIN}, ready to be proposed`,
-          }
-        : undefined;
-}
-
-/** The most characters of a branch name the commit button shows: a longer one is cut in its middle, since its end is what tells branches of one family apart. */
-export const COMMIT_BRANCH_MAX = 24;
-
-const graphemes = new Intl.Segmenter();
-
-/**
- * A text of at most `max` characters: a longer one keeps its start and its end and has an ellipsis between. `clowdy/ab12cd34-weekend-surcharge` is `clowdy/ab12c…d-surcharge`. A character is
- * what a person sees as one (an emoji, a letter with its accent), so the cut never splits one into halves that draw as nothing.
- */
-export function middleCut(text: string, max: number): string {
-    const characters = Array.from(graphemes.segment(text), part => part.segment);
-
-    if (characters.length <= max) return text;
-
-    const tail = Math.floor((max - 1) / 2);
-    const head = max - 1 - tail;
-
-    return `${characters.slice(0, head).join('')}…${characters.slice(characters.length - tail).join('')}`;
+    return tracking.kind === 'published' && tracking.upstream.ahead === 0;
 }
 
 /** What a commit goes to: the branch checked out (`detached HEAD` for none), and whether it is the branch the work is compared with, which is where a commit goes straight to the base. */
@@ -642,11 +458,8 @@ export function commitTarget(status: GitStatus | undefined): CommitTarget | unde
         : { name: branch, onBase: githubBaseName(status.base) === branch };
 }
 
-/** The commit button's label in GitHub Desktop's words: `Commit 3 files to main`, `Commit 1 file to main`, and `Commit to main` while no file is ticked. The branch is cut in its middle when long. */
-export function commitLabel(files: number, branch: string | undefined): string {
-    const to = branch === undefined ? '' : ` to ${middleCut(branch, COMMIT_BRANCH_MAX)}`;
-
-    return files > 0 ? `Commit ${files} ${files === 1 ? 'file' : 'files'}${to}` : `Commit${to}`;
+export function commitLabel(files: number): string {
+    return files > 0 ? `Commit ${files} ${files === 1 ? 'file' : 'files'}` : 'Commit';
 }
 
 /** Why a commit is not taken, as GitHub Desktop's tooltips say it: no summary first, then no file ticked. Nothing when it can be made. */

@@ -483,7 +483,7 @@ describe('Compact', () => {
             expect(compactButton()!.disabled).toBe(false);
             expect(dialog()!.textContent).not.toContain(caption);
             expect(dialog()!.textContent).toContain(
-                'Joins the paused queue. Use Send now on it once the agent finishes.'
+                'Joins the paused queue. Use its up arrow once the agent finishes.'
             );
         });
 

@@ -85,6 +85,12 @@
         inset: 0;
     }
 
+    /* The inner container scrolls; focus must not scroll the outer Scrollable root. */
+    .scroll.scroll,
+    .overlay.overlay {
+        overflow: clip;
+    }
+
     .scrollContent {
         display: flex;
         flex-direction: column;

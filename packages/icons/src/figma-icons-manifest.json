@@ -2460,6 +2460,12 @@
                     "name": "version-warn.",
                     "sourceHash": "342a2c18e1f458883f6678afc3246df640edec4dd7494bb9e05d0ea7f9a5c4b3"
                 },
+                "16613:129165": {
+                    "file": "vsc.svg",
+                    "fingerprint": "4126d40263f474dd50b9ce312dec9895815cce617b2a4a6c7810ebb8be37a662",
+                    "name": "vsc",
+                    "sourceHash": "845b0f7608c04aa04f5b9bbb4b51f3dfc167c227df5d12cdbb6c0283e8b0c388"
+                },
                 "11881:142701": {
                     "file": "version-2.svg",
                     "fingerprint": "1a26698fedd7315d6353d7673724f848804de6cdf15320d0b3917ada6a783833",

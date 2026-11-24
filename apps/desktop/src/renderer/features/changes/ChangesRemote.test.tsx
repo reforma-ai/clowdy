@@ -30,7 +30,6 @@ vi.mock('./RemoteMenu', async importOriginal => ({
     RemoteMenu: observer((await importOriginal<typeof import('./RemoteMenu')>()).RemoteMenu),
 }));
 vi.mock('./CreatePullRequest', async importOriginal => ({
-    ...(await importOriginal<typeof import('./CreatePullRequest')>()),
     CreatePullRequest: observer((await importOriginal<typeof import('./CreatePullRequest')>()).CreatePullRequest),
 }));
 vi.mock('./CommitBox', async importOriginal => ({
@@ -132,13 +131,7 @@ async function draw(place = currentPlace) {
     act(() =>
         root.render(
             <RootStoreProvider value={store}>
-                <Sidebar
-                    model={model}
-                    place={place}
-                    projectId={FIXTURE_PROJECT_ID}
-                    onOpenFile={() => undefined}
-                    toggle={null}
-                />
+                <Sidebar model={model} place={place} projectId={FIXTURE_PROJECT_ID} toggle={null} />
             </RootStoreProvider>
         )
     );
@@ -170,7 +163,7 @@ afterEach(() => {
 });
 
 describe('the sync button in the sidebar', () => {
-    it('says Publish branch for a branch that is not on origin, with the dropdown listing Fetch origin, Pull origin off with the reason, and Publish branch', async () => {
+    it('says Publish branch for a branch that is not on origin, with the dropdown listing Fetch origin, Pull origin disabled, and Publish branch', async () => {
         await start();
 
         expect(syncButton().getAttribute('data-sync')).toBe('publish');
@@ -180,7 +173,7 @@ describe('the sync button in the sidebar', () => {
 
         expect(items().map(candidate => candidate.textContent)).toEqual([
             'Fetch origin',
-            'Pull originNot published yet',
+            'Pull origin',
             'Publish branch',
         ]);
         expect(isOff('Fetch origin')).toBe(false);
@@ -206,11 +199,7 @@ describe('the sync button in the sidebar', () => {
         expect(syncButton().textContent).toBe('Fetch originLast fetched 3 minutes ago');
 
         await openMenu();
-        expect(items().map(candidate => candidate.textContent)).toEqual([
-            'Fetch origin',
-            'Pull originNothing to pull',
-            'Push originNothing to push',
-        ]);
+        expect(items().map(candidate => candidate.textContent)).toEqual(['Fetch origin', 'Pull origin', 'Push origin']);
     });
 
     it('is Fetch origin for a branch that is level, a press fetches and the line says just now, and Never fetched where the repository has not', async () => {
@@ -298,7 +287,7 @@ describe('the sync button in the sidebar', () => {
 
         expect(items().map(candidate => candidate.textContent)).toEqual([
             'Fetch origin',
-            'Pull originTracks origin/main',
+            'Pull origin',
             'Publish branch',
         ]);
         expect(isOff('Pull origin')).toBe(true);
@@ -320,8 +309,8 @@ describe('the sync button in the sidebar', () => {
         await openMenu();
         expect(items().map(candidate => candidate.textContent)).toEqual([
             'Fetch origin',
-            'Pull origin2',
-            'Push originNothing to push',
+            'Pull origin2 commits',
+            'Push origin',
         ]);
         await press(item('Pull origin'));
         await settle();
@@ -365,7 +354,8 @@ describe('the sync button in the sidebar', () => {
         expect(isOff('Fetch origin')).toBe(false);
         expect(isOff('Pull origin')).toBe(false);
         expect(isOff('Push origin')).toBe(true);
-        expect(item('Push origin').textContent).toContain('Pull first');
+        expect(item('Push origin').textContent).toBe('Push origin1 commit');
+        expect(item('Pull origin').textContent).toBe('Pull origin2 commits');
         await press(item('Pull origin'));
         await settle();
         expect(pull).toHaveBeenCalledTimes(1);
@@ -496,15 +486,11 @@ describe('the sync button in the sidebar', () => {
         await settle();
     });
 
-    it('lists every action off with the reason when there is no origin', async () => {
+    it('lists every action disabled when there is no origin', async () => {
         await start({ gitWrites: { remote: 'no_origin' } });
         await openMenu();
 
-        expect(items().map(candidate => candidate.textContent)).toEqual([
-            'Fetch originNo origin',
-            'Pull originNo origin',
-            'Push originNo origin',
-        ]);
+        expect(items().map(candidate => candidate.textContent)).toEqual(['Fetch origin', 'Pull origin', 'Push origin']);
         expect(items().every(candidate => candidate.getAttribute('aria-disabled') === 'true')).toBe(true);
     });
 });
@@ -518,13 +504,16 @@ describe('Create PR in the sidebar', () => {
         expect(buttonOf('Publish first')).toBeUndefined();
     });
 
-    it('says Publish first for a branch that is not on origin, publishes it on a press, and then opens the compare page against the base of the Changes tab', async () => {
-        await start({ tweak: noPullRequest });
+    it('shows a single Publish action for a clean unpublished branch and offers Create PR after publishing', async () => {
+        await start({ tweak: noPullRequest, gitWrites: { clean: true } });
 
         expect(buttonOf('Create PR')).toBeUndefined();
-        expect(buttonOf('Publish first')?.disabled).toBe(false);
+        expect(sidebar().querySelector('[aria-label="Commit"]')).toBeNull();
+        expect(
+            [...sidebar().querySelectorAll('button')].filter(button => /publish/i.test(button.textContent ?? ''))
+        ).toEqual([syncButton()]);
 
-        await press(buttonOf('Publish first')!);
+        await press(syncButton());
         await settle();
         await settle();
 
@@ -542,20 +531,29 @@ describe('Create PR in the sidebar', () => {
         vi.spyOn(transport, 'pushGit').mockRejectedValue(
             new TransportError('git@github.com: Permission denied (publickey).', 409)
         );
-        await press(buttonOf('Publish first')!);
+        await press(syncButton());
         await settle();
         await settle();
 
         expect(opened).toEqual([]);
-        expect(buttonOf('Publish first')).toBeDefined();
+        expect(syncButton().textContent).toContain('Publish branch');
+        expect(buttonOf('Create PR')).toBeUndefined();
         expect(alert()?.textContent).toBe('git@github.com: Permission denied (publickey).');
     });
 
-    it('says Push first for a branch with commits that are not on origin', async () => {
-        await start({ tweak: noPullRequest, gitWrites: { remote: 'signing' } });
+    it('offers Create PR after pushing the remaining commits through the sync button', async () => {
+        await start({ tweak: noPullRequest, gitWrites: { clean: true, remote: 'ahead' } });
 
-        expect(buttonOf('Push first')).toBeDefined();
         expect(buttonOf('Create PR')).toBeUndefined();
+        expect(buttonOf('Push first')).toBeUndefined();
+        expect(syncButton().getAttribute('data-sync')).toBe('push');
+
+        await press(syncButton());
+        await settle();
+        await settle();
+
+        expect(opened).toEqual([]);
+        expect(buttonOf('Create PR')?.disabled).toBe(false);
     });
 
     it('opens the page for a branch that is level with its upstream, or only behind it', async () => {
@@ -565,7 +563,7 @@ describe('Create PR in the sidebar', () => {
         expect(opened).toEqual(['https://github.com/acme/car-rental/compare/main...clowdy/ab12cd34?expand=1']);
     });
 
-    it('does not open the page of a branch that tracks a branch of another name, which GitHub does not have under its own: it says Publish first, and the page comes once it is published', async () => {
+    it('offers Create PR once a branch tracking another branch is published under its own name', async () => {
         await start({ tweak: noPullRequest, gitWrites: { remote: 'behind' } });
 
         const read = transport.getGitStatus.bind(transport);
@@ -586,7 +584,7 @@ describe('Create PR in the sidebar', () => {
 
         const push = vi.spyOn(transport, 'pushGit');
 
-        await press(buttonOf('Publish first')!);
+        await press(syncButton());
         await settle();
         await settle();
         expect(push).toHaveBeenCalledTimes(1);
@@ -602,20 +600,16 @@ describe('Create PR in the sidebar', () => {
         expect(opened).toEqual(['https://github.com/acme/car-rental/compare/main...clowdy/ab12cd34?expand=1']);
     });
 
-    it('is off, with the reason, for a branch that diverged', async () => {
+    it('hides Create PR when a branch diverged from origin', async () => {
         await start({ tweak: noPullRequest, gitWrites: { remote: 'diverged' } });
 
-        expect(buttonOf('Create PR')?.disabled).toBe(true);
-        await press(buttonOf('Create PR')!);
-        expect(opened).toEqual([]);
+        expect(buttonOf('Create PR')).toBeUndefined();
     });
 
-    it('is off, with "Switch to a feature branch", on the folder\'s own checkout, which is on the branch the work is compared with', async () => {
+    it('hides Create PR on the base branch', async () => {
         await start({ tweak: noPullRequest, key: CHECKOUT });
 
-        expect(buttonOf('Create PR')?.disabled).toBe(true);
-        await press(buttonOf('Create PR')!);
-        expect(opened).toEqual([]);
+        expect(buttonOf('Create PR')).toBeUndefined();
     });
 
     it('is the page of a GitHub Enterprise server the person is signed in to, and nothing for another site', async () => {
