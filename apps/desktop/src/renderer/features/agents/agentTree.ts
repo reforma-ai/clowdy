@@ -15,7 +15,6 @@ import {
 import { isRunActive } from '../chats/chatRun';
 
 import type { StatusTone } from '../../shared';
-import type { ChatSort } from './chatListPreferences';
 
 /** One line of the Agents list: a chat, at the depth of the thread tree it sits in (0 for a chat the person made). */
 export interface AgentRow {
@@ -117,18 +116,18 @@ export function agentRows({ roots, threadsOf, runs, expanded, showFinished, open
 }
 
 /**
- * The chats at the top of the list: the ones in use that the person made, newest first. A thread is never here: it is a row below the chat that
- * started it. A chat is either in the list or in the archive, which has its own list; there is no chat that is open and archived. `chatList`
- * comes by last activity; `sort` `created` puts the newest chat first instead. A thread whose parent is not in use (gone, or put away while the
- * thread came back on its own) stands here, so it is not lost.
+ * Roots in their manual order. Chats outside that order go above it, newest first.
+ * A thread whose parent is missing or archived stands here too, so it is not lost.
  */
-export function visibleChats(chatList: readonly Chat[], sort: ChatSort = 'activity'): Chat[] {
-    const ordered = sort === 'created' ? [...chatList].sort((a, b) => b.createdAt - a.createdAt) : chatList;
+export function visibleChats(chatList: readonly Chat[], order: readonly ChatId[] = []): Chat[] {
+    const rank = new Map(order.map((id, index) => [id, index]));
     const inUse = new Set(chatList.filter(chat => chat.archivedAt === undefined).map(chat => chat.id));
 
-    return ordered.filter(
-        chat => chat.archivedAt === undefined && (chat.parentChatId === undefined || !inUse.has(chat.parentChatId))
-    );
+    return chatList
+        .filter(
+            chat => chat.archivedAt === undefined && (chat.parentChatId === undefined || !inUse.has(chat.parentChatId))
+        )
+        .sort((a, b) => (rank.get(a.id) ?? -1) - (rank.get(b.id) ?? -1) || b.createdAt - a.createdAt);
 }
 
 /** One folder's part of the grouped list: its chats at depth 0, in the order `visibleChats` gave them. */
@@ -321,18 +320,18 @@ export function resolveSelection(
     return { chat, run: undefined, draft: chat === undefined };
 }
 
-/**
- * The dot on the icon of a chat's row, from what its orchestrator is doing: green while it works (or waits for its own background work),
- * blue when it has asked the person something (also while the run rests for its background work and a card is open: `shownRunStatus`), red when it failed.
- * A run that is blocked or queued shows its usual tone.
- * A chat at rest whose own threads work (`threads` `working`) is green too: its work goes on in them. A thread below it that waits for the person
- * (`asking`) makes the dot blue whenever the chat's own would be green or none: the question is in that thread's chat.
- * Nothing for a chat that has not started or whose run is over (done, stopped, interrupted): no news is no dot.
- */
-export function chatDotTone(run: Run | undefined, threads?: ThreadsActivity): StatusTone | undefined {
+/** Working is green, completion and requests for attention are yellow, and an unsent draft is gray. */
+export function chatDotTone(run: Run | undefined, threads?: ThreadsActivity, draft = false): StatusTone | undefined {
     const own = ownDotTone(run, threads === 'working');
 
-    return threads === 'asking' && (own === undefined || own === 'success') ? 'accent' : own;
+    if (
+        threads === 'asking' &&
+        (own === undefined || own === 'success' || (run && shownRunStatus(run) === 'succeeded'))
+    )
+        return 'warning';
+    if (draft && (own === undefined || (run && shownRunStatus(run) === 'succeeded' && threads !== 'working')))
+        return 'neutral';
+    return own;
 }
 
 /** What the threads below a chat are doing that its dot tells: some work, or some wait for the person (which wins). */
@@ -344,7 +343,9 @@ function ownDotTone(run: Run | undefined, threadsWorking: boolean): StatusTone |
         case 'waiting_background':
             return 'success';
         case 'waiting_user':
-            return 'accent';
+            return 'warning';
+        case 'succeeded':
+            return threadsWorking ? 'success' : 'warning';
         case 'failed':
             return 'danger';
         case 'blocked':

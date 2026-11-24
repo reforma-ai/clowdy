@@ -52,6 +52,7 @@
 .totals {
     display: inline-flex;
     flex-shrink: 0;
+    margin-left: auto;
     gap: var(--spacing-4);
     white-space: nowrap;
 }
@@ -60,8 +61,8 @@
     min-width: 0;
 }
 
-/* How many files are viewed: it stays whole while a phrase beside it is cut. */
-.viewedCount {
+/* The file and viewed counts stay together. */
+.fileCount {
     flex-shrink: 0;
     white-space: nowrap;
 }

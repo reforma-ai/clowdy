@@ -5,7 +5,7 @@ import { ChangesView } from './ChangesView';
 
 /**
  * The side panel's Changes tab: what changed in the place the window is working in (the same place Info, Files and the terminal name: the folder, or the worktree of the open
- * chat), as a card for each changed file with its diff, a scope menu, a filter and, at the right, a sidebar with the branch, its pull request, the list of files and the commits.
+ * chat), as a card for each changed file with its diff, a scope menu, a filter and, at the right, a sidebar with the branch, its pull request and the commit form.
  * It reads the place's git facts, which the Info tab reads too, and is read again when they are. The open chat's last run is one of its scopes. A chat whose worktree is not made yet gets a
  * note in place of the view.
  */

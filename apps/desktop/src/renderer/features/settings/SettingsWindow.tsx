@@ -1,5 +1,5 @@
 import { SettingsLayout, type SettingsNavItem } from '@clowdy/components/SettingsLayout';
-import { Book, Folder, Info, Message, Page, PaintBucket, Robot } from '@clowdy/icons/14';
+import { Book, Folder, Info, Message, Page, PaintBucket, Robot, Version } from '@clowdy/icons/14';
 import { Keyboard } from '@clowdy/icons/16';
 import { observer } from 'mobx-react-lite';
 
@@ -11,6 +11,7 @@ import { FilesPage } from './FilesPage';
 import { AddProjectButton, ProjectsPage } from './projects';
 import { ProvidersPage } from './providers';
 import { ShortcutsPage } from './ShortcutsPage';
+import { SourceControlPage } from './SourceControlPage';
 import { SkillsSection } from './skills';
 
 import type { ReactNode } from 'react';
@@ -31,6 +32,13 @@ const PAGES: readonly PageView[] = [
     },
     { id: 'chat', label: 'Chat', group: 'General', icon: <Message />, render: () => <ChatPage /> },
     { id: 'files', label: 'Files', group: 'General', icon: <Page />, render: () => <FilesPage /> },
+    {
+        id: 'source-control',
+        label: 'Source Control',
+        group: 'General',
+        icon: <Version />,
+        render: () => <SourceControlPage />,
+    },
     {
         id: 'shortcuts',
         label: 'Shortcuts',

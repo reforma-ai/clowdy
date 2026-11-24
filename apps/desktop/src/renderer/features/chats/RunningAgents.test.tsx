@@ -36,7 +36,10 @@ let data: ReturnType<typeof createFixtureData>;
 
 beforeEach(async () => {
     data = createFixtureData();
-    store = new RootStore(new FixtureTransport({ data }), { storage: memoryStorage() });
+    store = new RootStore(new FixtureTransport({ data }), {
+        storage: memoryStorage(),
+        initialUi: { agentsFolded: false },
+    });
     await store.load();
     container = document.createElement('div');
     document.body.append(container);
@@ -51,10 +54,12 @@ afterEach(() => {
 const ui = () => store.ui.forProject(FIXTURE_PROJECT_ID);
 const lines = () => [...container.querySelectorAll('[aria-label="Work in progress"] > div')];
 /** The line over the agents' rows, when there is one. */
-const header = () => lines().find(line => line.textContent?.startsWith('Agents running'));
+const header = () => lines().find(line => line.querySelector('button[aria-expanded]'));
+const toggle = () => header()!.querySelector<HTMLButtonElement>('button[aria-expanded]')!;
+const stopAll = () => header()!.querySelector<HTMLButtonElement>('button:not([aria-expanded])')!;
 /** The rows of the strip: every line but the header. */
 const rows = () => lines().filter(line => line !== header());
-/** The buttons of a line by their words, or by their label when they have none (the chevron of the header). */
+/** The buttons of a line by their words or accessible name. */
 const buttons = (line: Element | undefined) =>
     [...(line?.querySelectorAll('button') ?? [])].map(
         button => button.textContent || button.getAttribute('aria-label')
@@ -143,39 +148,39 @@ describe('RunningAgents', () => {
 });
 
 describe('RunningAgents, the header', () => {
-    it('says Agents running over the rows, with Stop all when two or more of them can stop alone', async () => {
+    it('shows the running count and offers Stop all when two or more agents can stop alone', async () => {
         await draw();
 
         expect(lines().map(line => line.textContent)).toEqual([
-            expect.stringMatching(/^Agents runningStop all$/),
+            'Agents2 runningStop all',
             expect.stringContaining('General agent'),
             expect.stringContaining('Explore agent'),
         ]);
         expect(lines()[0]).toBe(header());
     });
 
-    it('has no button with one agent that can stop alone: its own Stop does it', async () => {
+    it('has no Stop all with one agent that can stop alone', async () => {
         put({ ...runs().get('r-na-03')!, status: 'succeeded' });
         await draw();
 
         expect(lines().map(line => line.textContent)).toEqual([
-            'Agents running',
+            'Agents1 running',
             expect.stringContaining('Explore agent'),
         ]);
-        expect(buttons(header())).toEqual(['Hide agents']);
+        expect(buttons(header())).toEqual([toggle().textContent]);
         expect(buttons(rows()[0]).slice(1)).toEqual(['Stop']);
     });
 
-    it('does not count an agent that cannot stop alone: it makes no button, and with one that can the header has none either', async () => {
+    it('counts agents that cannot stop alone but only offers Stop all for two stoppable agents', async () => {
         put({ ...runs().get('r-na-02')!, canStopAlone: undefined });
         await draw();
 
         expect(lines().map(line => line.textContent)).toEqual([
-            'Agents running',
+            'Agents2 running',
             expect.stringContaining('General agent'),
             expect.stringContaining('Explore agent'),
         ]);
-        expect(buttons(header())).toEqual(['Hide agents']);
+        expect(buttons(header())).toEqual([toggle().textContent]);
     });
 
     it('has Stop all that stops every agent that can stop alone and lets the orchestrator go on, its queue not held', async () => {
@@ -183,7 +188,7 @@ describe('RunningAgents, the header', () => {
 
         const command = vi.spyOn(store, 'command');
 
-        await act(async () => header()!.querySelector('button')!.click());
+        await act(async () => stopAll().click());
         expect(command).toHaveBeenCalledWith({ type: 'run.stopAgents', runId: 'r-orch-1' });
         expect(command).toHaveBeenCalledTimes(1);
 
@@ -203,7 +208,7 @@ describe('RunningAgents, the header', () => {
         put({ ...runs().get('r-na-03')!, id: 'r-na-07', parentToolCallId: 'tc-agent-7', createdAt: 5 });
         await draw();
 
-        await act(async () => header()!.querySelector('button')!.click());
+        await act(async () => stopAll().click());
         await vi.waitFor(() =>
             expect(['r-na-03', 'r-na-07'].map(id => runs().get(id)?.status)).toEqual(['cancelled', 'cancelled'])
         );
@@ -226,10 +231,10 @@ describe('RunningAgents, the header', () => {
 
         await draw();
 
-        expect(lines().filter(line => line.textContent?.startsWith('Agents running'))).toHaveLength(1);
+        expect(toggle().textContent).toBe('Agents8 running');
         expect(lines()).toHaveLength(7);
         expect(lines()[0]).toBe(header());
-        expect(buttons(header())).toEqual(['Stop all', 'Hide agents']);
+        expect(buttons(header())).toEqual([toggle().textContent, 'Stop all']);
         expect(rows()).toHaveLength(6);
         expect(
             rows()
@@ -242,7 +247,7 @@ describe('RunningAgents, the header', () => {
         // It stops all eight, the three that no row shows too.
         const command = vi.spyOn(store, 'command');
 
-        await act(async () => header()!.querySelector('button')!.click());
+        await act(async () => stopAll().click());
         expect(command).toHaveBeenCalledWith({ type: 'run.stopAgents', runId: 'r-orch-1' });
         await vi.waitFor(() =>
             expect(
@@ -295,34 +300,36 @@ function waitWithSubagent(
 }
 
 describe('RunningAgents, folding the rows', () => {
-    const chevron = () => header()!.querySelector<HTMLButtonElement>('button[aria-expanded]')!;
-
-    it('has a chevron at the end of the line that folds every row away and says how many agents are at work', async () => {
+    it('folds from the title and keeps the running count before the chevron', async () => {
         await draw();
 
-        expect(chevron().getAttribute('aria-expanded')).toBe('true');
-        expect(chevron().getAttribute('aria-label')).toBe('Hide agents');
-        expect(chevron()).toBe([...header()!.querySelectorAll('button')].at(-1));
+        expect(toggle().getAttribute('aria-expanded')).toBe('true');
+        expect(toggle().textContent).toBe('Agents2 running');
 
-        await act(async () => chevron().click());
+        const title = [...toggle().querySelectorAll('span')].find(element => element.textContent === 'Agents')!;
+        await act(async () => title.click());
         await draw();
 
         expect(ui().agentsFolded).toBe(true);
         expect(lines()).toEqual([header()]);
-        expect(header()!.textContent).toBe('Agents running · 2Stop all');
-        expect(chevron().getAttribute('aria-expanded')).toBe('false');
-        expect(chevron().getAttribute('aria-label')).toBe('Show agents');
+        expect(header()!.textContent).toBe('Agents2 runningStop all');
+        expect(toggle().getAttribute('aria-expanded')).toBe('false');
+        expect(toggle().textContent).toBe('Agents2 running');
     });
 
     it('shows the rows again from the chevron, and keeps the fold for every chat of the project', async () => {
         await draw();
-        await act(async () => chevron().click());
+        await act(async () => toggle().click());
         await draw('c-6');
 
         expect(lines()).toEqual([header()]);
-        expect(header()!.textContent).toBe('Agents running · 2Stop all');
+        expect(header()!.textContent).toBe('Agents2 runningStop all');
 
-        await act(async () => chevron().click());
+        await act(async () =>
+            toggle()
+                .querySelector('svg')!
+                .dispatchEvent(new MouseEvent('click', { bubbles: true }))
+        );
         await draw('c-6');
 
         expect(ui().agentsFolded).toBe(false);
@@ -334,12 +341,12 @@ describe('RunningAgents, folding the rows', () => {
 
     it('keeps Stop all on the folded line, and it stops the agents the rows would', async () => {
         await draw();
-        await act(async () => chevron().click());
+        await act(async () => toggle().click());
         await draw();
 
         const command = vi.spyOn(store, 'command');
 
-        await act(async () => header()!.querySelector('button')!.click());
+        await act(async () => stopAll().click());
         expect(command).toHaveBeenCalledWith({ type: 'run.stopAgents', runId: 'r-orch-1' });
         await vi.waitFor(() =>
             expect(['r-na-03', 'r-na-02'].map(id => runs().get(id)?.status)).toEqual(['cancelled', 'cancelled'])
@@ -373,8 +380,8 @@ describe('RunningAgents, a sub-agent of a session that waits', () => {
             'Explore agent workingStop',
             'Background task runningStop',
         ]);
-        // One agent: its own Stop is enough, the header has no button.
-        expect(header()?.textContent).toBe('Agents running');
+        // One agent: its own Stop is enough, so there is no Stop all.
+        expect(toggle().textContent).toBe('Agents1 running');
     });
 
     it("leaves no background row when every open item has a run, and the sub-agent's row has a Stop that stops it alone, not the run", async () => {
@@ -422,7 +429,7 @@ describe('RunningAgents, a sub-agent of a session that waits', () => {
         await draw('c-5');
 
         expect(rows().map(row => buttons(row))).toEqual([['Explore agent working']]);
-        expect(buttons(header())).toEqual(['Hide agents']);
+        expect(buttons(header())).toEqual([toggle().textContent]);
     });
 
     it('has no Stop all label anywhere in the strip', async () => {
@@ -544,7 +551,7 @@ describe('RunningAgents, threads', () => {
             ['Fix the price rounding · Running bun test src/checkout', 'Stop'],
             ['Load test the checkout · Waiting for background work', 'Stop'],
         ]);
-        expect(buttons(header())).toEqual(['Stop all', 'Hide agents']);
+        expect(buttons(header())).toEqual([toggle().textContent, 'Stop all']);
     });
 
     it('puts a thread that waits for the person first, also when it rests for its background work and its card is the only sign', async () => {
@@ -563,7 +570,7 @@ describe('RunningAgents, threads', () => {
         await draw('c-6');
 
         expect(rows().map(row => buttons(row))).toEqual([['Load test the checkout · Waiting for you', 'Stop']]);
-        expect(header()!.textContent).toBe('Agents running · 2Stop all');
+        expect(header()!.textContent).toBe('Agents2 runningStop all');
 
         // Once it is decided nothing is left to show on the folded line.
         put({ ...runs().get('r-orch-6e')!, awaitingUser: undefined });
@@ -598,7 +605,7 @@ describe('RunningAgents, threads', () => {
 
         const command = vi.spyOn(store, 'command');
 
-        await act(async () => header()!.querySelector('button')!.click());
+        await act(async () => stopAll().click());
         expect(command.mock.calls.map(([input]) => input)).toEqual([
             { type: 'run.cancel', runId: 'r-orch-6a' },
             { type: 'run.cancel', runId: 'r-orch-6e' },
@@ -621,7 +628,7 @@ describe('RunningAgents, threads', () => {
 
         const command = vi.spyOn(store, 'command');
 
-        await act(async () => header()!.querySelector('button')!.click());
+        await act(async () => stopAll().click());
         expect(command).toHaveBeenCalledWith({ type: 'run.stopAgents', runId: 'r-orch-1' });
         expect(command).toHaveBeenCalledWith({ type: 'run.cancel', runId: 'r-orch-6e' });
         expect(command).toHaveBeenCalledTimes(2);
@@ -646,7 +653,7 @@ describe('RunningAgents, threads', () => {
         putChat({ ...store.selectedProject!.chats.get('c-6e')!, parentChatId: 'c-1' });
         await draw();
 
-        expect(buttons(header())).toEqual(['Stop all', 'Hide agents']);
+        expect(buttons(header())).toEqual([toggle().textContent, 'Stop all']);
     });
 
     it('counts threads in the five rows and in the line that counts the rest', async () => {
@@ -733,11 +740,11 @@ describe('RunningAgents, a command that can be stopped alone', () => {
             'Explore agent',
             'Command',
         ]);
-        expect(buttons(header())).toEqual(['Stop all', 'Hide agents']);
+        expect(buttons(header())).toEqual([toggle().textContent, 'Stop all']);
 
         const spy = vi.spyOn(store, 'command');
 
-        await act(async () => header()!.querySelector('button')!.click());
+        await act(async () => stopAll().click());
         expect(spy).toHaveBeenCalledWith({ type: 'run.stopAgents', runId: 'r-orch-1' });
         // Stop all stops agents: the command is still in the list.
         await vi.waitFor(() =>

@@ -68,6 +68,7 @@ describe('the Settings window', () => {
             'Appearance',
             'Chat',
             'Files',
+            'Source Control',
             'Shortcuts',
             'Projects',
             'Providers',

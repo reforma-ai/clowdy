@@ -10,12 +10,19 @@ import styles from './ChatIcon.module.css';
 import type { Chat, Run } from '@clowdy/protocol';
 
 /**
- * The icon of a chat's row, in the list and in the archive: the mark of the provider it runs on once it has started (the chat's own, else its
- * orchestrator's), a speech bubble before and for an agent that has no mark. What the orchestrator is doing is a dot on the icon's top right
- * corner (`chatDotTone`), so the row needs no room of its own for it. A chat at rest whose own threads work (`threads` `working`) has the green
- * dot without the pulse: the work is in its threads, not in it. A thread below it that waits for the person (`asking`) gives it the blue one.
+ * The provider's mark once the chat has started, or a speech bubble. The status goes on the icon unless the row shows it separately.
  */
-export function ChatIcon({ chat, run, threads }: { chat: Chat; run: Run | undefined; threads?: ThreadsActivity }) {
+export function ChatIcon({
+    chat,
+    run,
+    threads,
+    showStatus = true,
+}: {
+    chat: Chat;
+    run: Run | undefined;
+    threads?: ThreadsActivity;
+    showStatus?: boolean;
+}) {
     const engine = chat.engine ?? run?.engine;
     const icon =
         chat.orchestratorRunId && engine && (PROVIDER_IDS as readonly string[]).includes(engine) ? (
@@ -23,24 +30,45 @@ export function ChatIcon({ chat, run, threads }: { chat: Chat; run: Run | undefi
         ) : (
             <Message />
         );
-    const tone = chatDotTone(run, threads);
-    // The run's own state wins, unless a thread's wait for the person takes the dot over; only a chat whose run says nothing shows its threads.
-    const own = run !== undefined && chatDotTone(run) === tone ? run : undefined;
-    const ownStatus = own && shownRunStatus(own);
-    const label = ownStatus
-        ? RUN_STATUS_VIEW[ownStatus].label
-        : threads === 'asking'
-          ? 'A thread is waiting for you'
-          : 'Threads working';
-
-    if (!tone) return icon;
+    if (!showStatus || !chatDotTone(run, threads)) return icon;
 
     return (
         <span className={styles.icon}>
             {icon}
-            <span className={styles.dot} role="img" aria-label={label}>
-                <StatusDot status={ownStatus} tone={tone} className={styles.dotMark} />
-            </span>
+            <ChatStatus run={run} threads={threads} className={styles.dot} />
+        </span>
+    );
+}
+
+export function ChatStatus({
+    run,
+    threads,
+    className,
+    draft = false,
+}: {
+    run: Run | undefined;
+    threads?: ThreadsActivity;
+    className?: string;
+    draft?: boolean;
+}) {
+    const tone = chatDotTone(run, threads, draft);
+
+    if (!tone) return null;
+
+    // A thread's question takes priority over a completed or working run.
+    const own = run !== undefined && chatDotTone(run) === tone && threads !== 'asking' ? run : undefined;
+    const ownStatus = own && shownRunStatus(own);
+    const label = ownStatus
+        ? RUN_STATUS_VIEW[ownStatus].label
+        : draft && tone === 'neutral'
+          ? 'Unsent draft'
+          : threads === 'asking'
+            ? 'A thread is waiting for you'
+            : 'Threads working';
+
+    return (
+        <span className={className} role="img" aria-label={label}>
+            <StatusDot status={ownStatus} tone={tone} />
         </span>
     );
 }

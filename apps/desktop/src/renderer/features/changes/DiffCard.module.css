@@ -33,9 +33,9 @@
     border-bottom-right-radius: 0;
 }
 
-/* The whole row is the button that folds the card. It gives way to the copy button, and its content is laid out here: the chevron, the status, the path, the counts. */
+/* The fold button gives way to the actions and contains the chevron, status and path. */
 .toggle[data-size][data-variant] {
-    flex: 1;
+    flex: 0 1 auto;
     justify-content: flex-start;
     min-width: 0;
     padding-inline: var(--spacing-8);
@@ -43,7 +43,7 @@
 }
 
 .toggleContent {
-    flex: 1;
+    flex: 0 1 auto;
     justify-content: flex-start;
     min-width: 0;
     gap: var(--spacing-6);
@@ -66,7 +66,7 @@
 /* The path, and under it the old path of a renamed file; both give way to the counts. */
 .title {
     display: flex;
-    flex: 1;
+    flex: 0 1 auto;
     flex-direction: column;
     align-items: flex-start;
     min-width: 0;
@@ -99,27 +99,14 @@
     white-space: nowrap;
 }
 
-/* The tick that says the file was read: it stands between the toggle and the copy button and keeps its width while the path is cut. */
+.divider {
+    margin-inline-start: auto;
+}
+
+/* The tick stays at the right edge, with the same space on each side of its contents. */
 .viewed {
     flex-shrink: 0;
-    padding-inline: var(--spacing-6);
-}
-
-/*
- * The button that discards the file's changes, a button of the header as the copy button is: its place is kept at the end of the header, and it shows while the pointer is over the
- * header or the focus is in it, as the design system's lists show a row's actions (`data-show` of `ListBox.module.css`, which a header out of a list does not have).
- */
-.discard {
-    flex-shrink: 0;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity var(--transition-duration-fast) ease;
-}
-
-.header:hover .discard,
-.header:focus-within .discard {
-    opacity: 1;
-    pointer-events: auto;
+    padding-inline: var(--spacing-10) var(--spacing-8);
 }
 
 .body {

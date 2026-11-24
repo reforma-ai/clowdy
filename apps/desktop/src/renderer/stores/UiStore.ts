@@ -19,6 +19,7 @@ export const SETTINGS_PAGES = [
     'appearance',
     'chat',
     'files',
+    'source-control',
     'shortcuts',
     'projects',
     'providers',
@@ -65,9 +66,10 @@ interface StoredProjectUi {
     taskId: TaskId | null;
     runId: RunId | null;
     expandedChats: ChatId[];
+    chatOrder: ChatId[];
     groupByFolder: boolean;
     collapsedFolders: FolderId[];
-    agentsFolded: boolean;
+    agentsExpanded: boolean;
     sidePanelOpen: boolean;
     sidePanelTab: SidePanelTab;
     sidePanelExpanded: boolean;
@@ -98,11 +100,10 @@ export type InitialProjectUi = Partial<
         | 'expandedChats'
         | 'groupByFolder'
         | 'collapsedFolders'
-        | 'agentsFolded'
         | 'sidePanelOpen'
         | 'sidePanelTab'
         | 'tasksView'
-    >
+    > & { agentsFolded: boolean }
 >;
 
 export function initialUiFromSearch(search: string): InitialProjectUi {
@@ -164,6 +165,8 @@ export class ProjectUi {
     draftEngine: string | null = null;
     /** Agents: the chats whose threads the person opened in the list. A chat that is not here is folded, which is how every chat starts. */
     expandedChats: readonly ChatId[] = [];
+    /** Agents: the most recent manual order of the project's root chats. New chats go above these. */
+    chatOrder: readonly ChatId[] = [];
     /**
      * Agents: the list has a group for each folder of the project, each with a new-chat button that starts a chat in that folder. On until the person turns
      * it off (a project that kept no choice groups); off, the list is flat and a new chat starts in the main folder. Only a project with several folders
@@ -172,8 +175,8 @@ export class ProjectUi {
     groupByFolder = true;
     /** Agents: the folders whose group is folded in the list. A folder that is not here is open, which is how every group starts. */
     collapsedFolders: readonly FolderId[] = [];
-    /** Chats: the strip of running agents over the message box shows its line only, with the rows folded away. Kept for every chat of the project. */
-    agentsFolded = false;
+    /** Chats: the running-agents strip starts folded. The project remembers the person's choice. */
+    agentsFolded = true;
     /** The side panel at the right of the window is open for this project. Closed until the person opens it, and kept for the project, whichever chat is on show. */
     sidePanelOpen = false;
     /** The tab the side panel shows, kept for the project: the one it was left on. */
@@ -230,11 +233,15 @@ export class ProjectUi {
             this.expandedChats = Array.isArray(stored.expandedChats)
                 ? stored.expandedChats.filter(id => typeof id === 'string')
                 : [];
+            this.chatOrder = Array.isArray(stored.chatOrder)
+                ? [...new Set(stored.chatOrder.filter(id => typeof id === 'string'))]
+                : [];
             this.groupByFolder = stored.groupByFolder !== false;
             this.collapsedFolders = Array.isArray(stored.collapsedFolders)
                 ? stored.collapsedFolders.filter(id => typeof id === 'string')
                 : [];
-            this.agentsFolded = stored.agentsFolded === true;
+            // Older versions saved the open default as agentsFolded: false on unrelated UI changes.
+            this.agentsFolded = stored.agentsExpanded !== true;
             this.sidePanelOpen = stored.sidePanelOpen === true;
             this.sidePanelTab = SIDE_PANEL_TABS.find(tab => tab === stored.sidePanelTab) ?? this.sidePanelTab;
             this.sidePanelExpanded = stored.sidePanelExpanded === true;
@@ -254,6 +261,7 @@ export class ProjectUi {
             draftWorkspace: observableRef,
             draftWorkspaceRow: observableRef,
             expandedChats: observableRef,
+            chatOrder: observableRef,
             collapsedFolders: observableRef,
             tasksCollapsed: observableRef,
         });
@@ -263,9 +271,10 @@ export class ProjectUi {
                 taskId: this.taskId,
                 runId: this.runId,
                 expandedChats: [...this.expandedChats],
+                chatOrder: [...this.chatOrder],
                 groupByFolder: this.groupByFolder,
                 collapsedFolders: [...this.collapsedFolders],
-                agentsFolded: this.agentsFolded,
+                agentsExpanded: !this.agentsFolded,
                 sidePanelOpen: this.sidePanelOpen,
                 sidePanelTab: this.sidePanelTab,
                 sidePanelExpanded: this.sidePanelExpanded,
@@ -449,6 +458,12 @@ export class ProjectUi {
 
     setGroupByFolder(group: boolean): void {
         this.groupByFolder = group;
+    }
+
+    setChatOrder(order: readonly ChatId[], visibleChatId?: ChatId): void {
+        this.chatOrder = order;
+        // The first listed chat can be on screen without a remembered selection.
+        if (!this.draft && visibleChatId !== undefined) this.chatId = visibleChatId;
     }
 
     /** Folds the group of a folder in the list, or opens it again. */

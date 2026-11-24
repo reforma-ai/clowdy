@@ -3,7 +3,7 @@ import { ToggleButtonGroup, ToggleButtonGroupItem } from '@clowdy/components/Tog
 import { LAST_USED, type QueuedMessageMode } from '@clowdy/protocol';
 
 import { hotkeys } from '../../hotkeys/registry';
-import { type ChatSort, chatListPreferences } from '../agents/chatListPreferences';
+import { chatListPreferences } from '../agents/chatListPreferences';
 import { busyEnter } from '../chats/busyEnter';
 import { newChatDefaults } from '../chats/newChatDefaults';
 import { swipeToReply } from '../chats/swipeReplyPreference';
@@ -25,12 +25,6 @@ const CHOICES: ReadonlyArray<{ id: QueuedMessageMode; label: string; tip: string
     { id: 'queue', label: 'Queue', tip: 'Waits until the agent finishes its current turn' },
 ];
 
-const SORTS: ReadonlyArray<{ id: ChatSort; label: string; tip: string }> = [
-    { id: 'activity', label: 'Last activity', tip: 'A chat that gets a message goes to the top' },
-    { id: 'created', label: 'Created', tip: 'Newest chats first, whatever happens in them' },
-];
-
-const SORT_LABEL = 'Sort chats by';
 const FINISHED_LABEL = 'Finished threads';
 
 /**
@@ -89,29 +83,7 @@ export function ChatPage() {
             </SettingsSection>
 
             <SettingsSection title="Agents list">
-                <SettingsCard divided>
-                    <SettingsRow
-                        title={SORT_LABEL}
-                        description="The order of the chats in the Agents list, in every project"
-                    >
-                        <ToggleButtonGroup
-                            aria-label={SORT_LABEL}
-                            size="sm"
-                            selectedKeys={[chatListPreferences.sort]}
-                            onSelectionChange={keys => {
-                                const next = SORTS.find(choice => keys.has(choice.id));
-
-                                if (next) chatListPreferences.setSort(next.id);
-                            }}
-                        >
-                            {SORTS.map(choice => (
-                                <ToggleButtonGroupItem key={choice.id} value={choice.id} tooltip={choice.tip}>
-                                    {choice.label}
-                                </ToggleButtonGroupItem>
-                            ))}
-                        </ToggleButtonGroup>
-                    </SettingsRow>
-
+                <SettingsCard>
                     <SettingsRow
                         title={FINISHED_LABEL}
                         description="List the threads whose run is over, below the chat that started them"

@@ -1,12 +1,22 @@
 import { Button } from '@clowdy/components/Button';
-import { Menu, MenuItem, MenuTrigger } from '@clowdy/components/List';
+import { Menu, MenuItem, MenuSeparator, MenuTrigger } from '@clowdy/components/List';
 import { Popover } from '@clowdy/components/Popover';
+import { Spinner } from '@clowdy/components/Spinner';
 import { Text } from '@clowdy/components/Text';
-import { ArrowDown, ArrowUp, ChevronDown, Refresh } from '@clowdy/icons/14';
+import { ArrowDown, ArrowDownRight, ArrowUp, ArrowUpRight, ChevronDown, Refresh } from '@clowdy/icons/14';
 
 import { Unavailable } from '../../shared/Unavailable';
 import { useNow } from '../../shared/useNow';
-import { isFetchFirst, type RemoteActionId, remoteActions, type SyncView, syncButton } from './changesActions';
+import { useRootStore } from '../../stores';
+import { MERGE_LABELS, openBranchMergeDialog } from './BranchMergeDialog';
+import {
+    commitsWords,
+    isFetchFirst,
+    type RemoteActionId,
+    remoteActions,
+    type SyncView,
+    syncButton,
+} from './changesActions';
 import styles from './RemoteMenu.module.css';
 import { useRemoteActions } from './useRemoteActions';
 
@@ -54,6 +64,7 @@ function Counts({ ahead, behind }: Pick<SyncView, 'ahead' | 'behind'>) {
  * pull request, are read again when it ends.
  */
 export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
+    const { transport } = useRootStore();
     const remote = useRemoteActions(facts);
     const now = useNow();
     const status = facts.status.value;
@@ -64,6 +75,25 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
     const actions = remoteActions(status, remote.busy);
     const { running, failure, notice } = remote;
     const off = view.action === undefined && running === undefined;
+    const current = status?.isRepository && status.head.kind === 'branch' ? status.head.name : undefined;
+    const hasOrigin = status?.isRepository === true && status.origin;
+
+    const run = (key: string) => {
+        if (key === 'merge-from' || key === 'merge-into') {
+            if (current !== undefined && !remote.busy) {
+                openBranchMergeDialog({
+                    transport,
+                    remote,
+                    placeKey: facts.key,
+                    current,
+                    direction: key === 'merge-from' ? 'from' : 'into',
+                    hasOrigin,
+                });
+            }
+        } else {
+            void remote.run(key as RemoteActionId);
+        }
+    };
 
     return (
         <div className={styles.root}>
@@ -77,7 +107,7 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
                         contentClassName={styles.content}
                         isDisabled={off}
                         isPending={running !== undefined}
-                        spinnerPlacement="start"
+                        spinnerPlacement="none"
                         aria-label={view.title}
                         data-sync={view.kind}
                         tooltip={off || running !== undefined ? undefined : view.title}
@@ -85,18 +115,14 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
                         onPress={() => view.action && void remote.run(view.action)}
                     >
                         <span className={styles.words}>
-                            <span className={styles.head}>
-                                <Text
-                                    variant="xs"
-                                    weight="medium"
-                                    color={view.tone === 'warning' ? 'warning' : undefined}
-                                    truncate
-                                    className={styles.label}
-                                >
-                                    {view.label}
-                                </Text>
-                                <Counts ahead={view.ahead} behind={view.behind} />
-                            </span>
+                            <Text
+                                variant="xs"
+                                weight="medium"
+                                color={view.tone === 'warning' ? 'warning' : undefined}
+                                truncate
+                            >
+                                {view.label}
+                            </Text>
                             {view.line && (
                                 <Text
                                     variant="xs"
@@ -108,6 +134,8 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
                                 </Text>
                             )}
                         </span>
+                        <Counts ahead={view.ahead} behind={view.behind} />
+                        {running !== undefined && <Spinner size="xs" className={styles.spinner} aria-hidden />}
                     </Button>
                 </Unavailable>
 
@@ -118,14 +146,14 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
                         size="sm"
                         iconOnly
                         className={styles.more}
-                        aria-label="More ways to sync with origin"
-                        tooltip="Fetch, pull and push"
+                        aria-label="More source control actions"
+                        tooltip="Source control actions"
                         tooltipPlacement="bottom"
                     >
                         <ChevronDown aria-hidden="true" />
                     </Button>
                     <Popover placement="bottom end" spacing="xs" width={220}>
-                        <Menu aria-label="Origin" size="sm" onAction={key => void remote.run(key as RemoteActionId)}>
+                        <Menu aria-label="Source control actions" size="sm" onAction={key => run(String(key))}>
                             {actions.map(action => (
                                 <MenuItem
                                     key={action.id}
@@ -133,17 +161,28 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
                                     icon={ICONS[action.id]}
                                     text={action.label}
                                     endAffix={
-                                        action.count !== undefined && action.reason === undefined ? (
+                                        action.count !== undefined ? (
                                             <Text variant="xs" color="secondary">
-                                                {action.count}
+                                                {commitsWords(action.count)}
                                             </Text>
                                         ) : undefined
                                     }
-                                    description={action.reason}
-                                    stacked={action.reason !== undefined}
-                                    isDisabled={action.reason !== undefined}
+                                    isDisabled={action.disabled}
                                 />
                             ))}
+                            <MenuSeparator />
+                            <MenuItem
+                                id="merge-from"
+                                icon={<ArrowDownRight />}
+                                text={MERGE_LABELS.from}
+                                isDisabled={current === undefined || remote.busy}
+                            />
+                            <MenuItem
+                                id="merge-into"
+                                icon={<ArrowUpRight />}
+                                text={MERGE_LABELS.into}
+                                isDisabled={current === undefined || remote.busy}
+                            />
                         </Menu>
                     </Popover>
                 </MenuTrigger>

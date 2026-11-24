@@ -10,14 +10,12 @@ import { perform } from './commands';
 import type { Chat } from '@clowdy/protocol';
 import type { RootStore } from '../../stores';
 
-/** What the confirmation says goes: the chat, the threads below it (the daemon deletes them with it), and the runs of their agents. */
-export function deleteMessage(chat: Pick<Chat, 'title'>, threadCount: number): string {
-    if (threadCount === 0)
-        return `"${chat.title}" and the runs of its agents are deleted for good. The tasks it made stay.`;
+export function deleteMessage(threadCount: number): string {
+    const consequences = 'You can’t undo this. Tasks stay in the project.';
 
-    const threads = threadCount === 1 ? 'its thread' : `its ${threadCount} threads`;
+    if (threadCount === 0) return consequences;
 
-    return `"${chat.title}", ${threads} and the runs of their agents are deleted for good. The tasks they made stay.`;
+    return `This will also delete ${threadCount} ${threadCount === 1 ? 'thread' : 'threads'}. ${consequences}`;
 }
 
 /** What the person chose in the confirmation besides deleting the chat: it is read when Delete is pressed. */
@@ -102,9 +100,9 @@ export function deleteChat(root: RootStore, chat: Chat, hasRuns: boolean, thread
     const choice: DeleteChoice = { removeWorkspace: false };
 
     openConfirmModal({
-        title: 'Delete chat?',
-        message: <DeleteChatMessage root={root} chat={chat} text={deleteMessage(chat, threadCount)} choice={choice} />,
-        confirmLabel: 'Delete',
+        title: `Delete “${chat.title}”?`,
+        message: <DeleteChatMessage root={root} chat={chat} text={deleteMessage(threadCount)} choice={choice} />,
+        confirmLabel: 'Delete chat',
         destructive: true,
         onConfirm: async () => {
             const result = await root.command({

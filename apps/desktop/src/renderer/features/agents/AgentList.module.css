@@ -38,6 +38,28 @@
     min-width: 0;
 }
 
+.titleLine[draggable='true'] {
+    cursor: grab;
+}
+
+.chatRow[data-drop-position]::after {
+    position: absolute;
+    inset-inline: 0;
+    height: var(--spacing-2);
+    border-radius: var(--radius-full);
+    background-color: var(--color-primary);
+    pointer-events: none;
+    content: '';
+}
+
+.chatRow[data-drop-position='before']::after {
+    inset-block-start: 0;
+}
+
+.chatRow[data-drop-position='after']::after {
+    inset-block-end: 0;
+}
+
 .worktree {
     display: inline-flex;
     flex-shrink: 0;
@@ -48,10 +70,39 @@
     color: var(--color-warning-text);
 }
 
-.end {
+.end,
+.chatActions {
     display: inline-flex;
     align-items: center;
     gap: var(--spacing-xs);
+}
+
+.chatActions {
+    pointer-events: none;
+}
+
+.rowAction {
+    pointer-events: auto;
+}
+
+.archiveStatus {
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    width: var(--spacing-24);
+    height: var(--spacing-24);
+}
+
+/* Remove hidden controls from the layout so the title can reach the row's edge. */
+.chatRow:not(:is(:hover, :focus-visible, :has(.rowAction:focus), [data-hovered], [data-open], [data-renaming])) {
+    & .rowAction,
+    & [slot='endAffix']:not(:has(.archiveStatus)) {
+        display: none;
+    }
+}
+
+.chatRow:is(:hover, :focus-visible, :has(.rowAction:focus), [data-hovered], [data-open]) .archiveStatus {
+    display: none;
 }
 
 /*
@@ -86,8 +137,8 @@
     transform: translate(-50%, -50%);
 }
 
-/* A thread below a chat: one level in from the row it belongs to, per level. Doubled so it outranks the list's own padding. */
-.nested.nested {
+/* A thread below a chat: one level in from the row it belongs to, per level. */
+.chatRow:not([data-depth='0']) {
     padding-inline-start: calc(var(--clowdy-listbox-item-padding-inline) + var(--depth) * var(--spacing-20));
 }
 

@@ -27,6 +27,7 @@ import ChangesTab from './ChangesTab';
 import { gitFactsOf } from './gitFacts';
 import { openRunInChanges } from './openRunInChanges';
 import { changesSidebarLayout } from './sidebarLayout';
+import { sourceControlPreferences } from './sourceControlPreferences';
 
 import type { GitChanges, GitFileSides } from '@clowdy/protocol';
 
@@ -156,8 +157,6 @@ const press = (target: Element) =>
 const cards = () => [...container.querySelectorAll<HTMLElement>('[data-card]')];
 const cardPaths = () => cards().map(card => card.dataset.card);
 const card = (path: string) => cards().find(element => element.dataset.card === path)!;
-const sidebarFiles = () => [...container.querySelectorAll<HTMLElement>('[aria-label="Changed files"] [role="row"]')];
-const sidebarPaths = () => sidebarFiles().map(row => row.querySelector('[class*="name"]')?.textContent);
 const scopeTrigger = () => container.querySelector<HTMLButtonElement>('button[aria-haspopup="listbox"]')!;
 const options = () => [...document.querySelectorAll('[role="option"]')];
 const filter = () => container.querySelector<HTMLInputElement>('input[aria-label="Filter files"]')!;
@@ -208,7 +207,9 @@ async function draw() {
 }
 
 beforeEach(() => {
+    // Diff content scenarios opt into expanded cards. The default is covered separately below.
     localStorage.clear();
+    sourceControlPreferences.setCollapseDiffs(false);
     watchers.clear();
     scrolled = [];
     vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver);
@@ -232,7 +233,26 @@ afterEach(() => {
 });
 
 describe('the Changes tab of a chat in a worktree', () => {
-    it('shows all file diffs and totals, with only changed files in the sidebar list', async () => {
+    it('starts with folded cards and reveals the diffs on demand', async () => {
+        sourceControlPreferences.setCollapseDiffs(true);
+        await start();
+        await draw();
+        await bringNear();
+        await settle();
+
+        expect(cards()).toHaveLength(6);
+        expect(cards().some(element => element.hasAttribute('data-open'))).toBe(false);
+
+        await press(button('Unfold notes.md'));
+        expect(card('notes.md').hasAttribute('data-open')).toBe(true);
+        expect(cards().filter(element => element.hasAttribute('data-open'))).toHaveLength(1);
+
+        await press(button('Collapse all files'));
+        await press(button('Expand all files'));
+        expect(cards().every(element => element.hasAttribute('data-open'))).toBe(true);
+    });
+
+    it('shows file diffs and totals without a duplicate list in the sidebar', async () => {
         localStorage.setItem('clowdy:changes-commits-open', 'true');
         localStorage.setItem('clowdy:changes-commits-height', '200');
         await start();
@@ -246,23 +266,17 @@ describe('the Changes tab of a chat in a worktree', () => {
             'src/booking/weekend.ts',
             'src/limits.ts',
         ]);
-        expect(summary()).toBe('6 files,+112−8');
+        expect(summary()).toBe('6 files+112−8');
         expect(scopeTrigger().textContent).toContain('All changes');
-        expect(sidebarPaths()).toEqual([
-            'logo.png',
-            'notes.md',
-            'price.test.ts',
-            'price.ts',
-            'weekend.ts',
-            'limits.ts',
-        ]);
+        expect(container.querySelector('[aria-label="Changed files"]')).toBeNull();
         expect(container.querySelector('[aria-label="Changes sidebar"]')?.textContent).not.toContain(
             'Commits on branch'
         );
         expect(container.querySelector('[aria-label="Changes sidebar"]')?.textContent).toContain('clowdy/ab12cd34');
-        expect(container.querySelector('[aria-label="Changes sidebar"]')?.textContent).toContain(
-            '→ origin/main · 2 ahead, 1 behind'
-        );
+        const base = container.querySelector('[title="origin/main, 2 ahead, 1 behind"]');
+
+        expect(base?.textContent).toContain('→ origin/main');
+        expect(base?.querySelector('[role="img"][aria-label="2 ahead, 1 behind"]')?.textContent).toBe('21');
         expect(container.querySelector('[aria-label="Pull request"]')?.textContent).toContain('PR #128');
     });
 
@@ -533,8 +547,7 @@ describe('the scope', () => {
 
         expect(scopeTrigger().textContent).toContain('Uncommitted');
         expect(cardPaths()).toEqual(['notes.md', 'src/booking/price.ts', 'src/limits.ts']);
-        expect(sidebarPaths()).toEqual(['notes.md', 'price.ts', 'limits.ts']);
-        expect(summary()).toBe('3 files,+10−3');
+        expect(summary()).toBe('3 files+10−3');
     });
 
     it('shows the selected commit in both file lists and returns to all changes from the toolbar', async () => {
@@ -552,13 +565,11 @@ describe('the scope', () => {
 
         expect(scopeTrigger().textContent).toContain('a155555 Price a booking by the day');
         expect(cardPaths()).toEqual(['assets/logo.png', 'src/booking/price.test.ts', 'src/booking/price.ts']);
-        expect(sidebarPaths()).toEqual(['logo.png', 'price.test.ts', 'price.ts']);
 
         await selectScope('All changes');
 
         expect(scopeTrigger().textContent).toContain('All changes');
         expect(cards()).toHaveLength(6);
-        expect(sidebarFiles()).toHaveLength(6);
     });
 
     it('has the commit box in the sidebar whichever scope is shown, with the uncommitted files read for it and the commit sent from the scope that is not theirs', async () => {
@@ -614,7 +625,9 @@ describe('the scope', () => {
             ['notes.md', 'src/booking/price.ts', 'src/limits.ts'],
             'feat: from the branch scope'
         );
-        expect(commitBox()?.textContent).toContain('Committed c0ffee0');
+        expect(commitBox()?.textContent).toContain('0 changed files');
+        expect(commitBox()?.textContent).toContain('Commit 0 files');
+        expect(commitBox()?.textContent).not.toContain('Committed c0ffee0');
     });
 
     it("reads again only when the facts start a round of reads: a refresh of the store and the window's focus reach it, and nothing else does", async () => {
@@ -698,7 +711,7 @@ describe('the scope', () => {
 });
 
 describe('the filter', () => {
-    it("narrows the cards and the sidebar's files by what is typed, and says how many of the files are shown", async () => {
+    it('narrows the cards by what is typed, and says how many of the files are shown', async () => {
         await start();
         await draw();
 
@@ -707,8 +720,7 @@ describe('the filter', () => {
         await type('src/**, !*.test.ts');
 
         expect(cardPaths()).toEqual(['src/booking/price.ts', 'src/booking/weekend.ts', 'src/limits.ts']);
-        expect(sidebarPaths()).toEqual(['price.ts', 'weekend.ts', 'limits.ts']);
-        expect(summary()).toBe('3 of 6 files,+72−8');
+        expect(summary()).toBe('3 of 6 files+72−8');
 
         await type('*.md');
         expect(cardPaths()).toEqual(['notes.md']);
@@ -726,9 +738,6 @@ describe('the filter', () => {
         expect(button('Collapse all files').disabled).toBe(true);
         expect(button('Expand all files')).toBeNull();
         expect(container.textContent).toContain('No files match the filter');
-        expect(container.querySelector('[aria-label="Changed files"]')?.textContent).toContain(
-            'No files match the filter'
-        );
 
         await press(
             [...container.querySelectorAll('button')].find(element => element.textContent === 'Clear the filter')!
@@ -739,17 +748,18 @@ describe('the filter', () => {
 });
 
 describe('the sidebar', () => {
-    it('brings the card of a file to the top and opens it when its row is pressed', async () => {
+    it('copies the full current branch name without opening the branch picker', async () => {
+        const write = vi.fn().mockResolvedValue(undefined);
+
+        vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText: write } });
         await start();
         await draw();
-        await press(button('Fold src/booking/price.ts'));
 
-        expect(card('src/booking/price.ts').hasAttribute('data-open')).toBe(false);
+        const branch = button('Current branch: clowdy/ab12cd34');
+        await press(button('Copy branch name'));
 
-        await press(sidebarFiles()[3]!);
-
-        expect(scrolled).toEqual([card('src/booking/price.ts')]);
-        expect(card('src/booking/price.ts').hasAttribute('data-open')).toBe(true);
+        expect(write).toHaveBeenCalledExactlyOnceWith('clowdy/ab12cd34');
+        expect(branch.getAttribute('aria-expanded')).toBe('false');
     });
 
     it('has the base, how far the branch is from it and the pull request with its checks, and opens the repository on GitHub', async () => {
@@ -772,16 +782,18 @@ describe('the sidebar', () => {
         await draw();
 
         expect(container.querySelector('[aria-label="Changes sidebar"]')).not.toBeNull();
+        expect(button('Source control').getAttribute('aria-pressed')).toBe('true');
 
-        await press(container.querySelector('[data-sidebar-toggle]')!);
+        await press(button('Source control'));
         await settle();
 
         expect(container.querySelector('[aria-label="Changes sidebar"]')).toBeNull();
         expect(container.querySelectorAll('[data-sidebar-toggle]')).toHaveLength(1);
+        expect(button('Source control').getAttribute('aria-pressed')).toBe('false');
         expect(changesSidebarLayout.open).toBe(false);
         expect(JSON.parse(localStorage.getItem('clowdy:changes-sidebar-open') ?? 'null')).toBe(false);
 
-        await press(container.querySelector('[data-sidebar-toggle]')!);
+        await press(button('Source control'));
         await settle();
 
         expect(container.querySelector('[aria-label="Changes sidebar"]')).not.toBeNull();
@@ -795,12 +807,6 @@ describe('the viewed files', () => {
             tickOf(path).click();
             await new Promise(resolve => setTimeout(resolve, 0));
         });
-    const sidebarRow = (path: string) =>
-        sidebarFiles().find(row => row.textContent?.includes(path.split('/').at(-1)!))!;
-    const viewedTicks = () =>
-        sidebarFiles()
-            .filter(row => row.querySelector('[aria-label="Viewed"]') !== null)
-            .map(row => row.querySelector('[class*="name"]')?.textContent);
     const hideViewed = () => button('Hide viewed');
     /** The fixture's own transport, which holds the marks: the tab is drawn again over it, the way a window is over the daemon. */
     let shared: FixtureTransport | undefined;
@@ -810,7 +816,7 @@ describe('the viewed files', () => {
         return overrideTransport(base, {});
     };
 
-    it('gives every card a Viewed checkbox, and ticking one shuts its card, ticks its row in the sidebar and counts it in the summary', async () => {
+    it('gives every card a Viewed checkbox, and ticking one shuts its card, counts it in the summary', async () => {
         await start();
         await draw();
 
@@ -827,7 +833,7 @@ describe('the viewed files', () => {
         expect(cards().map(element => tickOf(element.dataset.card!).getAttribute('aria-label'))).toEqual(
             cards().map(element => `Viewed ${element.dataset.card}`)
         );
-        expect(summary()).toBe('6 files,+112−8');
+        expect(summary()).toBe('6 files+112−8');
 
         const write = vi.spyOn(transport, 'setGitViewed');
 
@@ -843,8 +849,7 @@ describe('the viewed files', () => {
         expect(tickOf('notes.md').checked).toBe(true);
         expect(card('notes.md').hasAttribute('data-open')).toBe(false);
         expect(card('src/limits.ts').hasAttribute('data-open')).toBe(true);
-        expect(viewedTicks()).toEqual(['notes.md']);
-        expect(summary()).toBe('6 files,+112−81 of 6 viewed');
+        expect(summary()).toBe('6 files, 1 viewed+112−8');
     });
 
     it("opens the card and takes the tick, the row's tick and the count away when the checkbox is unticked", async () => {
@@ -853,8 +858,7 @@ describe('the viewed files', () => {
         await tick('src/limits.ts');
         await tick('notes.md');
 
-        expect(viewedTicks()).toEqual(['notes.md', 'limits.ts']);
-        expect(summary()).toContain('2 of 6 viewed');
+        expect(summary()).toContain('2 viewed');
 
         const clear = vi.spyOn(transport, 'clearGitViewed');
 
@@ -868,11 +872,10 @@ describe('the viewed files', () => {
         );
         expect(tickOf('notes.md').checked).toBe(false);
         expect(card('notes.md').hasAttribute('data-open')).toBe(true);
-        expect(viewedTicks()).toEqual(['limits.ts']);
-        expect(summary()).toContain('1 of 6 viewed');
+        expect(summary()).toContain('1 viewed');
     });
 
-    it('opens a viewed card again on a press on its header, and a press on its row in the sidebar', async () => {
+    it('opens a viewed card again on a press on its header', async () => {
         await start();
         await draw();
         await tick('notes.md');
@@ -885,10 +888,6 @@ describe('the viewed files', () => {
 
         await press(button('Fold notes.md'));
         expect(card('notes.md').hasAttribute('data-open')).toBe(false);
-
-        await press(sidebarRow('src/limits.ts'));
-        expect(card('src/limits.ts').hasAttribute('data-open')).toBe(true);
-        expect(scrolled).toEqual([card('src/limits.ts')]);
     });
 
     it('shows the tick and the shut card before the daemon has answered, and takes both back quietly when it refuses', async () => {
@@ -908,8 +907,7 @@ describe('the viewed files', () => {
 
         expect(tickOf('notes.md').checked).toBe(true);
         expect(card('notes.md').hasAttribute('data-open')).toBe(false);
-        expect(viewedTicks()).toEqual(['notes.md']);
-        expect(summary()).toContain('1 of 6 viewed');
+        expect(summary()).toContain('1 viewed');
 
         await act(async () => {
             refuse(new TransportError('The worktree is missing', 503));
@@ -918,8 +916,7 @@ describe('the viewed files', () => {
 
         expect(tickOf('notes.md').checked).toBe(false);
         expect(card('notes.md').hasAttribute('data-open')).toBe(true);
-        expect(viewedTicks()).toEqual([]);
-        expect(summary()).not.toMatch(/\d of \d viewed/);
+        expect(summary()).not.toMatch(/\d+ viewed/);
         // A phrase in the summary line with the daemon's reason on it, no dialog and no toast.
         expect(summary()).toContain("Couldn't save the viewed mark");
         expect(container.querySelector('[title="The worktree is missing"]')?.textContent).toBe(
@@ -945,7 +942,6 @@ describe('the viewed files', () => {
         root = createRoot(container);
         await draw();
 
-        expect(viewedTicks()).toEqual(['weekend.ts', 'limits.ts']);
         expect(tickOf('src/limits.ts').checked).toBe(true);
         expect(tickOf('notes.md').checked).toBe(false);
         expect(
@@ -953,7 +949,7 @@ describe('the viewed files', () => {
                 .filter(element => element.hasAttribute('data-open'))
                 .map(element => element.dataset.card)
         ).toEqual(['assets/logo.png', 'notes.md', 'src/booking/price.test.ts', 'src/booking/price.ts']);
-        expect(summary()).toContain('2 of 6 viewed');
+        expect(summary()).toContain('2 viewed');
     });
 
     it('keeps the ticks of one scope out of another, and of the files that are in both', async () => {
@@ -1005,7 +1001,7 @@ describe('the viewed files', () => {
         await tick('src/limits.ts');
         await tick('notes.md');
 
-        expect(summary()).toContain('2 of 6 viewed');
+        expect(summary()).toContain('2 viewed');
 
         edited = true;
         await act(async () => {
@@ -1020,15 +1016,12 @@ describe('the viewed files', () => {
         expect(tickOf('src/limits.ts').checked).toBe(false);
         expect(card('src/limits.ts').hasAttribute('data-open')).toBe(true);
         expect(tickOf('notes.md').checked).toBe(true);
-        expect(viewedTicks()).toEqual(['notes.md']);
-        expect(summary()).toContain('1 of 6 viewed');
+        expect(summary()).toContain('1 viewed');
     });
 
     it('reads the marks again with the next round of the store, so a mark made in another window shows', async () => {
         await start({ wrap: share });
         await draw();
-
-        expect(viewedTicks()).toEqual([]);
 
         const notes = (
             (await shared!.getGitChanges(
@@ -1054,7 +1047,6 @@ describe('the viewed files', () => {
         });
         await settle();
 
-        expect(viewedTicks()).toEqual(['notes.md']);
         expect(card('notes.md').hasAttribute('data-open')).toBe(false);
     });
 
@@ -1062,8 +1054,11 @@ describe('the viewed files', () => {
         await start();
         await draw();
 
-        // Nothing is viewed, so there is nothing to hide.
-        expect(hideViewed().disabled).toBe(true);
+        // Hiding viewed files may be enabled before any are marked.
+        expect(hideViewed().disabled).toBe(false);
+        await press(hideViewed());
+        expect(hideViewed().getAttribute('aria-pressed')).toBe('true');
+        await press(hideViewed());
         expect(hideViewed().getAttribute('aria-pressed')).toBe('false');
 
         await tick('notes.md');
@@ -1080,16 +1075,14 @@ describe('the viewed files', () => {
             'src/booking/price.ts',
             'src/booking/weekend.ts',
         ]);
-        expect(sidebarPaths()).toEqual(['logo.png', 'price.test.ts', 'price.ts', 'weekend.ts']);
         // The count is of the list, so it says what was read.
-        expect(summary()).toContain('2 of 6 viewed');
-        expect(summary()).toContain('4 of 6 files');
+        expect(summary()).toContain('2 viewed');
+        expect(summary()).toContain('6 files');
 
         await press(hideViewed());
 
         expect(hideViewed().getAttribute('aria-pressed')).toBe('false');
         expect(cards()).toHaveLength(6);
-        expect(sidebarPaths()).toHaveLength(6);
     });
 
     it('takes a card out of the list when it is ticked while viewed files are hidden, and says every file is viewed when none is left', async () => {
@@ -1109,8 +1102,7 @@ describe('the viewed files', () => {
 
         expect(cards()).toHaveLength(0);
         expect(container.textContent).toContain('Every file is viewed');
-        expect(container.querySelector('[aria-label="Changed files"]')?.textContent).toContain('Every file is viewed');
-        expect(summary()).toContain('6 of 6 viewed');
+        expect(summary()).toContain('6 viewed');
 
         await press(
             [...container.querySelectorAll('button')].find(element => element.textContent === 'Show viewed files')!
@@ -1162,7 +1154,6 @@ describe('the states instead of the cards', () => {
         expect(container.textContent).toContain('No changes');
         expect(container.textContent).toContain('Nothing differs from origin/main');
         expect(summary()).toBeUndefined();
-        expect(container.querySelector('[aria-label="Changed files"]')?.textContent).toContain('No changed files');
     });
 
     it('says a folder that is no repository is none', async () => {
@@ -1504,9 +1495,8 @@ describe('the last run of the open chat', () => {
             'What the latest run of this chat changed'
         );
         expect(cardPaths()).toEqual(FIXTURE_RUN_FILES.map(file => file.path));
-        expect(summary()).toBe('7 files,+178−29');
+        expect(summary()).toBe('7 files+178−29');
         // The two ends of a run are trees: no commit, no base.
-        expect(sidebarFiles()).toHaveLength(7);
 
         await openMenu();
         await press(options().find(option => option.textContent === 'All changes')!);
@@ -1579,7 +1569,7 @@ describe('the last run of the open chat', () => {
         await press(tick('src/booking/price.ts'));
         await settle();
         expect(card('src/booking/price.ts').hasAttribute('data-open')).toBe(false);
-        expect(summary()).toContain('1 of 7 viewed');
+        expect(summary()).toContain('1 viewed');
         expect(
             (
                 await transport.getGitViewed(

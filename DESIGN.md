@@ -183,7 +183,7 @@ Warm paper and clay. Accents are semantic, not a rainbow.
 
 Dark mode (`.dark`) remaps the same names: surface goes to `--color-secondary-950`, text to Warm Paper, contrast to a light stone fill. Do not author a second palette.
 
-Chat plates are part of this system: composer `--color-chat-composer`, user bubble `--color-chat-message` (Terracotta at low alpha in light).
+The composer uses `--color-chat-composer`, an alias of `--color-surface-float` in both themes. The user bubble uses `--color-chat-message` (Terracotta at low alpha in light).
 
 **The Terracotta Rule.** Terracotta is the voice, not the wallpaper. One filled primary (or one focus ring) per region. If a screen is orange, you used it as paint.
 
@@ -254,9 +254,9 @@ Primitives live in `@clowdy/components`. Variant APIs are data attributes, not n
 Refined and restrained. Fill is the one action; ghost and filling do the rest.
 
 - **Shape:** squircle; radius tracks size (`sm` 8px, `md` 10px, `lg` 12px). Press scale `0.97` (icon-only `0.92`). 150ms ease-out. Focus: 4px Terracotta-muted ring, no offset.
-- **Primary filled:** Terracotta plate, white label. Hover: `{colors.primary-light}`. The one commit action.
+- **Primary filled:** Terracotta plate, white label. Hover: `{colors.primary-light}`.
 - **Secondary filled (default):** Warm Stone plate. Default when `color` is omitted (except `inline` / `transparent`, which inherit).
-- **Contrast filled:** Ink plate, paper label. Loud neutral — publish/confirm when Terracotta would be the wrong voice.
+- **Contrast filled:** Ink plate, paper label. Used for the commit button and other prominent neutral actions.
 - **Ghost:** muted tint of the color, no border. Quiet paired actions.
 - **Filling:** transparent until hover paints a muted plate.
 - **Bordered / transparent / inline:** stroke, fade, or in-copy link. Inline has no padding and inherits type.

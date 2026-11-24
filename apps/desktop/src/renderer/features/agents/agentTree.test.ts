@@ -61,23 +61,15 @@ describe('visibleChats', () => {
         expect(visibleChats(list).map(candidate => candidate.id)).toEqual(['chat-1', 'chat-3']);
     });
 
-    it('leaves the chats in the order they are given, which is by last activity', () => {
-        expect(visibleChats([chats[2], chats[0], chats[1]]).map(candidate => candidate.id)).toEqual([
-            'chat-3',
-            'chat-1',
-            'chat-2',
-        ]);
-    });
-
-    it('puts the newest chat first when the list is sorted by creation', () => {
+    it('puts the newest chat first until the person changes the order', () => {
         const made = [
             { ...chats[0], createdAt: 10 },
             { ...chats[1], createdAt: 30, archivedAt: 5 },
             { ...chats[2], createdAt: 20 },
         ];
 
-        expect(visibleChats(made, 'created').map(candidate => candidate.id)).toEqual(['chat-3', 'chat-1']);
-        expect(visibleChats(made, 'activity').map(candidate => candidate.id)).toEqual(['chat-1', 'chat-3']);
+        expect(visibleChats(made).map(candidate => candidate.id)).toEqual(['chat-3', 'chat-1']);
+        expect(visibleChats(made, ['chat-1', 'chat-3']).map(candidate => candidate.id)).toEqual(['chat-1', 'chat-3']);
     });
 });
 
@@ -314,14 +306,14 @@ describe('chatDotTone', () => {
         expect(chatDotTone(run('r', 'waiting_background'))).toBe('success');
     });
 
-    it('is blue once it has asked the person something, and red when it failed', () => {
-        expect(chatDotTone(run('r', 'waiting_user'))).toBe('accent');
+    it('is yellow once it has asked the person something, and red when it failed', () => {
+        expect(chatDotTone(run('r', 'waiting_user'))).toBe('warning');
         expect(chatDotTone(run('r', 'failed'))).toBe('danger');
     });
 
-    it('is blue for a run that rests for its background work while a card is open to the person, and green again once it is decided', () => {
-        expect(chatDotTone(run('r', 'waiting_background', { awaitingUser: true }))).toBe('accent');
-        expect(chatDotTone(run('r', 'running', { awaitingUser: true }))).toBe('accent');
+    it('is yellow for a run with an open card and green again once it is decided', () => {
+        expect(chatDotTone(run('r', 'waiting_background', { awaitingUser: true }))).toBe('warning');
+        expect(chatDotTone(run('r', 'running', { awaitingUser: true }))).toBe('warning');
         expect(chatDotTone(run('r', 'waiting_background'))).toBe('success');
         // A run that is over has no mark worth showing, whatever a stale snapshot says.
         expect(chatDotTone(run('r', 'cancelled', { awaitingUser: true }))).toBeUndefined();
@@ -332,10 +324,11 @@ describe('chatDotTone', () => {
         expect(chatDotTone(run('r', 'queued'))).toBe('neutral');
     });
 
-    it('is nothing for a chat that has not started or whose run is over', () => {
+    it('is yellow after a successful run and absent for an unstarted or stopped chat', () => {
         expect(chatDotTone(undefined)).toBeUndefined();
+        expect(chatDotTone(run('r', 'succeeded'))).toBe('warning');
 
-        for (const status of ['succeeded', 'cancelled', 'interrupted'] as const)
+        for (const status of ['cancelled', 'interrupted'] as const)
             expect(chatDotTone(run('r', status))).toBeUndefined();
     });
 
@@ -344,17 +337,26 @@ describe('chatDotTone', () => {
             expect(chatDotTone(run('r', status), 'working')).toBe('success');
 
         expect(chatDotTone(run('r', 'failed'), 'working')).toBe('danger');
-        expect(chatDotTone(run('r', 'waiting_user'), 'working')).toBe('accent');
-        expect(chatDotTone(run('r', 'succeeded'), undefined)).toBeUndefined();
+        expect(chatDotTone(run('r', 'waiting_user'), 'working')).toBe('warning');
+        expect(chatDotTone(run('r', 'succeeded'), undefined)).toBe('warning');
     });
 
-    it('is blue for a chat whose thread waits for the person, over green and over no dot, and keeps a failure or a block', () => {
+    it('is yellow for a chat whose thread waits for the person, and keeps a failure or a block', () => {
         for (const status of ['succeeded', 'cancelled', 'interrupted', 'running', 'waiting_background'] as const)
-            expect(chatDotTone(run('r', status), 'asking')).toBe('accent');
+            expect(chatDotTone(run('r', status), 'asking')).toBe('warning');
 
-        expect(chatDotTone(undefined, 'asking')).toBe('accent');
+        expect(chatDotTone(undefined, 'asking')).toBe('warning');
         expect(chatDotTone(run('r', 'failed'), 'asking')).toBe('danger');
         expect(chatDotTone(run('r', 'blocked'), 'asking')).toBe('warning');
+    });
+
+    it('shows drafts in gray unless work or an attention state takes priority', () => {
+        expect(chatDotTone(undefined, undefined, true)).toBe('neutral');
+        expect(chatDotTone(run('r', 'succeeded'), undefined, true)).toBe('neutral');
+        expect(chatDotTone(run('r', 'running'), undefined, true)).toBe('success');
+        expect(chatDotTone(run('r', 'waiting_user'), undefined, true)).toBe('warning');
+        expect(chatDotTone(run('r', 'succeeded'), 'working', true)).toBe('success');
+        expect(chatDotTone(run('r', 'succeeded'), 'asking', true)).toBe('warning');
     });
 });
 

@@ -93,15 +93,20 @@
  *                                      -> GitBranches. The branches of the place's repository a person may switch to: the local ones (the place's own, the default one, the upstream, the
  *                                         place that holds a branch another place has checked out, when the tip was committed), the branches of `origin` that have no local branch
  *                                         of their name, and the last few branches the place's HEAD was on (from its reflog). Read only, nothing fetched; no ahead and behind per branch.
- *                                         A folder that is not the root of a working tree answers `isRepository: false`. The lists are cut at `MAX_GIT_BRANCH_ENTRIES` (`truncated`).
- * POST /v1/projects/:id/git/switch   -> GitSwitchResult. Body `GitSwitchRequest` (`folderId`, `workspaceId?`, `branch`, `create?`). Changes the branch the folder's own checkout is on with
+ *                                         The merge picker also receives all fetched origin branches. A folder that is not the root of a working tree answers `isRepository: false`.
+ *                                         The lists are cut at `MAX_GIT_BRANCH_ENTRIES` (`truncated`).
+ * POST /v1/projects/:id/git/switch   -> GitSwitchResult. Body `GitSwitchRequest` (`folderId`, `workspaceId?`, `branch`, `create?`). Changes the branch of the checkout or worktree with
  *                                         `git switch`: to a local branch, to one that only `origin` has (a local branch of that name that tracks it), or to a new branch cut from the current
- *                                         HEAD or from the default branch (`create`). **Only the folder's own checkout**: a chat's worktree keeps its branch (`invalid`). It is refused, and
- *                                         nothing is changed, while the tree has a change of any kind (tracked, staged or untracked), a merge, rebase, cherry-pick, revert or bisect is under
+ *                                         HEAD or from the default branch (`create`). A chat worktree can switch when its current HEAD is contained in its base. A switch is refused
+ *                                         while the tree has a change of any kind (tracked, staged or untracked), a merge, rebase, cherry-pick, revert or bisect is under
  *                                         way, a run is working in the place, or another worktree has the branch checked out; the person's hooks run as ever (a `post-checkout` that fails
  *                                         or hangs leaves the branch switched and is told as `warning`, as are the commits a detached HEAD left on no branch). A name that is no branch name, a branch that does not exist, one that is there already
  *                                         (`create`) and a folder that is not a repository are `invalid`; a refusal that is the repository's state and a switch git refused are `conflict`
  *                                         with a short reason as the message (and, for a change count or a way out, `details.hint`); one that did not end in time is `unavailable`.
+ *
+ * POST /v1/projects/:id/git/merge    -> GitBranchMergeResult. Body: the place and a GitBranchMergeRequest. Preview compares the selected source and local destination. Merge
+ *                                         checks the previewed commits again, fast-forwards when possible, and otherwise merges in the destination checkout. A conflict identifies
+ *                                         that checkout for resolution or abort. A separate push action sends the named destination and verifies its commit before sending.
  *
  * The first three reads answer `invalid` for no `folderId`, `not_found` for a folder or a workspace that is not the project's, and `unavailable` for a folder or a worktree
  * that is gone from the disk or not made yet and for a git that does not answer in time; the fourth and the viewed routes answer the same.
@@ -557,11 +562,54 @@ export type GitBranches =
           local: GitLocalBranch[];
           /** Newest commit first; the branches of `origin` that have no local branch of their name. */
           remote: GitRemoteBranch[];
+          /** All fetched branches of origin, including those with local counterparts. */
+          origin?: GitRemoteBranch[];
           /** The branches the place's HEAD was on lately, newest first, at most `MAX_GIT_RECENT_BRANCHES`: local branches that still exist, the current one left out. */
           recent: string[];
           /** A list was cut at `MAX_GIT_BRANCH_ENTRIES`. */
           truncated?: true;
       };
+
+export interface GitBranchMergeSelection {
+    direction: 'from' | 'into';
+    /** The branch checked out when the dialog opened. */
+    current: string;
+    branch: string;
+    /** The selected source is a ref on origin. The destination is always local. */
+    remote?: true;
+}
+
+/** The body of POST /v1/projects/:id/git/merge, together with the place. */
+export type GitBranchMergeRequest =
+    | (GitBranchMergeSelection & { action: 'preview' })
+    | (GitBranchMergeSelection & { action: 'merge'; sourceCommit: string; targetCommit: string })
+    | { action: 'push'; target: string; commit: string }
+    | { action: 'abort'; target: string; commit: string; sourceCommit: string };
+
+export interface GitBranchMergePreview {
+    state: 'preview';
+    source: string;
+    target: string;
+    sourceCommit: string;
+    targetCommit: string;
+    commits: number;
+    mode: 'up-to-date' | 'fast-forward' | 'merge-commit';
+    /** Existing checkout of the destination, when there is one. */
+    targetPath?: string;
+}
+
+export type GitBranchMergeResult =
+    | GitBranchMergePreview
+    | { state: 'done'; target: string; commit: string; canPush: boolean }
+    | {
+          state: 'conflicts';
+          target: string;
+          commit: string;
+          sourceCommit: string;
+          targetPath: string;
+          conflicts: number;
+      }
+    | { state: 'pushed' | 'aborted'; target: string };
 
 /** Where a new branch starts: at the place's HEAD, or at the repository's default branch. */
 export type GitSwitchStart = 'current' | 'default';
@@ -569,7 +617,7 @@ export type GitSwitchStart = 'current' | 'default';
 /** The body of `POST /v1/projects/:id/git/switch`. */
 export interface GitSwitchRequest {
     folderId: string;
-    /** A worktree is refused: it is here so the daemon, not the client, judges the place. */
+    /** The ready chat worktree to switch, or omitted for the folder’s own checkout. */
     workspaceId?: string;
     /** The branch to be on: an existing one (local, or one that only `origin` has) or, with `create`, the name of the new one. */
     branch: string;

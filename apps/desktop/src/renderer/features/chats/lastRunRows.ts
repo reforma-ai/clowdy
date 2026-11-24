@@ -1,11 +1,8 @@
 import { isBusyRunStatus, turnScope } from '@clowdy/protocol';
 
-import { CHANGE_KIND_VIEW, filesWords } from '../changes/gitSummary';
+import { CHANGE_KIND_VIEW } from '../changes/gitSummary';
 
 import type { Chat, GitChangedFile, GitChanges, GitScope, Run, StreamItem } from '@clowdy/protocol';
-
-/** The files the plate lists before its chevron unfolds the rest. */
-export const MAX_PLATE_ROWS = 5;
 
 /** A list of a place that is a repository. */
 type RepositoryChanges = Extract<GitChanges, { isRepository: true }>;
@@ -44,17 +41,6 @@ export function plateFilesOf(changes: GitChanges | undefined): RepositoryChanges
     return changes?.isRepository === true && changes.fileCount > 0 && changes.files.length > 0 ? changes : undefined;
 }
 
-/** The rows the plate draws: the first few files, or all of them once it is unfolded. */
-export const visibleRows = (files: readonly GitChangedFile[], unfolded: boolean): readonly GitChangedFile[] =>
-    unfolded ? files : files.slice(0, MAX_PLATE_ROWS);
-
-/** How many files the chevron has behind it. */
-export const hiddenRows = (files: readonly GitChangedFile[]): number => Math.max(0, files.length - MAX_PLATE_ROWS);
-
-/** The header's words: `Last run · 7 files`, the counts of lines after it are drawn in their own colours (`plateTotals`). */
-export const plateTitle = (changes: Pick<RepositoryChanges, 'fileCount'>): string =>
-    `Last run · ${filesWords(changes.fileCount)}`;
-
 /** The totals of the header as the Changes tab writes them: `+152` and `−22` with a real minus sign. */
 export const plateTotals = (
     changes: Pick<RepositoryChanges, 'additions' | 'deletions'>
@@ -62,10 +48,6 @@ export const plateTotals = (
     additions: `+${changes.additions}`,
     deletions: `−${changes.deletions}`,
 });
-
-/** What the chevron says: how many files are behind it, or that they can be folded away again. */
-export const chevronWords = (changes: Pick<RepositoryChanges, 'files'>, unfolded: boolean): string =>
-    unfolded ? 'Show fewer' : `${hiddenRows(changes.files)} more ${hiddenRows(changes.files) === 1 ? 'file' : 'files'}`;
 
 /** The lines of a file as the row writes them (`+101`, `−15`), none for a binary file and for one whose lines were not counted. */
 export function rowCounts(

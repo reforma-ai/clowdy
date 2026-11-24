@@ -6,6 +6,7 @@ import type { FolderSettings, WorkspaceSetup } from '@clowdy/protocol';
 
 /** What `project.updateFolder` changes: a field that is left out stays, one set to `null` is cleared, and `setup` is replaced whole. */
 export interface FolderSettingsPatch {
+    name?: string | null;
     baseBranch?: string | null;
     setup?: WorkspaceSetup | null;
 }
@@ -99,6 +100,17 @@ export function mergeFolderSettings(
     patch: FolderSettingsPatch
 ): FolderSettings | undefined {
     const merged: FolderSettings = { ...current };
+
+    if (patch.name === null) {
+        delete merged.name;
+    } else if (patch.name !== undefined) {
+        const name = patch.name.trim();
+
+        if (!name || name === '.' || name === '..' || name.length > 100 || UNPRINTABLE.test(name) || /[\\/]/.test(name))
+            throw invalid('The folder name must be 1 to 100 characters without slashes or control characters');
+
+        merged.name = name;
+    }
 
     if (patch.baseBranch === null) {
         delete merged.baseBranch;

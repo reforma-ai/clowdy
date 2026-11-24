@@ -13,6 +13,8 @@ import type {
     FolderId,
     FolderWorktrees,
     GitBranches,
+    GitBranchMergeRequest,
+    GitBranchMergeResult,
     GitChanges,
     GitCommitResult,
     GitDiscardResult,
@@ -209,6 +211,12 @@ export interface Transport {
         branch: string,
         create?: GitSwitchRequest['create']
     ) => Promise<GitSwitchResult>;
+    /** Previews or merges two branches of the place's repository, or finishes an action on the named destination. */
+    branchMergeGit: (
+        projectId: ProjectId,
+        place: PlaceRef,
+        request: GitBranchMergeRequest
+    ) => Promise<GitBranchMergeResult>;
     /**
      * Every worktree of every folder of a project, with the chats that work in each, how many files are changed and whether its work is in the base: what the Manage worktrees
      * dialog lists. One entry per folder in the project's order, a folder that is no repository (or is gone) with no worktrees. Read when asked, never pushed: worktrees change

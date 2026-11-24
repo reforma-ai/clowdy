@@ -1,13 +1,5 @@
 import { Button } from '@clowdy/components/Button';
-import {
-    Menu,
-    MenuHeader,
-    MenuItem,
-    MenuSection,
-    MenuSeparator,
-    MenuTrigger,
-    SubmenuTrigger,
-} from '@clowdy/components/List';
+import { Menu, MenuItem, MenuSection, MenuSeparator, MenuTrigger } from '@clowdy/components/List';
 import { Popover, PopoverScroll } from '@clowdy/components/Popover';
 import { Text } from '@clowdy/components/Text';
 import { ChevronRight } from '@clowdy/icons/8';
@@ -82,13 +74,9 @@ function whyUnread(repository: FolderRepository): string | undefined {
         : undefined;
 }
 
-/** What the list of existing worktrees says under a worktree's branch: the chats that work in it, by name. */
+/** Number of chats using a worktree. */
 function usersLine(chats: readonly Chat[]): string {
-    if (chats.length === 0) return 'No chat uses it';
-
-    if (chats.length <= 2) return chats.map(chat => chat.title).join(', ');
-
-    return `${chats[0].title}, ${chats[1].title} and ${chats.length - 2} more`;
+    return `Used in ${chats.length} ${chats.length === 1 ? 'chat' : 'chats'}`;
 }
 
 /**
@@ -155,10 +143,9 @@ interface WorkspaceChipProps {
  * checkout (`Switch to <branch>` when the person picked another branch than the one the folder is on: the daemon switches the checkout when the chat is made, and the pill turns to the warning
  * colour while something is in the way), `New worktree` and `from <base>` for a worktree to be made, and `Worktree` and the branch for one that exists. The menu has `Main worktree` (the folder itself;
  * the branch at the row's end is a chip of its own, pressed, or with the right arrow on the row, it opens the list of the folder's branches at the menu's side, the way the new worktree's base does:
- * Default, Recent, Local and Remote as in the Changes sidebar, the one the folder is on checked, and with nothing picked the chat starts on it as it is),
+ * it follows the Changes branch picker and checks the folder's current branch),
  * `New worktree` (pressing the row chooses it; the base at its end is a chip of its own whose press, or the right arrow on the row, opens the searchable list of the folder's branches to start from, in
- * the groups Local and Remote, at the menu's side, with the menu staying open under it), and `Existing worktree`, a submenu that flies the folder's other worktrees out to its side: first those a
- * chat works in, then, under `Not in use`, the ones no chat works in, each with the chats that use it by name (it has no default to choose, so it is a plain submenu). The rows have an icon each and no
+ * the groups Local and Remote, at the menu's side, with the menu staying open under it). Existing worktrees follow as rows with their branch and chat count. The rows have an icon each and no
  * check: the row that is on is the one the menu highlights. `Manage worktrees…` ends the menu behind a separator: it shuts the menu and opens the dialog of the project's worktrees (`onManage`), and chooses
  * nothing. The list of branches is drawn inside the menu's popover, as its child, so that focus moving into it does not shut the menu; picking a branch chooses a new worktree from it and shuts both.
  */
@@ -192,7 +179,7 @@ function WorkspaceChip({ git, choice, chats, main, onChoose, onManage }: Workspa
     }, [isMenuOpen]);
 
     const worktrees = pickableWorktrees(git);
-    // The worktrees a chat works in come first, and the ones no chat works in, which are what is left of finished work, after them under a heading.
+    // Worktrees used by chats come first, followed by the rest.
     const used = worktrees.filter(worktree => chatsUsing(chats.values(), worktree.path).length > 0);
     const idle = worktrees.filter(worktree => !used.includes(worktree));
     const worktreeItem = (worktree: GitWorktree) => (
@@ -201,6 +188,9 @@ function WorkspaceChip({ git, choice, chats, main, onChoose, onManage }: Workspa
             id={worktreeKey(worktree.path)}
             shouldCloseOnSelect
             stacked
+            data-align="center"
+            data-worktree=""
+            icon={<Version aria-hidden="true" />}
             text={worktreeLabel(worktree)}
             description={usersLine(chatsUsing(chats.values(), worktree.path))}
         />
@@ -209,7 +199,7 @@ function WorkspaceChip({ git, choice, chats, main, onChoose, onManage }: Workspa
     const base = choice?.mode === 'new' ? (choice.base ?? git.defaultBranch) : git.defaultBranch;
     const canMakeOne = git.defaultBranch !== undefined;
     const branch = git.branch;
-    const selected = choice?.mode === 'new' ? 'new' : chosen ? 'existing' : 'checkout';
+    const selected = choice?.mode === 'new' ? 'new' : chosen ? worktreeKey(chosen.path) : 'checkout';
     // The base at the end of the row is pressed, and so is the row under it: react-aria's row takes the release of a press that began on the base as its own and acts. The row's
     // action then leaves the choice alone, since the press was the base's, which opens the list itself.
     const baseHeld = useRef(false);
@@ -322,6 +312,9 @@ function WorkspaceChip({ git, choice, chats, main, onChoose, onManage }: Workspa
 
                                         onChoose(null);
                                         setIsMenuOpen(false);
+                                    } else if (String(key).startsWith('worktree:')) {
+                                        onChoose({ mode: 'existing', path: String(key).slice('worktree:'.length) });
+                                        setIsMenuOpen(false);
                                     } else if (key === MANAGE_KEY) onManage();
                                     else if (key === 'new') {
                                         // A press that was the base's has its own answer, and leaves the menu as it is.
@@ -340,6 +333,7 @@ function WorkspaceChip({ git, choice, chats, main, onChoose, onManage }: Workspa
                             >
                                 <MenuItem
                                     id="checkout"
+                                    data-align="center"
                                     data-main-worktree=""
                                     // The row shuts the menu itself (`onAction`): a press on the branch inside it must not.
                                     shouldCloseOnSelect={false}
@@ -366,6 +360,7 @@ function WorkspaceChip({ git, choice, chats, main, onChoose, onManage }: Workspa
                                 />
                                 <MenuItem
                                     id="new"
+                                    data-align="center"
                                     data-new-worktree=""
                                     // The row shuts the menu itself (`onAction`): a press on the base inside it must not.
                                     shouldCloseOnSelect={false}
@@ -389,50 +384,7 @@ function WorkspaceChip({ git, choice, chats, main, onChoose, onManage }: Workspa
                                         ) : undefined
                                     }
                                 />
-                                {/* Nothing to choose by default here, so the row is a plain submenu's trigger: it flies the folder's worktrees out to its side. */}
-                                <SubmenuTrigger>
-                                    <MenuItem
-                                        id="existing"
-                                        icon={<Version aria-hidden="true" />}
-                                        text="Existing worktree"
-                                        stacked
-                                        description={
-                                            worktrees.length === 0
-                                                ? 'The folder has no other worktrees'
-                                                : 'Pick one the folder already has'
-                                        }
-                                        isDisabled={worktrees.length === 0}
-                                        endAffix={<ChevronRight aria-hidden="true" />}
-                                    />
-                                    <Popover spacing="xs" width={340}>
-                                        <PopoverScroll maxHeight={360}>
-                                            <Menu
-                                                aria-label="Existing worktrees"
-                                                size="sm"
-                                                selectionMode="single"
-                                                selectedKeys={chosen ? [worktreeKey(chosen.path)] : []}
-                                                onAction={key =>
-                                                    onChoose({
-                                                        mode: 'existing',
-                                                        path: String(key).slice('worktree:'.length),
-                                                    })
-                                                }
-                                            >
-                                                {used.length > 0 && (
-                                                    <MenuSection aria-label="Worktrees in use">
-                                                        {used.map(worktreeItem)}
-                                                    </MenuSection>
-                                                )}
-                                                {idle.length > 0 && (
-                                                    <MenuSection aria-label="Worktrees not in use">
-                                                        {used.length > 0 && <MenuHeader>Not in use</MenuHeader>}
-                                                        {idle.map(worktreeItem)}
-                                                    </MenuSection>
-                                                )}
-                                            </Menu>
-                                        </PopoverScroll>
-                                    </Popover>
-                                </SubmenuTrigger>
+                                {[...used, ...idle].map(worktreeItem)}
                                 <MenuSeparator />
                                 <MenuSection aria-label="Worktrees of the project" selectionMode="none">
                                     <MenuItem

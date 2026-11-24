@@ -1,4 +1,4 @@
-import { branchOptions } from '../changes/branchChoices';
+import { branchOptions, UNAVAILABLE_BRANCH_GROUP } from '../changes/branchChoices';
 import { isRunActive } from '../chats/chatRun';
 import { folderById, orchestratorOf } from './agentTree';
 
@@ -65,8 +65,7 @@ export const currentBranchOf = (listing: BranchListing): string | undefined =>
     listing.local.find(branch => branch.current)?.name;
 
 /**
- * The rows of the pill's list: those of the Changes sidebar's (`branchOptions`: Default, Recent, Local and Remote, a branch another worktree holds dimmed with where). With something in the
- * way (`block`) every row but the folder's own branch is dimmed as well, since none can be picked; the branch it is on stays, since picking it asks for nothing.
+ * The rows of the Changes branch picker. When the checkout is blocked, only its current branch is available.
  */
 export function mainBranchOptions(
     listing: BranchListing,
@@ -74,9 +73,16 @@ export function mainBranchOptions(
     home: string | undefined
 ): PickerOption[] {
     const options = branchOptions(listing, home);
-    const current = currentBranchOf(listing);
 
-    return block === undefined
-        ? options
-        : options.map(option => (option.id === current ? option : { ...option, isDisabled: true }));
+    if (block === undefined) return options;
+
+    const current = currentBranchOf(listing);
+    const available = options.find(option => option.id === current);
+
+    return [
+        ...(available ? [{ ...available, group: undefined }] : []),
+        ...options
+            .filter(option => option.id !== current)
+            .map(option => ({ ...option, group: UNAVAILABLE_BRANCH_GROUP, isDisabled: true })),
+    ];
 }

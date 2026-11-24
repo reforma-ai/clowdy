@@ -1,5 +1,5 @@
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
-import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { GitSwitch } from '../src/git/switch';
@@ -557,39 +557,77 @@ describe('POST /v1/projects/:id/git/switch: refusals', () => {
         expect(branchOf(tree)).toBe('held');
     });
 
-    test("refuses a chat's worktree, whose branch it keeps, and runs nothing there", async () => {
+    test('refuses to leave clean but unmerged work in a chat worktree', async () => {
         const recorded = recording();
         const h = await start({ gitEnvironment: recorded.environment });
         const { path } = withOther();
         const tree = join(tempDir('git-switch'), 'chat-tree');
 
         git(path, 'worktree', 'add', '-q', '-b', 'chat-branch', tree);
+        commitFile(tree, 'unmerged.txt');
 
-        const { project, folderId } = await open(path, h);
-        const workspaceId = (
-            h.ok('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: tree } }).chat
-                .workspace as { id: string }
-        ).id;
-        const response = await h.fetch(`/v1/projects/${project.id}/git/switch`, {
-            method: 'POST',
-            body: JSON.stringify({ folderId, workspaceId, branch: 'other' }),
-        });
+        const { project, failure } = await open(path, h);
+        const { id: workspaceId } = h.ok('chat.create', {
+            projectId: project.id,
+            workspace: { mode: 'existing', path: tree },
+        }).chat.workspace as { id: string };
         const before = snapshot(tree);
 
-        expect(response.status).toBe(400);
-        expect((await json<Failure>(response)).error.message).toBe("A chat's worktree keeps its branch");
+        expect(await failure(409, 'other', { workspaceId })).toMatchObject({
+            code: 'conflict',
+            message: 'Merge this branch into origin/main before switching',
+        });
         expect(snapshot(tree)).toEqual(before);
-        expect(branchOf(tree)).toBe('chat-branch');
         expect(branchOf(path)).toBe('main');
         expect(recorded.runs().filter(line => line.startsWith('switch'))).toEqual([]);
+        expect(await failure(404, 'other', { workspaceId: 'wks_none' })).toMatchObject({ code: 'not_found' });
+    });
 
-        // A place that is not the project's is not found, as for the other routes.
-        const missing = await h.fetch(`/v1/projects/${project.id}/git/switch`, {
-            method: 'POST',
-            body: JSON.stringify({ folderId, workspaceId: 'wks_none', branch: 'other' }),
+    test('switches a clean merged worktree without changing the main checkout, and refuses held branches or local changes', async () => {
+        const h = await start();
+        const { path } = withOther();
+        const tree = join(tempDir('git-switch'), 'chat-tree');
+
+        git(path, 'worktree', 'add', '-q', '-b', 'chat-branch', tree);
+        const merged = commitFile(tree, 'merged.txt');
+        git(path, 'merge', '--ff-only', 'chat-branch');
+        git(path, 'push', '-q', 'origin', 'main');
+
+        const { project, result, failure } = await open(path, h);
+        const { id: workspaceId } = h.ok('chat.create', {
+            projectId: project.id,
+            workspace: { mode: 'existing', path: tree },
+        }).chat.workspace as { id: string };
+        const main = snapshot(path);
+
+        const clean = snapshot(tree);
+        expect(await failure(409, 'main', { workspaceId })).toMatchObject({
+            message: `Checked out in ${realpathSync(path)}`,
         });
+        expect(snapshot(tree)).toEqual(clean);
 
-        expect(missing.status).toBe(404);
+        writeFileSync(join(tree, 'draft.txt'), 'Keep this draft');
+        const dirty = snapshot(tree);
+        expect(await failure(409, 'other', { workspaceId })).toMatchObject({
+            message: 'Commit or discard the changes first',
+            details: { hint: '1 file changed' },
+        });
+        expect(snapshot(tree)).toEqual(dirty);
+        unlinkSync(join(tree, 'draft.txt'));
+
+        writeFileSync(join(path, '.git', 'info', 'exclude'), 'on-other.txt\n');
+        writeFileSync(join(tree, 'on-other.txt'), 'Local setup');
+        expect(left(tree)).toEqual([]);
+        expect((await failure(409, 'other', { workspaceId })).message).toContain('would be overwritten');
+        expect(readFileSync(join(tree, 'on-other.txt'), 'utf8')).toBe('Local setup');
+        expect(branchOf(tree)).toBe('chat-branch');
+        unlinkSync(join(tree, 'on-other.txt'));
+
+        expect(await result('other', { workspaceId })).toMatchObject({ head: { kind: 'branch', name: 'other' } });
+        expect(branchOf(tree)).toBe('other');
+        expect(existsSync(join(tree, 'on-other.txt'))).toBe(true);
+        expect(git(path, 'rev-parse', 'chat-branch')).toBe(merged);
+        expect(snapshot(path)).toEqual(main);
     });
 
     test('refuses what is no branch name before anything runs: a leading dash, an expression, a name git forbids', async () => {
@@ -746,6 +784,58 @@ describe('POST /v1/projects/:id/git/switch: refusals', () => {
             ).status
         ).toBe(404);
         expect(branchOf(path)).toBe('main');
+    });
+});
+
+withScripts('POST /v1/projects/:id/git/switch: concurrent worktrees', () => {
+    test('serializes switches to the same branch from two worktrees of one repository', async () => {
+        const h = await start();
+        const { path } = withOther();
+        const barrier = tempDir('git-switch');
+        const firstTree = join(barrier, 'first');
+        const secondTree = join(barrier, 'second');
+        const release = join(barrier, 'release');
+        const filter = join(barrier, 'smudge');
+
+        git(path, 'worktree', 'add', '-q', '-b', 'first-branch', firstTree);
+        git(path, 'worktree', 'add', '-q', '-b', 'second-branch', secondTree);
+        writeFileSync(join(path, '.git', 'info', 'attributes'), 'on-other.txt filter=wait-switch\n');
+        writeFileSync(
+            filter,
+            [
+                '#!/bin/sh',
+                `touch '${barrier}/entered-'"$(basename "$PWD")"`,
+                `while [ ! -f '${release}' ]; do sleep 0.02; done`,
+                'cat',
+            ].join('\n')
+        );
+        git(path, 'config', 'filter.wait-switch.smudge', `sh '${filter}'`);
+
+        const { project, call } = await open(path, h);
+        const workspaceOf = (tree: string) =>
+            h.ok('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: tree } }).chat.workspace
+                .id as string;
+        const first = workspaceOf(firstTree);
+        const second = workspaceOf(secondTree);
+        const initial = call('other', { workspaceId: first });
+        let competing: Promise<Response> | undefined;
+
+        try {
+            await waitFor(() => existsSync(join(barrier, 'entered-first')), 'the first checkout to write a file');
+            competing = call('other', { workspaceId: second });
+            await Bun.sleep(400);
+            expect(existsSync(join(barrier, 'entered-second'))).toBe(false);
+        } finally {
+            writeFileSync(release, '');
+        }
+
+        expect((await initial).status).toBe(200);
+        const rejected = await competing!;
+
+        expect(rejected.status).toBe(409);
+        expect((await json<Failure>(rejected)).error.message).toBe(`Checked out in ${realpathSync(firstTree)}`);
+        expect(branchOf(firstTree)).toBe('other');
+        expect(branchOf(secondTree)).toBe('second-branch');
     });
 });
 

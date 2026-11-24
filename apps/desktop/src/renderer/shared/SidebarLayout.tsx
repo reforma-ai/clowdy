@@ -56,7 +56,8 @@ export function SidebarLayout({ screen, defaultWidth, sidebar, children }: Sideb
 
             <ResizableHandle aria-label="Resize the sidebar" />
 
-            <ResizablePanel id="main" className={styles.main} minSize={MAIN_MIN_WIDTH}>
+            {/* The panel library sets inline overflow:auto; the page scrolls its own content, not the whole panel. */}
+            <ResizablePanel id="main" className={styles.main} minSize={MAIN_MIN_WIDTH} style={{ overflow: 'clip' }}>
                 {children}
             </ResizablePanel>
         </ResizablePanelGroup>

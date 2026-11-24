@@ -130,14 +130,14 @@ describe("the rows of the pill's list", () => {
         recent: ['dev'],
     };
 
-    it("are the Changes sidebar's: Default, Recent, Local and Remote, a branch that another worktree holds dimmed with where", () => {
+    it('match the Changes branch picker, with unavailable branches grouped last', () => {
         const options = mainBranchOptions(listing, undefined, undefined);
 
         expect(options.map(option => [option.group, option.id, option.isDisabled ?? false])).toEqual([
-            ['Default', 'main', false],
+            [undefined, 'main', false],
             ['Recent', 'dev', false],
-            ['Local', 'held', true],
-            ['Remote', 'feature/search', false],
+            ['Other branches', 'feature/search', false],
+            ['Unavailable', 'held', true],
         ]);
         expect(options.find(option => option.id === 'held')?.description).toBe('Checked out in /work/app-held');
     });
@@ -145,11 +145,11 @@ describe("the rows of the pill's list", () => {
     it("dim every branch but the folder's own while something is in the way, and keep where a held one is", () => {
         const options = mainBranchOptions(listing, { message: COMMIT_FIRST }, undefined);
 
-        expect(options.map(option => [option.id, option.isDisabled ?? false])).toEqual([
-            ['main', false],
-            ['dev', true],
-            ['held', true],
-            ['feature/search', true],
+        expect(options.map(option => [option.id, option.group, option.isDisabled ?? false])).toEqual([
+            ['main', undefined, false],
+            ['dev', 'Unavailable', true],
+            ['feature/search', 'Unavailable', true],
+            ['held', 'Unavailable', true],
         ]);
         expect(options.find(option => option.id === 'held')?.description).toBe('Checked out in /work/app-held');
     });

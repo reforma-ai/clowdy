@@ -51,7 +51,7 @@
     border-radius: var(--radius-full);
     background-color: var(--color-text);
     opacity: calc(0.34 + max(var(--lift, 0), var(--rest, 0)) * 0.66);
-    width: calc(0.625rem + max(var(--lift, 0), var(--rest, 0)) * 1rem);
+    width: calc(var(--spacing-10) + max(var(--lift, 0), var(--rest, 0)) * var(--spacing-6));
     transition-property: width, opacity;
     transition-duration: 0.12s;
     transition-timing-function: ease-out;

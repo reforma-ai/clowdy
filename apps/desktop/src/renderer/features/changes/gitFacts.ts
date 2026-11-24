@@ -220,6 +220,8 @@ interface Slot {
     facts: PlaceFacts;
     /** How many components read this place now. */
     observers: number;
+    /** A branch operation may have moved this checkout while it was idle. */
+    invalidated?: true;
     /** When the newest round of reads started. */
     startedAt: number;
     /** The wait for the next read of the pull request while a check is pending. */
@@ -268,7 +270,10 @@ export class GitFacts {
         const known = facts.status.settled;
 
         // A first observer asks unless a read has just begun for another; a later one only when nothing was ever read (the window was hidden, or the read ended before it came).
-        if (!reading && (!known || (slot.observers === 1 && Date.now() - slot.startedAt >= GIT_COALESCE_MS)))
+        if (
+            slot.invalidated ||
+            (!reading && (!known || (slot.observers === 1 && Date.now() - slot.startedAt >= GIT_COALESCE_MS)))
+        )
             this.#readAll(slot);
         // A place that is back within the second of its last read reads nothing, and the wait that its last observer's leaving ended is made again.
         else if (slot.observers === 1) this.#schedule(slot);
@@ -288,6 +293,18 @@ export class GitFacts {
         const slot = this.#slots.get(keyText(key));
 
         if (slot && slot.observers > 0) this.#readAll(slot);
+    }
+
+    /** Refreshes the observed checkouts and invalidates the idle ones after an operation that can move either. */
+    refreshFolder({ projectId, folderId }: GitPlaceKey): void {
+        for (const slot of this.#slots.values()) {
+            const { key } = slot.facts;
+
+            if (key.projectId !== projectId || key.folderId !== folderId) continue;
+
+            slot.invalidated = true;
+            if (slot.observers > 0) this.#readAll(slot);
+        }
     }
 
     /** Ends every wait and listener. */
@@ -369,6 +386,7 @@ export class GitFacts {
     #readAll(slot: Slot): void {
         if (isHidden()) return;
 
+        slot.invalidated = undefined;
         const { facts } = slot;
         const wasNoRepository = facts.isRepository === false;
 

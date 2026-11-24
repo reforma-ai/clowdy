@@ -5,7 +5,7 @@ import { Scrollable } from '@clowdy/components/Scrollable';
 import { Show } from '@clowdy/components/Show';
 import { SortableList } from '@clowdy/components/SortableList';
 import { Text } from '@clowdy/components/Text';
-import { Clip, Collapse, EditPen, Split, Trash } from '@clowdy/icons/14';
+import { ArrowUp, Clip, Collapse, EditPen, Split, Trash } from '@clowdy/icons/14';
 import { type RefObject, useEffect, useRef, useState } from 'react';
 
 import { Unavailable } from '../../shared/Unavailable';
@@ -42,7 +42,7 @@ interface DroppedOrder {
 
 export interface ComposerQueueProps {
     chat: Chat;
-    /** The orchestrator works, so Send now steers its turn; at rest Send now sends the message as the next turn. */
+    /** The up arrow steers the current turn while busy and starts the next turn at rest. */
     busy: boolean;
     /** The orchestrator has not finished: a compact item cannot go yet. */
     running: boolean;
@@ -51,17 +51,14 @@ export interface ComposerQueueProps {
 }
 
 /**
- * What waits for the orchestrator (`Chat.queue`), inside the composer above the text, as Reforma's queue: two lines of each message and its files, and
- * per message Send now, Edit and Remove (the head shows them at rest, the others on hover or focus). A steer says `Steering…` until the agent takes it.
- * A compact item (Compact pressed while the agent worked) reads `Compact the conversation`, has nothing to edit, and its Send now waits until the
- * orchestrator has finished. An item a thread sent (`from`: threads that stopped, or a thread's message) reads its line after the thread mark and has
- * nothing to edit either. A drag moves a message among those of its own kind. The queue is the daemon's: every change goes through it and comes
- * back with the chat.
+ * The composer's queue shows one line per item, with a leading icon for attachments, thread messages or compaction.
+ * The up arrow steers or sends an item, and a steer says `Steering…` until the agent takes it. The head shows
+ * actions at rest, and the other rows show them on hover or focus. Dragging reorders items of the same kind.
  */
 export function ComposerQueue({ chat, busy, running, onEdit }: ComposerQueueProps) {
     const root = useRootStore();
     const [dropped, setDropped] = useState<DroppedOrder>();
-    // Send now presses still with the daemon: their rows read `Steering…` meanwhile.
+    // Rows with an in-flight send read `Steering…` while the daemon responds.
     const [sending, setSending] = useState<ReadonlySet<string>>(() => new Set());
     const draggedRef = useRef(false);
     const queue = chat.queue;
@@ -69,7 +66,7 @@ export function ComposerQueue({ chat, busy, running, onEdit }: ComposerQueueProp
 
     if (items.length === 0) return null;
 
-    // A compact item cannot steer, so its Send now waits for an orchestrator that has finished; a held queue gives it nothing by itself even then.
+    // Compaction can only start once the orchestrator finishes.
     const compactWaits = running
         ? chat.queuePaused
             ? 'Send it once the agent finishes'
@@ -164,7 +161,7 @@ export function ComposerQueue({ chat, busy, running, onEdit }: ComposerQueueProp
             <Show when={chat.queuePaused}>
                 {pause => (
                     <Text role="status" variant="xs" color="secondary" className={styles.paused}>
-                        {`${PAUSED[pause]} Use Send now on a message to resume.`}
+                        {`${PAUSED[pause]} Use the up arrow on a message to resume.`}
                     </Text>
                 )}
             </Show>
@@ -189,11 +186,43 @@ export function ComposerQueue({ chat, busy, running, onEdit }: ComposerQueueProp
     );
 }
 
+function SendQueuedButton({
+    steer = false,
+    waits,
+    sending,
+    onPress,
+}: {
+    steer?: boolean;
+    waits?: string;
+    sending?: boolean;
+    onPress: () => void;
+}) {
+    const label = steer ? 'Steer' : 'Send now';
+
+    return (
+        <Unavailable label={label} hint={waits}>
+            <Button
+                iconOnly
+                size="xs"
+                variant="filling"
+                color="secondary"
+                aria-label={label}
+                tooltip={waits ? undefined : label}
+                isDisabled={waits !== undefined}
+                isPending={sending}
+                onPress={onPress}
+            >
+                <ArrowUp />
+            </Button>
+        </Unavailable>
+    );
+}
+
 interface QueuedRowProps {
     item: QueuedMessage;
     isFirst: boolean;
     isDragging: boolean;
-    /** The message waits for the agent's next step (a steer), or its Send now is on its way. */
+    /** The message waits for the agent's next step, or its send is in flight. */
     steering: boolean;
     busy: boolean;
     /** Set while a drag runs from this gesture, so the drop does not also open the message for editing. */
@@ -216,6 +245,7 @@ function QueuedRow({
 }: QueuedRowProps) {
     const label = queuedLabel(item);
     const files = item.attachments?.length ?? 0;
+    const hasText = item.text.trim() !== '';
 
     useEffect(() => {
         if (isDragging) draggedRef.current = true;
@@ -232,21 +262,14 @@ function QueuedRow({
                     role="button"
                     tabIndex={0}
                     aria-label={`Edit: ${label}`}
+                    aria-description={hasText && files > 0 ? `${filesLabel(files)} attached` : undefined}
                     className={styles.preview}
                     onPointerDown={() => {
                         draggedRef.current = false;
                     }}
                 >
-                    <Show when={item.text.trim()}>
-                        <span className={styles.text}>{item.text}</span>
-                    </Show>
-
-                    <Show when={files > 0}>
-                        <div className={styles.files}>
-                            <Clip />
-                            <Text color="secondary">{filesLabel(files)}</Text>
-                        </div>
-                    </Show>
+                    {files > 0 && <Clip className={styles.mark} aria-hidden />}
+                    {hasText && <span className={styles.text}>{item.text}</span>}
                 </div>
             </Pressable>
 
@@ -257,17 +280,7 @@ function QueuedRow({
             </Show>
 
             <Box direction="row" className={styles.actions}>
-                <Show when={!steering}>
-                    <Button
-                        size="xs"
-                        variant="filling"
-                        color="secondary"
-                        tooltip={busy ? 'Submit without interrupting the model' : undefined}
-                        onPress={onSendNow}
-                    >
-                        Send now
-                    </Button>
-                </Show>
+                {!steering && <SendQueuedButton steer={busy} onPress={onSendNow} />}
                 <Button
                     iconOnly
                     size="xs"
@@ -298,7 +311,7 @@ function QueuedRow({
 interface ThreadItemRowProps {
     label: string;
     isFirst: boolean;
-    /** It waits for the agent's next step (a steer), or its Send now is on its way. */
+    /** It waits for the agent's next step, or its send is in flight. */
     steering: boolean;
     busy: boolean;
     onSendNow: () => void;
@@ -307,16 +320,14 @@ interface ThreadItemRowProps {
 
 /**
  * An item a thread sent while the orchestrator worked: threads that stopped (its one-line summary, `Thread "Fix login" finished`) or a thread's message.
- * The thread mark and the line, Send now and Remove as on any queued message; nothing to edit, since the person did not write it, and never files.
+ * The thread mark and the line, with the up arrow and Remove.
  */
 function ThreadItemRow({ label, isFirst, steering, busy, onSendNow, onRemove }: ThreadItemRowProps) {
     return (
         <div className={styles.item} data-first={isFirst || undefined} data-thread>
             <div className={styles.preview} data-command>
-                <span className={styles.command}>
-                    <Split aria-hidden />
-                    <span className={styles.text}>{label}</span>
-                </span>
+                <Split className={styles.mark} aria-hidden />
+                <span className={styles.text}>{label}</span>
             </div>
 
             <Show when={steering}>
@@ -326,17 +337,7 @@ function ThreadItemRow({ label, isFirst, steering, busy, onSendNow, onRemove }: 
             </Show>
 
             <Box direction="row" className={styles.actions}>
-                <Show when={!steering}>
-                    <Button
-                        size="xs"
-                        variant="filling"
-                        color="secondary"
-                        tooltip={busy ? 'Submit without interrupting the model' : undefined}
-                        onPress={onSendNow}
-                    >
-                        Send now
-                    </Button>
-                </Show>
+                {!steering && <SendQueuedButton steer={busy} onPress={onSendNow} />}
                 <Button
                     iconOnly
                     size="xs"
@@ -369,25 +370,12 @@ function CompactRow({ label, isFirst, sending, waits, onSendNow, onRemove }: Com
     return (
         <div className={styles.item} data-first={isFirst || undefined}>
             <div className={styles.preview} data-command>
-                <span className={styles.command}>
-                    <Collapse aria-hidden />
-                    <span className={styles.text}>{label}</span>
-                </span>
+                <Collapse className={styles.mark} aria-hidden />
+                <span className={styles.text}>{label}</span>
             </div>
 
             <Box direction="row" className={styles.actions}>
-                <Unavailable label="Send now" hint={waits}>
-                    <Button
-                        size="xs"
-                        variant="filling"
-                        color="secondary"
-                        isDisabled={waits !== undefined}
-                        isPending={sending}
-                        onPress={onSendNow}
-                    >
-                        Send now
-                    </Button>
-                </Unavailable>
+                <SendQueuedButton waits={waits} sending={sending} onPress={onSendNow} />
                 <Button
                     iconOnly
                     size="xs"

@@ -2304,6 +2304,13 @@ describe('the layout of a worktree', () => {
             join(config.workspacesDir, 'shop', 'XZCBJ2Y7', 'shop-web-2')
         );
         expect(workspaceLayout(config, project, project.folders[2], chatId).path.endsWith(`${sep}api`)).toBe(true);
+        const renamed = {
+            ...project,
+            folders: project.folders.map(folder => ({ ...folder, settings: { name: 'Custom' } })),
+        };
+        expect(workspaceLayout(config, renamed, renamed.folders[1], chatId).path).toBe(
+            join(config.workspacesDir, 'shop', 'XZCBJ2Y7', 'shop-web-2')
+        );
         // A name Windows does not allow for a folder, and characters it does not allow in one.
         const odd = {
             id: 'prj_X',

@@ -6,7 +6,6 @@ import { useSidePanel } from '../sidePanel';
 import { AgentList } from './AgentList';
 import { chatFolder, resolveSelection, visibleChats } from './agentTree';
 import { ChatFolder } from './ChatFolder';
-import { chatListPreferences } from './chatListPreferences';
 import { DraftChat } from './DraftChat';
 import { RunDetail } from './RunDetail';
 import styles from './Screen.module.css';
@@ -21,7 +20,7 @@ export function Screen() {
     // The expanded side panel is drawn over the chat, which stays where it is: hidden, so it takes no click, no key and no reader.
     const { expanded } = useSidePanel();
     // A remembered chat or run may be gone: the chat that was open, or the first one listed, stands in.
-    const chats = visibleChats(project.chatList, chatListPreferences.sort);
+    const chats = visibleChats([...project.chats.values()], ui.chatOrder);
     const selection = resolveSelection(project.chats, chats, project.runs, ui.chatId, ui.runId, ui.draft);
     const { chat, run } = selection;
     // The folders gone from the disk are told from what the daemon last read, when the screen opens, when the projects change and when the window gets focus again. The list
@@ -36,7 +35,7 @@ export function Screen() {
     const projectInfo = info.get(project.id);
     const missing = new Set(projectInfo?.folders.filter(folder => !folder.exists).map(folder => folder.folderId));
 
-    // The line under a chat's message box holds its folder and where it works in it (the branch, with `Worktree` before it in a worktree), read only, where the new-chat page had the select and the one control of its place; it is always there, whatever the project's folders.
+    // Show the folder only when the project has several; the workspace label remains available for every chat.
     const where = chat ? chatFolder(project.chats, project.project.folders, chat.id) : undefined;
 
     return (
@@ -71,6 +70,7 @@ export function Screen() {
                                     folder={where.folder}
                                     missing={missing.has(where.folder.id)}
                                     workspace={chat.workspace}
+                                    showFolder={project.project.folders.length > 1}
                                 />
                             )
                         }

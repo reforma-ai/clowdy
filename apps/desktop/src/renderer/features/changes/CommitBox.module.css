@@ -1,13 +1,12 @@
 @reference '@clowdy/styles/rulesets';
 
-/* The commit stands between the files of the scope and the commits of the branch: as tall as it is, and not squeezed by them. */
+/* The branch actions above the commit form supply the divider. */
 .root {
     display: flex;
     flex-shrink: 0;
     flex-direction: column;
     gap: var(--spacing-sm);
     padding: var(--spacing-md) var(--spacing-lg) var(--spacing-lg);
-    border-top: 1px solid var(--color-surface-border);
 }
 
 /* What git and the agent say is the person's to copy. */
@@ -30,8 +29,7 @@
     white-space: nowrap;
 }
 
-/* The checklist shows five files and a half (so it is seen to scroll) and scrolls for the rest, so the message box never leaves the sidebar. Its plates stand 4px off the sidebar's
-   edges, as the files' list above does. */
+/* Show five and a half rows so the checklist is visibly scrollable. */
 .list {
     flex: 0 1 auto;
     max-height: calc(var(--spacing-30) * 5.5 + var(--spacing-xxs) * 5);
@@ -93,7 +91,7 @@
     gap: var(--spacing-sm);
 }
 
-/* Commit, with the button of its menu beside it, is the main action and has a line of its own: its words name the files and the branch (`Commit 3 files to main`), and they must not be squeezed to make room for Generate. */
+/* Keep Commit and its menu together when Generate is also offered. */
 .commitGroup {
     display: flex;
     flex: 1 1 100%;
@@ -109,7 +107,7 @@
     corner-shape: superellipse(var(--squircle-value));
 }
 
-/* Commit names the files and the branch (`Commit 3 files to main`), which is the point of it: it goes onto a second line where the sidebar is narrow, and is as tall as its lines. */
+/* Keep the commit label readable at the minimum sidebar width. */
 .commit[data-size][data-variant] {
     flex: 1 1 0;
     min-width: 0;
@@ -120,23 +118,14 @@
 
 .commitContent {
     min-width: 0;
-}
-
-.commitText {
-    min-width: 0;
     line-height: 1.2;
-    overflow-wrap: break-word;
     text-align: center;
     white-space: normal;
 }
 
-/* At the narrowest the button's menu and its own sides give up room, so the branch's name has a line to itself. */
 @container (max-width: 12rem) {
     .commit[data-size][data-variant] {
         padding-inline: var(--spacing-sm);
-    }
-
-    .commitText {
         font-size: var(--text-xs);
     }
 
@@ -161,32 +150,4 @@
 
 .fetch[data-size][data-variant] {
     margin-top: var(--spacing-xxs);
-}
-
-/* The empty box's next step: its title is the button, which wraps where the sidebar is narrow, and a phrase of why under it. */
-.step {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-xs);
-}
-
-.stepButton[data-size][data-variant] {
-    width: 100%;
-    height: auto;
-    min-height: var(--spacing-30);
-    padding-block: var(--spacing-sm);
-}
-
-.stepText {
-    min-width: 0;
-    line-height: 1.25;
-    text-align: center;
-    white-space: normal;
-}
-
-/* The three quiet ways out, rows of the design system's list, reaching out of the box as the checklist does. */
-.quiet {
-    width: auto;
-    margin-inline: calc(var(--spacing-lg) * -1);
-    padding-inline: var(--spacing-xs);
 }

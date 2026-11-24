@@ -84,9 +84,9 @@ export class RemoteActions {
                       ? this.transport.abortGit(key.projectId, place)
                       : this.transport.pushGit(key.projectId, place));
 
-            runInAction(() => {
-                if (report) this.#say(remoteNotice(result));
-            });
+            const notice = report ? remoteNotice(result) : undefined;
+
+            if (notice) runInAction(() => this.#say(notice));
 
             return { ok: true, result };
         } catch (error) {

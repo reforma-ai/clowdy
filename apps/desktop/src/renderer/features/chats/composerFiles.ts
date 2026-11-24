@@ -33,8 +33,12 @@ export interface DraftFile {
 const drafts = new Map<string, readonly DraftFile[]>();
 const listeners = new Set<() => void>();
 const NONE: readonly DraftFile[] = [];
+let revision = 0;
 
-const changed = () => listeners.forEach(listener => listener());
+const changed = () => {
+    revision++;
+    listeners.forEach(listener => listener());
+};
 
 function subscribe(listener: () => void): () => void {
     listeners.add(listener);
@@ -90,6 +94,10 @@ export function releaseFiles(files: readonly DraftFile[]): void {
 
 export function useDraftFiles(key: string): readonly DraftFile[] {
     return useSyncExternalStore(subscribe, () => filesOf(key));
+}
+
+export function useDraftFilesRevision() {
+    return useSyncExternalStore(subscribe, () => revision);
 }
 
 export function draftFileOf(file: File): DraftFile {

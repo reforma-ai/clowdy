@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { openConfirmModal } from '@clowdy/components/modals';
+import { emptyComposerDoc, plainTextToDoc } from '@clowdy/components/RichInput';
 import { runInAction } from 'mobx';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -16,6 +17,8 @@ import {
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { hotkeys, installDispatcher } from '../../hotkeys';
 import { RootStore, RootStoreProvider } from '../../stores';
+import { saveDraft } from '../chats/composerDrafts';
+import { setFiles } from '../chats/composerFiles';
 import { chatListPreferences } from './chatListPreferences';
 import { Screen } from './Screen';
 import { starCardPreferences } from './starCardState';
@@ -50,8 +53,8 @@ vi.mock('./RunDetail', () => ({
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 /*
- * The Agents screen on the fixture project. Chats by activity: c-1 (Simplify booking, orchestrator r-orch-1), c-4 (empty), c-6 (Ship the checkout,
- * at rest, with threads), c-5, c-3, c-2. The threads of c-6, oldest first: c-6a (Fix the price rounding, working, with the finished thread c-6a1),
+ * The Agents screen on the fixture project. Chats newest first: c-4 (empty), c-5, c-3, c-6 (Ship the checkout, at rest, with threads),
+ * c-1 (Simplify booking, orchestrator r-orch-1), c-2. The threads of c-6, oldest first: c-6a (Fix the price rounding, working, with the finished thread c-6a1),
  * c-6b (finished), c-6c (failed), c-6e (waiting for background work). Native sub-agents live in r-orch-1's session (r-na-01 to r-na-04): cards in its
  * stream, never rows. The test build has no MobX observer plugin, so the screen is drawn again by hand after a change, as the observer does in the app.
  */
@@ -105,7 +108,6 @@ const menuItem = (name: string) =>
     )!;
 
 beforeEach(async () => {
-    chatListPreferences.setSort('activity');
     chatListPreferences.setShowFinishedThreads(true);
     container = document.createElement('div');
     document.body.append(container);
@@ -119,14 +121,19 @@ afterEach(() => {
     act(() => reactRoot.unmount());
     container.remove();
     store.dispose();
-    chatListPreferences.setSort('activity');
     chatListPreferences.setShowFinishedThreads(true);
 });
 
 describe('the list', () => {
+    it('keeps the chat panel from becoming a scroll container', () => {
+        const panel = container.querySelector<HTMLElement>('#main > div');
+
+        expect(panel?.style.overflow).toBe('clip');
+    });
+
     it('starts with the new-chat row, then the chats, and has no row for a run', () => {
         // The orchestrator is the chat, and a native sub-agent is a card on the call that started it: neither is a row.
-        expect(rowKeys()).toEqual(['@new-chat', MAIN_GROUP, 'c-1', 'c-4', 'c-6', 'c-5', 'c-3', 'c-2']);
+        expect(rowKeys()).toEqual(['@new-chat', MAIN_GROUP, 'c-4', 'c-5', 'c-3', 'c-6', 'c-1', 'c-2']);
     });
 
     it('marks a chat that started with the provider it runs on, and one that has not with the speech bubble', async () => {
@@ -149,31 +156,24 @@ describe('the list', () => {
         expect(providerOf('c-1')).toBeUndefined();
     });
 
-    it('sorts the chats by when they were made, as a list starts, until the Filters menu asks for the last activity', async () => {
+    it('keeps the hand-ordered list through activity and puts a newly created chat first', async () => {
         const chatKeys = () => rowKeys().filter(key => key?.startsWith('c-'));
 
-        // The list starts in the order they were made (the default of the preference); the rest of this file starts on the last activity.
-        await draw(() => chatListPreferences.setSort('created'));
-
         expect(chatKeys()).toEqual(['c-4', 'c-5', 'c-3', 'c-6', 'c-1', 'c-2']);
-
-        await press(container.querySelector<HTMLElement>('button[aria-label="Filters"]')!);
-
-        expect(document.body.textContent).toContain('Sort by');
-        expect(menuItem('Created').getAttribute('aria-checked')).toBe('true');
-        expect(menuItem('Last activity').getAttribute('aria-checked')).toBe('false');
-
-        // A message in a chat does not move it while the list is in the order they were made in.
-        await draw(() => {
-            project().chats.set('c-2', { ...project().chats.get('c-2')!, updatedAt: Date.now() });
-        });
-        expect(chatKeys()).toEqual(['c-4', 'c-5', 'c-3', 'c-6', 'c-1', 'c-2']);
-
-        await press(menuItem('Last activity'));
-        expect(chatListPreferences.sort).toBe('activity');
+        await press(rowOf('c-5').querySelector<HTMLElement>('button[aria-label="Chat actions"]')!);
+        await press(menuItem('Move up'));
         await draw();
-        // The chat that just got a message is at the top now.
-        expect(chatKeys()).toEqual(['c-2', 'c-1', 'c-4', 'c-6', 'c-5', 'c-3']);
+        expect(chatKeys()).toEqual(['c-5', 'c-4', 'c-3', 'c-6', 'c-1', 'c-2']);
+        expect(isSelected('c-4')).toBe(true);
+
+        await draw(() => {
+            const chat = project().chats.get('c-2')!;
+            const now = Date.now();
+
+            project().chats.set(chat.id, { ...chat, updatedAt: now });
+            project().chats.set('c-new', { ...chat, id: 'c-new', createdAt: now, updatedAt: now });
+        });
+        expect(chatKeys()).toEqual(['c-new', 'c-5', 'c-4', 'c-3', 'c-6', 'c-1', 'c-2']);
     });
 
     it('keeps the row of an open `⋯` menu as if hovered, since the pointer is in the menu and not on the row', async () => {
@@ -196,8 +196,8 @@ describe('the list', () => {
     });
 
     it('selects the first chat when nothing was opened', () => {
-        expect(isSelected('c-1')).toBe(true);
-        expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe('c-1');
+        expect(isSelected('c-4')).toBe(true);
+        expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe('c-4');
     });
 });
 
@@ -224,7 +224,7 @@ describe('what is open', () => {
     it('falls back to a chat when the remembered run is gone', async () => {
         await draw(() => ui().openRun('r-gone'));
 
-        expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe('c-1');
+        expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe('c-4');
     });
 });
 
@@ -412,23 +412,13 @@ describe('grouped by folder', () => {
 
     it('offers the switch to a project of one folder as well, on until it is turned off', async () => {
         // A project that kept no choice groups, whatever number of folders it has.
-        expect(await filtersMenu()).toEqual([
-            'Show finished sub-threads',
-            'Group chats by folder',
-            'Last activity',
-            'Created',
-        ]);
+        expect(await filtersMenu()).toEqual(['Show finished sub-threads', 'Group chats by folder']);
         expect(menuItem('Group chats by folder').getAttribute('aria-checked')).toBe('true');
         expect(rowKeys()).toContain(MAIN_GROUP);
 
         await restart({ grouping: null });
 
-        expect(await filtersMenu()).toEqual([
-            'Show finished sub-threads',
-            'Group chats by folder',
-            'Last activity',
-            'Created',
-        ]);
+        expect(await filtersMenu()).toEqual(['Show finished sub-threads', 'Group chats by folder']);
         expect(menuItem('Group chats by folder').getAttribute('aria-checked')).toBe('true');
         expect(rowKeys()).toContain(head(MAIN));
 
@@ -442,17 +432,17 @@ describe('grouped by folder', () => {
     it('groups a project of one folder too, and keeps the list flat once the switch is off', async () => {
         await draw(() => ui().setGroupByFolder(true));
 
-        expect(rowKeys()).toEqual(['@new-chat', MAIN_GROUP, 'c-1', 'c-4', 'c-6', 'c-5', 'c-3', 'c-2']);
+        expect(rowKeys()).toEqual(['@new-chat', MAIN_GROUP, 'c-4', 'c-5', 'c-3', 'c-6', 'c-1', 'c-2']);
 
         await draw(() => ui().setGroupByFolder(false));
 
-        expect(rowKeys()).toEqual(['@new-chat', 'c-1', 'c-4', 'c-6', 'c-5', 'c-3', 'c-2']);
+        expect(rowKeys()).toEqual(['@new-chat', 'c-4', 'c-5', 'c-3', 'c-6', 'c-1', 'c-2']);
     });
 
     it('lists a group for each folder, main first, with the chats that work in it below; a chat with no folder is in the main one', async () => {
         await restart();
 
-        expect(rowKeys()).toEqual(['@new-chat', head(MAIN), 'c-1', 'c-4', 'c-6', 'c-5', 'c-3', head(API.id), 'c-2']);
+        expect(rowKeys()).toEqual(['@new-chat', head(MAIN), 'c-4', 'c-5', 'c-3', 'c-6', 'c-1', head(API.id), 'c-2']);
         expect(rowOf(head(MAIN)).textContent).toContain('car-rental');
         expect(rowOf(head(API.id)).textContent).toContain('car-rental-api');
         // A group heading is no page: it is never the selected row.
@@ -469,11 +459,11 @@ describe('grouped by folder', () => {
         expect(rowKeys()).toEqual([
             '@new-chat',
             head(MAIN),
-            'c-1',
             'c-4',
-            'c-6',
             'c-5',
             'c-3',
+            'c-6',
+            'c-1',
             'c-2',
             head(API.id),
             `@empty:${API.id}`,
@@ -481,7 +471,7 @@ describe('grouped by folder', () => {
         expect(rowOf(`@empty:${API.id}`).textContent).toBe('No chats');
     });
 
-    it('opens the menu of the folder from a press on the name of its group, with the new-chat page of that folder shown, in the desktop app only', async () => {
+    it('keeps the current chat when opening a folder menu and opens a draft when New chat is chosen', async () => {
         const name = (folderId: string) =>
             rowOf(head(folderId)).querySelector<HTMLButtonElement>('button[aria-label^="Folder:"]');
         const menuItems = () =>
@@ -503,11 +493,21 @@ describe('grouped by folder', () => {
             expect(name(MAIN)?.textContent).toBe('car-rental');
             await draw(() => ui().openChat('c-1'));
 
-            // The press shows the new chat of the folder, which is then the folder the window works in: the menu can open it in the Files tab and the terminal.
             await press(name(API.id)!);
+            expect([ui().draft, ui().chatId]).toEqual([false, 'c-1']);
+            expect(isSelected('c-1')).toBe(true);
+            expect(menuItems()).toEqual(['New chat', 'Copy path', 'Open in…', 'Manage worktrees…']);
+
+            await press(menuItem('New chat'));
+            await draw();
+
             expect([ui().draft, ui().draftFolderId]).toEqual([true, API.id]);
-            // Manage worktrees… is the last item, there from the first frame.
+            expect(isSelected('@new-chat')).toBe(true);
+
+            // The built-in tabs can open the folder when it matches the current draft.
+            await press(name(API.id)!);
             expect(menuItems()).toEqual([
+                'New chat',
                 'Open in Files',
                 'Open in Terminal',
                 'Copy path',
@@ -515,19 +515,14 @@ describe('grouped by folder', () => {
                 'Manage worktrees…',
             ]);
 
-            // The main folder's new chat has no folder of its own. The menu holds the page while it is open: this one is a fresh start.
-            await restart();
-            await draw(() => ui().openChat('c-2'));
+            await press(menuItem('New chat'));
+            await draw(() => ui().setDraftWorkspace({ mode: 'new' }));
             await press(name(MAIN)!);
+            expect([ui().draft, ui().draftFolderId, ui().draftWorkspace]).toEqual([true, API.id, { mode: 'new' }]);
+            await press(menuItem('New chat'));
+
+            // The main folder's draft follows the project's main folder.
             expect([ui().draft, ui().draftFolderId]).toEqual([true, null]);
-            expect(menuItems()).toEqual([
-                'Open in Files',
-                'Open in Terminal',
-                'Copy path',
-                'Open in…',
-                'Manage worktrees…',
-            ]);
-            // It folds nothing.
             expect(ui().collapsedFolders).toEqual([]);
         } finally {
             window.desktop = undefined;
@@ -577,10 +572,14 @@ describe('grouped by folder', () => {
             expect(menuItems()).toEqual([
                 'Locate…',
                 'Remove from project',
+                'New chat',
                 'Copy path',
                 'Open in…',
                 'Manage worktrees…',
             ]);
+            expect(item('New chat').getAttribute('aria-disabled')).toBe('true');
+            await press(item('New chat'));
+            expect(ui().draft).toBe(false);
 
             await press(item('Locate…'));
             await vi.waitFor(() =>
@@ -626,7 +625,7 @@ describe('grouped by folder', () => {
 
         expect(ui().collapsedFolders).toEqual([API.id]);
         await draw();
-        expect(rowKeys()).toEqual(['@new-chat', head(MAIN), 'c-1', 'c-4', 'c-6', 'c-5', 'c-3', head(API.id)]);
+        expect(rowKeys()).toEqual(['@new-chat', head(MAIN), 'c-4', 'c-5', 'c-3', 'c-6', 'c-1', head(API.id)]);
         expect(rowOf(head(API.id)).hasAttribute('data-collapsed')).toBe(true);
         expect(rowOf(head(API.id)).hasAttribute('data-plateless')).toBe(true);
         expect(buttonNamed('Expand car-rental-api').getAttribute('aria-expanded')).toBe('false');
@@ -673,7 +672,7 @@ describe('grouped by folder', () => {
             rowOf('@new-chat').focus();
 
             expect(await step('j')).toBe(head(MAIN));
-            expect(await step('j')).toBe('c-1');
+            expect(await step('j')).toBe('c-4');
 
             rowOf('c-2').focus();
 
@@ -841,7 +840,7 @@ describe('grouped by folder', () => {
             expect(made[0]?.folderId).toBe(API.id);
         });
 
-        it('is only on the new-chat page, grouped or flat, and a project of one folder has its folder read only in its place', async () => {
+        it('is only on the new-chat page for projects with multiple folders', async () => {
             await restart();
             await draw(() => ui().openChat('c-2'));
 
@@ -855,7 +854,7 @@ describe('grouped by folder', () => {
 
             expect(folderSelect()).not.toBeNull();
 
-            // The fixture project has one folder: nothing to pick, so the line only says where the chat will work.
+            // The fixture project has one folder: there is no folder control to pick or display.
             act(() => reactRoot.unmount());
             store.dispose();
             reactRoot = createRoot(container);
@@ -867,7 +866,7 @@ describe('grouped by folder', () => {
             });
 
             expect(folderSelect()).toBeNull();
-            expect(folderLine()?.textContent).toBe(SINGLE);
+            expect(folderLine()).toBeNull();
             expect(container.textContent).toContain('What should we work on?');
         });
 
@@ -966,7 +965,7 @@ describe('grouped by folder', () => {
             expect(folderLine()?.hasAttribute('data-missing')).toBe(false);
         });
 
-        it('is there in a chat that is made, grouped or flat, and in a project of one folder', async () => {
+        it('shows a chat folder only in a project with multiple folders, grouped or flat', async () => {
             await restart({ grouping: false });
             await draw(() => ui().openChat('c-2'));
 
@@ -987,7 +986,7 @@ describe('grouped by folder', () => {
                 ui().openChat('c-1');
             });
 
-            expect(folderLine()?.textContent).toBe(SINGLE);
+            expect(folderLine()).toBeNull();
         });
     });
 
@@ -1092,6 +1091,16 @@ describe('the archive', () => {
         await draw();
     }
 
+    it('restores a manually positioned chat to its slot after moving other chats', async () => {
+        await draw(() => ui().setChatOrder(['c-4', 'c-5', 'c-2', 'c-3', 'c-6', 'c-1']));
+        await archive('c-2', true);
+        await press(rowOf('c-5').querySelector<HTMLElement>('button[aria-label="Chat actions"]')!);
+        await press(menuItem('Move up'));
+        await archive('c-2', false);
+
+        expect(rowKeys().filter(key => key?.startsWith('c-'))).toEqual(['c-5', 'c-4', 'c-2', 'c-3', 'c-6', 'c-1']);
+    });
+
     // The rows of the archive's list, which is in a popover beside the screen and not in it. The title of a group is a row of its own, with no key.
     const archiveRows = () =>
         [...document.body.querySelectorAll<HTMLElement>('[role="row"][data-key]')].filter(
@@ -1105,7 +1114,7 @@ describe('the archive', () => {
         await archive('c-4', true);
 
         expect(rowKeys()).toEqual(expect.not.arrayContaining(['c-2', 'c-4']));
-        expect(rowKeys().filter(key => key?.startsWith('c-'))).toEqual(['c-1', 'c-6', 'c-5', 'c-3']);
+        expect(rowKeys().filter(key => key?.startsWith('c-'))).toEqual(['c-5', 'c-3', 'c-6', 'c-1']);
 
         await press(buttonNamed('History'));
 
@@ -1204,6 +1213,7 @@ describe('the archive', () => {
     });
 
     it('puts a chat back in the list from its menu, without opening it', async () => {
+        await draw(() => ui().openChat('c-1'));
         await archive('c-4', true);
         await press(buttonNamed('History'));
         await press(archiveRow('New chat').querySelector<HTMLElement>('button[aria-label^="Actions of"]')!);
@@ -1235,11 +1245,14 @@ describe('the archive', () => {
         await draw();
 
         expect(rowKeys()).not.toContain('c-4');
-        expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe('c-1');
+        expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe('c-5');
     });
 
-    it('is not offered from the row while an agent of the chat works', () => {
-        expect(rowOf('c-1').querySelector('button[aria-label="Archive"]')?.hasAttribute('disabled')).toBe(true);
+    it('shows a green status in place of the archive shortcut while the chat works', () => {
+        const busyActions = rowOf('c-1').querySelector('[slot="endAffix"]');
+
+        expect(busyActions?.querySelector('button[aria-label="Archive"]')).toBeNull();
+        expect(busyActions?.querySelector('[aria-label="Working"] [data-tone="success"]')).not.toBeNull();
         expect(rowOf('c-4').querySelector('button[aria-label="Archive"]')?.hasAttribute('disabled')).toBe(false);
     });
 
@@ -1257,7 +1270,7 @@ describe('the archive', () => {
         await draw(() => ui().openChat('c-2'));
         await archive('c-2', true);
 
-        expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe('c-1');
+        expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe('c-4');
         expect(rowKeys()).not.toContain('c-2');
     });
 
@@ -1278,6 +1291,23 @@ describe('threads', () => {
         rowOf(key).querySelector<HTMLButtonElement>('button[aria-label^="Expand"], button[aria-label^="Collapse"]');
     const depthOf = (key: string) => rowOf(key).getAttribute('data-depth');
     const dotOf = (key: string) => rowOf(key).querySelector('[role="img"]')?.getAttribute('aria-label');
+
+    it('updates the draft dot when text or attachments are added and cleared', async () => {
+        const tone = () => rowOf('c-4').querySelector('[role="img"] [data-tone]')?.getAttribute('data-tone');
+
+        expect(dotOf('c-4')).toBeUndefined();
+        await act(async () => saveDraft('c-4', plainTextToDoc('Unsent')));
+        expect(dotOf('c-4')).toBe('Unsent draft');
+        expect(tone()).toBe('neutral');
+        await act(async () => saveDraft('c-4', emptyComposerDoc()));
+        expect(dotOf('c-4')).toBeUndefined();
+        await act(async () =>
+            setFiles('c-4', [{ key: 'file', name: 'a.txt', mediaType: 'text/plain', size: 1, status: 'ready' }])
+        );
+        expect(dotOf('c-4')).toBe('Unsent draft');
+        await act(async () => setFiles('c-4', []));
+        expect(dotOf('c-4')).toBeUndefined();
+    });
     const stopThreads = async () => {
         for (const runId of ['r-orch-6a', 'r-orch-6e']) await store.command({ type: 'run.cancel', runId });
 
@@ -1304,15 +1334,15 @@ describe('threads', () => {
         expect(rowKeys()).toEqual([
             '@new-chat',
             MAIN_GROUP,
-            'c-1',
             'c-4',
+            'c-5',
+            'c-3',
             'c-6',
             'c-6a',
             'c-6b',
             'c-6c',
             'c-6e',
-            'c-5',
-            'c-3',
+            'c-1',
             'c-2',
         ]);
         expect(['c-6', 'c-6a', 'c-6e'].map(depthOf)).toEqual(['0', '1', '1']);
@@ -1321,7 +1351,7 @@ describe('threads', () => {
         await act(async () => foldOf('c-6a')!.click());
         await draw();
 
-        expect(rowKeys().slice(4, 7)).toEqual(['c-6', 'c-6a', 'c-6a1']);
+        expect(rowKeys().slice(5, 8)).toEqual(['c-6', 'c-6a', 'c-6a1']);
         expect(depthOf('c-6a1')).toBe('2');
 
         // Folding the chat hides every thread below it, the thread's own threads too.
@@ -1346,10 +1376,9 @@ describe('threads', () => {
         expect(ui().expandedChats).toEqual([]);
     });
 
-    it('sorts only the chats the person made: threads keep the order they were made in, whatever the sort', async () => {
+    it('keeps sibling threads in creation order when their activity changes', async () => {
         await draw(() => {
             ui().toggleChatExpanded('c-6');
-            chatListPreferences.setSort('created');
             project().chats.set('c-6e', { ...project().chats.get('c-6e')!, updatedAt: Date.now() });
         });
 
@@ -1364,13 +1393,8 @@ describe('threads', () => {
         expect([...document.body.querySelectorAll('[role^="menuitem"]')].map(row => row.textContent)).toEqual([
             'Show finished sub-threads',
             'Group chats by folder',
-            'Last activity',
-            'Created',
         ]);
-        // A section that holds one check has no header; only the order does.
-        expect([...document.body.querySelectorAll('[role="menu"] header')].map(header => header.textContent)).toEqual([
-            'Sort by',
-        ]);
+        expect(document.body.querySelector('[role="menu"] header')).toBeNull();
 
         await press(menuItem('Show finished sub-threads'));
         expect(chatListPreferences.showFinishedThreads).toBe(false);
@@ -1414,7 +1438,7 @@ describe('threads', () => {
         expect(dotOf('c-6')).toBe('Threads working');
         expect(dotOf('c-6a')).toBe('Working');
         expect(dotOf('c-6c')).toBe('Failed');
-        expect(dotOf('c-6b')).toBeUndefined();
+        expect(dotOf('c-6b')).toBe('Done');
         expect(rowOf('c-6e').querySelector('[data-provider]')?.getAttribute('data-provider')).toBe('codex');
     });
 
@@ -1422,7 +1446,7 @@ describe('threads', () => {
         // The thread rests for its background work while its agent asks: its card is the only sign (`Run.awaitingUser`).
         await draw(() => project().runs.set('r-orch-6e', { ...project().runs.get('r-orch-6e')!, awaitingUser: true }));
 
-        expect(rowKeys()).toEqual(['@new-chat', MAIN_GROUP, 'c-1', 'c-4', 'c-6', 'c-6e', 'c-5', 'c-3', 'c-2']);
+        expect(rowKeys()).toEqual(['@new-chat', MAIN_GROUP, 'c-4', 'c-5', 'c-3', 'c-6', 'c-6e', 'c-1', 'c-2']);
         expect(['c-6', 'c-6e'].map(depthOf)).toEqual(['0', '1']);
         expect(foldOf('c-6')?.getAttribute('aria-expanded')).toBe('false');
         expect(dotOf('c-6')).toBe('A thread is waiting for you');
@@ -1434,15 +1458,15 @@ describe('threads', () => {
         expect(rowKeys()).toEqual([
             '@new-chat',
             MAIN_GROUP,
-            'c-1',
             'c-4',
+            'c-5',
+            'c-3',
             'c-6',
             'c-6a',
             'c-6b',
             'c-6c',
             'c-6e',
-            'c-5',
-            'c-3',
+            'c-1',
             'c-2',
         ]);
 
@@ -1458,7 +1482,10 @@ describe('threads', () => {
     it('offers no Archive on a chat whose threads work, and offers it on a finished thread', async () => {
         await draw(() => ui().toggleChatExpanded('c-6'));
 
-        expect(rowOf('c-6').querySelector('button[aria-label="Archive"]')?.hasAttribute('disabled')).toBe(true);
+        const busyActions = rowOf('c-6').querySelector('[slot="endAffix"]');
+
+        expect(busyActions?.querySelector('button[aria-label="Archive"]')).toBeNull();
+        expect(busyActions?.querySelector('[aria-label="Threads working"] [data-tone="success"]')).not.toBeNull();
         expect(rowOf('c-6b').querySelector('button[aria-label="Archive"]')?.hasAttribute('disabled')).toBe(false);
 
         await press(rowOf('c-6').querySelector<HTMLElement>('button[aria-label="Chat actions"]')!);
@@ -1501,9 +1528,11 @@ describe('threads', () => {
         // The message is an element (the dialog may add a checkbox for the chat's worktree) that carries the words the confirmation says.
         expect(openConfirmModal).toHaveBeenCalledWith(
             expect.objectContaining({
+                title: 'Delete “Ship the checkout”?',
+                confirmLabel: 'Delete chat',
                 message: expect.objectContaining({
                     props: expect.objectContaining({
-                        text: '"Ship the checkout", its 5 threads and the runs of their agents are deleted for good. The tasks they made stay.',
+                        text: 'This will also delete 5 threads. You can’t undo this. Tasks stay in the project.',
                     }),
                 }),
             })
@@ -1545,7 +1574,9 @@ describe('a chat that works in a worktree', () => {
     it("has a branch mark after its title, with its branch in the mark's title, and no other row has one", async () => {
         await restart();
 
-        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.title).toBe('Works in a worktree on clowdy/ab12cd34');
+        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.getAttribute('aria-label')).toBe(
+            'Works in a worktree on clowdy/ab12cd34'
+        );
         expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.querySelector('svg')).not.toBeNull();
         expect(rowKeys().filter(key => key && mark(key))).toEqual([FIXTURE_WORKSPACE_CHAT_ID]);
         // The title stays what the row is called, with the mark after it.
@@ -1558,7 +1589,9 @@ describe('a chat that works in a worktree', () => {
     it('says the branch the worktree has now, as the daemon read it, and not the one it was made with', async () => {
         await restart(reading([{ workspaceId: 'wks_ab12cd34', exists: true, branch: 'feature/other' }]).transport);
 
-        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.title).toBe('Works in a worktree on feature/other');
+        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.getAttribute('aria-label')).toBe(
+            'Works in a worktree on feature/other'
+        );
     });
 
     it('reads what the daemon knows again when the window gets focus, for the branch an agent switched to meanwhile', async () => {
@@ -1578,13 +1611,13 @@ describe('a chat that works in a worktree', () => {
         await draw();
 
         expect(everything()).toBeGreaterThan(reads);
-        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.title).toBe('Works in a worktree on hotfix');
+        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.getAttribute('aria-label')).toBe('Works in a worktree on hotfix');
     });
 
     it('says the worktree is gone when the daemon says it is no longer on the disk', async () => {
         await restart(reading([{ workspaceId: 'wks_ab12cd34', exists: false }]).transport);
 
-        expect(rowOf(FIXTURE_WORKSPACE_CHAT_ID).querySelector('[role="img"]')?.getAttribute('title')).toBe(
+        expect(rowOf(FIXTURE_WORKSPACE_CHAT_ID).querySelector('[role="img"]')?.getAttribute('aria-label')).toBe(
             'The worktree no longer exists'
         );
     });
@@ -1607,19 +1640,23 @@ describe('a chat that works in a worktree', () => {
             window.dispatchEvent(new Event('focus'));
         });
         await draw();
-        expect(mark(chat.id)?.title).toBe(`Works in a worktree on clowdy/${chat.id.slice(-8)}`);
+        expect(mark(chat.id)?.getAttribute('aria-label')).toBe(`Works in a worktree on clowdy/${chat.id.slice(-8)}`);
 
         await store.command({ type: 'chat.send', chatId: chat.id, text: 'Go' });
         await vi.waitFor(() => expect(project().chats.get(chat.id)?.workspace?.ready).toBe(true));
         await draw();
-        await vi.waitFor(() => expect(mark(chat.id)?.title).toBe(`Works in a worktree on clowdy/${chat.id.slice(-8)}`));
+        await vi.waitFor(() =>
+            expect(mark(chat.id)?.getAttribute('aria-label')).toBe(`Works in a worktree on clowdy/${chat.id.slice(-8)}`)
+        );
         expect(mark(chat.id)?.hasAttribute('data-gone')).toBe(false);
     });
 
     it('falls back to the branch it was made with when the read has no word on the worktree, and to a plain line when it was made with none', async () => {
         await restart(reading(undefined).transport);
 
-        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.title).toBe('Works in a worktree on clowdy/ab12cd34');
+        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.getAttribute('aria-label')).toBe(
+            'Works in a worktree on clowdy/ab12cd34'
+        );
 
         await restart(
             reading(
@@ -1628,7 +1665,7 @@ describe('a chat that works in a worktree', () => {
             ).transport
         );
 
-        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.title).toBe('Works in a worktree');
+        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.getAttribute('aria-label')).toBe('Works in a worktree');
     });
 
     it("shows the chat's folder, where it works and the branch read only under its message box, from the chat's own workspace", async () => {

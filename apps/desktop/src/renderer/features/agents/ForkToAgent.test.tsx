@@ -10,7 +10,6 @@ import { RootStore, RootStoreProvider } from '../../stores';
 import { newChatDraftKey, saveDraft } from '../chats/composerDrafts';
 import { filesOf, setFiles } from '../chats/composerFiles';
 import { newChatDefaults } from '../chats/newChatDefaults';
-import { chatListPreferences } from './chatListPreferences';
 import { Screen } from './Screen';
 
 import type { Editor } from '@tiptap/core';
@@ -90,7 +89,6 @@ async function forkTo(agent: string) {
 }
 
 beforeEach(async () => {
-    chatListPreferences.setSort('activity');
     saveDraft(DRAFT_KEY, emptyComposerDoc());
     setFiles(DRAFT_KEY, []);
     localStorage.clear();

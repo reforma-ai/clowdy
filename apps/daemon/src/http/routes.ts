@@ -102,6 +102,28 @@ const gitDiscardBody = z.object({
 /** The body of `POST .../git/fetch`, `.../pull` and `.../push` (`GitRemoteRequest`): the place and nothing else, so nothing a client sends changes what is run. */
 const gitRemoteBody = z.object({ folderId: z.string(), workspaceId: z.string().optional() });
 
+const gitMergeSelection = {
+    ...gitRemoteBody.shape,
+    direction: z.enum(['from', 'into']),
+    current: z.string(),
+    branch: z.string(),
+    remote: z.literal(true).optional(),
+};
+const gitCommitHash = z.string().regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/);
+const gitMergeTarget = { ...gitRemoteBody.shape, target: z.string(), commit: gitCommitHash };
+
+const gitMergeBody = z.discriminatedUnion('action', [
+    z.object({ ...gitMergeSelection, action: z.literal('preview') }),
+    z.object({
+        ...gitMergeSelection,
+        action: z.literal('merge'),
+        sourceCommit: gitCommitHash,
+        targetCommit: gitCommitHash,
+    }),
+    z.object({ ...gitMergeTarget, action: z.literal('push') }),
+    z.object({ ...gitMergeTarget, action: z.literal('abort'), sourceCommit: gitCommitHash }),
+]);
+
 /** The body of `POST .../git/switch` (`GitSwitchRequest`): the place, the branch and, for a new one, where it starts; what is wrong with the name or the start is the switch's to say. */
 const gitSwitchBody = z.object({
     folderId: z.string(),
@@ -516,6 +538,22 @@ export function createRoutes(context: RouteContext): Route[] {
                 } finally {
                     // What GitHub says of the branch moves with what was sent (a pull request opened, its checks started): the next read of it asks again, not after the short while it is kept.
                     await services.pullRequests.forget(place).catch(() => undefined);
+                }
+            },
+        },
+        {
+            method: 'POST',
+            pattern: /^\/v1\/projects\/([^/]+)\/git\/merge$/,
+            handle: async (request, _url, [id]) => {
+                const body = await readJson(request, gitMergeBody);
+                const place = resolvePlace(store, requireProject(store, id), body.folderId, body.workspaceId);
+
+                context.keepOpen(request);
+
+                try {
+                    return json(await services.gitBranchMerge.run(place, body));
+                } finally {
+                    if (body.action !== 'preview') await services.pullRequests.forget(place).catch(() => undefined);
                 }
             },
         },

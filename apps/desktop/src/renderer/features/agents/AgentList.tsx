@@ -5,7 +5,6 @@ import {
     GridListItem,
     listBoxItemDataShow,
     Menu,
-    MenuHeader,
     MenuItem,
     MenuSection,
     useCellEditMode,
@@ -13,6 +12,7 @@ import {
 import { Panel, PanelContent } from '@clowdy/components/Panel';
 import { Popover, PopoverScroll, PopoverTrigger, useContextMenu } from '@clowdy/components/Popover';
 import { Show } from '@clowdy/components/Show';
+import { Tooltip } from '@clowdy/components/Tooltip';
 import { Archive, Check, ChevronDown, ChevronRight, Message, More, NewChat, Version } from '@clowdy/icons/14';
 import {
     type CSSProperties,
@@ -34,8 +34,9 @@ import { archiveChat } from '../chats/archiveChat';
 import { ChatMenu } from '../chats/ChatMenu';
 import { isRunActive } from '../chats/chatRun';
 import { perform } from '../chats/commands';
+import { draftOf, messageOf, useDraftRevision } from '../chats/composerDrafts';
+import { filesOf, useDraftFilesRevision } from '../chats/composerFiles';
 import { deleteChat } from '../chats/deleteChat';
-import { threadsAtWork } from '../chats/runningAgentRows';
 import { workspaceHead } from '../openWith';
 import styles from './AgentList.module.css';
 import { ArchiveButton } from './ArchiveButton';
@@ -52,10 +53,11 @@ import {
     isActiveThread,
     orchestratorOf,
 } from './agentTree';
-import { ChatIcon } from './ChatIcon';
+import { ChatIcon, ChatStatus } from './ChatIcon';
 import { chatListPreferences } from './chatListPreferences';
 import { GroupFolderName } from './GroupFolderName';
 import { StarCard } from './StarCard';
+import { useChatListOrder } from './useChatListOrder';
 
 import type { Chat, ChatId, ChatWorkspace, FolderId, ProjectWorkspaceInfo } from '@clowdy/protocol';
 
@@ -100,10 +102,10 @@ interface ChatActions {
 }
 
 /**
- * The project's agents: the row that starts a chat, then the chats in use (in the order the menu of the heading's `⋯` asks for), each with the
+ * The project's agents: the row that starts a chat, then the chats in use in the person's order, each with the
  * threads its agents started below it, folded until the person opens them. Archived chats are not here, they are in the archive's list (the button
  * in the heading, beside the filters), and take their threads with them. `missing` are the folders gone from the disk (`Screen` reads them once for the list and the new-chat page): their group is marked and its button is off. With the menu's Group chats by folder on (it is, until the person turns it off), the
- * chats stand in a group for the folder they work in, under a heading that folds the group, has a button for a chat in that folder, and opens the folder's menu (`GroupFolderName`) from a press on its name, which also shows the new-chat page for that folder.
+ * chats stand in a group for the folder they work in, under a heading that folds the group. Its name opens the folder's menu (`GroupFolderName`), and the menu and heading both offer a new chat in that folder.
  * A chat that works in a worktree has a branch mark after its title, with its branch in the mark's title: the one the tree has checked out, from `workspaces` (`ProjectInfo.workspaces`, which `Screen` reads).
  */
 export function AgentList({
@@ -122,15 +124,19 @@ export function AgentList({
     isCovered: boolean;
 }) {
     const root = useRootStore();
+    useDraftRevision();
+    useDraftFilesRevision();
     const project = useProjectState();
     const ui = useProjectUi();
     const [renamingId, setRenamingId] = useState<ChatId | null>(null);
+    const saveRename = useRef<() => void>(() => {});
     const [menuChat, setMenuChat] = useState<Chat | null>(null);
     // The chat whose `⋯` menu is open: its row keeps the hover plate while the pointer is in the menu.
     const [menuOpenId, setMenuOpenId] = useState<ChatId | null>(null);
     const list = useRef<HTMLDivElement>(null);
     const heading = useRef<HTMLDivElement>(null);
     const contextMenu = useContextMenu();
+    const order = useChatListOrder(chats, selection.draft ? undefined : selection.chat?.id);
     const runOf = (chat: Chat) => orchestratorOf(chat, project.runs);
     const actions: ChatActions = {
         // The popover hands focus back to its trigger as it closes: starting at once would have that blur end the rename.
@@ -261,6 +267,8 @@ export function AgentList({
 
     const renderGroup = (group: AgentGroup, isCollapsed: boolean) => {
         const isMissing = missing.has(group.folder.id);
+        // Chats in the main folder have no folder id of their own.
+        const openNewChat = () => ui.openDraft([], group.isMain ? null : group.folder.id);
 
         return (
             <GridListItem
@@ -281,8 +289,7 @@ export function AgentList({
                             isDisabled={isMissing}
                             preventFocusOnPress
                             data-show={listBoxItemDataShow.itemBoth}
-                            // The main folder's chat has no folder of its own: it follows the main folder, as every chat did before groups.
-                            onPress={() => ui.openDraft([], group.isMain ? null : group.folder.id)}
+                            onPress={openNewChat}
                         >
                             <NewChat />
                         </Button>
@@ -293,14 +300,11 @@ export function AgentList({
             >
                 <span className={styles.groupTitle}>
                     <span className={styles.groupNameBox} {...ownEvents}>
-                        {/* The press also shows the new-chat page for the folder, so the window works in it and the menu can open it in Files and the terminal. A folder gone from the disk has no chat to start. */}
                         <GroupFolderName
                             name={group.name}
                             folder={group.folder}
                             missing={isMissing}
-                            onOpen={
-                                isMissing ? undefined : () => ui.openDraft([], group.isMain ? null : group.folder.id)
-                            }
+                            onNewChat={openNewChat}
                         />
                     </span>
                     {/* The way to fold the group. On a folded group it is always there, which says it is folded; on an open one it comes with the pointer or the keyboard. */}
@@ -348,16 +352,18 @@ export function AgentList({
 
     const renderRow = (row: AgentRow) => {
         const { chat } = row;
-        // A thread below the chat, at any depth, that waits for the person: its row is listed under a folded chat too, and the chat's dot says so. Else the
-        // same threads the strip above the message box lists, when they work.
+        const run = runOf(chat);
+        const busy = actions.busy(chat);
         const threads = project
             .threadsBelow(chat.id)
             .some(thread => thread.archivedAt === undefined && asksThePerson(thread, project.runs))
             ? ('asking' as const)
-            : threadsAtWork(project.threadsOf(chat.id), project.runs).length > 0
+            : project.threadsBelow(chat.id).some(thread => isActiveThread(thread, project.runs))
               ? ('working' as const)
               : undefined;
-        const icon = <ChatIcon chat={chat} run={runOf(chat)} threads={threads} />;
+        const draft = messageOf(draftOf(chat.id)) !== '' || filesOf(chat.id).length > 0;
+        const status = <ChatStatus run={run} threads={threads} draft={draft} className={styles.archiveStatus} />;
+        const icon = <ChatIcon chat={chat} run={run} threads={threads} showStatus={false} />;
 
         return (
             <GridListItem
@@ -366,32 +372,56 @@ export function AgentList({
                 text={chat.title}
                 // Only a row with threads below it has a chevron: on hover it takes the place of the icon, so the row needs no room for it.
                 icon={
-                    row.childCount > 0 ? (
+                    row.childCount > 0 && renamingId !== chat.id ? (
                         <Fold row={row} icon={icon} onToggle={() => ui.toggleChatExpanded(chat.id)} />
                     ) : (
                         icon
                     )
                 }
                 endAffix={
-                    renamingId === chat.id ? undefined : (
+                    renamingId === chat.id ? (
+                        <span {...ownEvents}>
+                            <Button
+                                variant="filling"
+                                color="secondary"
+                                size="xs"
+                                iconOnly
+                                aria-label="Save chat title"
+                                tooltip="Save"
+                                preventFocusOnPress
+                                onPress={() => saveRename.current()}
+                            >
+                                <Check />
+                            </Button>
+                        </span>
+                    ) : (
                         <RowEnd
                             chat={chat}
                             actions={actions}
+                            busy={busy}
+                            status={status}
                             isOpen={menuOpenId === chat.id}
                             onOpenChange={open => setMenuOpenId(open ? chat.id : null)}
+                            move={menuOpenId === chat.id ? order.actions(chat.id) : undefined}
                         />
                     )
                 }
-                className={row.depth > 0 ? styles.nested : undefined}
+                className={styles.chatRow}
                 style={{ '--depth': row.depth } as CSSProperties}
                 // The row of an open menu, from its button or the right click, stays as if hovered: the pointer is in the menu, not on the row.
                 data-open={menuOpenId === chat.id || (contextMenu.isOpen && menuChat?.id === chat.id) || undefined}
+                data-renaming={renamingId === chat.id || undefined}
                 data-depth={row.depth}
+                data-drop-position={order.drop?.indicatorId === chat.id ? order.drop.position : undefined}
             >
                 {renamingId === chat.id ? (
-                    <RenameField chat={chat} onDone={() => setRenamingId(null)} />
+                    <RenameField chat={chat} onDone={() => setRenamingId(null)} saveRename={saveRename} />
                 ) : (
-                    <span className={styles.titleLine}>
+                    <span
+                        className={styles.titleLine}
+                        draggable={row.depth === 0 ? true : undefined}
+                        onDragStart={row.depth === 0 ? event => order.start(event, chat.id) : undefined}
+                    >
                         <span className={styles.title} onDoubleClick={() => setRenamingId(chat.id)}>
                             {chat.title}
                         </span>
@@ -415,6 +445,7 @@ export function AgentList({
                     onClickCapture={onClick}
                     onContextMenu={openContextMenu}
                     onKeyDownCapture={onKeyDownCapture}
+                    {...order.handlers}
                 >
                     <GridList
                         aria-label="Agents"
@@ -458,6 +489,7 @@ export function AgentList({
                             onRename={() => actions.rename(chat)}
                             onArchive={() => actions.archive(chat)}
                             onDelete={() => actions.remove(chat)}
+                            {...order.actions(chat.id)}
                         />
                     </Popover>
                 )}
@@ -467,13 +499,11 @@ export function AgentList({
 }
 
 /**
- * The header's `⋯`: what the list shows (a checked entry is on), whether its chats stand in a group for each folder of the project (offered for a project of one folder too: the
- * group's heading has the folder's menu), and the order the chats come in (the checked one). Settings > Chat has the order and the finished threads too.
+ * The header's `⋯`: whether the list shows finished threads and whether chats stand in groups by folder.
  */
 function FilterMenu() {
     const ui = useProjectUi();
-    const project = useProjectState();
-    const { sort, showFinishedThreads } = chatListPreferences;
+    const { showFinishedThreads } = chatListPreferences;
     const [isOpen, setIsOpen] = useState(false);
     const shown = [...(showFinishedThreads ? ['finished'] : []), ...(ui.groupByFolder ? ['folders'] : [])];
 
@@ -512,32 +542,6 @@ function FilterMenu() {
                                 Group chats by folder
                             </MenuItem>
                         </MenuSection>
-                        <MenuSection
-                            selectionMode="single"
-                            disallowEmptySelection
-                            selectedKeys={[sort]}
-                            onSelectionChange={keys => {
-                                const [next] = keys === 'all' ? [] : keys;
-
-                                if (next === 'activity' || next === 'created') chatListPreferences.setSort(next);
-                            }}
-                        >
-                            <MenuHeader>Sort by</MenuHeader>
-                            <MenuItem
-                                id="activity"
-                                textValue="Last activity"
-                                endAffix={sort === 'activity' ? <Check /> : undefined}
-                            >
-                                Last activity
-                            </MenuItem>
-                            <MenuItem
-                                id="created"
-                                textValue="Created"
-                                endAffix={sort === 'created' ? <Check /> : undefined}
-                            >
-                                Created
-                            </MenuItem>
-                        </MenuSection>
                     </Menu>
                 </PopoverScroll>
             </Popover>
@@ -565,15 +569,11 @@ function WorktreeMark({
           : 'Works in a worktree';
 
     return (
-        <span
-            className={styles.worktree}
-            role="img"
-            aria-label={title}
-            title={title}
-            data-gone={head?.gone || undefined}
-        >
-            <Version aria-hidden="true" />
-        </span>
+        <Tooltip content={title}>
+            <span className={styles.worktree} role="img" aria-label={title} data-gone={head?.gone || undefined}>
+                <Version aria-hidden="true" />
+            </span>
+        </Tooltip>
     );
 }
 
@@ -606,48 +606,54 @@ function Fold({ row, icon, onToggle }: { row: AgentRow; icon: ReactNode; onToggl
     );
 }
 
-/** The end of a chat's row, on hover: Archive as a quick action, and the `⋯` menu button. */
+/** The activity indicator takes the archive shortcut's place while the chat or its threads are active. */
 function RowEnd({
     chat,
     actions,
+    busy,
+    status,
     isOpen,
     onOpenChange,
+    move,
 }: {
     chat: Chat;
     actions: ChatActions;
+    busy: string | undefined;
+    status: ReactNode;
     isOpen: boolean;
     onOpenChange: (isOpen: boolean) => void;
+    move?: { onMoveUp?: () => void; onMoveDown?: () => void };
 }) {
-    const busy = actions.busy(chat);
     const close = () => onOpenChange(false);
 
     return (
         // The buttons and the popover are React children of the row, so their clicks and keys would reach the row through the tree.
-        <span className={styles.end} {...ownEvents}>
-            <Button
-                variant="filling"
-                color="secondary"
-                size="xs"
-                iconOnly
-                aria-label="Archive"
-                tooltip={busy ?? 'Archive'}
-                isDisabled={busy !== undefined}
-                preventFocusOnPress
-                data-show={listBoxItemDataShow.itemBoth}
-                onPress={() => actions.archive(chat)}
-            >
-                <Archive />
-            </Button>
+        <span className={styles.chatActions} {...ownEvents}>
+            {status}
+            {!busy && (
+                <Button
+                    className={styles.rowAction}
+                    variant="filling"
+                    color="secondary"
+                    size="xs"
+                    iconOnly
+                    aria-label="Archive"
+                    tooltip="Archive"
+                    preventFocusOnPress
+                    onPress={() => actions.archive(chat)}
+                >
+                    <Archive />
+                </Button>
+            )}
             <PopoverTrigger isOpen={isOpen} onOpenChange={onOpenChange}>
                 <Button
+                    className={styles.rowAction}
                     variant="filling"
                     color="secondary"
                     size="xs"
                     iconOnly
                     aria-label="Chat actions"
                     preventFocusOnPress
-                    // Kept while the menu is open, though the pointer has left the row.
-                    data-show={isOpen ? undefined : listBoxItemDataShow.itemBoth}
                 >
                     <More />
                 </Button>
@@ -658,6 +664,7 @@ function RowEnd({
                         onRename={() => actions.rename(chat)}
                         onArchive={() => actions.archive(chat)}
                         onDelete={() => actions.remove(chat)}
+                        {...move}
                     />
                 </Popover>
             </PopoverTrigger>
@@ -666,18 +673,41 @@ function RowEnd({
 }
 
 /** The title as a field in the title's own place: Enter or leaving it renames, Escape keeps the old name. */
-function RenameField({ chat, onDone }: { chat: Chat; onDone: () => void }) {
+function RenameField({
+    chat,
+    onDone,
+    saveRename,
+}: {
+    chat: Chat;
+    onDone: () => void;
+    saveRename: { current: () => void };
+}) {
     const root = useRootStore();
-    const edit = useCellEditMode();
     const [title, setTitle] = useState(chat.title);
+    const finished = useRef(false);
+    const inputRef = useRef<HTMLInputElement>(null);
 
     const commit = () => {
+        if (finished.current) return;
+        finished.current = true;
         const next = title.trim();
 
         onDone();
 
         if (next && next !== chat.title) void perform(root, { type: 'chat.rename', chatId: chat.id, title: next });
     };
+    saveRename.current = commit;
+    const edit = useCellEditMode(event => {
+        if (event.isComposing) return;
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            commit();
+        } else if (event.key === 'Escape') {
+            event.preventDefault();
+            finished.current = true;
+            onDone();
+        }
+    }, inputRef);
 
     return (
         <Input
@@ -686,16 +716,13 @@ function RenameField({ chat, onDone }: { chat: Chat; onDone: () => void }) {
             aria-label="Chat title"
             autoFocus
             autoSelect
+            inputRef={inputRef}
             value={title}
             onChange={setTitle}
             onFocus={edit.onFocus}
             onBlur={event => {
                 edit.onBlur(event);
                 commit();
-            }}
-            onKeyDown={event => {
-                if (event.key === 'Enter') commit();
-                else if (event.key === 'Escape') onDone();
             }}
         />
     );

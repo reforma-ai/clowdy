@@ -1,29 +1,16 @@
-import { Button } from '@clowdy/components/Button';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@clowdy/components/Collapsible';
 import { GridList, GridListItem } from '@clowdy/components/List';
 import { Scrollable } from '@clowdy/components/Scrollable';
 import { Text } from '@clowdy/components/Text';
-import { ChatChanged, ChevronDown, ChevronUp } from '@clowdy/icons/14';
-import { useId, useState } from 'react';
 
 import { useProjectState, useRootStore } from '../../stores';
 import { chatFolder } from '../agents/agentTree';
-import { CHANGE_KIND_VIEW, splitPath } from '../changes/gitSummary';
+import { CHANGE_KIND_VIEW, filesWords, splitPath } from '../changes/gitSummary';
 import { openRunInChanges } from '../changes/openRunInChanges';
 import { chatPlace, isPlaceReady } from '../sidePanel/currentPlace';
-import { ComposerBanner } from './ComposerBanner';
+import { ComposerBanner, ComposerBannerHeader } from './ComposerBanner';
 import styles from './LastRunPlate.module.css';
-import {
-    chevronWords,
-    hiddenRows,
-    isLastRunCurrent,
-    lastRunScope,
-    plateFilesOf,
-    plateTitle,
-    plateTotals,
-    rowCounts,
-    rowLabel,
-    visibleRows,
-} from './lastRunRows';
+import { isLastRunCurrent, lastRunScope, plateFilesOf, plateTotals, rowCounts, rowLabel } from './lastRunRows';
 import { useLastRunChanges } from './useLastRunChanges';
 
 import type { Chat, GitChangedFile, GitScope, Run, StreamItem } from '@clowdy/protocol';
@@ -82,75 +69,66 @@ function Row({ file }: { file: GitChangedFile }) {
     );
 }
 
-/**
- * The plate for one run: the header with the totals, the first files as a list, and the button that unfolds the rest (folded again for the next run, which is a new plate). The
- * rows are the design system's list, its words where the plate's other rows have theirs; unfolded, the list scrolls in a box of its own.
- */
+/** A one-line summary of the run that opens to show all its changed files in a scrollable list. */
 function RunPlate({ changes, onOpen }: { changes: RepositoryChanges; onOpen: (path: string) => void }) {
-    const [unfolded, setUnfolded] = useState(false);
-    const rows = useId();
     const totals = plateTotals(changes);
-    const hidden = hiddenRows(changes.files);
 
     return (
-        <ComposerBanner role="group" aria-label="Last run">
-            <div className={styles.header}>
-                <span className={styles.icon} aria-hidden>
-                    <ChatChanged />
-                </span>
-                <Text variant="xs" color="secondary" truncate className={styles.title}>
-                    {plateTitle(changes)}
-                </Text>
-                <span className={styles.counts}>
-                    <Text variant="xs" color="success">
-                        {totals.additions}
-                    </Text>
-                    <Text variant="xs" color="danger">
-                        {totals.deletions}
-                    </Text>
-                </span>
-            </div>
-            <Scrollable className={unfolded ? styles.unfolded : undefined} contentClass={styles.rows}>
-                <GridList
-                    id={rows}
-                    aria-label="Files the run changed"
-                    size="sm"
-                    className={styles.list}
-                    onAction={key => onOpen(String(key))}
-                >
-                    {visibleRows(changes.files, unfolded).map(file => (
-                        <Row key={file.path} file={file} />
-                    ))}
-                </GridList>
-            </Scrollable>
-            {hidden > 0 && (
-                <div className={styles.footer}>
-                    <Button
-                        variant="filling"
-                        color="secondary"
-                        size="sm"
-                        className={styles.more}
-                        contentClassName={styles.moreContent}
-                        aria-expanded={unfolded}
-                        aria-controls={rows}
-                        onPress={() => setUnfolded(value => !value)}
-                    >
-                        <span className={styles.icon} aria-hidden>
-                            {unfolded ? <ChevronUp /> : <ChevronDown />}
-                        </span>
-                        <Text variant="xs" color="secondary">
-                            {chevronWords(changes, unfolded)}
-                        </Text>
-                    </Button>
-                </div>
-            )}
+        <ComposerBanner role="group" aria-label="Changes from the last run">
+            <Collapsible as="Fragment" defaultOpen={false}>
+                {({ state }) => (
+                    <>
+                        <CollapsibleTrigger asChild>
+                            <ComposerBannerHeader
+                                expanded={state.isExpanded}
+                                summary={
+                                    <>
+                                        <Text variant="xs" color="secondary">
+                                            {filesWords(changes.fileCount)}
+                                        </Text>
+                                        <span className={styles.counts}>
+                                            <Text variant="xs" color="success">
+                                                {totals.additions}
+                                            </Text>
+                                            <Text variant="xs" color="danger">
+                                                {totals.deletions}
+                                            </Text>
+                                        </span>
+                                    </>
+                                }
+                            >
+                                Changes
+                            </ComposerBannerHeader>
+                        </CollapsibleTrigger>
+                        {state.isExpanded && (
+                            <CollapsibleContent asChild>
+                                <Scrollable
+                                    className={styles.files}
+                                    containerClass={styles.fileScroll}
+                                    contentClass={styles.rows}
+                                >
+                                    <GridList
+                                        aria-label="Files the run changed"
+                                        size="sm"
+                                        className={styles.list}
+                                        onAction={key => onOpen(String(key))}
+                                    >
+                                        {changes.files.map(file => (
+                                            <Row key={file.path} file={file} />
+                                        ))}
+                                    </GridList>
+                                </Scrollable>
+                            </CollapsibleContent>
+                        )}
+                    </>
+                )}
+            </Collapsible>
         </ComposerBanner>
     );
 }
 
 /**
- * The plate over the message box after a run that changed files (Stage 9 of `.briefback/git-integration/plan.md`, in the manner of bb's): `Last run · 7 files +152 −22`, the first five files with
- * the letter of what happened to each and their lines, and a chevron for the rest. Only what that run changed: the daemon took two trees of the chat's place around the run's turn
+ * The Changes summary over the message box after a run that changed files. The daemon took two trees of the chat's place around the run's turn
  * (`Chat.lastRun`), and the list is their difference, so it is what the run did whatever happens to the files afterwards. It is drawn while the chat is at rest after such a run and
  * the person has not written since: not while a run works, not with a message waiting in the queue or sent after the run, not for a run that changed nothing, and not when the
  * list of the run cannot be read (git has pruned the trees). It is drawn for a chat that cannot be written to as well. A press on a file opens the Changes tab on the run's scope with that file's

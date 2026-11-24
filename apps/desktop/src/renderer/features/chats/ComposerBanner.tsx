@@ -1,10 +1,11 @@
 import { Button } from '@clowdy/components/Button';
 import { Text } from '@clowdy/components/Text';
-import { ChevronDown, ChevronRight } from '@clowdy/icons/14';
+import { ChevronDown } from '@clowdy/icons/14';
 import { cn } from '@clowdy/lib';
 
 import styles from './ComposerBanner.module.css';
 
+import type { ButtonProps } from '@clowdy/components/Button';
 import type { HTMLAttributes, ReactNode } from 'react';
 
 /** The plate above the message box that status rows sit on (Reforma's `ComposerBanner`, dense form): one tight line per row, no rules between. */
@@ -75,58 +76,42 @@ export function ComposerBannerStatus({
     );
 }
 
-export interface ComposerBannerHeaderProps {
-    children: ReactNode;
-    /** The words of the line's button, such as `Stop all`. No button without it. */
-    action?: string;
-    onAction?: () => void;
-    /** Whether the rows under the line are folded away. With `onToggle`, a chevron at the end of the line folds and unfolds them. */
-    collapsed?: boolean;
-    onToggle?: () => void;
-    /** What the chevron does and a screen reader hears, such as `Hide agents` and `Show agents`. */
-    toggleLabel?: string;
+interface ComposerBannerHeaderProps extends ButtonProps {
+    summary: ReactNode;
+    expanded: boolean;
+    /** A separate control, such as Stop all, that does not toggle the rows. */
+    action?: ReactNode;
 }
 
-/** The line above a group of rows: a label in muted words, a button for what applies to the whole group, and a chevron that folds the rows. */
+/** Full-width disclosure with a summary and a chevron at the end. */
 export function ComposerBannerHeader({
     children,
+    className,
+    summary,
+    expanded,
     action,
-    onAction,
-    collapsed = false,
-    onToggle,
-    toggleLabel,
+    ...props
 }: ComposerBannerHeaderProps) {
     return (
-        <div className={styles.status}>
-            <Text variant="xs" color="secondary" className={styles.text}>
-                {children}
-            </Text>
-            {action && (
-                <Button
-                    size="xs"
-                    variant="ghost"
-                    color="secondary"
-                    className={styles.action}
-                    isDisabled={!onAction}
-                    onPress={onAction}
-                >
-                    {action}
-                </Button>
-            )}
-            {onToggle && (
-                <Button
-                    size="xs"
-                    variant="ghost"
-                    color="secondary"
-                    iconOnly
-                    className={styles.action}
-                    aria-label={toggleLabel}
-                    aria-expanded={!collapsed}
-                    onPress={onToggle}
-                >
-                    {collapsed ? <ChevronRight /> : <ChevronDown />}
-                </Button>
-            )}
+        <div className={styles.header} data-has-action={action ? true : undefined}>
+            <Button
+                {...props}
+                variant="filling"
+                color="secondary"
+                size="sm"
+                className={cn(styles.disclosure, className)}
+                contentClassName={styles.headerContent}
+                aria-expanded={expanded}
+            >
+                <Text variant="xs" weight="medium" className={styles.headerTitle}>
+                    {children}
+                </Text>
+                <span className={styles.summary}>
+                    {summary}
+                    <ChevronDown className="chevron next" aria-expanded={expanded} aria-hidden />
+                </span>
+            </Button>
+            {action && <span className={styles.headerAction}>{action}</span>}
         </div>
     );
 }

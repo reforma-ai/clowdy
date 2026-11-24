@@ -3,7 +3,7 @@ import { Menu, MenuHeader, MenuItem, MenuSection, MenuSeparator, SubmenuTrigger 
 import { Popover, PopoverScroll } from '@clowdy/components/Popover';
 import { toast } from '@clowdy/components/Toast';
 import { ChevronRight } from '@clowdy/icons/8';
-import { Close, Copy, Folder, Follow, Search, Terminal, Version } from '@clowdy/icons/14';
+import { Close, Copy, Folder, Follow, NewChat, Search, Terminal, Version } from '@clowdy/icons/14';
 import { Github } from '@clowdy/icons/logo';
 
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
@@ -24,6 +24,8 @@ export interface OpenWithMenuProps {
     /** For a folder that is gone: Locate… and Remove from project, under the note (`useFolderRepair`). */
     repair?: FolderRepair;
     git: FolderGit | undefined;
+    /** The sidebar folder menu offers a new chat in this folder. */
+    onNewChat?: () => void;
     /** A last item, under a separator, `Manage worktrees…`, runs this (it opens the dialog of the project's worktrees). Without it there is no such item. */
     onManageWorktrees?: () => void;
     /** Called when an item is pressed, before it runs: a menu that is not in a `MenuTrigger` shuts itself here. */
@@ -58,6 +60,7 @@ export function OpenWithMenu({
     missing = false,
     repair,
     git,
+    onNewChat,
     onManageWorktrees,
     onClose,
     'aria-label': label,
@@ -90,6 +93,7 @@ export function OpenWithMenu({
         onClose?.();
 
         if (key === 'manage') onManageWorktrees?.();
+        else if (key === 'new-chat') onNewChat?.();
         else if (key === 'locate') repair?.locate();
         else if (key === 'remove') repair?.remove?.();
         else actions.find(action => action.id === key)?.run();
@@ -119,6 +123,16 @@ export function OpenWithMenu({
                     {repair?.remove && (
                         <MenuItem id="remove" icon={<Close aria-hidden="true" />} textValue="Remove from project">
                             Remove from project
+                        </MenuItem>
+                    )}
+                    {onNewChat && (
+                        <MenuItem
+                            id="new-chat"
+                            icon={<NewChat aria-hidden="true" />}
+                            textValue="New chat"
+                            isDisabled={missing}
+                        >
+                            New chat
                         </MenuItem>
                     )}
                     <For each={here}>{item}</For>

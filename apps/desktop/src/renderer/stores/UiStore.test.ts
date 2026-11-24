@@ -644,20 +644,28 @@ describe('UiStore', () => {
         ).toEqual(['c-1']);
     });
 
-    it('shows the rows of the running-agents strip until the person folds them, and remembers it per project', () => {
+    it('folds the running-agents strip by default and remembers manual toggles per project', () => {
         const storage = memoryStorage();
         const store = new UiStore(storage);
         const ui = store.forProject('p1');
 
-        expect(ui.agentsFolded).toBe(false);
-
-        ui.toggleAgentsFolded();
         expect(ui.agentsFolded).toBe(true);
-        expect(store.forProject('p2').agentsFolded).toBe(false);
-        expect(new UiStore(storage).forProject('p1').agentsFolded).toBe(true);
 
         ui.toggleAgentsFolded();
+        expect(ui.agentsFolded).toBe(false);
+        expect(store.forProject('p2').agentsFolded).toBe(true);
         expect(new UiStore(storage).forProject('p1').agentsFolded).toBe(false);
+
+        ui.toggleAgentsFolded();
+        expect(new UiStore(storage).forProject('p1').agentsFolded).toBe(true);
+    });
+
+    it('uses the folded default for projects that saved the old open default', () => {
+        const storage = memoryStorage({ 'clowdy:ui:p1': '{"agentsFolded":false,"sidePanelOpen":true}' });
+        const ui = new UiStore(storage).forProject('p1');
+
+        expect(ui.agentsFolded).toBe(true);
+        expect(ui.sidePanelOpen).toBe(true);
     });
 
     it('keeps the side panel closed until the person opens it, and remembers it per project', () => {
@@ -994,8 +1002,8 @@ describe('UiStore', () => {
         expect(initialUiFromSearch('?agents=folded')).toEqual({ agentsFolded: true });
         expect(initialUiFromSearch('?agents=open')).toEqual({ agentsFolded: false });
         expect(
-            new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"agentsFolded":"yes"}' })).forProject('p1').agentsFolded
-        ).toBe(false);
+            new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"agentsExpanded":"yes"}' })).forProject('p1').agentsFolded
+        ).toBe(true);
     });
 
     it('groups the list by folder until it is turned off, folds a group on its own, and keeps both per project across a restart', () => {

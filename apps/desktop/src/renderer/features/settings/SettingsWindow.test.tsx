@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider, SETTINGS_PAGES } from '../../stores';
+import { SourceControlPreferences, sourceControlPreferences } from '../changes/sourceControlPreferences';
 import { SettingsWindow } from './SettingsWindow';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -66,6 +67,7 @@ describe('Settings', () => {
             'Appearance',
             'Chat',
             'Files',
+            'Source Control',
             'Shortcuts',
             'Projects',
             'Providers',
@@ -102,6 +104,25 @@ describe('Settings', () => {
 
         expect(store.ui.settingsPage).toBe('chat');
         expect(titleOf()).toBe('Chat');
+    });
+
+    it('remembers the default diff layout chosen in Source Control', async () => {
+        await draw();
+        await press(option('Source Control'));
+
+        const toggle = container.querySelector<HTMLInputElement>('input[aria-label="Collapse diffs by default"]')!;
+
+        expect(titleOf()).toBe('Source Control');
+        expect(toggle.checked).toBe(true);
+        expect(new SourceControlPreferences().collapseDiffs).toBe(true);
+
+        try {
+            await press(toggle);
+            expect(toggle.checked).toBe(false);
+            expect(new SourceControlPreferences(window.localStorage).collapseDiffs).toBe(false);
+        } finally {
+            act(() => sourceControlPreferences.setCollapseDiffs(true));
+        }
     });
 
     it('has Add project… at the end of the title of Projects, and not on another page', async () => {
