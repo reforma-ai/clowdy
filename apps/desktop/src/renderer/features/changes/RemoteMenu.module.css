@@ -69,26 +69,13 @@
     flex-shrink: 0;
 }
 
-/* The label and the counts on a line, the line of words under them. */
+/* The two lines of text share the space beside the centered counts or spinner. */
 .words {
     display: flex;
     flex: 1;
     flex-direction: column;
     align-items: stretch;
     gap: 0;
-    min-width: 0;
-}
-
-.head {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-6);
-    min-width: 0;
-}
-
-/* The label is cut before the counts are. */
-.label {
-    flex: 0 1 auto;
     min-width: 0;
 }
 
@@ -101,7 +88,6 @@
     display: inline-flex;
     flex-shrink: 0;
     gap: var(--spacing-4);
-    margin-inline-start: auto;
     color: var(--color-secondary-muted-text);
     white-space: nowrap;
 }
@@ -119,19 +105,11 @@
     height: var(--spacing-12);
 }
 
-/* In a sidebar dragged to its narrowest the label keeps the whole of its line and the counts take the next one, and the line of words (the last fetch) is left to the tooltip, which has it. */
+/* Stack the counts at narrow widths to leave room for the label. The tooltip carries the fetch detail. */
 @container (max-width: 12rem) {
-    .head {
-        flex-wrap: wrap;
-        gap: 0;
-    }
-
-    .label {
-        flex-basis: 100%;
-    }
-
     .counts {
-        margin-inline-start: 0;
+        flex-direction: column;
+        gap: 0;
     }
 
     .line {

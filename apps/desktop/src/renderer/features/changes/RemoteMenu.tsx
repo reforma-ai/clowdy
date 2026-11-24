@@ -93,18 +93,14 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
                         onPress={() => view.action && void remote.run(view.action)}
                     >
                         <span className={styles.words}>
-                            <span className={styles.head}>
-                                <Text
-                                    variant="xs"
-                                    weight="medium"
-                                    color={view.tone === 'warning' ? 'warning' : undefined}
-                                    truncate
-                                    className={styles.label}
-                                >
-                                    {view.label}
-                                </Text>
-                                <Counts ahead={view.ahead} behind={view.behind} />
-                            </span>
+                            <Text
+                                variant="xs"
+                                weight="medium"
+                                color={view.tone === 'warning' ? 'warning' : undefined}
+                                truncate
+                            >
+                                {view.label}
+                            </Text>
                             {view.line && (
                                 <Text
                                     variant="xs"
@@ -116,6 +112,7 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
                                 </Text>
                             )}
                         </span>
+                        <Counts ahead={view.ahead} behind={view.behind} />
                         {running !== undefined && <Spinner size="xs" className={styles.spinner} aria-hidden />}
                     </Button>
                 </Unavailable>

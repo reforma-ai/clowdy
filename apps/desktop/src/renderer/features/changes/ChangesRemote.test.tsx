@@ -304,7 +304,7 @@ describe('the sync button in the sidebar', () => {
         const pull = vi.spyOn(transport, 'pullGit');
 
         expect(syncButton().getAttribute('data-sync')).toBe('pull');
-        expect(syncButton().textContent).toBe('Pull origin2Last fetched 3 minutes ago');
+        expect(syncButton().textContent).toBe('Pull originLast fetched 3 minutes ago2');
         expect(syncButton().querySelector('svg')).not.toBeNull();
         await openMenu();
         expect(items().map(candidate => candidate.textContent)).toEqual([
@@ -329,7 +329,7 @@ describe('the sync button in the sidebar', () => {
         const push = vi.spyOn(transport, 'pushGit');
 
         expect(syncButton().getAttribute('data-sync')).toBe('push');
-        expect(syncButton().textContent).toBe('Push origin2Last fetched 3 minutes ago');
+        expect(syncButton().textContent).toBe('Push originLast fetched 3 minutes ago2');
         await press(syncButton());
         await settle();
         await settle();
@@ -346,7 +346,7 @@ describe('the sync button in the sidebar', () => {
         const push = vi.spyOn(transport, 'pushGit');
 
         expect(syncButton().getAttribute('data-sync')).toBe('pull');
-        expect(syncButton().textContent).toBe('Pull origin12Last fetched 3 minutes ago');
+        expect(syncButton().textContent).toBe('Pull originLast fetched 3 minutes ago12');
         expect(syncButton().disabled).toBe(false);
         expect(syncButton().textContent).not.toMatch(/Force push/);
 
