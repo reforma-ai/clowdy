@@ -415,7 +415,7 @@ describe('the commit button', () => {
     it('counts the selected files in the commit label', () => {
         expect(commitLabel(3)).toBe('Commit 3 files');
         expect(commitLabel(1)).toBe('Commit 1 file');
-        expect(commitLabel(0)).toBe('Commit');
+        expect(commitLabel(0)).toBe('Commit 0 files');
     });
 
     it("says why it cannot be pressed in GitHub Desktop's tooltips: the summary first, then the files", () => {
@@ -465,7 +465,7 @@ describe('isFetchFirst', () => {
 
 describe('remoteNotice', () => {
     it('says what each action did', () => {
-        expect(remoteNotice({ state: 'done', action: 'fetch' })).toEqual({ words: 'Fetched origin' });
+        expect(remoteNotice({ state: 'done', action: 'fetch' })).toBeUndefined();
         expect(remoteNotice({ state: 'done', action: 'pull', pulled: 1 })).toEqual({ words: 'Pulled 1 commit' });
         expect(remoteNotice({ state: 'done', action: 'pull', pulled: 3 })).toEqual({ words: 'Pulled 3 commits' });
         expect(remoteNotice({ state: 'done', action: 'pull', pulled: 0 })).toEqual({ words: 'Already up to date' });

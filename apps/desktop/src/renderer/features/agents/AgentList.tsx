@@ -5,7 +5,6 @@ import {
     GridListItem,
     listBoxItemDataShow,
     Menu,
-    MenuHeader,
     MenuItem,
     MenuSection,
     useCellEditMode,
@@ -13,6 +12,7 @@ import {
 import { Panel, PanelContent } from '@clowdy/components/Panel';
 import { Popover, PopoverScroll, PopoverTrigger, useContextMenu } from '@clowdy/components/Popover';
 import { Show } from '@clowdy/components/Show';
+import { Tooltip } from '@clowdy/components/Tooltip';
 import { Archive, Check, ChevronDown, ChevronRight, Message, More, NewChat, Version } from '@clowdy/icons/14';
 import {
     type CSSProperties,
@@ -58,6 +58,7 @@ import { chatListPreferences } from './chatListPreferences';
 import { GroupFolderName } from './GroupFolderName';
 import { openNewChat } from './openNewChat';
 import { StarCard } from './StarCard';
+import { useChatListOrder } from './useChatListOrder';
 
 import type { Chat, ChatId, ChatWorkspace, FolderId, ProjectWorkspaceInfo } from '@clowdy/protocol';
 
@@ -102,7 +103,7 @@ interface ChatActions {
 }
 
 /**
- * The project's agents: the row that starts a chat, then the chats in use (in the order the menu of the heading's `⋯` asks for), each with the
+ * The project's agents: the row that starts a chat, then the chats in use in the person's order, each with the
  * threads its agents started below it, folded until the person opens them. Archived chats are not here, they are in the archive's list (the button
  * in the heading, beside the filters), and take their threads with them. `missing` are the folders gone from the disk (`Screen` reads them once for the list and the new-chat page): their group is marked and its button is off. With the menu's Group chats by folder on (it is, until the person turns it off), the
  * chats stand in a group for the folder they work in, under a heading that folds the group. Its name opens the folder's menu (`GroupFolderName`), and the menu and heading both offer a new chat in that folder.
@@ -136,6 +137,7 @@ export function AgentList({
     const list = useRef<HTMLDivElement>(null);
     const heading = useRef<HTMLDivElement>(null);
     const contextMenu = useContextMenu();
+    const order = useChatListOrder(chats, selection.draft ? undefined : selection.chat?.id);
     const runOf = (chat: Chat) => orchestratorOf(chat, project.runs);
     const actions: ChatActions = {
         // The popover hands focus back to its trigger as it closes: starting at once would have that blur end the rename.
@@ -400,6 +402,7 @@ export function AgentList({
                             status={status}
                             isOpen={menuOpenId === chat.id}
                             onOpenChange={open => setMenuOpenId(open ? chat.id : null)}
+                            move={menuOpenId === chat.id ? order.actions(chat.id) : undefined}
                         />
                     )
                 }
@@ -409,11 +412,16 @@ export function AgentList({
                 data-open={menuOpenId === chat.id || (contextMenu.isOpen && menuChat?.id === chat.id) || undefined}
                 data-renaming={renamingId === chat.id || undefined}
                 data-depth={row.depth}
+                data-drop-position={order.drop?.indicatorId === chat.id ? order.drop.position : undefined}
             >
                 {renamingId === chat.id ? (
                     <RenameField chat={chat} onDone={() => setRenamingId(null)} saveRename={saveRename} />
                 ) : (
-                    <span className={styles.titleLine}>
+                    <span
+                        className={styles.titleLine}
+                        draggable={row.depth === 0 ? true : undefined}
+                        onDragStart={row.depth === 0 ? event => order.start(event, chat.id) : undefined}
+                    >
                         <span className={styles.title} onDoubleClick={() => setRenamingId(chat.id)}>
                             {chat.title}
                         </span>
@@ -437,6 +445,7 @@ export function AgentList({
                     onClickCapture={onClick}
                     onContextMenu={openContextMenu}
                     onKeyDownCapture={onKeyDownCapture}
+                    {...order.handlers}
                 >
                     <GridList
                         aria-label="Agents"
@@ -480,6 +489,7 @@ export function AgentList({
                             onRename={() => actions.rename(chat)}
                             onArchive={() => actions.archive(chat)}
                             onDelete={() => actions.remove(chat)}
+                            {...order.actions(chat.id)}
                         />
                     </Popover>
                 )}
@@ -489,13 +499,11 @@ export function AgentList({
 }
 
 /**
- * The header's `⋯`: what the list shows (a checked entry is on), whether its chats stand in a group for each folder of the project (offered for a project of one folder too: the
- * group's heading has the folder's menu), and the order the chats come in (the checked one). Settings > Chat has the order and the finished threads too.
+ * The header's `⋯`: whether the list shows finished threads and whether chats stand in groups by folder.
  */
 function FilterMenu() {
     const ui = useProjectUi();
-    const project = useProjectState();
-    const { sort, showFinishedThreads } = chatListPreferences;
+    const { showFinishedThreads } = chatListPreferences;
     const [isOpen, setIsOpen] = useState(false);
     const shown = [...(showFinishedThreads ? ['finished'] : []), ...(ui.groupByFolder ? ['folders'] : [])];
 
@@ -534,32 +542,6 @@ function FilterMenu() {
                                 Group chats by folder
                             </MenuItem>
                         </MenuSection>
-                        <MenuSection
-                            selectionMode="single"
-                            disallowEmptySelection
-                            selectedKeys={[sort]}
-                            onSelectionChange={keys => {
-                                const [next] = keys === 'all' ? [] : keys;
-
-                                if (next === 'activity' || next === 'created') chatListPreferences.setSort(next);
-                            }}
-                        >
-                            <MenuHeader>Sort by</MenuHeader>
-                            <MenuItem
-                                id="activity"
-                                textValue="Last activity"
-                                endAffix={sort === 'activity' ? <Check /> : undefined}
-                            >
-                                Last activity
-                            </MenuItem>
-                            <MenuItem
-                                id="created"
-                                textValue="Created"
-                                endAffix={sort === 'created' ? <Check /> : undefined}
-                            >
-                                Created
-                            </MenuItem>
-                        </MenuSection>
                     </Menu>
                 </PopoverScroll>
             </Popover>
@@ -587,15 +569,11 @@ function WorktreeMark({
           : 'Works in a worktree';
 
     return (
-        <span
-            className={styles.worktree}
-            role="img"
-            aria-label={title}
-            title={title}
-            data-gone={head?.gone || undefined}
-        >
-            <Version aria-hidden="true" />
-        </span>
+        <Tooltip content={title}>
+            <span className={styles.worktree} role="img" aria-label={title} data-gone={head?.gone || undefined}>
+                <Version aria-hidden="true" />
+            </span>
+        </Tooltip>
     );
 }
 
@@ -636,6 +614,7 @@ function RowEnd({
     status,
     isOpen,
     onOpenChange,
+    move,
 }: {
     chat: Chat;
     actions: ChatActions;
@@ -643,6 +622,7 @@ function RowEnd({
     status: ReactNode;
     isOpen: boolean;
     onOpenChange: (isOpen: boolean) => void;
+    move?: { onMoveUp?: () => void; onMoveDown?: () => void };
 }) {
     const close = () => onOpenChange(false);
 
@@ -684,6 +664,7 @@ function RowEnd({
                         onRename={() => actions.rename(chat)}
                         onArchive={() => actions.archive(chat)}
                         onDelete={() => actions.remove(chat)}
+                        {...move}
                     />
                 </Popover>
             </PopoverTrigger>

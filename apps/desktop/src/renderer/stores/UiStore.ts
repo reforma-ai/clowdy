@@ -66,6 +66,7 @@ interface StoredProjectUi {
     taskId: TaskId | null;
     runId: RunId | null;
     expandedChats: ChatId[];
+    chatOrder: ChatId[];
     groupByFolder: boolean;
     collapsedFolders: FolderId[];
     agentsExpanded: boolean;
@@ -164,6 +165,8 @@ export class ProjectUi {
     draftEngine: string | null = null;
     /** Agents: the chats whose threads the person opened in the list. A chat that is not here is folded, which is how every chat starts. */
     expandedChats: readonly ChatId[] = [];
+    /** Agents: the most recent manual order of the project's root chats. New chats go above these. */
+    chatOrder: readonly ChatId[] = [];
     /**
      * Agents: the list has a group for each folder of the project, each with a new-chat button that starts a chat in that folder. On until the person turns
      * it off (a project that kept no choice groups); off, the list is flat and a new chat starts in the main folder. Only a project with several folders
@@ -230,6 +233,9 @@ export class ProjectUi {
             this.expandedChats = Array.isArray(stored.expandedChats)
                 ? stored.expandedChats.filter(id => typeof id === 'string')
                 : [];
+            this.chatOrder = Array.isArray(stored.chatOrder)
+                ? [...new Set(stored.chatOrder.filter(id => typeof id === 'string'))]
+                : [];
             this.groupByFolder = stored.groupByFolder !== false;
             this.collapsedFolders = Array.isArray(stored.collapsedFolders)
                 ? stored.collapsedFolders.filter(id => typeof id === 'string')
@@ -255,6 +261,7 @@ export class ProjectUi {
             draftWorkspace: observableRef,
             draftWorkspaceRow: observableRef,
             expandedChats: observableRef,
+            chatOrder: observableRef,
             collapsedFolders: observableRef,
             tasksCollapsed: observableRef,
         });
@@ -264,6 +271,7 @@ export class ProjectUi {
                 taskId: this.taskId,
                 runId: this.runId,
                 expandedChats: [...this.expandedChats],
+                chatOrder: [...this.chatOrder],
                 groupByFolder: this.groupByFolder,
                 collapsedFolders: [...this.collapsedFolders],
                 agentsExpanded: !this.agentsFolded,
@@ -450,6 +458,12 @@ export class ProjectUi {
 
     setGroupByFolder(group: boolean): void {
         this.groupByFolder = group;
+    }
+
+    setChatOrder(order: readonly ChatId[], visibleChatId?: ChatId): void {
+        this.chatOrder = order;
+        // The first listed chat can be on screen without a remembered selection.
+        if (!this.draft && visibleChatId !== undefined) this.chatId = visibleChatId;
     }
 
     /** Folds the group of a folder in the list, or opens it again. */

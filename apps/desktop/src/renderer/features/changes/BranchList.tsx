@@ -38,9 +38,6 @@ export function BranchList({
 
     return (
         <div className={styles.body}>
-            <Text variant="xs" weight="medium" color="secondary" className={styles.title}>
-                Current branch
-            </Text>
             {listing ? (
                 <PickerList
                     options={options}

@@ -46,7 +46,7 @@ describe('the moves of a place to and from origin', () => {
 
         expect(await actions.run('fetch')).toEqual({ ok: true, result: { state: 'done', action: 'fetch' } });
         expect(transport.fetchGit).toHaveBeenCalledWith('prj_a', PLACE);
-        expect(actions.notice).toEqual({ words: 'Fetched origin' });
+        expect(actions.notice).toBeUndefined();
 
         await actions.run('pull');
         expect(transport.pullGit).toHaveBeenCalledWith('prj_a', PLACE);
@@ -68,7 +68,7 @@ describe('the moves of a place to and from origin', () => {
     it('lets the line that says what was done go after a while, and keeps a failure until the person acts again', async () => {
         const { actions, transport } = setup();
 
-        await actions.run('fetch');
+        await actions.run('pull');
         expect(actions.notice).toBeDefined();
         vi.advanceTimersByTime(NOTICE_MS - 1);
         expect(actions.notice).toBeDefined();
@@ -92,7 +92,7 @@ describe('the moves of a place to and from origin', () => {
 
         await actions.run('fetch');
         expect(actions.failure).toBeUndefined();
-        expect(actions.notice).toEqual({ words: 'Fetched origin' });
+        expect(actions.notice).toBeUndefined();
     });
 
     it('is one action at a time: a second is refused at once, with nothing sent', async () => {
@@ -181,7 +181,7 @@ describe('the moves of a place to and from origin', () => {
     it('can be dismissed, and is one for a place for as long as its facts are', () => {
         const { actions, facts, transport, refresh } = setup();
 
-        actions.notice = { words: 'Fetched origin' };
+        actions.notice = { words: 'Pulled 2 commits' };
         actions.dismiss();
         expect(actions.notice).toBeUndefined();
 

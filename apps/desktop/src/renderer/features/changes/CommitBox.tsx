@@ -24,15 +24,6 @@ import type { CommitDraft } from './CommitDraft';
 import type { PlaceChanges } from './PlaceChanges';
 import type { RemoteActions } from './RemoteActions';
 
-/** What the line under the buttons says of a commit that was made: `Committed 1a2b3c4`, and, after Commit & Push, that its branch was sent too. */
-function committedWords(draft: CommitDraft): string | undefined {
-    const { committed, sent } = draft;
-
-    if (!committed) return undefined;
-
-    return `Committed ${committed.shortSha}${sent ? ` and ${sent === 'publish' ? 'published' : 'pushed'}` : ''}`;
-}
-
 /**
  * What git or the daemon said when the box could not do what it was asked: git's own line, selectable, and the hint of the daemon under it when it has one. A push that origin turned
  * down for commits the branch lacks (`Committed 1a2b3c4, push failed: ! [rejected] main -> main (fetch first)`) has a Fetch origin button beside the line, as GitHub Desktop's
@@ -123,7 +114,7 @@ function CommitFileRow({ file, draft }: { file: GitChangedFile; draft: CommitDra
 /**
  * The sidebar's commit checklist and message. Cmd or Ctrl and Enter makes a local commit.
  * Hold Shift on the button or use its menu to commit and then push or publish the branch.
- * Commit results and errors stay visible after the form empties.
+ * A clean checkout still has a message field and a disabled commit button.
  */
 export function CommitBox({ model }: { model: PlaceChanges }) {
     const root = useRootStore();
@@ -169,31 +160,16 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
 
     if (model.isRepository === false || !draft.known) return null;
 
-    const { files, failure, committed } = draft;
+    const { files, failure, concluding } = draft;
+    const hasFiles = files.length > 0;
     const ticked = draft.ticked.length;
-    const busy = draft.busy !== undefined;
-
-    const feedback = failure ? (
-        <FailureLines failure={failure} draft={draft} remote={remote} />
-    ) : !busy && committed ? (
-        <Text variant="xs" color="secondary" role="status">
-            {committedWords(draft)}
-        </Text>
-    ) : null;
-
-    if (files.length === 0 && !draft.concluding) {
-        return (
-            feedback && (
-                <section className={styles.root} aria-label="Commit">
-                    {feedback}
-                </section>
-            )
-        );
-    }
-
+    const hasChangesToCommit = hasFiles || concluding;
+    const commitAndPush = shiftHeld && hasChangesToCommit;
     const target = commitTarget(model.facts.status.value);
-    const label = shiftHeld ? 'Commit & Push' : draft.concluding ? 'Commit merge' : commitLabel(ticked);
-    const reason = draft.commitReason ?? (shiftHeld && !busy ? draft.pushBlock : undefined);
+    const label = commitAndPush ? 'Commit & Push' : concluding ? 'Commit merge' : commitLabel(ticked);
+    const reason = hasChangesToCommit
+        ? (draft.commitReason ?? (commitAndPush && draft.busy === undefined ? draft.pushBlock : undefined))
+        : undefined;
 
     return (
         <section className={styles.root} aria-label="Commit">
@@ -202,25 +178,35 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
                     size="sm"
                     isSelected={draft.allTicked}
                     isIndeterminate={!draft.allTicked && !draft.noneTicked}
-                    isDisabled={draft.writing}
+                    isDisabled={!hasFiles || draft.writing}
                     aria-label="Tick every file"
                     onChange={on => draft.setAll(on)}
                 />
                 <Text variant="xs" weight="medium" color="secondary" truncate>
-                    Commit
+                    {hasFiles ? 'Commit' : '0 changed files'}
                 </Text>
-                <Text variant="xs" color="secondary" className={styles.count}>{`${ticked} of ${files.length}`}</Text>
+                {hasFiles && (
+                    <Text
+                        variant="xs"
+                        color="secondary"
+                        className={styles.count}
+                    >{`${ticked} of ${files.length}`}</Text>
+                )}
             </div>
 
-            <Scrollable className={styles.list} contentClass={styles.rows}>
-                <GridList
-                    aria-label="Files to commit"
-                    size="sm"
-                    onAction={key => draft.setTicked(String(key), !draft.isTicked(String(key)))}
-                >
-                    <For each={[...files]}>{file => <CommitFileRow key={file.path} file={file} draft={draft} />}</For>
-                </GridList>
-            </Scrollable>
+            {hasFiles && (
+                <Scrollable className={styles.list} contentClass={styles.rows}>
+                    <GridList
+                        aria-label="Files to commit"
+                        size="sm"
+                        onAction={key => draft.setTicked(String(key), !draft.isTicked(String(key)))}
+                    >
+                        <For each={[...files]}>
+                            {file => <CommitFileRow key={file.path} file={file} draft={draft} />}
+                        </For>
+                    </GridList>
+                </Scrollable>
+            )}
             {draft.truncated && <Text variant="xs" color="secondary">{`Showing the first ${files.length} files`}</Text>}
 
             <Textarea
@@ -267,13 +253,15 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
                             size="sm"
                             className={styles.commit}
                             contentClassName={styles.commitContent}
-                            isDisabled={!(shiftHeld ? draft.canCommitAndPush : draft.canCommit)}
+                            isDisabled={!(commitAndPush ? draft.canCommitAndPush : draft.canCommit)}
                             isPending={draft.writing}
                             tooltip={
-                                reason === undefined && !shiftHeld && target ? `Commit to ${target.name}` : undefined
+                                hasChangesToCommit && reason === undefined && !commitAndPush && target
+                                    ? `Commit to ${target.name}`
+                                    : undefined
                             }
                             tooltipPlacement="top"
-                            onPress={event => void draft.commit(shiftHeld && event.shiftKey)}
+                            onPress={event => void draft.commit(commitAndPush && event.shiftKey)}
                         >
                             {label}
                         </Button>
@@ -308,14 +296,14 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
             </div>
 
             {/* Several chats share a place, so a commit that goes straight to the branch the work is compared with is said before it is made. */}
-            {target?.onBase && (
+            {hasChangesToCommit && target?.onBase && (
                 <Text
                     variant="xs"
                     color="secondary"
                     role="note"
                 >{`Committing to ${target.name}, the base branch`}</Text>
             )}
-            {feedback}
+            {failure && <FailureLines failure={failure} draft={draft} remote={remote} />}
         </section>
     );
 }

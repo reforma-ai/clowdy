@@ -32,7 +32,61 @@
 }
 
 .header {
-    min-height: var(--spacing-28);
+    margin: var(--spacing-xxs) var(--spacing-xs);
+}
+
+.disclosure[data-size][data-variant] {
+    width: 100%;
+    padding-inline: var(--spacing-md);
+    text-align: start;
+}
+
+.headerContent {
+    justify-content: space-between;
+}
+
+.headerTitle {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.summary {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    white-space: nowrap;
+}
+
+/* Stop all sits in its own column over the disclosure surface as a sibling button. */
+.header[data-has-action] {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+.header[data-has-action] .disclosure,
+.header[data-has-action] .headerContent {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+    align-items: center;
+    column-gap: normal;
+}
+
+.header[data-has-action] .disclosure {
+    grid-row: 1;
+}
+
+.header[data-has-action] .summary {
+    grid-column: 3;
+}
+
+.headerAction {
+    z-index: 1;
+    display: flex;
+    grid-area: 1 / 2;
+    align-self: center;
+    margin-inline: var(--spacing-sm);
 }
 
 .icon {

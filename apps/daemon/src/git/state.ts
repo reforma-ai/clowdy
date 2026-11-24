@@ -25,12 +25,14 @@ export interface ListedWorktree {
     locked?: string;
 }
 
-/** `git worktree list --porcelain`: one block per worktree, `worktree <path>` first, then `HEAD`, `branch` or `detached`, and optional `bare`, `locked`, `prunable` lines. */
+/** `git worktree list --porcelain`: one block per worktree, with either newline or NUL field delimiters. */
 export function parseWorktrees(output: string): ListedWorktree[] {
     const found: ListedWorktree[] = [];
     let current: ListedWorktree | undefined;
 
-    for (const line of output.split(/\r?\n/)) {
+    const fields = output.includes('\0') ? output.split('\0') : output.split(/\r?\n/);
+
+    for (const line of fields) {
         if (line.startsWith('worktree ')) {
             current = { path: line.slice('worktree '.length), head: '', bare: false, prunable: false };
             found.push(current);

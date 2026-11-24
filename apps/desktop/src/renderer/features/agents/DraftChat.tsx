@@ -10,7 +10,6 @@ import { newChatDefaults, startingChoice } from '../chats/newChatDefaults';
 import { currentPlace } from '../sidePanel/currentPlace';
 import { openManageWorktrees } from '../worktrees';
 import { draftTarget } from './agentTree';
-import { DraftFolder } from './ChatFolder';
 import styles from './DraftChat.module.css';
 import { DraftFolderSelect } from './DraftFolderSelect';
 import { useDraftWorkspaceRow } from './useDraftWorkspaceRow';
@@ -25,8 +24,8 @@ import type { FolderId } from '@clowdy/protocol';
  * The new-chat row's page, a start page: the heading and the message box in the middle. No chat exists yet: the composer
  * makes it when the first message is sent, and then this page gives way to the chat. A hand-off from another chat arrives
  * with its words already in the box's draft and its conversation as a file in `ui.pendingFiles`. A line under the box (drawn by the composer, with the mode at its end) says which folder the chat is for
- * (`ui.draftFolderId`, the main folder's when none): a select that changes it in a project of several folders, the folder read only (`DraftFolder`) in one of a
- * single folder. After the folder comes the one control of where it works in it (`WorkspaceChips`: the branch of the folder's checkout, a new worktree, or an existing one), from what git says of the folder (`useFolderRepository`) and what the person
+ * (`ui.draftFolderId`, the main folder's when none): a select in a project of several folders, hidden for a single folder.
+ * The workspace control (`WorkspaceChips`) chooses the branch of the folder's checkout, a new worktree, or an existing one, from what git says of the folder (`useFolderRepository`) and what the person
  * chose (`ui.draftWorkspace`); the first message sends what that read bears out (`effectiveChoice`). A branch picked for the folder's own checkout is switched by the daemon as the chat is made
  * (`useMainBranch`): the message goes only once that is done, and a refusal keeps the words in the box and says why in the pill. A worktree that exists, once chosen, is also the place of the window's tabs (`useDraftWorkspaceRow`). `missing` are the folders gone from the disk, which the select lists and does not let be
  * picked. The chat this page makes keeps the line, with the folder and the place read only (`ChatFolder`).
@@ -106,7 +105,7 @@ export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
                             }}
                             controls={
                                 <>
-                                    {folders.length > 1 ? (
+                                    {folders.length > 1 && (
                                         <DraftFolderSelect
                                             folders={folders}
                                             selectedId={target.folder.id}
@@ -117,13 +116,6 @@ export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
                                                     folder.id === mainFolder(project.project).id ? null : folder.id
                                                 )
                                             }
-                                        />
-                                    ) : (
-                                        // A project of one folder has nothing to pick: the line says where the chat will work, as the chat's own does.
-                                        <DraftFolder
-                                            name={target.name}
-                                            folder={target.folder}
-                                            missing={missing.has(target.folder.id)}
                                         />
                                     )}
                                     <WorkspaceChips

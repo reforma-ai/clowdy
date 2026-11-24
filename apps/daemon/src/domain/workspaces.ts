@@ -192,8 +192,9 @@ export function workspaceLayout(
     branchName?: string
 ): { path: string; branch: string } {
     const name =
-        folderNames(project.folders)[project.folders.findIndex(candidate => candidate.id === folder.id)] ??
-        basename(folder.path);
+        folderNames(project.folders.map(({ path }) => ({ path })))[
+            project.folders.findIndex(candidate => candidate.id === folder.id)
+        ] ?? basename(folder.path);
 
     return {
         path: join(config.workspacesDir, projectSlug(project), chatKey(chatId), folderSegment(name)),

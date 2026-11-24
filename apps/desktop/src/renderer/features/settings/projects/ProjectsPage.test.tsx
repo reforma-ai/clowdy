@@ -1064,6 +1064,26 @@ describe('ProjectsPage workspace', () => {
         expect(field('Command').value).toBe('');
     });
 
+    it('saves a custom folder name and clears it back to the automatic name', async () => {
+        await openDialog('car-rental-api', {}, folders(SETTINGS));
+        const nameInput = () => form()!.querySelector<HTMLInputElement>('input[aria-label="Folder name"]')!;
+        expect(nameInput().value).toBe('');
+        typeInto(nameInput(), '  Backend  ');
+        await act(async () => form()!.requestSubmit());
+        await flush();
+        expect(settingsOf(FIXTURE_PROJECT_ID, API)).toMatchObject({ name: 'Backend', baseBranch: 'dev' });
+        expect(openButton('Backend')).not.toBeNull();
+        await click(openButton('Backend')!);
+        await flush();
+        expect(nameInput().value).toBe('Backend');
+        expect(nameInput().placeholder).toBe('car-rental-api');
+        typeInto(nameInput(), '');
+        await act(async () => form()!.requestSubmit());
+        await flush();
+        expect(settingsOf(FIXTURE_PROJECT_ID, API)).toEqual(SETTINGS);
+        expect(openButton('car-rental-api')).not.toBeNull();
+    });
+
     it('saves the three fields for that folder with one command, closes, and the folder keeps them', async () => {
         const sent: unknown[] = [];
 

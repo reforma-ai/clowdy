@@ -17,6 +17,7 @@ import {
 } from '../openWith';
 import styles from './ChatFolder.module.css';
 import { ChipTrigger } from './ChipTrigger';
+import { WorkspaceLabel } from './WorkspaceChips';
 
 import type { ChatWorkspace, ProjectFolder } from '@clowdy/protocol';
 
@@ -116,10 +117,12 @@ export interface ChatFolderProps {
     missing: boolean;
     /** The worktree the chat works in, if it does. */
     workspace?: ChatWorkspace;
+    /** Whether to show the folder alongside the workspace. */
+    showFolder?: boolean;
 }
 
 /** The chat's folder and current branch share the menu of the checkout it uses. */
-export function ChatFolder({ name, folder, missing, workspace }: ChatFolderProps) {
+export function ChatFolder({ name, folder, missing, workspace, showFolder = true }: ChatFolderProps) {
     const project = useProjectState();
     const ui = useProjectUi();
     const git = useFolderGit(project.id, folder.id, workspace);
@@ -130,7 +133,7 @@ export function ChatFolder({ name, folder, missing, workspace }: ChatFolderProps
             workspace ? { mode: 'existing', path: workspace.path } : null
         );
 
-    return (
+    return showFolder || workspace ? (
         <FolderPill
             name={name}
             folder={folder}
@@ -138,6 +141,8 @@ export function ChatFolder({ name, folder, missing, workspace }: ChatFolderProps
             git={git}
             checkout={{ workspace, onNewChat }}
         />
+    ) : (
+        <WorkspaceLabel worktree={workspace?.path} git={git} />
     );
 }
 

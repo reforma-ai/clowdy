@@ -72,6 +72,45 @@ export function remoteFailureLine(stderr: string, stdout: string, fallback: stri
     return shownLine(line);
 }
 
+/** Run the user's git with the write environment and give it a chance to clean locks after a timeout. */
+export function runGitWrite(
+    cwd: string,
+    args: string[],
+    env: Record<string, string>,
+    signal: AbortSignal,
+    timeoutMs = REMOTE_TIMEOUT_MS
+): Promise<RunResult> {
+    return runProgram('git', args, {
+        env,
+        cwd,
+        timeoutMs,
+        maxChars: MAX_PRINTED_CHARS,
+        signal,
+        stopSignal: 'SIGTERM',
+    });
+}
+
+/** Report the cause of a failed write and reset the cached signing agent when necessary. */
+export function checkGitWrite(run: RunResult, environment: WriteEnvironment, action: string, failure: string): void {
+    if (run.error === 'stopped') throw unavailable('The daemon is stopping');
+
+    if (run.timedOut) throw unavailable(`The ${action} did not finish in time`);
+
+    if (run.error !== undefined) throw unavailable('git is not installed or not on PATH');
+
+    if (run.code === 0) return;
+
+    const line = remoteFailureLine(run.stderr, run.stdout, `git could not ${failure}`);
+
+    if (namesSigningKey(`${run.stderr}\n${run.stdout}`)) {
+        environment.forgetAgent();
+
+        throw conflict(line, { hint: SIGNING_HINT } satisfies GitErrorDetails);
+    }
+
+    throw conflict(line);
+}
+
 /** Where the place's HEAD is, as far as the actions need to know it, and where the branch is set to go. */
 interface Head {
     /** The branch checked out; absent on a detached HEAD. */
@@ -200,7 +239,12 @@ export class GitRemote {
 
             if (head.branch === baseBranch || head.branch === base.name) throw invalid(`Already on ${head.branch}`);
 
-            const counts = await gitAnswer(place.path, ['rev-list', '--left-right', '--count', `${base.commit}...HEAD`]);
+            const counts = await gitAnswer(place.path, [
+                'rev-list',
+                '--left-right',
+                '--count',
+                `${base.commit}...HEAD`,
+            ]);
             const [behind, ahead] = (counts ?? '').split(/\s+/).map(Number);
 
             if (
@@ -365,7 +409,8 @@ export class GitRemote {
      * How many paths are still unmerged, when a merge is in progress (`MERGE_HEAD`); nothing when no merge is. The count is the whole tree, not the status list, which is cut.
      */
     async #conflictCount(place: Place): Promise<number | undefined> {
-        if ((await gitAnswer(place.path, ['rev-parse', '-q', '--verify', 'MERGE_HEAD'])) === undefined) return undefined;
+        if ((await gitAnswer(place.path, ['rev-parse', '-q', '--verify', 'MERGE_HEAD'])) === undefined)
+            return undefined;
 
         const unmerged = await gitRead(place.path, ['diff', '--name-only', '--diff-filter=U', '-z'], { parsed: true });
 
@@ -376,11 +421,7 @@ export class GitRemote {
      * `git merge --no-edit <ref>` in the place. A clean merge (a fast-forward or a merge commit) is nothing; a merge that stops on conflicts is how many paths are unmerged, and the merge is
      * left in progress. A refusal before a merge starts (a local change in the way) is thrown, and nothing was started.
      */
-    async #merge(
-        place: Place,
-        action: 'pull' | 'update',
-        ref: string
-    ): Promise<{ conflicts: number } | undefined> {
+    async #merge(place: Place, action: 'pull' | 'update', ref: string): Promise<{ conflicts: number } | undefined> {
         const run = await this.#git(place, ['merge', '--no-edit', ref]);
 
         if (run.code === 0) return undefined;
@@ -398,14 +439,7 @@ export class GitRemote {
     async #git(place: Place, args: string[]): Promise<RunResult> {
         const env = await this.environment.of(place.path);
 
-        return runProgram('git', args, {
-            env,
-            cwd: place.path,
-            timeoutMs: this.#timeoutMs,
-            maxChars: MAX_PRINTED_CHARS,
-            signal: this.#stopper.signal,
-            stopSignal: 'SIGTERM',
-        });
+        return runGitWrite(place.path, args, env, this.#stopper.signal, this.#timeoutMs);
     }
 
     /** `git <args>` in the place; throws what a run that did not succeed came to. */
@@ -415,23 +449,6 @@ export class GitRemote {
 
     /** Throws what a run that did not succeed came to, in words the person reads; returns when it did. */
     #check(run: RunResult, action: GitRemoteAction): void {
-        if (run.error === 'stopped') throw unavailable('The daemon is stopping');
-
-        if (run.timedOut) throw unavailable(`The ${action} did not finish in time`);
-
-        if (run.error !== undefined) throw unavailable('git is not installed or not on PATH');
-
-        if (run.code === 0) return;
-
-        const line = remoteFailureLine(run.stderr, run.stdout, `git could not ${FAILURE[action]}`);
-
-        if (namesSigningKey(`${run.stderr}\n${run.stdout}`)) {
-            // What was found of the agent may be what failed: it is looked for again at the next write.
-            this.environment.forgetAgent();
-
-            throw conflict(line, { hint: SIGNING_HINT } satisfies GitErrorDetails);
-        }
-
-        throw conflict(line);
+        checkGitWrite(run, this.environment, action, FAILURE[action]);
     }
 }

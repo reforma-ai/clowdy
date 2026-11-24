@@ -12,6 +12,7 @@ import { CHAT_TITLE_SETTING } from './engine/acp/catalog';
 import { AgentRegistry } from './engine/acp/registry';
 import { FilesService } from './files/service';
 import { FsService } from './fs/service';
+import { GitBranchMerge } from './git/branchMerge';
 import { GitWrites } from './git/commit';
 import { GitDiscard } from './git/discard';
 import { CommitMessages } from './git/message';
@@ -149,6 +150,11 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
             pullRequests: options.pullRequests ?? new PullRequests(),
             gitWrites: new GitWrites({ store, environment: gitEnvironment }),
             gitRemote: new GitRemote({ store, environment: gitEnvironment }),
+            gitBranchMerge: new GitBranchMerge({
+                store,
+                environment: gitEnvironment,
+                workspacesDir: config.workspacesDir,
+            }),
             gitSwitch: new GitSwitch({ store, environment: gitEnvironment }),
             gitDiscard: new GitDiscard({
                 store,
@@ -180,6 +186,7 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
                 services.pullRequests.stop();
                 services.gitWrites.stop();
                 services.gitRemote.stop();
+                services.gitBranchMerge.stop();
                 services.gitSwitch.stop();
                 services.gitDiscard.stop();
                 services.commitMessages.stop();

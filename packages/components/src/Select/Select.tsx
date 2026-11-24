@@ -23,7 +23,7 @@ import type { ListLayoutOptions } from 'react-aria-components';
 import type { ListBoxSize } from '../List';
 
 export type SelectSize = 'xs' | 'sm' | 'md' | 'lg';
-export type SelectVariant = 'filled' | 'bordered' | 'transparent';
+export type SelectVariant = 'filled' | 'filling' | 'bordered' | 'transparent';
 export type SelectColor = 'default' | 'primary';
 export type SelectValueDisplay = 'item' | 'text';
 

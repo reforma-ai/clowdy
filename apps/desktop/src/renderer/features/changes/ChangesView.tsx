@@ -1,7 +1,7 @@
 import { Button } from '@clowdy/components/Button';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup, usePanelRef } from '@clowdy/components/Resizable';
 import { Show } from '@clowdy/components/Show';
-import { Aside } from '@clowdy/icons/14';
+import { Vsc } from '@clowdy/icons/14';
 import { turnScope } from '@clowdy/protocol';
 import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
 
@@ -31,8 +31,8 @@ function SidebarToggle({ open, onPress }: { open: boolean; onPress: () => void }
             color="secondary"
             size="sm"
             iconOnly
-            aria-label="Sidebar"
-            tooltip={open ? 'Hide the sidebar' : 'Show the sidebar'}
+            aria-label="Source control"
+            tooltip={open ? 'Hide source control' : 'Show source control'}
             tooltipPlacement="bottom"
             isPressed={open}
             data-sidebar-toggle=""
@@ -43,7 +43,7 @@ function SidebarToggle({ open, onPress }: { open: boolean; onPress: () => void }
                     requestAnimationFrame(() => document.querySelector<HTMLElement>('[data-sidebar-toggle]')?.focus());
             }}
         >
-            <Aside className={styles.toggleIcon} aria-hidden="true" />
+            <Vsc aria-hidden="true" />
         </Button>
     );
 }

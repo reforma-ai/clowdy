@@ -301,8 +301,8 @@ export function syncButton(
     };
 }
 
-/** What an action that ended says, as a quiet line: what came in or went out, or that the branch was left as it was. */
-export function remoteNotice(result: GitRemoteResult): { words: string; tone?: 'warning' } {
+/** The result line after a branch action. A successful fetch is shown by the timestamp in the button. */
+export function remoteNotice(result: GitRemoteResult): { words: string; tone?: 'warning' } | undefined {
     if (result.state === 'conflicts') {
         const { conflicts } = result;
 
@@ -319,7 +319,7 @@ export function remoteNotice(result: GitRemoteResult): { words: string; tone?: '
 
     switch (result.action) {
         case 'fetch':
-            return { words: 'Fetched origin' };
+            return undefined;
         case 'pull':
             return {
                 words: result.merged
@@ -459,7 +459,7 @@ export function commitTarget(status: GitStatus | undefined): CommitTarget | unde
 }
 
 export function commitLabel(files: number): string {
-    return files > 0 ? `Commit ${files} ${files === 1 ? 'file' : 'files'}` : 'Commit';
+    return `Commit ${files} ${files === 1 ? 'file' : 'files'}`;
 }
 
 /** Why a commit is not taken, as GitHub Desktop's tooltips say it: no summary first, then no file ticked. Nothing when it can be made. */

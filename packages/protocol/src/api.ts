@@ -75,6 +75,7 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  * GET  /v1/projects/:id/git/branches?folderId=&workspaceId= -> GitBranches (the branches a place can switch to: local, those only `origin` has, the recent ones)
  * POST /v1/projects/:id/git/switch        -> GitSwitchResult (changes the branch of the folder's own checkout, never a chat's worktree, and only when nothing would be lost or disturbed:
  *                                            no change in the tree, no operation under way, no run working there). Body `GitSwitchRequest`. Both are described in `git.ts`
+ * POST /v1/projects/:id/git/merge         -> GitBranchMergeResult (preview, merge, push, or abort between branches). Body in `git.ts`
  * GET  /v1/projects/:id/worktrees        -> FolderWorktrees[] (one entry per folder of the project, in the project's order: whether it is the root of a repository and, if
  *                                            it is, its own checkout first and then every worktree git lists for it (one Clowdy made, one an agent or a person made, a locked one,
  *                                            one whose folder is gone): ours above the others (made by Clowdy or with a chat, or the repository's own working tree), one whose
@@ -135,6 +136,7 @@ export const ROUTES = {
     projectGitMessage: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/message`,
     projectGitBranches: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/branches`,
     projectGitSwitch: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/switch`,
+    projectGitMerge: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/merge`,
     projectGitDiscard: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/discard`,
     projectGitRemote: (projectId: string, action: GitRemoteAction) =>
         `/v1/projects/${encodeURIComponent(projectId)}/git/${action}`,

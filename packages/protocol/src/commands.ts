@@ -107,6 +107,7 @@ export const commandSchema = z.discriminatedUnion('type', [
         projectId: z.string(),
         folderId: z.string().min(1),
         settings: z.object({
+            name: z.string().nullable().optional(),
             baseBranch: z.string().nullable().optional(),
             setup: z
                 .object({ files: z.array(z.string()), command: z.string().optional() })

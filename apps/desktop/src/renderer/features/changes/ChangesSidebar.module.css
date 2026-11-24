@@ -8,7 +8,13 @@
     container-type: inline-size;
 }
 
-/* The branch is the header's title: its name gives way to the buttons at the end. */
+/* Keep the copy button beside the branch while its name truncates. */
+.branchControls {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+
 .branch {
     display: flex;
     flex: 1;
@@ -44,4 +50,26 @@
 /* The lines of the facts are cut by the sidebar's edge with an ellipsis, as narrow as it is dragged: a column that lines its items up at the start leaves each as wide as its text. */
 .facts > * {
     max-width: 100%;
+}
+
+.baseRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-6);
+    width: 100%;
+}
+
+.baseCounts {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--spacing-8);
+    font-variant-numeric: tabular-nums;
+}
+
+.baseCount {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-2);
 }

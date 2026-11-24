@@ -5,7 +5,7 @@ import { type Transport, TransportError } from '../../daemon/transport';
 import { commitAndPushBlock, commitBlock, pushOrPublish } from './changesActions';
 import { placeRef } from './gitFacts';
 
-import type { GitChangedFile, GitCommitResult } from '@clowdy/protocol';
+import type { GitChangedFile } from '@clowdy/protocol';
 import type { PlaceChanges } from './PlaceChanges';
 import type { RemoteActions } from './RemoteActions';
 
@@ -34,10 +34,6 @@ export class CommitDraft {
     busy: 'generate' | 'commit' | 'push' | undefined;
     /** Why the last request failed, until the person acts again. */
     failure: CommitFailure | undefined;
-    /** The commit the box just made, until the person acts again. */
-    committed: GitCommitResult | undefined;
-    /** What was done with the branch after the commit (Commit & Push), until the person acts again: it was pushed, or published. */
-    sent: 'push' | 'publish' | undefined;
     readonly #unticked = observable.set<string>();
 
     constructor(
@@ -100,7 +96,7 @@ export class CommitDraft {
             this.#unticked.add(path);
         }
 
-        this.#touched();
+        this.failure = undefined;
     }
 
     /** Ticks every file, or none. */
@@ -111,7 +107,7 @@ export class CommitDraft {
             for (const file of this.files) this.#unticked.add(file.path);
         }
 
-        this.#touched();
+        this.failure = undefined;
     }
 
     /** Forgets the unticked files that the list no longer has, so one that comes back is ticked again as any new file is. Called when the list changes. */
@@ -125,7 +121,7 @@ export class CommitDraft {
 
     setMessage(message: string): void {
         this.message = message;
-        this.#touched();
+        this.failure = undefined;
     }
 
     /** Generate may write when something is ticked, nothing is going on and the box is empty or holds what Generate wrote before: typed text is never replaced. */
@@ -211,13 +207,6 @@ export class CommitDraft {
         });
     }
 
-    /** What the person did to the box: the line about the last request is no longer about what they see. */
-    #touched(): void {
-        this.failure = undefined;
-        this.committed = undefined;
-        this.sent = undefined;
-    }
-
     /** Has the agent write the message for the ticked files. A failure leaves the box as it was. */
     async generate(): Promise<void> {
         if (!this.canGenerate) return;
@@ -226,7 +215,7 @@ export class CommitDraft {
         const paths = this.ticked.map(file => file.path);
 
         this.busy = 'generate';
-        this.#touched();
+        this.failure = undefined;
 
         try {
             const { message } = await this.transport.generateGitMessage(key.projectId, placeRef(key), paths);
@@ -261,7 +250,7 @@ export class CommitDraft {
         const conclude = this.concluding;
 
         this.busy = 'commit';
-        this.#touched();
+        this.failure = undefined;
 
         try {
             const result = conclude
@@ -273,11 +262,10 @@ export class CommitDraft {
             runInAction(() => {
                 this.message = '';
                 this.generated = undefined;
-                this.committed = result;
             });
 
             // The commit stands whatever the push comes to: the box is clear and the sidebar offers Push again if it failed.
-            if (andPush) await this.#send(result);
+            if (andPush) await this.#send(result.shortSha);
         } catch (error) {
             runInAction(() => {
                 this.failure = failureOf('commit', error);
@@ -294,7 +282,7 @@ export class CommitDraft {
      * Sends the branch after a commit that was made (a push, or its publishing when it is not on origin), and says so as the box does: a failed push is said with the commit, honestly, as
      * `Committed 1a2b3c4, push failed: <git's line>`, with the daemon's hint under it. The place's own moves hold their say (`report: false`), so the line is not told twice.
      */
-    async #send(commit: GitCommitResult): Promise<void> {
+    async #send(shortSha: string): Promise<void> {
         const action = pushOrPublish(this.model.facts.status.value);
 
         runInAction(() => {
@@ -303,17 +291,15 @@ export class CommitDraft {
 
         const outcome = await this.remote.run(action, { report: false });
 
-        runInAction(() => {
-            if (outcome.ok) {
-                this.sent = action;
-            } else {
+        if (!outcome.ok) {
+            runInAction(() => {
                 this.failure = {
                     what: 'push',
-                    message: `Committed ${commit.shortSha}, push failed: ${outcome.failure.message}`,
+                    message: `Committed ${shortSha}, push failed: ${outcome.failure.message}`,
                     ...(outcome.failure.hint !== undefined && { hint: outcome.failure.hint }),
                 };
-            }
-        });
+            });
+        }
     }
 }
 

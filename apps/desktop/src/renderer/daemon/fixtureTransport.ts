@@ -74,6 +74,9 @@ import type {
     FolderId,
     FolderWorktrees,
     GitBranches,
+    GitBranchMergePreview,
+    GitBranchMergeRequest,
+    GitBranchMergeResult,
     GitChangedFile,
     GitChanges,
     GitCommitResult,
@@ -178,6 +181,15 @@ const OUTCOME_SUMMARY: Record<ThreadNotice['outcome'], string> = {
 };
 
 /** The one line a queued notice shows: `Thread "Fix login" finished`, or how many threads stopped. */
+/** Give each fixture ref and each merge a distinct, repeatable commit ID. */
+function mergeCommitId(ref: string): string {
+    let hash = 0;
+
+    for (const character of ref) hash = Math.imul(hash, 31) + character.charCodeAt(0);
+
+    return (hash >>> 0).toString(16).padStart(40, '0');
+}
+
 function noticeSummary(threads: readonly ThreadNotice[]): string {
     if (threads.length === 1) return `Thread "${threads[0].title}" ${OUTCOME_SUMMARY[threads[0].outcome]}`;
 
@@ -268,6 +280,8 @@ export class FixtureTransport implements Transport {
     /** Where each place's branch stands against its upstream, which a fetch, a pull, a push and a commit move. */
     readonly #gitRemote: FixtureGitRemote;
     readonly #branches: FixtureGitBranches;
+    readonly #branchMerges = new Map<string, { sourceCommit: string; commit: string }>();
+    readonly #mergeConflicts = new Map<string, Extract<GitBranchMergeResult, { state: 'conflicts' }>>();
 
     constructor({ data = createFixtureData(), timeline = false, gitWrites, branches }: FixtureTransportOptions = {}) {
         this.#data = data;
@@ -307,7 +321,7 @@ export class FixtureTransport implements Transport {
                 .filter(project => projectId === undefined || project.id === projectId)
                 .map(project => {
                     // The worktrees the project's chats work in, and those `workspace.open` answered that no chat works in (yet), as the daemon reads them: whether each is made, and the branch it
-                    // has (the fixture's worktrees keep the branch they were made with).
+                    // has now.
                     const workspaces = new Map<string, ProjectWorkspaceInfo>();
                     const rows = [
                         ...chats
@@ -376,7 +390,21 @@ export class FixtureTransport implements Transport {
             ...(script && { head: script }),
         });
 
-        return structuredClone(workspace ? status : this.#branches.dirtied(status));
+        if (status.isRepository && status.head.kind === 'branch') {
+            const key = `${projectId}/${place.folderId}/${status.head.name}`;
+            const merged = this.#branchMerges.get(key);
+            const pending = this.#mergeConflicts.get(key);
+
+            if (merged) status.head.commit = merged.commit;
+            if (pending) status.merging = { conflicts: pending.conflicts };
+        }
+
+        if (!workspace) return structuredClone(this.#branches.dirtied(status));
+
+        if (this.#branches.merged && status.isRepository && status.base.state === 'ready')
+            status.base = { ...status.base, ahead: 0, commits: [] };
+
+        return structuredClone(status);
     }
 
     /** The place as the fixture's remote keeps it: a checkout is level with its upstream, a worktree's branch is not published until a push says so. */
@@ -426,24 +454,151 @@ export class FixtureTransport implements Transport {
 
     /** The place as the fixture's branches keep it: the folder's head, or the worktree's branch. */
     #branchPlace(
+        projectId: ProjectId,
+        folder: { id: FolderId; path: string },
         head: { branch?: string; detached?: true } | undefined,
-        workspace: Pick<ChatWorkspace, 'branch'> | undefined,
-        place: PlaceRef
+        workspace: Pick<ChatWorkspace, 'branch'> | undefined
     ): FixtureBranchPlace {
+        const worktrees = [
+            ...[...this.#opened.values()].flatMap(entry => (entry.projectId === projectId ? [entry.workspace] : [])),
+            ...this.#data.chats.flatMap(chat =>
+                chat.projectId === projectId && chat.workspace ? [chat.workspace] : []
+            ),
+        ].filter(candidate => candidate.ready && candidate.folderId === folder.id);
+
         return {
-            key: `${place.folderId}/${place.workspaceId ?? ''}`,
+            key: `${projectId}/${folder.id}`,
             branch: head?.detached ? undefined : head?.branch,
+            mainPath: folder.path,
             worktree: workspace !== undefined,
             ...(workspace && { worktreeBranch: workspace.branch ?? 'clowdy/ab12cd34' }),
+            worktrees,
         };
     }
 
     async getGitBranches(projectId: ProjectId, place: PlaceRef): Promise<GitBranches> {
-        const { head, workspace } = this.#gitPlace(projectId, place);
+        const { folder, head, workspace } = this.#gitPlace(projectId, place);
 
         if (!head?.branch) return { isRepository: false };
 
-        return structuredClone(this.#branches.list(this.#branchPlace(head, workspace, place)));
+        return structuredClone(this.#branches.list(this.#branchPlace(projectId, folder, head, workspace)));
+    }
+
+    async branchMergeGit(
+        projectId: ProjectId,
+        place: PlaceRef,
+        request: GitBranchMergeRequest
+    ): Promise<GitBranchMergeResult> {
+        const { folder, head, workspace } = this.#gitPlace(projectId, place);
+        const branches = this.#branches.list(this.#branchPlace(projectId, folder, head, workspace));
+        const current = branches.local.find(branch => branch.current)?.name;
+
+        if (current === undefined || this.#gitRemote.head !== undefined)
+            throw new TransportError('Switch to a branch with commits first', 400);
+
+        const target = 'target' in request ? request.target : request.direction === 'from' ? current : request.branch;
+        const destination = branches.local.find(branch => branch.name === target);
+
+        if (!destination) throw new TransportError(`No such local branch: ${target}`, 400);
+
+        const refKey = (branch: string) => `${projectId}/${folder.id}/${branch}`;
+        const key = refKey(target);
+        const merged = this.#branchMerges.get(key);
+        const pending = this.#mergeConflicts.get(key);
+        const holder = destination.heldBy;
+        const targetPath = target === current ? (workspace?.path ?? folder.path) : holder?.path;
+        const workspaceId = target === current ? place.workspaceId : holder?.workspaceId;
+        const remotePlace: FixtureRemotePlace = {
+            key: workspaceId !== undefined || targetPath === folder.path ? `${folder.id}/${workspaceId ?? ''}` : key,
+            branch: target,
+            worktree: workspaceId !== undefined,
+        };
+
+        if (request.action === 'push') {
+            if (merged?.commit !== request.commit) throw new TransportError(`${target} moved since the merge`, 409);
+
+            await this.#gitRemote.run('push', remotePlace);
+            return { state: 'pushed', target };
+        }
+
+        if (request.action === 'abort') {
+            if (pending?.commit !== request.commit || pending.sourceCommit !== request.sourceCommit)
+                throw new TransportError('The merge is no longer in progress', 409);
+
+            this.#mergeConflicts.delete(key);
+            return { state: 'aborted', target };
+        }
+
+        if (request.current !== current) throw new TransportError('The current branch changed', 409);
+
+        const isRemote = request.remote === true;
+        const source = request.direction === 'into' ? current : isRemote ? `origin/${request.branch}` : request.branch;
+        const available = isRemote ? branches.origin : branches.local;
+
+        if (
+            (isRemote && (request.direction === 'into' || !this.#gitRemote.hasOrigin)) ||
+            !available?.some(branch => branch.name === request.branch)
+        )
+            throw new TransportError(`No such branch: ${request.branch}`, 400);
+
+        const sourceCommit =
+            (isRemote ? undefined : this.#branchMerges.get(refKey(source))?.commit) ??
+            mergeCommitId(refKey(isRemote ? `refs/remotes/${source}` : `refs/heads/${source}`));
+        const targetCommit = merged?.commit ?? mergeCommitId(refKey(`refs/heads/${target}`));
+        const mode =
+            source === target || merged?.sourceCommit === sourceCommit
+                ? 'up-to-date'
+                : source === 'origin/main' || source === 'origin/feature/search'
+                  ? 'merge-commit'
+                  : 'fast-forward';
+        const preview: GitBranchMergePreview = {
+            state: 'preview',
+            source,
+            target,
+            sourceCommit,
+            targetCommit,
+            mode,
+            commits: mode === 'up-to-date' ? 0 : 3,
+            ...(targetPath && { targetPath }),
+        };
+
+        if (request.action === 'preview') return preview;
+
+        if (request.sourceCommit !== sourceCommit || request.targetCommit !== targetCommit)
+            throw new TransportError('The branches moved since the preview', 409);
+
+        const status =
+            target === current || workspaceId !== undefined || holder?.main
+                ? await this.getGitStatus(projectId, { folderId: folder.id, workspaceId })
+                : undefined;
+
+        if (pending || (status?.isRepository && (status.entries.length > 0 || status.merging)))
+            throw new TransportError('Finish the changes in the destination checkout first', 409);
+
+        if (source === 'origin/feature/search' && targetPath) {
+            const result = {
+                state: 'conflicts',
+                target,
+                commit: targetCommit,
+                sourceCommit,
+                targetPath,
+                conflicts: 1,
+            } as const;
+            this.#mergeConflicts.set(key, result);
+            return result;
+        }
+
+        const commit =
+            mode === 'up-to-date'
+                ? targetCommit
+                : mode === 'fast-forward'
+                  ? sourceCommit
+                  : mergeCommitId(`${targetCommit}+${sourceCommit}`);
+        this.#branchMerges.set(key, { sourceCommit, commit });
+
+        if (mode !== 'up-to-date') this.#gitRemote.committed(remotePlace);
+
+        return { state: 'done', target, commit, canPush: this.#gitRemote.hasOrigin };
     }
 
     async switchGitBranch(
@@ -456,19 +611,40 @@ export class FixtureTransport implements Transport {
 
         if (!head?.branch) throw new TransportError('The folder is not the root of a git repository', 400);
 
+        const branchPlace = this.#branchPlace(projectId, folder, head, workspace);
+
+        if (workspace) {
+            const status = await this.getGitStatus(projectId, place);
+
+            if (status.isRepository) branchPlace.changes = status.entries.length;
+        }
+
         const answer = structuredClone(
-            await this.#branches.switch(this.#branchPlace(head, workspace, place), {
+            await this.#branches.switch(branchPlace, {
                 branch,
                 ...(create && { create }),
             })
         );
 
-        // The folder's checkout is on the branch from now on, which every read of its head says.
-        if (answer.head.kind === 'branch')
-            this.#data.git[folder.path] = {
-                ...(head.remoteUrl !== undefined && { remoteUrl: head.remoteUrl }),
-                branch: answer.head.name,
-            };
+        if (answer.head.kind === 'branch') {
+            const name = answer.head.name;
+
+            if (workspace) {
+                workspace.branch = name;
+                for (const chat of this.#data.chats) {
+                    if (chat.workspace?.id === workspace.id) chat.workspace.branch = name;
+                }
+
+                const opened = this.#opened.get(workspace.id);
+
+                if (opened) opened.workspace.branch = name;
+            } else {
+                this.#data.git[folder.path] = {
+                    ...(head.remoteUrl !== undefined && { remoteUrl: head.remoteUrl }),
+                    branch: name,
+                };
+            }
+        }
 
         return answer;
     }

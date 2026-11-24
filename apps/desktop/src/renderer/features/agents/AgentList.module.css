@@ -38,6 +38,28 @@
     min-width: 0;
 }
 
+.titleLine[draggable='true'] {
+    cursor: grab;
+}
+
+.chatRow[data-drop-position]::after {
+    position: absolute;
+    inset-inline: 0;
+    height: var(--spacing-2);
+    border-radius: var(--radius-full);
+    background-color: var(--color-primary);
+    pointer-events: none;
+    content: '';
+}
+
+.chatRow[data-drop-position='before']::after {
+    inset-block-start: 0;
+}
+
+.chatRow[data-drop-position='after']::after {
+    inset-block-end: 0;
+}
+
 .worktree {
     display: inline-flex;
     flex-shrink: 0;
@@ -72,14 +94,14 @@
 }
 
 /* Remove hidden controls from the layout so the title can reach the row's edge. */
-.chatRow:not(:is(:hover, :focus-within, [data-hovered], [data-selected], [data-open], [data-renaming])) {
+.chatRow:not(:is(:hover, :focus-visible, :has(.rowAction:focus), [data-hovered], [data-open], [data-renaming])) {
     & .rowAction,
     & [slot='endAffix']:not(:has(.archiveStatus)) {
         display: none;
     }
 }
 
-.chatRow:is(:hover, :focus-within, [data-hovered], [data-selected], [data-open]) .archiveStatus {
+.chatRow:is(:hover, :focus-visible, :has(.rowAction:focus), [data-hovered], [data-open]) .archiveStatus {
     display: none;
 }
 

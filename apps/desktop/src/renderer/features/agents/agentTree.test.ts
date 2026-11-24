@@ -61,23 +61,15 @@ describe('visibleChats', () => {
         expect(visibleChats(list).map(candidate => candidate.id)).toEqual(['chat-1', 'chat-3']);
     });
 
-    it('leaves the chats in the order they are given, which is by last activity', () => {
-        expect(visibleChats([chats[2], chats[0], chats[1]]).map(candidate => candidate.id)).toEqual([
-            'chat-3',
-            'chat-1',
-            'chat-2',
-        ]);
-    });
-
-    it('puts the newest chat first when the list is sorted by creation', () => {
+    it('puts the newest chat first until the person changes the order', () => {
         const made = [
             { ...chats[0], createdAt: 10 },
             { ...chats[1], createdAt: 30, archivedAt: 5 },
             { ...chats[2], createdAt: 20 },
         ];
 
-        expect(visibleChats(made, 'created').map(candidate => candidate.id)).toEqual(['chat-3', 'chat-1']);
-        expect(visibleChats(made, 'activity').map(candidate => candidate.id)).toEqual(['chat-1', 'chat-3']);
+        expect(visibleChats(made).map(candidate => candidate.id)).toEqual(['chat-3', 'chat-1']);
+        expect(visibleChats(made, ['chat-1', 'chat-3']).map(candidate => candidate.id)).toEqual(['chat-1', 'chat-3']);
     });
 });
 

@@ -168,6 +168,27 @@ describe('GitFacts', () => {
         expect(place.status.loading).toBe(false);
     });
 
+    it('rereads a recently visited destination after a branch operation in another checkout', async () => {
+        const daemon = stub();
+
+        facts = new GitFacts(daemon.transport);
+        const stopDestination = facts.observe(OTHER);
+        facts.observe(KEY);
+        await settle();
+        stopDestination();
+
+        facts.refreshFolder(KEY);
+
+        expect(facts.of(KEY).generation).toBe(2);
+        expect(facts.of(OTHER).generation).toBe(1);
+
+        facts.observe(OTHER);
+        await settle();
+
+        expect(facts.of(OTHER).generation).toBe(2);
+        expect(daemon.calls.status).toBe(4);
+    });
+
     it('does not draw the pull request before it came, and is ready without it', async () => {
         const daemon = stub();
         const slow = { ...daemon.transport, getGitPullRequest: () => new Promise<GitPullRequestInfo>(() => undefined) };

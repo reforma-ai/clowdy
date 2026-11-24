@@ -97,7 +97,7 @@
     --color-modal-overlay: var(--color-black-a60);
     --color-tooltip: var(--color-black);
     --color-tooltip-foreground: var(--color-light);
-    --color-chat-composer: var(--color-surface);
+    --color-chat-composer: var(--color-surface-float);
     --color-chat-composer-header: var(--color-primary-muted-light);
     --color-chat-message: var(--color-primary-a15);
     --color-chat-message-content: var(--color-black);
@@ -213,7 +213,7 @@
     --color-modal-overlay: var(--color-black-a60);
     --color-tooltip: #f1f1f1;
     --color-tooltip-foreground: var(--color-black);
-    --color-chat-composer: var(--color-secondary-900);
+    --color-chat-composer: var(--color-surface-float);
     --color-chat-composer-header: var(--color-secondary-light);
     --color-chat-message: var(--color-secondary-light);
     --color-chat-message-content: var(--color-text);

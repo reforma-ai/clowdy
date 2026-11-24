@@ -12,47 +12,44 @@ const memory = () => {
 };
 
 describe('the Agents list preferences', () => {
-    it('sorts by when the chats were made and lists finished threads by default', () => {
+    it('lists finished threads by default', () => {
         const preferences = new ChatListPreferences(memory());
 
-        expect([preferences.sort, preferences.showFinishedThreads]).toEqual(['created', true]);
+        expect(preferences.showFinishedThreads).toBe(true);
     });
 
-    it('remembers the order and the filter on this computer', () => {
+    it('remembers the filter on this computer', () => {
         const storage = memory();
         const preferences = new ChatListPreferences(storage);
 
-        preferences.setSort('activity');
         preferences.setShowFinishedThreads(false);
 
         const later = new ChatListPreferences(storage);
 
-        expect([later.sort, later.showFinishedThreads]).toEqual(['activity', false]);
+        expect(later.showFinishedThreads).toBe(false);
 
-        later.setSort('created');
         later.setShowFinishedThreads(true);
 
         const last = new ChatListPreferences(storage);
 
-        expect([last.sort, last.showFinishedThreads]).toEqual(['created', true]);
+        expect(last.showFinishedThreads).toBe(true);
     });
 
     it('reads anything it did not write as the default', () => {
         const storage = memory();
 
-        storage.setItem('clowdy:chat-sort', '"oldest"');
         storage.setItem('clowdy:show-finished-threads', '"no"');
 
         const preferences = new ChatListPreferences(storage);
 
-        expect([preferences.sort, preferences.showFinishedThreads]).toEqual(['created', true]);
+        expect(preferences.showFinishedThreads).toBe(true);
     });
 
     it('works without storage', () => {
         const preferences = new ChatListPreferences(undefined);
 
-        preferences.setSort('activity');
+        preferences.setShowFinishedThreads(false);
 
-        expect(preferences.sort).toBe('activity');
+        expect(preferences.showFinishedThreads).toBe(false);
     });
 });

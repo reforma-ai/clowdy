@@ -2,7 +2,9 @@ import { FIXTURE_BASE_COMMIT, FIXTURE_WORKTREE_PATH } from './fixtureData';
 import { TransportError } from './transport';
 
 import type {
+    ChatWorkspace,
     GitBranches,
+    GitBranchHolder,
     GitLocalBranch,
     GitRemoteBranch,
     GitStatus,
@@ -19,10 +21,11 @@ import type {
  * - `refused`: two chats are working in the checkout, so a switch is refused for them;
  * - `slow`: a switch takes a while, for a look at the running state;
  * - `warned`: a switch is made and the person's `post-checkout` hook failed after it, which the answer's `warning` says;
+ * - `merged`: the worktree's current branch is merged into `origin/main`; use `&clean` to clear uncommitted files;
  * - `idle`: every chat of the fixtures is at rest, so the chats working in the checkout (which the new chat's pill counts from the runs it has) are not in the way of a switch: without it five
  *   of them are, and that is what the pill says.
  */
-export type FixtureBranchScript = 'remote' | 'held' | 'dirty' | 'refused' | 'slow' | 'warned' | 'idle';
+export type FixtureBranchScript = 'remote' | 'held' | 'dirty' | 'refused' | 'slow' | 'warned' | 'merged' | 'idle';
 
 /** The words the page's `&branches=` switch knows. */
 export const FIXTURE_BRANCH_SCRIPTS: readonly FixtureBranchScript[] = [
@@ -32,6 +35,7 @@ export const FIXTURE_BRANCH_SCRIPTS: readonly FixtureBranchScript[] = [
     'refused',
     'slow',
     'warned',
+    'merged',
     'idle',
 ];
 
@@ -61,25 +65,29 @@ const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, m
 
 /** The branch of the place that a switch is asked about, as far as the fixture's branches need to know it. */
 export interface FixtureBranchPlace {
-    /** What the fixture keeps the state of the place under. */
+    /** Where the fixture keeps the branches shared by the folder and its worktrees. */
     key: string;
-    /** The branch checked out; absent on a detached HEAD. */
+    /** The main checkout's branch and path. */
     branch: string | undefined;
-    /** The place is a chat's worktree, whose branch stays. */
+    mainPath: string;
+    /** The place is a chat's worktree. */
     worktree: boolean;
     /** The worktree's branch, when the place is one. */
     worktreeBranch?: string;
+    /** Ready worktrees in this repository, with their live fixture branch. */
+    worktrees: readonly Pick<ChatWorkspace, 'id' | 'path' | 'branch'>[];
+    changes?: number;
 }
 
 /**
- * What `GET git/branches` and `POST git/switch` do in the fixtures, judged as the daemon judges them (`git/branches.ts`, `git/switch.ts`): a worktree is refused, a name that is no name is
+ * What `GET git/branches` and `POST git/switch` do in the fixtures, judged as the daemon judges them (`git/branches.ts`, `git/switch.ts`): an unmerged worktree is refused, a name that is no name is
  * `400`, a branch a worktree holds, a tree with changes and a run in the place are `409` with the daemon's words, and a switch to a branch that only `origin` has makes the local one. The
  * fixtures keep no repository, so this keeps what changed (the branches made, the ones that became local) and `FixtureTransport` writes the branch it answers back into the folder's head.
  */
 export class FixtureGitBranches {
     readonly #scripts: ReadonlySet<FixtureBranchScript>;
-    /** The branches a switch made, and the remote-only ones it took, by the place's key: they are local from then on. */
-    readonly #made = new Map<string, string[]>();
+    /** The local branches remembered after a switch, and the remote-only ones it took, by repository. */
+    readonly #local = new Map<string, Set<string>>();
     readonly #took = new Map<string, Set<string>>();
 
     constructor(scripts: readonly FixtureBranchScript[] = []) {
@@ -96,6 +104,10 @@ export class FixtureGitBranches {
         return this.#scripts.has('dirty');
     }
 
+    get merged(): boolean {
+        return this.#scripts.has('merged');
+    }
+
     /** The checkout's status as the fixture says it, with the changed files a `dirty` checkout has. */
     dirtied(status: GitStatus): GitStatus {
         if (!this.dirty || !status.isRepository) return status;
@@ -108,46 +120,63 @@ export class FixtureGitBranches {
         const now = Date.now();
         const current = place.worktree ? place.worktreeBranch : place.branch;
         const took = this.#took.get(place.key) ?? new Set<string>();
+        const holders = new Map<string, GitBranchHolder>();
+
+        for (const { id, path, branch } of place.worktrees) {
+            if (branch !== undefined) holders.set(branch, { path, workspaceId: id });
+        }
+
+        if (this.#scripts.has('held')) {
+            holders.set(PERSON_TREE.branch, { path: PERSON_TREE.path });
+
+            // The held fixture also works when the chat whose worktree it represents is absent.
+            if (!place.worktrees.some(worktree => worktree.id === 'wks_ab12cd34'))
+                holders.set('clowdy/ab12cd34', { path: FIXTURE_WORKTREE_PATH, workspaceId: 'wks_ab12cd34' });
+        }
+
+        if (place.worktree && place.branch !== undefined) {
+            holders.set(place.branch, { path: place.mainPath, main: true });
+        }
+
         const names = [
             ...new Set([
                 ...(current === undefined ? [] : [current]),
                 'main',
                 'dev',
-                ...(this.#made.get(place.key) ?? []),
+                ...(this.#local.get(place.key) ?? []),
                 ...took,
-                ...(this.#scripts.has('held') ? [PERSON_TREE.branch, 'clowdy/ab12cd34'] : []),
+                ...holders.keys(),
             ]),
         ];
-        const holds = (name: string): GitLocalBranch['heldBy'] => {
-            if (name === current) return undefined;
+        const local: GitLocalBranch[] = names.map((name, index) => {
+            const holder = name === current ? undefined : holders.get(name);
 
-            if (this.#scripts.has('held') && name === 'clowdy/ab12cd34')
-                return { path: FIXTURE_WORKTREE_PATH, workspaceId: 'wks_ab12cd34' };
-
-            if (this.#scripts.has('held') && name === PERSON_TREE.branch) return { path: PERSON_TREE.path };
-
-            return place.worktree && name === 'main' ? { path: '/Users/dev/car-rental', main: true } : undefined;
-        };
-        const local: GitLocalBranch[] = names.map((name, index) => ({
-            name,
-            ...(name === current && { current: true as const }),
-            ...(name === 'main' && { default: true as const }),
-            ...((TRACKED.includes(name) || took.has(name)) && { upstream: `origin/${name}` }),
-            ...(holds(name) && { heldBy: holds(name) }),
-            committedAt: now - (index + 1) * 3_600_000 * 7,
-        }));
-        const remote: GitRemoteBranch[] = this.#scripts.has('remote')
-            ? REMOTE_ONLY.filter(name => !took.has(name)).map((name, index) => ({
-                  name,
-                  committedAt: now - (index + 1) * 86_400_000,
-              }))
-            : [];
+            return {
+                name,
+                ...(name === current && { current: true as const }),
+                ...(name === 'main' && { default: true as const }),
+                ...((TRACKED.includes(name) || took.has(name)) && { upstream: `origin/${name}` }),
+                ...(holder && { heldBy: holder }),
+                committedAt: now - (index + 1) * 3_600_000 * 7,
+            };
+        });
+        const origin: GitRemoteBranch[] = [
+            ...TRACKED.map(name => ({ name, ...(name === 'main' && { default: true as const }) })),
+            ...(this.#scripts.has('remote')
+                ? REMOTE_ONLY.map((name, index) => ({
+                      name,
+                      committedAt: now - (index + 1) * 86_400_000,
+                  }))
+                : []),
+        ];
+        const remote = origin.filter(branch => !names.includes(branch.name));
 
         return {
             isRepository: true,
             defaultBranch: 'main',
             local,
             remote,
+            origin,
             recent: ['dev', 'main', ...(this.#scripts.has('held') ? [PERSON_TREE.branch] : [])].filter(
                 name => name !== current && names.includes(name)
             ),
@@ -160,8 +189,6 @@ export class FixtureGitBranches {
         request: Pick<GitSwitchRequest, 'branch' | 'create'>
     ): Promise<GitSwitchResult> {
         const { branch: name, create } = request;
-
-        if (place.worktree) throw new TransportError("A chat's worktree keeps its branch", 400);
 
         if (name.trim() === '') throw new TransportError('Name the branch', 400);
 
@@ -188,20 +215,33 @@ export class FixtureGitBranches {
         if (this.#scripts.has('refused'))
             throw new TransportError('2 chats are working here', 409, 'Stop them or wait until they finish');
 
-        if (this.dirty)
+        const changes = place.worktree ? (place.changes ?? 0) : this.dirty ? DIRTY_ENTRIES.length : 0;
+
+        if (changes > 0)
             throw new TransportError(
                 'Commit or discard the changes first',
                 409,
-                `${DIRTY_ENTRIES.length} files changed`
+                `${changes} ${changes === 1 ? 'file' : 'files'} changed`
             );
+
+        if (place.worktree && !this.merged)
+            throw new TransportError('Merge this branch into origin/main before switching', 409);
 
         if (this.#scripts.has('slow')) await sleep(SLOW_MS);
 
         const warning = this.#scripts.has('warned') ? { warning: HOOK_WARNING } : {};
 
-        if (create) {
-            this.#made.set(place.key, [...(this.#made.get(place.key) ?? []), name]);
+        if (create || place.worktreeBranch !== undefined) {
+            const local = this.#local.get(place.key) ?? new Set<string>();
 
+            // The old branch still exists after a worktree checks out a different one.
+            if (place.worktreeBranch !== undefined) local.add(place.worktreeBranch);
+            if (create) local.add(name);
+
+            this.#local.set(place.key, local);
+        }
+
+        if (create) {
             return { head: { kind: 'branch', name, commit: FIXTURE_BASE_COMMIT }, created: true, ...warning };
         }
 

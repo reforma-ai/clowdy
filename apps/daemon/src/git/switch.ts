@@ -2,11 +2,11 @@ import { resolve } from 'node:path';
 
 import { gitAnswer, gitRead } from '../domain/git';
 import { chatsWorkingIn } from '../domain/places';
-import { exclusive } from '../domain/workspaces';
+import { exclusive, pathKey } from '../domain/workspaces';
 import { conflict, invalid, unavailable } from '../errors';
 import { runProgram } from '../providers/exec';
 import { failureLine, printedLines, shownLine, writeLine } from './commit';
-import { baseOf, countChanges, isOnDisk, parseWorktrees, placeOf, workingTreeRoot } from './state';
+import { baseOf, countChanges, isMerged, isOnDisk, parseWorktrees, placeOf, workingTreeRoot } from './state';
 import { parseStatus, resolveRef } from './status';
 import { WriteEnvironment } from './writeEnv';
 
@@ -52,7 +52,7 @@ interface Plan {
 }
 
 /**
- * Changes the branch a folder's own checkout is on (`POST /v1/projects/:id/git/switch`): the one write that moves files the person and their agents are working with, so it is
+ * Changes the branch checked out in a place (`POST /v1/projects/:id/git/switch`): this moves files the person and their agents are working with, so it is
  * refused rather than negotiated, and nothing is stashed, carried along or forced. The person's own `git switch` runs in the place with their configuration and the write environment
  * (`WriteEnvironment`), on the place's one line of writes (`writeLine`, shared with the commit and the moves to and from `origin`), no shell, argv only:
  *
@@ -61,7 +61,8 @@ interface Plan {
  * - a new branch is `git switch --no-track -c <name> <commit>`, cut from HEAD or from the folder's default branch (the base a new worktree starts from, `resolveRef`); `--no-track`
  *   because a branch made from `origin/main` would otherwise track it, and a push of it would go to `main`.
  *
- * It is the folder's own checkout only: **a chat's worktree keeps its branch** (`invalid`). Everything below is refused with a reason and nothing changed, judged on the place's line
+ * A worktree can leave its current branch only when its HEAD is contained in its base, and it keeps ignored files (`--no-overwrite-ignore`).
+ * The other refusals are judged on the place's line
  * and right before git runs, since the tree may have changed while the switch waited its turn: a name that is no branch name (a leading dash can never reach git, and `@{-1}` is no
  * name), a branch that does not exist, a new branch that exists already (locally, or on `origin`), a repository with no commit, a branch that another worktree has checked out
  * (`Checked out in <path>`), a run working in the place (`2 chats are working here`: `chatsWorkingIn`), a merge, rebase, cherry-pick, revert or bisect under way, and a tree with any
@@ -96,33 +97,44 @@ export class GitSwitch {
         place: Place,
         request: { branch: string; create?: { start: string } }
     ): Promise<GitSwitchResult> {
-        if (place.workspace) throw invalid("A chat's worktree keeps its branch");
-
         const start = request.create === undefined ? undefined : startOf(request.create);
         const name = await this.#nameOf(place, request.branch);
 
-        // Judged and run on one line, so what a commit or a push in front of it leaves is what it finds.
+        // Keep the checkout's write order, and serialize switches of shared branches across its worktrees.
         return exclusive(this.#store, writeLine(place), this.#stopper.signal, async () => {
             const cwd = place.path;
 
             if (!(await workingTreeRoot(cwd))) throw invalid('The folder is not the root of a git repository');
 
-            const head = await gitAnswer(cwd, ['rev-parse', '--verify', '--quiet', 'HEAD']);
+            const repo = await switchRepositoryKey(cwd);
 
-            if (head === undefined) throw invalid('The repository has no commits yet');
-
-            const plan = await this.#plan(place, name, start, head);
-
-            if (plan === undefined) return await this.#where(cwd);
-
-            // Found before the checks, so nothing but the checks themselves stands between the last of them and git.
-            const env = await this.environment.of(cwd);
-
-            // Right before git runs, not before the line was taken: a commit in front of this one may have made the tree clean, or an agent may have written to it.
-            await this.#refuseWhileUnsettled(project, place);
-
-            return await this.#run(cwd, plan, env);
+            return exclusive(this.#store, repo, this.#stopper.signal, () =>
+                this.#switchLocked(project, place, name, start)
+            );
         });
+    }
+
+    async #switchLocked(
+        project: Project,
+        place: Place,
+        name: string,
+        start: GitSwitchStart | undefined
+    ): Promise<GitSwitchResult> {
+        const cwd = place.path;
+        const head = await gitAnswer(cwd, ['rev-parse', '--verify', '--quiet', 'HEAD']);
+
+        if (head === undefined) throw invalid('The repository has no commits yet');
+
+        const plan = await this.#plan(place, name, start, head);
+
+        if (plan === undefined) return await this.#where(cwd);
+
+        // Prepare the environment first so the final safety checks happen just before git runs.
+        const env = await this.environment.of(cwd);
+
+        await this.#refuseWhileUnsettled(project, place);
+
+        return await this.#run(cwd, plan, env);
     }
 
     /** The branch name the request means, or why it is none: git's own rules (`check-ref-format --branch`) after the ones that keep a name away from an option or an expression. */
@@ -165,6 +177,7 @@ export class GitSwitch {
             refExists(cwd, `refs/remotes/${ORIGIN}/${name}`),
             gitAnswer(cwd, ['symbolic-ref', '--quiet', '--short', 'HEAD']),
         ]);
+        const switchArgs = place.workspace ? ['switch', '--no-overwrite-ignore'] : ['switch'];
 
         if (start !== undefined) {
             if (local) throw invalid(`A branch called ${name} exists already`);
@@ -172,7 +185,7 @@ export class GitSwitch {
             if (remote) throw invalid(`${ORIGIN} has a branch called ${name} already`);
 
             return {
-                args: ['switch', '--no-track', '-c', name, await startCommit(place, start, head)],
+                args: [...switchArgs, '--no-track', '-c', name, await startCommit(place, start, head)],
                 branch: name,
                 created: true,
                 ...(current === undefined && { leaving: head }),
@@ -187,7 +200,7 @@ export class GitSwitch {
             if (holder !== undefined) throw conflict(`Checked out in ${holder}`);
 
             return {
-                args: ['switch', '--no-guess', '--', name],
+                args: [...switchArgs, '--no-guess', '--', name],
                 branch: name,
                 created: false,
                 ...(current === undefined && { leaving: head }),
@@ -196,7 +209,7 @@ export class GitSwitch {
 
         if (remote)
             return {
-                args: ['switch', '--track', '-c', name, `refs/remotes/${ORIGIN}/${name}`],
+                args: [...switchArgs, '--track', '-c', name, `refs/remotes/${ORIGIN}/${name}`],
                 branch: name,
                 created: true,
                 ...(current === undefined && { leaving: head }),
@@ -206,12 +219,13 @@ export class GitSwitch {
     }
 
     /**
-     * Why the place is no place to switch in right now, the first that holds: a run working in it, an operation under way, a change in the tree. Throws it; returns when none holds.
+     * Why the place cannot switch: an active run, a Git operation, uncommitted changes or an unmerged worktree.
      * The runs are read **last** (the reasons are still told in this order: a chat that is working is what leaves the tree changed, and is the better thing to say), since a message
      * that starts a run while git looks at the tree is the one thing nothing else holds back; nothing is awaited between this read and the start of git.
      */
     async #refuseWhileUnsettled(project: Project, place: Place): Promise<void> {
         const cwd = place.path;
+        const worktreeBlock = place.workspace ? await worktreeSwitchBlock(place) : undefined;
         const underWay = await operationUnderWay(cwd);
         const changes = await countChanges(cwd);
         const working = chatsWorkingIn(this.#store, project, cwd);
@@ -232,6 +246,8 @@ export class GitSwitch {
             throw conflict('Commit or discard the changes first', {
                 hint: `${changes} ${changes === 1 ? 'file' : 'files'} changed`,
             } satisfies GitErrorDetails);
+
+        if (worktreeBlock) throw conflict(worktreeBlock);
     }
 
     /** Runs the switch and tells where HEAD is after it. */
@@ -303,6 +319,29 @@ export class GitSwitch {
 
         return { head, ...(upstream && { upstream }) };
     }
+}
+
+/** Two worktrees share a checkout lock even when they belong to different projects or have different path aliases. */
+export async function switchRepositoryKey(cwd: string): Promise<string> {
+    const read = await gitRead(cwd, ['rev-parse', '--git-common-dir']);
+    const common = read.ok ? read.stdout.replace(/\r?\n$/, '') : '';
+    const repo = common ? await placeOf(resolve(cwd, common)) : undefined;
+
+    if (!repo) throw unavailable('git did not identify the repository');
+
+    return `git-switch:${pathKey(repo)}`;
+}
+
+/** A ready worktree can switch once its live HEAD is already in its base. */
+async function worktreeSwitchBlock(place: Place): Promise<string | undefined> {
+    const name = place.workspace?.base ?? (await baseOf(place.folder));
+    const base = name === undefined ? undefined : await resolveRef(place.path, name);
+
+    if (!base) return "Couldn't verify that the worktree is merged";
+    if (!(await isMerged(place.path, 'HEAD', base.commit)))
+        return `Merge this branch into ${base.name} before switching`;
+
+    return undefined;
 }
 
 /** A control character: none is in a branch name. */
@@ -393,7 +432,7 @@ async function heldBy(cwd: string, branch: string): Promise<string | undefined> 
 }
 
 /** What the repository has under way that a switch would leave half done: a merge, a rebase, a cherry-pick, a revert or a bisect (`A merge`, `A rebase`, ...). Nothing when none. */
-async function operationUnderWay(cwd: string): Promise<string | undefined> {
+export async function operationUnderWay(cwd: string): Promise<string | undefined> {
     const paths = await gitRead(cwd, ['rev-parse', ...UNDER_WAY.flatMap(({ file }) => ['--git-path', file])]);
 
     if (!paths.ok) throw unavailable('git did not answer');

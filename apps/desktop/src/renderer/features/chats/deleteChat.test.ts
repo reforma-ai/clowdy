@@ -20,18 +20,16 @@ vi.mock('@clowdy/components/modals', () => ({ openConfirmModal: vi.fn() }));
 vi.mock('@clowdy/components/Toast', () => ({ toast: { error: vi.fn(), info: vi.fn() } }));
 
 describe('deleteMessage', () => {
-    it('names the chat and the runs of its agents when it has no threads', () => {
-        expect(deleteMessage({ title: 'Fix login' }, 0)).toBe(
-            '"Fix login" and the runs of its agents are deleted for good. The tasks it made stay.'
-        );
+    it('explains what deletion means without mentioning threads when there are none', () => {
+        expect(deleteMessage(0)).toBe('You can’t undo this. Tasks stay in the project.');
     });
 
     it('says how many threads go with the chat', () => {
-        expect(deleteMessage({ title: 'Ship it' }, 1)).toBe(
-            '"Ship it", its thread and the runs of their agents are deleted for good. The tasks they made stay.'
+        expect(deleteMessage(1)).toBe(
+            'This will also delete 1 thread. You can’t undo this. Tasks stay in the project.'
         );
-        expect(deleteMessage({ title: 'Ship it' }, 5)).toBe(
-            '"Ship it", its 5 threads and the runs of their agents are deleted for good. The tasks they made stay.'
+        expect(deleteMessage(5)).toBe(
+            'This will also delete 5 threads. You can’t undo this. Tasks stay in the project.'
         );
     });
 });
@@ -97,10 +95,14 @@ describe('deleteChat', () => {
         const command = deletes();
 
         deleteChat(store, workspaceChat, true, 0);
-        expect(opened()).toMatchObject({ title: 'Delete chat?', confirmLabel: 'Delete', destructive: true });
+        expect(opened()).toMatchObject({
+            title: 'Delete “Weekend surcharge in a worktree”?',
+            confirmLabel: 'Delete chat',
+            destructive: true,
+        });
         await show(opened().message);
 
-        expect(container.textContent).toContain(deleteMessage(workspaceChat, 0));
+        expect(container.textContent).toContain(deleteMessage(0));
         expect(container.textContent).toContain(LABEL);
         expect(checkbox()!.checked).toBe(false);
 
@@ -141,7 +143,7 @@ describe('deleteChat', () => {
         deleteChat(store, workspaceChat, true, 0);
         await show(opened().message);
 
-        expect(container.textContent).toContain(deleteMessage(workspaceChat, 0));
+        expect(container.textContent).toContain(deleteMessage(0));
         expect(checkbox()).toBeNull();
     });
 

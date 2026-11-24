@@ -1,4 +1,6 @@
+import { Button } from '@clowdy/components/Button';
 import { Shimmer } from '@clowdy/components/Shimmer';
+import { Text } from '@clowdy/components/Text';
 import { BackgroundTask, Robot, Split, Terminal } from '@clowdy/icons/14';
 import { shownRunStatus } from '@clowdy/protocol';
 
@@ -79,8 +81,7 @@ function ThreadRow({ chat, run }: ThreadAtWork) {
 /**
  * The line over the rows. Stop all stops every sub-agent that can stop alone and lets the orchestrator go on, knowing they were stopped
  * (`run.stopAgents`), and stops every thread at work (one `run.cancel` each): unlike the composer's Stop, which ends the whole run. It is there
- * when two or more rows have a Stop of their own. Its chevron folds the rows away (`ProjectUi.agentsFolded`), and the line then says how many agents
- * are at work.
+ * when two or more rows have a Stop of their own. The header folds the rows away (`ProjectUi.agentsFolded`) and shows how many agents are at work.
  */
 function AgentsHeader({
     orchestrator,
@@ -105,13 +106,22 @@ function AgentsHeader({
 
     return (
         <ComposerBannerHeader
-            action={stopAll ? 'Stop all' : undefined}
-            onAction={stopAll ? stop : undefined}
-            collapsed={folded}
-            onToggle={() => ui.toggleAgentsFolded()}
-            toggleLabel={folded ? 'Show agents' : 'Hide agents'}
+            expanded={!folded}
+            onPress={() => ui.toggleAgentsFolded()}
+            summary={
+                <Text variant="xs" color="secondary">
+                    {agents.length + threads.length} running
+                </Text>
+            }
+            action={
+                stopAll && (
+                    <Button size="xs" variant="ghost" color="secondary" onPress={stop}>
+                        Stop all
+                    </Button>
+                )
+            }
         >
-            {folded ? `Agents running · ${agents.length + threads.length}` : 'Agents running'}
+            Agents
         </ComposerBannerHeader>
     );
 }
@@ -158,12 +168,12 @@ function Row({ row }: { row: StripRow }) {
 }
 
 /**
- * The work of the chat that goes on now, one row each above the message box (Reforma's `ChatComposerSubagents`): under a line that says "Agents running"
+ * The work of the chat that goes on now, one row each above the message box (Reforma's `ChatComposerSubagents`): under the "Agents" header
  * (with Stop all when two or more rows can stop alone), the native sub-agents of the orchestrator and the threads of the chat that work, oldest
  * first, each with who it is and what it does (a sub-agent's row opens its run, a thread's row opens the thread's chat; Stop ends that one alone), then
  * a row for each background command the agent lets the person stop alone (its own Stop ends that command only), then one row that counts the rest of
  * the background work the orchestrator has open. Each thing is in one row: a sub-agent with a child run is its row, not a count. Nothing while there is
- * none of these. The chevron of the line folds all the rows under it away; without agents or threads there is no line, so no fold, and the background
+ * none of these. The header folds the rows under it away; without agents or threads there is no header, so no fold, and the background
  * rows show.
  */
 export function RunningAgents({ chat }: { chat: Chat }) {

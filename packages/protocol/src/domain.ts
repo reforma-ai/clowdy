@@ -47,6 +47,8 @@ export interface ProjectFolder {
 
 /** The settings of one folder of a project, for the worktrees chats make from it. */
 export interface FolderSettings {
+    /** Optional display name within this project. */
+    name?: string;
     /** The branch a new worktree starts from (`main`, `origin/next`), in place of the folder's default branch; one the repository does not have is skipped. */
     baseBranch?: string;
     /** What makes a new worktree ready to run. */
@@ -67,14 +69,16 @@ export function mainFolder(project: Pick<Project, 'folders'>): ProjectFolder {
 }
 
 /**
- * A short name for each folder, in the same order, to tell the folders of one project apart: the last part of the path, with `-2`, `-3`… after
+ * A short name for each folder, in the same order: the custom name or the last part of the path, with `-2`, `-3`… after
  * a name an earlier folder already has. No two names are the same, even when a folder is itself called `app-2`.
  */
-export function folderNames(folders: readonly Pick<ProjectFolder, 'path'>[]): string[] {
+export function folderNames(
+    folders: readonly (Pick<ProjectFolder, 'path'> & Partial<Pick<ProjectFolder, 'settings'>>)[]
+): string[] {
     const taken = new Set<string>();
 
-    return folders.map(({ path }) => {
-        const base = path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
+    return folders.map(({ path, settings }) => {
+        const base = settings?.name || path.split(/[\\/]/).filter(Boolean).at(-1) || path;
         let name = base;
 
         for (let count = 2; taken.has(name); count++) {

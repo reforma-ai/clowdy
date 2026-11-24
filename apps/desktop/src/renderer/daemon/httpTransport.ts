@@ -27,6 +27,8 @@ import type {
     FolderId,
     FolderWorktrees,
     GitBranches,
+    GitBranchMergeRequest,
+    GitBranchMergeResult,
     GitChanges,
     GitCommitResult,
     GitDiscardRequest,
@@ -274,6 +276,14 @@ export class HttpTransport implements Transport {
             branch,
             ...(create && { create }),
         } satisfies GitSwitchRequest);
+    }
+
+    branchMergeGit(
+        projectId: ProjectId,
+        place: PlaceRef,
+        request: GitBranchMergeRequest
+    ): Promise<GitBranchMergeResult> {
+        return this.#write(ROUTES.projectGitMerge(projectId), { ...place, ...request });
     }
 
     getProjectWorktrees(projectId: ProjectId): Promise<FolderWorktrees[]> {

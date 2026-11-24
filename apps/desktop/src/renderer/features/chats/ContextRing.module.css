@@ -1,11 +1,14 @@
 /*
- * The context ring of the message box and its popover. The ring and the bar share one tone: the ink of the text, then the warning tone from
+ * The context ring and its tooltip. The ring and the bar share one tone: the ink of the text, then the warning tone from
  * 80% and the danger tone from 90%, the thresholds and tokens of the usage bars (`UsageRows`). Terracotta stays with Send.
  */
 
-.ring,
-.bar {
+.ring {
     --context-color: var(--color-text);
+}
+
+.bar {
+    --context-color: currentColor;
 }
 
 .ring[data-tone='warning'],
@@ -43,20 +46,20 @@
         stroke 150ms ease-out;
 }
 
-/* ---------------------------------- The popover ---------------------------------- */
-
-.panel {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-lg);
-    min-width: 0;
-    padding: var(--spacing-lg);
+.readOnly {
+    display: grid;
+    flex-shrink: 0;
+    place-items: center;
+    width: var(--spacing-30);
+    height: var(--spacing-30);
+    border-radius: var(--radius-full);
 }
 
 .figures {
     display: flex;
     flex-direction: column;
     gap: var(--spacing-sm);
+    min-width: var(--spacing-160);
 }
 
 /* The percent at the left, the tokens at the right. */
@@ -65,19 +68,13 @@
     align-items: baseline;
     justify-content: space-between;
     gap: var(--spacing-md);
-}
-
-/* Compact, and under it why it waits while the agent works. */
-.compact {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-sm);
+    white-space: nowrap;
 }
 
 .bar {
     height: var(--spacing-6);
     border-radius: var(--radius-full);
-    background-color: var(--color-secondary-muted);
+    background-color: color-mix(in oklab, currentColor 22%, transparent);
     overflow: hidden;
 }
 

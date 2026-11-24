@@ -5,24 +5,6 @@
  * plate's column as `ComposerBannerStatus` rows do: words 12px from the plate's edge, the hover plate and the focus 4px from it.
  */
 
-.header[data-size][data-variant] {
-    align-self: stretch;
-    width: auto;
-    margin: var(--spacing-xxs) var(--spacing-xs);
-    padding-inline: var(--spacing-md);
-}
-
-.headerContent {
-    justify-content: space-between;
-}
-
-.summary {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--spacing-sm);
-    white-space: nowrap;
-}
-
 .counts {
     display: inline-flex;
     flex-shrink: 0;

@@ -54,9 +54,9 @@ const oneOf = <T extends string>(value: string | null, words: readonly T[]): T |
  *    the side panel's Changes tab shows; `&commit=signing|hook|slow` and `&message=failed|slow` say how a commit and a request for its message end there, which the screenshots of the commit
  *    box use; `&discard=slow|refused|copyfail|hook` says how a discard of a file's changes ends (it takes a while, git refuses the file, the copy cannot be kept, a post-checkout hook fails after the file is back); `&remote=slow|behind|ahead|level|never|diverged|rejected|signing|offline|renamed|no_origin|detached|unborn` says how a fetch, a pull and a push end and where the branch stands against its upstream
  *    and when the repository last fetched (the sync button's states), `&pr=none|open|draft|merged|closed|no_gh|not_signed_in|no_remote|unavailable` what GitHub says of the worktree's branch (`open` by default,
- *    `none` is the one that offers Create PR), `&clean` leaves the worktree with nothing uncommitted (hiding the commit form), and `&base` puts the worktree on `main`, the branch the work is compared with; `&branches=remote,held,dirty,refused,slow,warned,idle`, any of the
+ *    `none` is the one that offers Create PR), `&clean` leaves the worktree with nothing uncommitted (hiding the commit form), and `&base` puts the worktree on `main`, the branch the work is compared with; `&branches=remote,held,dirty,refused,slow,warned,merged,idle`, any of the
  *    words joined by commas, says what the folder's branches and a switch from the Changes sidebar's branch button, or from the new chat's pill, are like: branches only origin has, branches that worktrees hold, a checkout with
- *    changes, a switch that is refused for the chats working there, a switch that takes a while, a switch whose `post-checkout` hook failed after it, and every chat at rest, which the new chat's pill needs to show a tree with changes alone: it counts the chats of the fixtures that work in the folder);
+ *    changes, a switch that is refused for the chats working there, a switch that takes a while, a switch whose `post-checkout` hook failed after it, a merged worktree, and every chat at rest, which the new chat's pill needs to show a tree with changes alone: it counts the chats of the fixtures that work in the folder);
  * 4. nothing: the UI shows that it cannot reach a daemon.
  */
 export function resolveDaemonConfig(search: string, bridge?: { url: string; token: string }): DaemonConfig {
@@ -126,6 +126,7 @@ const unconfigured: Transport = {
     abortGit: noDaemon,
     getGitBranches: noDaemon,
     switchGitBranch: noDaemon,
+    branchMergeGit: noDaemon,
     getProjectWorktrees: noDaemon,
     getGitPullRequest: noDaemon,
     getChatWorkspaceRemoval: noDaemon,

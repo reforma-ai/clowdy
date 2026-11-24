@@ -183,7 +183,7 @@ Warm paper and clay. Accents are semantic, not a rainbow.
 
 Dark mode (`.dark`) remaps the same names: surface goes to `--color-secondary-950`, text to Warm Paper, contrast to a light stone fill. Do not author a second palette.
 
-Chat plates are part of this system: composer `--color-chat-composer`, user bubble `--color-chat-message` (Terracotta at low alpha in light).
+The composer uses `--color-chat-composer`, an alias of `--color-surface-float` in both themes. The user bubble uses `--color-chat-message` (Terracotta at low alpha in light).
 
 **The Terracotta Rule.** Terracotta is the voice, not the wallpaper. One filled primary (or one focus ring) per region. If a screen is orange, you used it as paint.
 
