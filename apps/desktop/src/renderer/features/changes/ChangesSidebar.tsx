@@ -1,6 +1,6 @@
 import { Panel, PanelHeader } from '@clowdy/components/Panel';
 import { Text } from '@clowdy/components/Text';
-import { Version } from '@clowdy/icons/14';
+import { ArrowDown, ArrowUp, Version } from '@clowdy/icons/14';
 import { Github } from '@clowdy/icons/logo';
 
 import { openEffects, useFolderGit } from '../openWith';
@@ -85,10 +85,33 @@ export function ChangesSidebar({
                 {(base || pr || hint || status?.isRepository === true) && (
                     <div className={styles.facts}>
                         {base && (
-                            <Text variant="xs" color="secondary" truncate title={`${base.name}, ${counts}`}>
-                                {`→ ${base.name}`}
-                                {counts && ` · ${counts}`}
-                            </Text>
+                            <div className={styles.baseRow} title={`${base.name}, ${counts}`}>
+                                <Text variant="xs" color="secondary" truncate>
+                                    {`→ ${base.name}`}
+                                </Text>
+                                {(base.ahead > 0 || base.behind > 0) && (
+                                    <Text
+                                        variant="xs"
+                                        color="secondary"
+                                        role="img"
+                                        aria-label={counts}
+                                        className={styles.baseCounts}
+                                    >
+                                        {base.ahead > 0 && (
+                                            <span className={styles.baseCount}>
+                                                <ArrowUp size={8} aria-hidden="true" />
+                                                {base.ahead}
+                                            </span>
+                                        )}
+                                        {base.behind > 0 && (
+                                            <span className={styles.baseCount}>
+                                                <ArrowDown size={8} aria-hidden="true" />
+                                                {base.behind}
+                                            </span>
+                                        )}
+                                    </Text>
+                                )}
+                            </div>
                         )}
                         <UpdateFromBase facts={facts} />
                         <MergeBanner facts={facts} />

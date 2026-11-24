@@ -273,9 +273,10 @@ describe('the Changes tab of a chat in a worktree', () => {
             'Commits on branch'
         );
         expect(container.querySelector('[aria-label="Changes sidebar"]')?.textContent).toContain('clowdy/ab12cd34');
-        expect(container.querySelector('[aria-label="Changes sidebar"]')?.textContent).toContain(
-            '→ origin/main · 2 ahead, 1 behind'
-        );
+        const base = container.querySelector('[title="origin/main, 2 ahead, 1 behind"]');
+
+        expect(base?.textContent).toContain('→ origin/main');
+        expect(base?.querySelector('[role="img"][aria-label="2 ahead, 1 behind"]')?.textContent).toBe('21');
         expect(container.querySelector('[aria-label="Pull request"]')?.textContent).toContain('PR #128');
     });
 
