@@ -13,7 +13,7 @@ import {
 } from '@agentclientprotocol/sdk/experimental/v2/unstable';
 
 import { EngineFailure, errorMessage } from '../../errors';
-import { answeredInTime, Channel, ProcessEnded, watchEnd } from './connection';
+import { answeredInTime, Channel, ProcessEnded, toWebReadable, watchEnd } from './connection';
 import {
     advertisesSteering,
     applyChoices,
@@ -536,7 +536,7 @@ export class V2Layer implements ProtocolLayer {
         const connection = app.connect(
             ndJsonStream(
                 Writable.toWeb(proc.child.stdin as Writable) as WritableStream<Uint8Array>,
-                Readable.toWeb(proc.child.stdout as Readable) as ReadableStream<Uint8Array>
+                toWebReadable(proc.child.stdout as Readable)
             )
         );
 
@@ -702,7 +702,7 @@ export class V2Layer implements ProtocolLayer {
                     : { action: 'accept', content: { clowdy_answer: answer } };
             });
 
-        const input = Readable.toWeb(proc.child.stdout as Readable) as ReadableStream<Uint8Array>;
+        const input = toWebReadable(proc.child.stdout as Readable);
         const output = Writable.toWeb(proc.child.stdin as Writable) as WritableStream<Uint8Array>;
         const connection = app.connect(ndJsonStream(output, input));
 

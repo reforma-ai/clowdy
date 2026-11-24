@@ -36,7 +36,7 @@ export async function readFileBytes(
     real: string,
     rel: string,
     maxBytes: number
-): Promise<{ bytes: Buffer; version: string }> {
+): Promise<{ bytes: Buffer<ArrayBuffer>; version: string }> {
     const handle = await open(real, constants.O_RDONLY | NO_FOLLOW);
 
     try {
