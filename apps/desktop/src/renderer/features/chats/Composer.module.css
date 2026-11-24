@@ -89,6 +89,7 @@
 
 /* The text stands one step further in than the plates (the card's inset and this margin), and one step down from the card's edge when nothing is above it. */
 .field {
+    width: auto;
     margin-inline: var(--spacing-sm);
 }
 
