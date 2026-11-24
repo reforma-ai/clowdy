@@ -14,8 +14,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { hotkeys } from '../../hotkeys/registry';
 import { isAppShortcut, shellSequence } from './shellKeys';
 import styles from './TerminalTab.module.css';
+import { type BufferSelection, type QuotedRows, quoteButtonPlace, selectedBufferRows } from './terminalSelection';
 import { terminalTheme } from './terminalTheme';
-import { quoteButtonPlace, selectedBufferRows, type BufferSelection, type QuotedRows } from './terminalSelection';
 
 import type { TerminalScreen } from '@clowdy/protocol';
 import type { TerminalStream } from '../../daemon/terminalStream';
@@ -311,7 +311,8 @@ export class TerminalView implements TerminalViewHandle {
 
     /** Mod-i: ⌘I on a Mac, Ctrl+I elsewhere. */
     #isAddToChatKey(event: KeyboardEvent): boolean {
-        if (event.type !== 'keydown' || event.code !== 'KeyI' || event.altKey || event.shiftKey || !this.#quote) return false;
+        if (event.type !== 'keydown' || event.code !== 'KeyI' || event.altKey || event.shiftKey || !this.#quote)
+            return false;
 
         return hotkeys.platform === 'darwin' ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
     }
@@ -335,7 +336,8 @@ export class TerminalView implements TerminalViewHandle {
 
     #syncQuote(): void {
         const range = this.#xterm?.getSelectionPosition();
-        const show = Boolean(this.#quote) && !this.#selecting && range !== undefined && this.#readSelection() !== undefined;
+        const show =
+            Boolean(this.#quote) && !this.#selecting && range !== undefined && this.#readSelection() !== undefined;
 
         if (!show || !this.#host) {
             this.#quoteButton?.host.remove();
