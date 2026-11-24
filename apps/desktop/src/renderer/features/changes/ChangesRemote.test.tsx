@@ -89,6 +89,7 @@ const item = (label: string) => items().find(candidate => candidate.textContent?
 const isOff = (label: string) => item(label).getAttribute('aria-disabled') === 'true';
 const alert = () => container.querySelector('[role="alert"]');
 const status = () => container.querySelector('[role="status"]:not([aria-label])');
+const updateLabel = 'Update from main';
 const mergeLabels = ['Merge from branch…', 'Merge into branch…'];
 
 async function openMenu() {
@@ -183,6 +184,7 @@ describe('the sync button in the sidebar', () => {
             'Fetch origin',
             'Pull origin',
             'Publish branch',
+            updateLabel,
             ...mergeLabels,
         ]);
         expect(isOff('Fetch origin')).toBe(false);
@@ -212,6 +214,7 @@ describe('the sync button in the sidebar', () => {
             'Fetch origin',
             'Pull origin',
             'Push origin',
+            updateLabel,
             ...mergeLabels,
         ]);
     });
@@ -303,6 +306,7 @@ describe('the sync button in the sidebar', () => {
             'Fetch origin',
             'Pull origin',
             'Publish branch',
+            updateLabel,
             ...mergeLabels,
         ]);
         expect(isOff('Pull origin')).toBe(true);
@@ -326,6 +330,7 @@ describe('the sync button in the sidebar', () => {
             'Fetch origin',
             'Pull origin2 commits',
             'Push origin',
+            updateLabel,
             ...mergeLabels,
         ]);
         await press(item('Pull origin'));
@@ -510,15 +515,45 @@ describe('the sync button in the sidebar', () => {
             'Fetch origin',
             'Pull origin',
             'Push origin',
+            updateLabel,
             ...mergeLabels,
         ]);
         expect(items().map(candidate => candidate.getAttribute('aria-disabled') === 'true')).toEqual([
             true,
             true,
             true,
+            true,
             false,
             false,
         ]);
+    });
+
+    it('updates a branch from its base through the menu and shows progress on the sync button', async () => {
+        await start({ gitWrites: { clean: true, remote: 'level' } });
+        let finish: (result: GitRemoteResult) => void = () => undefined;
+        const update = vi.spyOn(transport, 'updateGit').mockImplementation(
+            () =>
+                new Promise(resolve => {
+                    finish = resolve;
+                })
+        );
+
+        expect(buttonOf(updateLabel)).toBeUndefined();
+        await openMenu();
+        await press(item(updateLabel));
+        await settle();
+
+        expect(update).toHaveBeenCalledExactlyOnceWith(FIXTURE_PROJECT_ID, {
+            folderId: WORKTREE.folderId,
+            workspaceId: WORKTREE.workspaceId,
+        });
+        expect(syncButton().textContent).toBe('Updating');
+        await openMenu();
+        expect(isOff(updateLabel)).toBe(true);
+
+        finish({ state: 'done', action: 'update', pulled: 1 });
+        await settle();
+        expect(status()?.textContent).toBe('Updated with 1 commit');
     });
 });
 

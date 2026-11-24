@@ -3,8 +3,8 @@ import { Text } from '@clowdy/components/Text';
 
 import { useProjectUi } from '../../stores';
 import { quoteIntoComposer } from '../chats/composerBridge';
+import { mergeBanner } from './changesActions';
 import styles from './MergeBanner.module.css';
-import { mergeBanner, updateFromBase } from './changesActions';
 import { useRemoteActions } from './useRemoteActions';
 
 import type { PlaceFacts } from './gitFacts';
@@ -16,29 +16,6 @@ function conflictedPaths(facts: PlaceFacts): string[] {
     if (status?.isRepository !== true) return [];
 
     return status.entries.filter(entry => entry.unstaged === 'conflicted').map(entry => entry.path);
-}
-
-/**
- * Update from the base, under the line that says how far the branch is from it, when the branch is behind that base and is not the base itself. A press merges the base in.
- */
-export function UpdateFromBase({ facts }: { facts: PlaceFacts }) {
-    const offer = updateFromBase(facts.status.value);
-    const remote = useRemoteActions(facts);
-
-    if (!offer) return null;
-
-    return (
-        <Button
-            variant="bordered"
-            size="sm"
-            className={styles.update}
-            isDisabled={remote.busy}
-            isPending={remote.running === 'update'}
-            onPress={() => void remote.run('update')}
-        >
-            {offer.label}
-        </Button>
-    );
 }
 
 /**

@@ -7,8 +7,8 @@ type RepositoryStatus = Extract<GitStatus, { isRepository: true }>;
 const ORIGIN = 'origin';
 
 /**
- * What the sidebar can run. The menu offers the first four (publishing is pushing a branch that has no upstream yet, so it is one call of the transport, `remoteCall`). `update` merges the base
- * into the branch, and `abort` undoes a merge that stopped.
+ * What the sidebar can run. Publishing pushes a branch that has no upstream yet, `update` merges the base into the branch,
+ * and `abort` undoes a merge that stopped.
  */
 export type RemoteActionId = 'fetch' | 'pull' | 'push' | 'publish' | 'update' | 'abort';
 

@@ -3,7 +3,7 @@ import { Menu, MenuItem, MenuSeparator, MenuTrigger } from '@clowdy/components/L
 import { Popover } from '@clowdy/components/Popover';
 import { Spinner } from '@clowdy/components/Spinner';
 import { Text } from '@clowdy/components/Text';
-import { ArrowDown, ArrowDownRight, ArrowUp, ArrowUpRight, ChevronDown, Refresh } from '@clowdy/icons/14';
+import { ArrowDown, ArrowDownRight, ArrowUp, ArrowUpRight, ChevronDown, Refresh, Vsc } from '@clowdy/icons/14';
 
 import { Unavailable } from '../../shared/Unavailable';
 import { useNow } from '../../shared/useNow';
@@ -16,6 +16,7 @@ import {
     remoteActions,
     type SyncView,
     syncButton,
+    updateFromBase,
 } from './changesActions';
 import styles from './RemoteMenu.module.css';
 import { useRemoteActions } from './useRemoteActions';
@@ -23,7 +24,7 @@ import { useRemoteActions } from './useRemoteActions';
 import type { ReactNode } from 'react';
 import type { PlaceFacts } from './gitFacts';
 
-/** The mark of each entry of the dropdown. Publishing sends the branch up as pushing does. Update and abort are not entries of it. */
+/** Icons for the origin actions. Publishing sends the branch up as pushing does. */
 const ICONS: Record<Exclude<RemoteActionId, 'update' | 'abort'>, ReactNode> = {
     fetch: <Refresh />,
     pull: <ArrowDown />,
@@ -73,6 +74,7 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
     if (!view) return null;
 
     const actions = remoteActions(status, remote.busy);
+    const update = updateFromBase(status);
     const { running, failure, notice } = remote;
     const off = view.action === undefined && running === undefined;
     const current = status?.isRepository && status.head.kind === 'branch' ? status.head.name : undefined;
@@ -171,6 +173,14 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
                                 />
                             ))}
                             <MenuSeparator />
+                            {update && (
+                                <MenuItem
+                                    id="update"
+                                    icon={<Vsc />}
+                                    text={update.label}
+                                    isDisabled={!hasOrigin || remote.busy}
+                                />
+                            )}
                             <MenuItem
                                 id="merge-from"
                                 icon={<ArrowDownRight />}

@@ -1,10 +1,5 @@
 @reference '@clowdy/styles/rulesets';
 
-.update[data-size][data-variant] {
-    width: 100%;
-    min-width: 0;
-}
-
 .banner {
     display: flex;
     flex-direction: column;
