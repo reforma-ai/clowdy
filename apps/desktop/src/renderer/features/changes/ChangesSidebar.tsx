@@ -8,19 +8,16 @@ import { Github } from '@clowdy/icons/logo';
 
 import { openEffects, useFolderGit } from '../openWith';
 import { githubLink } from '../openWith/openTarget';
-import { BranchCommits } from './BranchCommits';
 import { BranchPicker } from './BranchPicker';
 import styles from './ChangesSidebar.module.css';
 import { CommitBox } from './CommitBox';
 import { CreatePullRequest } from './CreatePullRequest';
 import { DiscardButton } from './DiscardButton';
 import { accessHint, accessHintTitle, aheadBehindCounts, CHANGE_KIND_VIEW, splitPath } from './gitSummary';
-import { CHANGES_FILES_MIN_HEIGHT } from './layout';
 import { LIST_TEXT } from './listState';
 import { MergeBanner, UpdateFromBase } from './MergeBanner';
 import { PullRequestChip } from './PullRequestChip';
 import { RemoteMenu } from './RemoteMenu';
-import { useBoxHeight } from './useBoxWidth';
 
 import type { GitChangedFile, GitStatus } from '@clowdy/protocol';
 import type { ReactNode, SyntheticEvent } from 'react';
@@ -144,8 +141,7 @@ function FileRow({
 
 /**
  * The sidebar of the tab, at the right of the diffs: the branch the place is on with its base and how far it is from it, the pull request, the files of the scope (a press brings
- * their card up, and the filter above the cards narrows this list too), the commit box, and at its foot the commits of the branch, a spoiler that is shut by default
- * (`BranchCommits`: a press on one shows that commit alone, and a row above them goes back to all changes). The facts at the top are where the person acts on the branch: the base and how far the branch is from it, the row that says how it stands against its upstream and opens the menu
+ * their card up, and the filter above the cards narrows this list too), and the commit box. The facts at the top show how far the branch is from its base and upstream and open the menu
  * of Fetch, Pull and Push or Publish (`RemoteMenu`), and the pull request as the shared chip, or, while there is none, Create PR (`CreatePullRequest`), which opens GitHub's compare page
  * once the branch is on origin. `toggle` is the button that hides the sidebar, at the end of its header.
  */
@@ -176,7 +172,6 @@ export function ChangesSidebar({
     const viewed = model.viewedPaths;
     // Read here for the same reason: the rows are drawn by a callback, and the files that can be discarded change with the scope and with the uncommitted list.
     const discardable = model.discardable;
-    const [commitBoxRef, commitBoxHeight] = useBoxHeight();
 
     return (
         <Panel side="right" className={styles.sidebar} aria-label="Changes sidebar">
@@ -236,40 +231,33 @@ export function ChangesSidebar({
                     </div>
                 )}
 
-                <BranchCommits model={model} base={base} reserved={commitBoxHeight + CHANGES_FILES_MIN_HEIGHT}>
-                    {/* Focusable from code alone: it takes the focus when a discard took the list's last row (`keepFocusWhenGone`). */}
-                    <section className={styles.files} aria-label="Changed files" tabIndex={-1}>
-                        <SectionHeader title="Changed files" count={model.changes ? files.length : undefined} />
-                        {files.length > 0 ? (
-                            <Scrollable className={styles.list} contentClass={styles.rows}>
-                                <GridList
-                                    aria-label="Changed files"
-                                    size="sm"
-                                    onAction={key => onOpenFile(String(key))}
-                                >
-                                    <For each={[...files]}>
-                                        {file => (
-                                            <FileRow
-                                                key={file.path}
-                                                file={file}
-                                                viewed={viewed.has(file.path)}
-                                                model={model}
-                                                discard={discardable.get(file.path)}
-                                            />
-                                        )}
-                                    </For>
-                                </GridList>
-                            </Scrollable>
-                        ) : (
-                            <PanelEmptyRow>{emptyFilesWords(model)}</PanelEmptyRow>
-                        )}
-                    </section>
+                {/* Focusable from code alone: it takes the focus when a discard took the list's last row (`keepFocusWhenGone`). */}
+                <section className={styles.files} aria-label="Changed files" tabIndex={-1}>
+                    <SectionHeader title="Changed files" count={model.changes ? files.length : undefined} />
+                    {files.length > 0 ? (
+                        <Scrollable className={styles.list} contentClass={styles.rows}>
+                            <GridList aria-label="Changed files" size="sm" onAction={key => onOpenFile(String(key))}>
+                                <For each={[...files]}>
+                                    {file => (
+                                        <FileRow
+                                            key={file.path}
+                                            file={file}
+                                            viewed={viewed.has(file.path)}
+                                            model={model}
+                                            discard={discardable.get(file.path)}
+                                        />
+                                    )}
+                                </For>
+                            </GridList>
+                        </Scrollable>
+                    ) : (
+                        <PanelEmptyRow>{emptyFilesWords(model)}</PanelEmptyRow>
+                    )}
+                </section>
 
-                    {/* Measured: the commits' box can be dragged up to it and no further. */}
-                    <div ref={commitBoxRef} className={styles.commitBox}>
-                        <CommitBox model={model} place={place} projectId={projectId} git={git} />
-                    </div>
-                </BranchCommits>
+                <div className={styles.commitBox}>
+                    <CommitBox model={model} place={place} projectId={projectId} git={git} />
+                </div>
             </div>
         </Panel>
     );

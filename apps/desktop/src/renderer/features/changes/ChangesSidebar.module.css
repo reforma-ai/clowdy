@@ -22,7 +22,7 @@
     color: var(--color-secondary-muted-text);
 }
 
-/* Everything under the header: the facts, then the lists, which share what is left. */
+/* The branch facts, changed files and commit box sit below the header. */
 .body {
     display: flex;
     flex: 1;
@@ -46,7 +46,7 @@
     max-width: 100%;
 }
 
-/* The files take what the commit box and the commits leave: a long list scrolls in its own box and does not push them out. Never shorter than `CHANGES_FILES_MIN_HEIGHT`. */
+/* The changed files scroll in the space above the commit box. */
 .files {
     display: flex;
     flex: 1 1 0;

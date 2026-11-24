@@ -35,7 +35,6 @@ const PLACE = { folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' };
 // happy-dom has no layout: the view builds its resizable group once its box has a width, which it is told.
 vi.mock('./useBoxWidth', () => ({
     useBoxWidth: () => [() => undefined, 900],
-    useBoxHeight: () => [() => undefined, 900],
 }));
 // The diff view has specs of its own (`packages/file-manager/specs`); here it only has to be given the right texts.
 vi.mock('@clowdy/file-manager/react', () => ({
@@ -60,9 +59,6 @@ vi.mock('./ChangesSidebar', async importOriginal => ({
 }));
 vi.mock('./CommitBox', async importOriginal => ({
     CommitBox: observer((await importOriginal<typeof import('./CommitBox')>()).CommitBox),
-}));
-vi.mock('./BranchCommits', async importOriginal => ({
-    BranchCommits: observer((await importOriginal<typeof import('./BranchCommits')>()).BranchCommits),
 }));
 vi.mock('./DiffCard', async importOriginal => ({
     DiffCard: observer((await importOriginal<typeof import('./DiffCard')>()).DiffCard),
