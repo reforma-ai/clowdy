@@ -83,6 +83,7 @@ const buttonOf = (label: string) =>
 /** The sync button: the one that names the next action. */
 const createPRButton = () => container.querySelector<HTMLButtonElement>('button[aria-label="Create PR"]') ?? undefined;
 const syncButton = () => container.querySelector<HTMLButtonElement>('button[data-sync]')!;
+const syncCopy = () => syncButton().querySelector('[data-sync-copy]')?.textContent;
 /** The dropdown beside it, which keeps every action. */
 const dropdown = () => container.querySelector<HTMLButtonElement>('button[aria-label="More source control actions"]')!;
 const items = () => [...document.querySelectorAll<HTMLElement>('[role="menu"] [role="menuitem"]')];
@@ -236,7 +237,7 @@ describe('the sync button in the sidebar', () => {
 
         expect(fetch).toHaveBeenCalledWith(FIXTURE_PROJECT_ID, { folderId: 'fld_car_rental' });
         expect(status()).toBeNull();
-        expect(syncButton().textContent).toBe('Fetch originLast fetched just now');
+        expect(syncCopy()).toBe('Fetch originLast fetched just now');
 
         act(() => root.unmount());
         stop();
@@ -493,10 +494,12 @@ describe('the sync button in the sidebar', () => {
                     release = () => resolve({ state: 'done', action: 'fetch' });
                 })
         );
-        await press(syncButton());
+        const button = syncButton();
+        await press(button);
 
+        expect(syncButton()).toBe(button);
         expect(syncButton().getAttribute('data-sync')).toBe('running');
-        expect(syncButton().textContent).toBe('Fetching origin');
+        expect(syncCopy()).toBe('Fetching origin');
         expect(syncButton().hasAttribute('data-pending')).toBe(true);
         await openMenu();
         expect(items().every(candidate => candidate.getAttribute('aria-disabled') === 'true')).toBe(true);
@@ -504,6 +507,7 @@ describe('the sync button in the sidebar', () => {
         release();
         await settle();
         await settle();
+        expect(syncButton()).toBe(button);
         expect(syncButton().getAttribute('data-sync')).toBe('fetch');
         expect(status()).toBeNull();
     });
@@ -520,7 +524,7 @@ describe('the sync button in the sidebar', () => {
                 })
         );
         await press(syncButton());
-        expect(syncButton().textContent).toBe('Publishing branch');
+        expect(syncCopy()).toBe('Publishing branch');
         release();
         await settle();
         await settle();
@@ -582,7 +586,7 @@ describe('the sync button in the sidebar', () => {
             folderId: WORKTREE.folderId,
             workspaceId: WORKTREE.workspaceId,
         });
-        expect(syncButton().textContent).toBe('Updating');
+        expect(syncCopy()).toBe('Updating');
         await openMenu();
         expect(isOff(updateLabel)).toBe(true);
 
@@ -979,7 +983,7 @@ describe('Create PR in the sidebar', () => {
         await settle();
         await settle();
         expect(createPRButton()).toBeUndefined();
-        expect(syncButton().textContent).toBe('Publish branchTracks origin/main');
+        expect(syncCopy()).toBe('Publish branchTracks origin/main');
 
         const push = vi.spyOn(transport, 'pushGit');
 

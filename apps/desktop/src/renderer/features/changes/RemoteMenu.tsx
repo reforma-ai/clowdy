@@ -3,7 +3,9 @@ import { Menu, MenuItem, MenuSeparator, MenuTrigger } from '@clowdy/components/L
 import { Popover } from '@clowdy/components/Popover';
 import { Spinner } from '@clowdy/components/Spinner';
 import { Text } from '@clowdy/components/Text';
+import { Tooltip } from '@clowdy/components/Tooltip';
 import { ArrowDown, ArrowDownRight, ArrowUp, ArrowUpRight, ChevronDown, Refresh, Vsc } from '@clowdy/icons/14';
+import { useState } from 'react';
 
 import { Unavailable } from '../../shared/Unavailable';
 import { useNow } from '../../shared/useNow';
@@ -51,6 +53,55 @@ function Counts({ ahead, behind }: Pick<SyncView, 'ahead' | 'behind'>) {
                     {behind}
                 </span>
             ) : null}
+        </span>
+    );
+}
+
+type SyncCopy = Pick<SyncView, 'label' | 'line' | 'tone'>;
+
+function SyncWords({ label, line, tone }: SyncCopy) {
+    const [copy, setCopy] = useState<{ current: SyncCopy; outgoing?: SyncCopy }>({ current: { label, line, tone } });
+    const { current, outgoing } = copy;
+
+    if (current.label !== label || current.line !== line || current.tone !== tone) {
+        // Keep the latest subtitle, but don't replay the transition when only the fetch clock ticks.
+        setCopy({ current: { label, line, tone }, outgoing: current.label === label ? outgoing : current });
+    }
+
+    const words = ({ label, line, tone }: SyncCopy) => (
+        <>
+            <Text variant="xs" weight="medium" color={tone === 'warning' ? 'warning' : undefined} truncate>
+                {label}
+            </Text>
+            {line && (
+                <Text
+                    variant="xs"
+                    color={tone === 'warning' ? 'warning' : 'secondary'}
+                    truncate
+                    className={styles.line}
+                >
+                    {line}
+                </Text>
+            )}
+        </>
+    );
+
+    return (
+        <span className={styles.words}>
+            <span key={label} className={styles.copy} data-sync-copy data-entering={!!outgoing || undefined}>
+                {words({ label, line, tone })}
+            </span>
+            {outgoing && (
+                <span
+                    key={outgoing.label}
+                    className={styles.copy}
+                    data-outgoing
+                    aria-hidden="true"
+                    onAnimationEnd={() => setCopy(copy => ({ current: copy.current }))}
+                >
+                    {words(outgoing)}
+                </span>
+            )}
         </span>
     );
 }
@@ -103,49 +154,34 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
         <div className={styles.root}>
             <div className={styles.split}>
                 <Unavailable label={view.label} hint={off ? view.title : undefined} className={styles.host}>
-                    <Button
-                        variant="filled"
-                        color="secondary"
-                        size="sm"
-                        className={styles.main}
-                        contentClassName={styles.content}
-                        isDisabled={off}
-                        isPending={running !== undefined}
-                        spinnerPlacement="none"
-                        aria-label={view.title}
-                        aria-description={view.kind === 'update' ? updateCount : undefined}
-                        data-sync={view.kind}
-                        tooltip={off || running !== undefined ? undefined : tooltip}
-                        tooltipPlacement="bottom"
-                        onPress={() => view.action && void remote.run(view.action)}
+                    <Tooltip
+                        content={off || running !== undefined ? undefined : tooltip}
+                        isDisabled={off || running !== undefined}
+                        placement="bottom"
                     >
-                        <span className={styles.words}>
-                            <Text
-                                variant="xs"
-                                weight="medium"
-                                color={view.tone === 'warning' ? 'warning' : undefined}
-                                truncate
-                            >
-                                {view.label}
-                            </Text>
-                            {view.line && (
-                                <Text
-                                    variant="xs"
-                                    color={view.tone === 'warning' ? 'warning' : 'secondary'}
-                                    truncate
-                                    className={styles.line}
-                                >
-                                    {view.line}
-                                </Text>
+                        <Button
+                            variant="filled"
+                            color="secondary"
+                            size="sm"
+                            className={styles.main}
+                            contentClassName={styles.content}
+                            isDisabled={off}
+                            isPending={running !== undefined}
+                            spinnerPlacement="none"
+                            aria-label={view.title}
+                            aria-description={view.kind === 'update' ? updateCount : undefined}
+                            data-sync={view.kind}
+                            onPress={() => view.action && void remote.run(view.action)}
+                        >
+                            <SyncWords label={view.label} line={view.line} tone={view.tone} />
+                            {view.kind === 'update' && update ? (
+                                <CommitCountBadge direction="down" count={update.behind} />
+                            ) : (
+                                <Counts ahead={view.ahead} behind={view.behind} />
                             )}
-                        </span>
-                        {view.kind === 'update' && update ? (
-                            <CommitCountBadge direction="down" count={update.behind} />
-                        ) : (
-                            <Counts ahead={view.ahead} behind={view.behind} />
-                        )}
-                        {running !== undefined && <Spinner size="xxs" className={styles.spinner} aria-hidden />}
-                    </Button>
+                            {running !== undefined && <Spinner size="xxs" className={styles.spinner} aria-hidden />}
+                        </Button>
+                    </Tooltip>
                 </Unavailable>
 
                 <MenuTrigger>
