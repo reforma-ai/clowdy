@@ -63,6 +63,31 @@ describe('HttpTransport git branches and the switch', () => {
         ]);
     });
 
+    it('posts the exact commits of an accepted merge preview to the selected project and worktree', async () => {
+        const sourceCommit = 'a'.repeat(40);
+        const targetCommit = 'b'.repeat(40);
+        const answer = { state: 'done', target: 'next', commit: sourceCommit, canPush: true };
+        const { sent, transport } = transportFor(answer);
+        const selection = {
+            action: 'merge',
+            direction: 'into',
+            current: 'feature/x',
+            branch: 'next',
+            sourceCommit,
+            targetCommit,
+        } as const;
+        const place = { folderId: 'fld/b', workspaceId: 'wks 1' };
+
+        expect(await transport.branchMergeGit('prj a', place, selection)).toEqual(answer);
+        expect(sent).toEqual([
+            {
+                url: 'http://127.0.0.1:4310/v1/projects/prj%20a/git/merge',
+                method: 'POST',
+                body: { ...place, ...selection },
+            },
+        ]);
+    });
+
     it("rejects with the daemon's reason, the status and the hint, and sends a switch only once", async () => {
         const body = {
             ok: false,
@@ -130,6 +155,7 @@ describe('FixtureTransport git branches and the switch', () => {
         expect(answer.local.map(branch => branch.name)).toEqual(['main', 'dev']);
         expect(answer.local[0]).toMatchObject({ name: 'main', current: true, default: true, upstream: 'origin/main' });
         expect(answer.remote).toEqual([]);
+        expect(answer.origin?.map(branch => branch.name)).toEqual(['main', 'dev']);
         expect(answer.recent).toEqual(['dev']);
     });
 

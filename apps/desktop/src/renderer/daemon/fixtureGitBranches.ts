@@ -160,18 +160,23 @@ export class FixtureGitBranches {
                 committedAt: now - (index + 1) * 3_600_000 * 7,
             };
         });
-        const remote: GitRemoteBranch[] = this.#scripts.has('remote')
-            ? REMOTE_ONLY.filter(name => !took.has(name)).map((name, index) => ({
-                  name,
-                  committedAt: now - (index + 1) * 86_400_000,
-              }))
-            : [];
+        const origin: GitRemoteBranch[] = [
+            ...TRACKED.map(name => ({ name, ...(name === 'main' && { default: true as const }) })),
+            ...(this.#scripts.has('remote')
+                ? REMOTE_ONLY.map((name, index) => ({
+                      name,
+                      committedAt: now - (index + 1) * 86_400_000,
+                  }))
+                : []),
+        ];
+        const remote = origin.filter(branch => !names.includes(branch.name));
 
         return {
             isRepository: true,
             defaultBranch: 'main',
             local,
             remote,
+            origin,
             recent: ['dev', 'main', ...(this.#scripts.has('held') ? [PERSON_TREE.branch] : [])].filter(
                 name => name !== current && names.includes(name)
             ),

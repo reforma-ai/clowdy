@@ -74,6 +74,9 @@ import type {
     FolderId,
     FolderWorktrees,
     GitBranches,
+    GitBranchMergePreview,
+    GitBranchMergeRequest,
+    GitBranchMergeResult,
     GitChangedFile,
     GitChanges,
     GitCommitResult,
@@ -178,6 +181,15 @@ const OUTCOME_SUMMARY: Record<ThreadNotice['outcome'], string> = {
 };
 
 /** The one line a queued notice shows: `Thread "Fix login" finished`, or how many threads stopped. */
+/** Give each fixture ref and each merge a distinct, repeatable commit ID. */
+function mergeCommitId(ref: string): string {
+    let hash = 0;
+
+    for (const character of ref) hash = Math.imul(hash, 31) + character.charCodeAt(0);
+
+    return (hash >>> 0).toString(16).padStart(40, '0');
+}
+
 function noticeSummary(threads: readonly ThreadNotice[]): string {
     if (threads.length === 1) return `Thread "${threads[0].title}" ${OUTCOME_SUMMARY[threads[0].outcome]}`;
 
@@ -268,6 +280,8 @@ export class FixtureTransport implements Transport {
     /** Where each place's branch stands against its upstream, which a fetch, a pull, a push and a commit move. */
     readonly #gitRemote: FixtureGitRemote;
     readonly #branches: FixtureGitBranches;
+    readonly #branchMerges = new Map<string, { sourceCommit: string; commit: string }>();
+    readonly #mergeConflicts = new Map<string, Extract<GitBranchMergeResult, { state: 'conflicts' }>>();
 
     constructor({ data = createFixtureData(), timeline = false, gitWrites, branches }: FixtureTransportOptions = {}) {
         this.#data = data;
@@ -376,6 +390,15 @@ export class FixtureTransport implements Transport {
             ...(script && { head: script }),
         });
 
+        if (status.isRepository && status.head.kind === 'branch') {
+            const key = `${projectId}/${place.folderId}/${status.head.name}`;
+            const merged = this.#branchMerges.get(key);
+            const pending = this.#mergeConflicts.get(key);
+
+            if (merged) status.head.commit = merged.commit;
+            if (pending) status.merging = { conflicts: pending.conflicts };
+        }
+
         if (!workspace) return structuredClone(this.#branches.dirtied(status));
 
         if (this.#branches.merged && status.isRepository && status.base.state === 'ready')
@@ -459,6 +482,123 @@ export class FixtureTransport implements Transport {
         if (!head?.branch) return { isRepository: false };
 
         return structuredClone(this.#branches.list(this.#branchPlace(projectId, folder, head, workspace)));
+    }
+
+    async branchMergeGit(
+        projectId: ProjectId,
+        place: PlaceRef,
+        request: GitBranchMergeRequest
+    ): Promise<GitBranchMergeResult> {
+        const { folder, head, workspace } = this.#gitPlace(projectId, place);
+        const branches = this.#branches.list(this.#branchPlace(projectId, folder, head, workspace));
+        const current = branches.local.find(branch => branch.current)?.name;
+
+        if (current === undefined || this.#gitRemote.head !== undefined)
+            throw new TransportError('Switch to a branch with commits first', 400);
+
+        const target = 'target' in request ? request.target : request.direction === 'from' ? current : request.branch;
+        const destination = branches.local.find(branch => branch.name === target);
+
+        if (!destination) throw new TransportError(`No such local branch: ${target}`, 400);
+
+        const refKey = (branch: string) => `${projectId}/${folder.id}/${branch}`;
+        const key = refKey(target);
+        const merged = this.#branchMerges.get(key);
+        const pending = this.#mergeConflicts.get(key);
+        const holder = destination.heldBy;
+        const targetPath = target === current ? (workspace?.path ?? folder.path) : holder?.path;
+        const workspaceId = target === current ? place.workspaceId : holder?.workspaceId;
+        const remotePlace: FixtureRemotePlace = {
+            key: workspaceId !== undefined || targetPath === folder.path ? `${folder.id}/${workspaceId ?? ''}` : key,
+            branch: target,
+            worktree: workspaceId !== undefined,
+        };
+
+        if (request.action === 'push') {
+            if (merged?.commit !== request.commit) throw new TransportError(`${target} moved since the merge`, 409);
+
+            await this.#gitRemote.run('push', remotePlace);
+            return { state: 'pushed', target };
+        }
+
+        if (request.action === 'abort') {
+            if (pending?.commit !== request.commit || pending.sourceCommit !== request.sourceCommit)
+                throw new TransportError('The merge is no longer in progress', 409);
+
+            this.#mergeConflicts.delete(key);
+            return { state: 'aborted', target };
+        }
+
+        if (request.current !== current) throw new TransportError('The current branch changed', 409);
+
+        const isRemote = request.remote === true;
+        const source = request.direction === 'into' ? current : isRemote ? `origin/${request.branch}` : request.branch;
+        const available = isRemote ? branches.origin : branches.local;
+
+        if (
+            (isRemote && (request.direction === 'into' || !this.#gitRemote.hasOrigin)) ||
+            !available?.some(branch => branch.name === request.branch)
+        )
+            throw new TransportError(`No such branch: ${request.branch}`, 400);
+
+        const sourceCommit =
+            (isRemote ? undefined : this.#branchMerges.get(refKey(source))?.commit) ??
+            mergeCommitId(refKey(isRemote ? `refs/remotes/${source}` : `refs/heads/${source}`));
+        const targetCommit = merged?.commit ?? mergeCommitId(refKey(`refs/heads/${target}`));
+        const mode =
+            source === target || merged?.sourceCommit === sourceCommit
+                ? 'up-to-date'
+                : source === 'origin/main' || source === 'origin/feature/search'
+                  ? 'merge-commit'
+                  : 'fast-forward';
+        const preview: GitBranchMergePreview = {
+            state: 'preview',
+            source,
+            target,
+            sourceCommit,
+            targetCommit,
+            mode,
+            commits: mode === 'up-to-date' ? 0 : 3,
+            ...(targetPath && { targetPath }),
+        };
+
+        if (request.action === 'preview') return preview;
+
+        if (request.sourceCommit !== sourceCommit || request.targetCommit !== targetCommit)
+            throw new TransportError('The branches moved since the preview', 409);
+
+        const status =
+            target === current || workspaceId !== undefined || holder?.main
+                ? await this.getGitStatus(projectId, { folderId: folder.id, workspaceId })
+                : undefined;
+
+        if (pending || (status?.isRepository && (status.entries.length > 0 || status.merging)))
+            throw new TransportError('Finish the changes in the destination checkout first', 409);
+
+        if (source === 'origin/feature/search' && targetPath) {
+            const result = {
+                state: 'conflicts',
+                target,
+                commit: targetCommit,
+                sourceCommit,
+                targetPath,
+                conflicts: 1,
+            } as const;
+            this.#mergeConflicts.set(key, result);
+            return result;
+        }
+
+        const commit =
+            mode === 'up-to-date'
+                ? targetCommit
+                : mode === 'fast-forward'
+                  ? sourceCommit
+                  : mergeCommitId(`${targetCommit}+${sourceCommit}`);
+        this.#branchMerges.set(key, { sourceCommit, commit });
+
+        if (mode !== 'up-to-date') this.#gitRemote.committed(remotePlace);
+
+        return { state: 'done', target, commit, canPush: this.#gitRemote.hasOrigin };
     }
 
     async switchGitBranch(

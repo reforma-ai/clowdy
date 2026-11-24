@@ -1,0 +1,49 @@
+.form,
+.heading,
+.detail,
+.error {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.form {
+    gap: var(--spacing-16);
+    padding: var(--spacing-20);
+}
+
+.heading,
+.detail,
+.error {
+    gap: var(--spacing-4);
+    overflow-wrap: anywhere;
+}
+
+.detail {
+    padding: var(--spacing-12);
+    border-radius: var(--radius-md);
+    background: var(--color-secondary-muted-light);
+}
+
+.loading,
+.actions {
+    display: flex;
+    gap: var(--spacing-8);
+}
+
+.loading {
+    align-items: center;
+}
+
+.actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.action[data-size][data-variant] {
+    max-width: 100%;
+    height: auto;
+    min-height: var(--spacing-30);
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
