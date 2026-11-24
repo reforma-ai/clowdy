@@ -208,7 +208,7 @@ describe('the folder of a chat', () => {
     it('is a pill that opens a menu in the desktop app: the file manager and the editor, the first the computer has until others are picked', async () => {
         await draw({ bridge: { getOpenApps: async () => APPS, openPath: vi.fn(async () => undefined) } });
 
-        expect(pill()?.textContent).toBe('web · main');
+        expect(pill()?.textContent).toBe('webmain');
         expect(pill()?.hasAttribute('data-missing')).toBe(false);
 
         expect(pill()?.hasAttribute('data-open')).toBe(false);
@@ -410,8 +410,8 @@ describe('the folder of a chat', () => {
     it('shows the branch in the desktop app too, beside the pill', async () => {
         await draw({ bridge: { getOpenApps: async () => APPS, openPath: vi.fn(async () => undefined) } });
 
-        expect(pill()?.textContent).toBe('web · main');
-        expect(container.textContent).toBe('web · main');
+        expect(pill()?.textContent).toBe('webmain');
+        expect(container.textContent).toBe('webmain');
     });
 
     it('opens the folder in the built-in file manager', async () => {
@@ -566,6 +566,25 @@ describe('the folder of a chat that works in a worktree', () => {
         expect(container.textContent).toBe('web · Worktree');
     });
 
+    it('shows the worktree prefix in the same muted style as the new-chat selector', async () => {
+        await draw({ workspace, bridge: APP, showFolder: false });
+
+        const parts = [...pill()!.querySelectorAll<HTMLElement>('span')];
+        const prefix = parts.find(part => part.textContent === 'Worktree')!;
+        const branch = parts.find(part => part.textContent === 'clowdy/ab12cd34')!;
+
+        expect(prefix.className).toContain('color-secondary-muted-text');
+        expect(branch.className).not.toContain('color-secondary-muted-text');
+    });
+
+    it('does not add an empty label when the worktree branch is unknown', async () => {
+        reads([]);
+        await draw({ workspace: { ...workspace, id: 'wks_other' }, bridge: APP, showFolder: false });
+
+        const content = pill()!.querySelector('[class*="triggerContent"]')!;
+        expect([...content.children].map(child => child.textContent)).toEqual(['', 'Worktree', '']);
+    });
+
     it('shows the branch it will be made on while the worktree is not made yet, whatever the read says', async () => {
         reads([]);
         await draw({ workspace: { ...workspace, ready: false } });
@@ -591,7 +610,7 @@ describe('the folder of a chat that works in a worktree', () => {
         await draw({ workspace, bridge: APP });
 
         expect(pill()?.hasAttribute('data-missing')).toBe(true);
-        expect(container.textContent).toBe('web · Worktree');
+        expect(container.textContent).toBe('webWorktree');
     });
 
     it('opens the menu on the worktree, whose path it copies and opens', async () => {

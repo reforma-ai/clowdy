@@ -3,16 +3,17 @@ import { Menu, MenuItem, MenuSection, MenuSeparator, MenuTrigger } from '@clowdy
 import { Popover, PopoverScroll } from '@clowdy/components/Popover';
 import { Text } from '@clowdy/components/Text';
 import { ChevronRight } from '@clowdy/icons/8';
-import { Check, ChevronDown, Folder, Settings, Split, Version } from '@clowdy/icons/14';
+import { Check, Folder, Settings, Split, Version } from '@clowdy/icons/14';
 import { capitalize } from '@clowdy/lib';
 import { folderNames } from '@clowdy/protocol';
-import { type KeyboardEvent, type ReactNode, type Ref, use, useEffect, useRef, useState } from 'react';
+import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { OverlayTriggerStateContext, PopoverContext, type PressEvent } from 'react-aria-components';
 
 import { tildePath } from '../../shared/displayPath';
 import { homeFolder } from '../../shared/homeFolder';
 import { isInPickerPopover, type PickerOption, PickerPopover } from '../../shared/PickerPopover';
 import { Unavailable } from '../../shared/Unavailable';
+import { ChipTrigger } from './ChipTrigger';
 import { MainBranchPicker } from './MainBranchPicker';
 import { type MainBranchBlock } from './mainBranch';
 import styles from './WorkspaceChips.module.css';
@@ -20,47 +21,7 @@ import { chatsUsing, pickableWorktrees, type Repository, repositoryOf, worktreeL
 
 import type { Chat, ChatId, ChatWorkspaceChoice, FolderId, GitWorktree, ProjectFolder } from '@clowdy/protocol';
 import type { BranchListing } from '../changes/branchChoices';
-import type { FolderGit } from '../openWith';
 import type { FolderRepository } from './useFolderRepository';
-
-/**
- * Where a chat that has started works, read only, in one label: the branch the tree has checked out now (`git`, from `useFolderGit`; the short hash of a detached HEAD)
- * after the branch or Split mark, and for a worktree the word `Worktree` before it in a dimmer tone, the worktree's path on hover. In the folder's own checkout the label is the branch
- * alone, since that is where a chat works unless it was sent into a worktree. Nothing while no branch is known and the chat is not in a worktree (the folder is no repository,
- * or the read has not answered); a worktree whose branch is not known says `Worktree` alone. The control of the new-chat page (`WorkspaceChips`) becomes this one when the first
- * message is sent, and stays in its place.
- */
-export function WorkspaceLabel({ worktree, git }: { worktree: string | undefined; git: FolderGit | undefined }) {
-    const branch = git?.branch;
-
-    if (!worktree && !branch) return null;
-
-    const detached = git?.detached === true;
-    // A detached HEAD has no branch, only a commit: the hash is shown in a branch's place, so the title and the screen reader say so.
-    const path = worktree && tildePath(worktree, homeFolder.path);
-    const title = path ? (detached ? `${path}\nDetached HEAD` : path) : detached ? 'Detached HEAD' : 'Main worktree';
-
-    return (
-        <div
-            role="group"
-            className={styles.label}
-            title={title}
-            aria-label={`Where it runs: ${worktree ? 'Worktree' : 'Main worktree'}${branch ? `, ${branchWords(branch, detached)}` : ''}`}
-        >
-            {worktree ? <Split aria-hidden="true" /> : <Version aria-hidden="true" />}
-            {worktree && (
-                <Text className={styles.lead} color="secondary">
-                    Worktree
-                </Text>
-            )}
-            {branch && (
-                <Text truncate color={worktree ? 'default' : 'secondary'}>
-                    {branch}
-                </Text>
-            )}
-        </div>
-    );
-}
 
 /** What a screen reader says of what is checked out: a branch, or on a detached HEAD the commit it is at. */
 const branchWords = (name: string, detached: boolean) => (detached ? `detached at ${name}` : `branch ${name}`);
@@ -153,66 +114,6 @@ function FolderRows({ folders, selectedFolderId, missing }: FolderChoices) {
             })}
         />
     ));
-}
-
-function WorkspaceTrigger({
-    icon,
-    folder,
-    label,
-    lead,
-    trail,
-    ariaLabel,
-    tooltip,
-    missing,
-    buttonRef,
-}: {
-    icon: ReactNode;
-    folder?: string;
-    label: string;
-    lead?: string;
-    trail?: string;
-    ariaLabel: string;
-    tooltip?: string;
-    missing?: boolean;
-    buttonRef?: Ref<HTMLButtonElement | HTMLAnchorElement | null>;
-}) {
-    const state = use(OverlayTriggerStateContext);
-
-    return (
-        <Button
-            ref={buttonRef}
-            size="sm"
-            variant="filling"
-            rounded
-            color={missing ? 'warning' : undefined}
-            className={styles.trigger}
-            contentClassName={styles.triggerContent}
-            data-open={state?.isOpen || undefined}
-            data-missing={missing || undefined}
-            aria-label={folder ? `${ariaLabel}, folder ${folder}` : ariaLabel}
-            tooltip={tooltip}
-        >
-            {icon}
-            {folder && (
-                <>
-                    <Text truncate>{folder}</Text>
-                    <span className={styles.separator} aria-hidden="true" />
-                </>
-            )}
-            {lead && (
-                <Text color="secondary" className={styles.lead}>
-                    {lead}
-                </Text>
-            )}
-            <Text truncate>{label}</Text>
-            {trail && (
-                <Text color="secondary" truncate>
-                    {trail}
-                </Text>
-            )}
-            <ChevronDown aria-hidden="true" className={styles.chevron} />
-        </Button>
-    );
 }
 
 interface WorkspaceChipProps extends FolderChoices {
@@ -387,8 +288,8 @@ function WorkspaceChip({
                     }
                 }}
             >
-                <WorkspaceTrigger
-                    buttonRef={element => {
+                <ChipTrigger
+                    ref={element => {
                         pill.current = element;
                         restoreRef(element);
                     }}
@@ -399,7 +300,7 @@ function WorkspaceChip({
                     lead={'lead' in trigger ? trigger.lead : undefined}
                     label={trigger.label}
                     trail={'trail' in trigger ? trigger.trail : undefined}
-                    ariaLabel={trigger.ariaLabel}
+                    aria-label={folderName ? `${trigger.ariaLabel}, folder ${folderName}` : trigger.ariaLabel}
                     tooltip={'tooltip' in trigger ? trigger.tooltip : undefined}
                     missing={missing.has(selectedFolderId) || ('missing' in trigger && trigger.missing)}
                 />
@@ -697,14 +598,14 @@ export function WorkspaceChips({
 
         return (
             <MenuTrigger>
-                <WorkspaceTrigger
-                    buttonRef={restoreRef}
+                <ChipTrigger
+                    ref={restoreRef}
                     icon={<Folder aria-hidden="true" />}
                     folder={name}
                     label={
                         repository.status === 'loading' ? 'Reading Git…' : why ? 'Git unavailable' : 'Not a repository'
                     }
-                    ariaLabel={`Where it runs: ${repository.status === 'loading' ? 'Reading Git' : why ? 'Git unavailable' : 'Not a repository'}`}
+                    aria-label={`Where it runs: ${repository.status === 'loading' ? 'Reading Git' : why ? 'Git unavailable' : 'Not a repository'}, folder ${name}`}
                     tooltip={[folders[selected]?.path, why].filter(Boolean).join('\n') || undefined}
                     missing={missing.has(selectedFolderId)}
                 />

@@ -9,6 +9,8 @@ import styles from './ChipTrigger.module.css';
 export interface ChipTriggerProps {
     /** The mark at the start of the pill: the folder's, the branch's. Nothing for a pill that is all words. */
     icon?: ReactNode;
+    /** Folder name, shown before the workspace when a project has several folders. */
+    folder?: string;
     /** Words before the label in the dim tone (`Worktree` before a branch), which stay whole while the label gives way. */
     lead?: string;
     label: string;
@@ -32,6 +34,7 @@ export interface ChipTriggerProps {
  */
 export function ChipTrigger({
     icon,
+    folder,
     lead,
     label,
     trail,
@@ -61,14 +64,22 @@ export function ChipTrigger({
             onPress={onPress}
         >
             {icon}
+            {folder && (
+                <>
+                    <Text truncate>{folder}</Text>
+                    <span className={styles.separator} aria-hidden="true" />
+                </>
+            )}
             {lead && (
                 <Text color="secondary" className={styles.lead}>
                     {lead}
                 </Text>
             )}
-            <Text truncate className={trail ? styles.whole : undefined}>
-                {label}
-            </Text>
+            {label && (
+                <Text truncate className={trail ? styles.whole : undefined}>
+                    {label}
+                </Text>
+            )}
             {trail && (
                 <Text color="secondary" truncate className={styles.trail}>
                     {trail}
