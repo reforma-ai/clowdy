@@ -402,23 +402,6 @@ export function updateFromBase(status: GitStatus | undefined): { label: string; 
     return { label: `Update from ${name}`, behind: base.behind };
 }
 
-/** What the banner says while a merge is in progress. `ask` is offered while paths are still conflicted. Nothing when no merge is. */
-export function mergeBanner(status: GitStatus | undefined): { words: string; ask: boolean } | undefined {
-    if (status?.isRepository !== true || !status.merging) return undefined;
-
-    const { conflicts } = status.merging;
-
-    return {
-        ask: conflicts > 0,
-        words:
-            conflicts === 0
-                ? 'Conflicts resolved, commit the merge'
-                : conflicts === 1
-                  ? '1 conflict'
-                  : `${conflicts} conflicts`,
-    };
-}
-
 /** Whether the published branch can be proposed against the base shown in Changes. */
 export function canCreatePullRequest(status: GitStatus | undefined): boolean {
     if (status?.isRepository !== true || !status.origin || status.head.kind !== 'branch') return false;

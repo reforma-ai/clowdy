@@ -142,18 +142,22 @@ export class CommitDraft {
             : undefined;
     }
 
-    /** A merge is in progress and every conflict is resolved: the commit finishes the merge, and no file has to be ticked. */
-    get concluding(): boolean {
+    get merging() {
         const status = this.model.facts.status.value;
 
-        return status?.isRepository === true && status.merging !== undefined && status.merging.conflicts === 0;
+        return status?.isRepository === true ? status.merging : undefined;
+    }
+
+    /** A resolved merge can be committed without ticking files. */
+    get concluding(): boolean {
+        return this.merging?.conflicts === 0;
     }
 
     /** The message git prepared for the merge, when one is in progress and resolved. */
     get mergeSubject(): string | undefined {
-        const status = this.model.facts.status.value;
+        const merging = this.merging;
 
-        return status?.isRepository === true && status.merging?.conflicts === 0 ? status.merging.subject : undefined;
+        return merging?.conflicts === 0 ? merging.subject : undefined;
     }
 
     /** Puts git's merge message in the box when the person has not written one. */
@@ -164,7 +168,12 @@ export class CommitDraft {
     }
 
     get canCommit(): boolean {
-        return this.busy === undefined && this.message.trim() !== '' && (this.concluding || !this.noneTicked);
+        return (
+            this.busy === undefined &&
+            (this.merging?.conflicts ?? 0) === 0 &&
+            this.message.trim() !== '' &&
+            (this.concluding || !this.noneTicked)
+        );
     }
 
     /**
@@ -174,10 +183,7 @@ export class CommitDraft {
     get commitReason(): string | undefined {
         if (this.busy !== undefined) return undefined;
 
-        const status = this.model.facts.status.value;
-
-        if (status?.isRepository === true && status.merging && status.merging.conflicts > 0)
-            return 'Resolve the conflicts first';
+        if ((this.merging?.conflicts ?? 0) > 0) return 'Resolve the conflicts first';
 
         if (this.concluding) return this.message.trim() === '' ? 'A commit summary is required to commit' : undefined;
 

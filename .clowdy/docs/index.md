@@ -18,6 +18,8 @@
 
 - [Outgoing merge preflight](checks/2026-11-24-merge-into-preflight.md) covers conflict and checkout refusals, incoming conflicts, and explicit push after a clean merge. Status: passed.
 
+- [Source Control with a PR and merge conflicts](checks/2026-11-24-source-control-combination.md) covers the compact PR row, split file lists, and narrow layout. Status: passed.
+
 ## Superseded
 
 - [Merge between branches](decisions/2026-11-24-merge-between-branches.md) records the earlier temporary checkout policy. Status: superseded.

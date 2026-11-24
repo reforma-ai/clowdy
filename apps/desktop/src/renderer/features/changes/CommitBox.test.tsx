@@ -489,10 +489,67 @@ describe('the commit box', () => {
         try {
             await start({ key: { projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental' } });
 
-            expect(box()?.textContent).toContain('0 changed files');
+            expect(box()?.textContent).toContain('No staged files');
             expect(message().value).toBe('Merge main');
-            expect(commitButton()?.textContent).toBe('Commit merge');
-            expect(commitButton()?.disabled).toBe(false);
+            expect(buttonOf('Complete merge')?.disabled).toBe(false);
+        } finally {
+            status.mockRestore();
+        }
+    });
+
+    it('separates unmerged files from the index and prevents completing the merge until resolved', async () => {
+        const read = FixtureTransport.prototype.getGitStatus;
+        let resolved = false;
+        const status = vi.spyOn(FixtureTransport.prototype, 'getGitStatus').mockImplementation(async function (
+            this: FixtureTransport,
+            ...args: Parameters<typeof read>
+        ) {
+            const result = await read.apply(this, args);
+
+            if (!result.isRepository) return result;
+
+            return {
+                ...result,
+                merging: { conflicts: resolved ? 0 : 1, subject: 'Merge main' },
+                entries: [
+                    { path: 'notes.md', untracked: true },
+                    { path: 'src/booking/price.ts', staged: 'modified' },
+                    resolved
+                        ? { path: 'src/limits.ts', staged: 'modified' }
+                        : { path: 'src/limits.ts', unstaged: 'conflicted' },
+                ],
+            };
+        });
+
+        try {
+            await start();
+            const commit = vi.spyOn(transport, 'commitGit');
+            const list = (label: string) => box()?.querySelector(`[aria-label="${label}"]`);
+            const conflictRow = box()!.querySelector('[aria-label="Conflicting files"] button')!;
+            expect(list('Staged files')?.textContent).toContain('price.ts');
+            expect(list('Staged files')?.textContent).not.toMatch(/limits\.ts|notes\.md/);
+            expect(conflictRow.textContent).toBe('limits.ts');
+            expect(checkboxes()).toHaveLength(0);
+            await press(conflictRow);
+            expect(model.effectiveScope).toBe('uncommitted');
+            expect(model.revealRequest).toBe('src/limits.ts');
+            await type('Merge both changes');
+            expect(buttonOf('Complete merge')?.disabled).toBe(true);
+            await act(async () => {
+                message().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true }));
+            });
+            expect(commit).not.toHaveBeenCalled();
+
+            resolved = true;
+            act(() => gitFactsOf(transport).refresh(KEY));
+            await settle();
+            expect(list('Conflicting files')).toBeNull();
+            expect(list('Staged files')?.textContent).toContain('limits.ts');
+            expect(buttonOf('Complete merge')?.disabled).toBe(false);
+            await press(buttonOf('Complete merge')!);
+            expect(commit).toHaveBeenCalledWith(FIXTURE_PROJECT_ID, PLACE, expect.any(Array), 'Merge both changes', {
+                conclude: true,
+            });
         } finally {
             status.mockRestore();
         }

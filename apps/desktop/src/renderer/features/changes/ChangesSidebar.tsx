@@ -12,7 +12,6 @@ import viewStyles from './ChangesView.module.css';
 import { CommitBox } from './CommitBox';
 import { CreatePullRequest } from './CreatePullRequest';
 import { accessHint, accessHintTitle } from './gitSummary';
-import { MergeBanner } from './MergeBanner';
 import { PullRequestChip } from './PullRequestChip';
 import { RemoteMenu } from './RemoteMenu';
 
@@ -100,7 +99,6 @@ export function ChangesSidebar({
                 {(pr || hint || status?.isRepository === true) && (
                     <div className={styles.facts}>
                         <RemoteMenu facts={facts} />
-                        <MergeBanner facts={facts} />
                         {pr ? (
                             <PullRequestChip pr={pr} stale={facts.pullRequest.stale} />
                         ) : (

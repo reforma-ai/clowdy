@@ -247,7 +247,7 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
                     )}
                 </div>
             )}
-            {!failure && notice && (
+            {!failure && notice && !(notice.tone === 'warning' && status?.isRepository && status.merging) && (
                 <Text
                     variant="xs"
                     color={notice.tone === 'warning' ? 'warning' : 'secondary'}

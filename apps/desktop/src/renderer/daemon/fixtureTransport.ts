@@ -396,7 +396,14 @@ export class FixtureTransport implements Transport {
             const pending = this.#mergeConflicts.get(key);
 
             if (merged) status.head.commit = merged.commit;
-            if (pending) status.merging = { conflicts: pending.conflicts };
+            if (pending) {
+                status.merging = { conflicts: pending.conflicts };
+                status.entries = [
+                    { path: 'notes.md', staged: 'added' },
+                    { path: 'src/booking/price.ts', staged: 'modified' },
+                    { path: 'src/limits.ts', unstaged: 'conflicted' },
+                ];
+            }
         }
 
         if (!workspace) return structuredClone(this.#branches.dirtied(status));
@@ -661,7 +668,9 @@ export class FixtureTransport implements Transport {
 
     async getGitChanges(projectId: ProjectId, place: PlaceRef, scope: GitScope): Promise<GitChanges> {
         const { head, workspace } = this.#gitPlace(projectId, place);
-        const committed = this.#gitWrites.committedOf(place.workspaceId ?? '');
+        const branch = workspace?.branch ?? head?.branch;
+        const merging = this.#mergeConflicts.has(`${projectId}/${place.folderId}/${branch}`);
+        const committed = merging ? new Set<string>() : this.#gitWrites.committedOf(place.workspaceId ?? '');
         // A checkout that has uncommitted files (`&branches=dirty`) has the worktree's, in the scopes that list them.
         const dirtyCheckout =
             workspace === undefined && this.#branches.dirty && (scope === 'all' || scope === 'uncommitted');
@@ -682,6 +691,12 @@ export class FixtureTransport implements Transport {
             throw new TransportError('The changes of that run are no longer in the repository', 503);
 
         if (!changes) throw new TransportError(`Commit ${scope.slice('commit:'.length)} does not exist`, 404);
+
+        if (merging && changes.isRepository && (scope === 'all' || scope === 'uncommitted')) {
+            changes.files = changes.files.map(file =>
+                file.path === 'src/limits.ts' ? { ...file, kind: 'conflicted' } : file
+            );
+        }
 
         return structuredClone(changes);
     }

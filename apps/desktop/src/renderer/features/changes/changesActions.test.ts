@@ -11,7 +11,6 @@ import {
     isDiverged,
     isFetchFirst,
     lastFetchedWords,
-    mergeBanner,
     pushOrPublish,
     RUNNING_WORDS,
     remoteActions,
@@ -496,7 +495,7 @@ describe('remoteNotice', () => {
     });
 });
 
-describe('update from the base and the merge banner', () => {
+describe('update from the base', () => {
     it('offers Update from main when the branch is behind the base and is not the base', () => {
         expect(updateFromBase(status({ base: { ...READY, behind: 2 } }))).toEqual({
             label: 'Update from main',
@@ -514,15 +513,6 @@ describe('update from the base and the merge banner', () => {
             ).toBeUndefined();
         }
         expect(updateFromBase(status({ merging: { conflicts: 1 }, base: { ...READY, behind: 2 } }))).toBeUndefined();
-    });
-
-    it('says how a merge stands, and asks the agent only while a conflict is left', () => {
-        expect(mergeBanner(status({ merging: { conflicts: 3 } }))).toEqual({ words: '3 conflicts', ask: true });
-        expect(mergeBanner(status({ merging: { conflicts: 0, subject: 'Merge branch main' } }))).toEqual({
-            words: 'Conflicts resolved, commit the merge',
-            ask: false,
-        });
-        expect(mergeBanner(status())).toBeUndefined();
     });
 });
 

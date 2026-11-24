@@ -17,6 +17,7 @@ import { commitDraftOf } from './CommitDraft';
 import { commitLabel, commitTarget, isFetchFirst } from './changesActions';
 import { gitFactsOf } from './gitFacts';
 import { CHANGE_KIND_VIEW, splitPath } from './gitSummary';
+import { MergeFiles } from './MergeFiles';
 import { useRemoteActions } from './useRemoteActions';
 
 import type { GitChangedFile } from '@clowdy/protocol';
@@ -158,56 +159,67 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
         if (mergeSubject) draft.prefill(mergeSubject);
     }, [draft, mergeSubject]);
 
-    if (model.isRepository === false || !draft.known) return null;
+    const status = model.facts.status.value;
+    const merging = status?.isRepository === true ? status.merging : undefined;
 
-    const { files, failure, concluding } = draft;
+    if (model.isRepository === false || (!draft.known && !merging)) return null;
+
+    const { files, failure } = draft;
     const hasFiles = files.length > 0;
     const ticked = draft.ticked.length;
-    const hasChangesToCommit = hasFiles || concluding;
-    const commitAndPush = shiftHeld && hasChangesToCommit;
-    const target = commitTarget(model.facts.status.value);
-    const label = commitAndPush ? 'Commit & Push' : concluding ? 'Commit merge' : commitLabel(ticked);
+    const hasChangesToCommit = hasFiles || merging !== undefined;
+    const commitAndPush = shiftHeld && hasFiles && !merging;
+    const target = commitTarget(status);
+    const label = merging ? 'Complete merge' : commitAndPush ? 'Commit & Push' : commitLabel(ticked);
     const reason = hasChangesToCommit
         ? (draft.commitReason ?? (commitAndPush && draft.busy === undefined ? draft.pushBlock : undefined))
         : undefined;
 
     return (
         <section className={styles.root} aria-label="Commit">
-            <div className={styles.header}>
-                <Checkbox
-                    size="sm"
-                    isSelected={draft.allTicked}
-                    isIndeterminate={!draft.allTicked && !draft.noneTicked}
-                    isDisabled={!hasFiles || draft.writing}
-                    aria-label="Tick every file"
-                    onChange={on => draft.setAll(on)}
-                />
-                <Text variant="xs" weight="medium" color="secondary" truncate>
-                    {hasFiles ? 'Commit' : '0 changed files'}
-                </Text>
-                {hasFiles && (
-                    <Text
-                        variant="xs"
-                        color="secondary"
-                        className={styles.count}
-                    >{`${ticked} of ${files.length}`}</Text>
-                )}
-            </div>
+            {merging && status?.isRepository ? (
+                <MergeFiles model={model} status={status} writing={draft.writing} />
+            ) : (
+                <>
+                    <div className={styles.header}>
+                        <Checkbox
+                            size="sm"
+                            isSelected={draft.allTicked}
+                            isIndeterminate={!draft.allTicked && !draft.noneTicked}
+                            isDisabled={!hasFiles || draft.writing}
+                            aria-label="Tick every file"
+                            onChange={on => draft.setAll(on)}
+                        />
+                        <Text variant="xs" weight="medium" color="secondary" truncate>
+                            {hasFiles ? 'Commit' : '0 changed files'}
+                        </Text>
+                        {hasFiles && (
+                            <Text
+                                variant="xs"
+                                color="secondary"
+                                className={styles.count}
+                            >{`${ticked} of ${files.length}`}</Text>
+                        )}
+                    </div>
 
-            {hasFiles && (
-                <Scrollable className={styles.list} contentClass={styles.rows}>
-                    <GridList
-                        aria-label="Files to commit"
-                        size="sm"
-                        onAction={key => draft.setTicked(String(key), !draft.isTicked(String(key)))}
-                    >
-                        <For each={[...files]}>
-                            {file => <CommitFileRow key={file.path} file={file} draft={draft} />}
-                        </For>
-                    </GridList>
-                </Scrollable>
+                    {hasFiles && (
+                        <Scrollable className={styles.list} contentClass={styles.rows}>
+                            <GridList
+                                aria-label="Files to commit"
+                                size="sm"
+                                onAction={key => draft.setTicked(String(key), !draft.isTicked(String(key)))}
+                            >
+                                <For each={[...files]}>
+                                    {file => <CommitFileRow key={file.path} file={file} draft={draft} />}
+                                </For>
+                            </GridList>
+                        </Scrollable>
+                    )}
+                    {draft.truncated && (
+                        <Text variant="xs" color="secondary">{`Showing the first ${files.length} files`}</Text>
+                    )}
+                </>
             )}
-            {draft.truncated && <Text variant="xs" color="secondary">{`Showing the first ${files.length} files`}</Text>}
 
             <Textarea
                 variant="bordered"
@@ -228,8 +240,16 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
                 }}
             />
 
+            {merging !== undefined && merging.conflicts > 0 && (
+                <Text variant="xs" color="secondary">
+                    {merging.conflicts === 1
+                        ? 'Resolve 1 conflict to continue'
+                        : `Resolve ${merging.conflicts} conflicts to continue`}
+                </Text>
+            )}
+
             <div className={styles.actions}>
-                {canWrite && (
+                {!merging && canWrite && (
                     <Button
                         variant="bordered"
                         size="sm"
@@ -256,7 +276,7 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
                             isDisabled={!(commitAndPush ? draft.canCommitAndPush : draft.canCommit)}
                             isPending={draft.writing}
                             tooltip={
-                                hasChangesToCommit && reason === undefined && !commitAndPush && target
+                                hasChangesToCommit && reason === undefined && !merging && !commitAndPush && target
                                     ? `Commit to ${target.name}`
                                     : undefined
                             }
@@ -266,32 +286,34 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
                             {label}
                         </Button>
                     </Unavailable>
-                    <MenuTrigger>
-                        <Button
-                            variant="bordered"
-                            size="sm"
-                            iconOnly
-                            className={styles.more}
-                            isDisabled={!draft.canCommit}
-                            aria-label="More ways to commit"
-                            tooltip="More ways to commit"
-                            tooltipPlacement="top"
-                        >
-                            <ChevronDown aria-hidden="true" />
-                        </Button>
-                        <Popover placement="top end" spacing="xs" width={220}>
-                            <Menu aria-label="Commit" size="sm" onAction={() => void draft.commit(true)}>
-                                <MenuItem
-                                    id="commit-and-push"
-                                    icon={<ArrowUp />}
-                                    text="Commit & Push"
-                                    description={draft.pushBlock}
-                                    stacked={draft.pushBlock !== undefined}
-                                    isDisabled={draft.pushBlock !== undefined}
-                                />
-                            </Menu>
-                        </Popover>
-                    </MenuTrigger>
+                    {!merging && (
+                        <MenuTrigger>
+                            <Button
+                                variant="bordered"
+                                size="sm"
+                                iconOnly
+                                className={styles.more}
+                                isDisabled={!draft.canCommit}
+                                aria-label="More ways to commit"
+                                tooltip="More ways to commit"
+                                tooltipPlacement="top"
+                            >
+                                <ChevronDown aria-hidden="true" />
+                            </Button>
+                            <Popover placement="top end" spacing="xs" width={220}>
+                                <Menu aria-label="Commit" size="sm" onAction={() => void draft.commit(true)}>
+                                    <MenuItem
+                                        id="commit-and-push"
+                                        icon={<ArrowUp />}
+                                        text="Commit & Push"
+                                        description={draft.pushBlock}
+                                        stacked={draft.pushBlock !== undefined}
+                                        isDisabled={draft.pushBlock !== undefined}
+                                    />
+                                </Menu>
+                            </Popover>
+                        </MenuTrigger>
+                    )}
                 </div>
             </div>
 
