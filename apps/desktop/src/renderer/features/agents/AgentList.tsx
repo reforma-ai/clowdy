@@ -13,6 +13,7 @@ import {
 import { Panel, PanelContent } from '@clowdy/components/Panel';
 import { Popover, PopoverScroll, PopoverTrigger, useContextMenu } from '@clowdy/components/Popover';
 import { Show } from '@clowdy/components/Show';
+import { Tooltip } from '@clowdy/components/Tooltip';
 import { Archive, Check, ChevronDown, ChevronRight, Message, More, NewChat, Version } from '@clowdy/icons/14';
 import {
     type CSSProperties,
@@ -587,15 +588,11 @@ function WorktreeMark({
           : 'Works in a worktree';
 
     return (
-        <span
-            className={styles.worktree}
-            role="img"
-            aria-label={title}
-            title={title}
-            data-gone={head?.gone || undefined}
-        >
-            <Version aria-hidden="true" />
-        </span>
+        <Tooltip content={title}>
+            <span className={styles.worktree} role="img" aria-label={title} data-gone={head?.gone || undefined}>
+                <Version aria-hidden="true" />
+            </span>
+        </Tooltip>
     );
 }
 

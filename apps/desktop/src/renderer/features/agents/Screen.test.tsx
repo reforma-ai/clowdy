@@ -1588,7 +1588,9 @@ describe('a chat that works in a worktree', () => {
     it("has a branch mark after its title, with its branch in the mark's title, and no other row has one", async () => {
         await restart();
 
-        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.title).toBe('Works in a worktree on clowdy/ab12cd34');
+        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.getAttribute('aria-label')).toBe(
+            'Works in a worktree on clowdy/ab12cd34'
+        );
         expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.querySelector('svg')).not.toBeNull();
         expect(rowKeys().filter(key => key && mark(key))).toEqual([FIXTURE_WORKSPACE_CHAT_ID]);
         // The title stays what the row is called, with the mark after it.
@@ -1601,7 +1603,9 @@ describe('a chat that works in a worktree', () => {
     it('says the branch the worktree has now, as the daemon read it, and not the one it was made with', async () => {
         await restart(reading([{ workspaceId: 'wks_ab12cd34', exists: true, branch: 'feature/other' }]).transport);
 
-        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.title).toBe('Works in a worktree on feature/other');
+        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.getAttribute('aria-label')).toBe(
+            'Works in a worktree on feature/other'
+        );
     });
 
     it('reads what the daemon knows again when the window gets focus, for the branch an agent switched to meanwhile', async () => {
@@ -1621,13 +1625,13 @@ describe('a chat that works in a worktree', () => {
         await draw();
 
         expect(everything()).toBeGreaterThan(reads);
-        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.title).toBe('Works in a worktree on hotfix');
+        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.getAttribute('aria-label')).toBe('Works in a worktree on hotfix');
     });
 
     it('says the worktree is gone when the daemon says it is no longer on the disk', async () => {
         await restart(reading([{ workspaceId: 'wks_ab12cd34', exists: false }]).transport);
 
-        expect(rowOf(FIXTURE_WORKSPACE_CHAT_ID).querySelector('[role="img"]')?.getAttribute('title')).toBe(
+        expect(rowOf(FIXTURE_WORKSPACE_CHAT_ID).querySelector('[role="img"]')?.getAttribute('aria-label')).toBe(
             'The worktree no longer exists'
         );
     });
@@ -1650,19 +1654,23 @@ describe('a chat that works in a worktree', () => {
             window.dispatchEvent(new Event('focus'));
         });
         await draw();
-        expect(mark(chat.id)?.title).toBe(`Works in a worktree on clowdy/${chat.id.slice(-8)}`);
+        expect(mark(chat.id)?.getAttribute('aria-label')).toBe(`Works in a worktree on clowdy/${chat.id.slice(-8)}`);
 
         await store.command({ type: 'chat.send', chatId: chat.id, text: 'Go' });
         await vi.waitFor(() => expect(project().chats.get(chat.id)?.workspace?.ready).toBe(true));
         await draw();
-        await vi.waitFor(() => expect(mark(chat.id)?.title).toBe(`Works in a worktree on clowdy/${chat.id.slice(-8)}`));
+        await vi.waitFor(() =>
+            expect(mark(chat.id)?.getAttribute('aria-label')).toBe(`Works in a worktree on clowdy/${chat.id.slice(-8)}`)
+        );
         expect(mark(chat.id)?.hasAttribute('data-gone')).toBe(false);
     });
 
     it('falls back to the branch it was made with when the read has no word on the worktree, and to a plain line when it was made with none', async () => {
         await restart(reading(undefined).transport);
 
-        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.title).toBe('Works in a worktree on clowdy/ab12cd34');
+        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.getAttribute('aria-label')).toBe(
+            'Works in a worktree on clowdy/ab12cd34'
+        );
 
         await restart(
             reading(
@@ -1671,7 +1679,7 @@ describe('a chat that works in a worktree', () => {
             ).transport
         );
 
-        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.title).toBe('Works in a worktree');
+        expect(mark(FIXTURE_WORKSPACE_CHAT_ID)?.getAttribute('aria-label')).toBe('Works in a worktree');
     });
 
     it("shows the chat's folder, where it works and the branch read only under its message box, from the chat's own workspace", async () => {
