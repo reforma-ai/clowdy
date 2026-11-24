@@ -171,7 +171,7 @@ function ManageWorktrees({ projectId, folderId }: Omit<ManageWorktreesProps, 'ro
                             projectId={projectId}
                             group={group}
                             folder={folder}
-                            onCreate={() => openCreateWorktree({ root, projectId, group, reload })}
+                            onCreate={() => openCreateWorktree({ root, projectId, folderId: group.folderId, reload })}
                             {...actions}
                         />
                     )}

@@ -91,6 +91,11 @@ async function openMore(path: string) {
     await settle();
 }
 
+async function openChats() {
+    await click(textButton(row(CLOWDY_WORKTREE), '2 chats')!);
+    await settle();
+}
+
 /** Opens the More menu of a row, reads its items (their text and whether each is off), and shuts it again, so the next row's menu is the only one on the page. */
 async function moreMenu(path: string) {
     await openMore(path);
@@ -158,7 +163,10 @@ describe('Manage worktrees', () => {
         });
 
         await open();
-        await click(textButton(group('car-rental-api'), 'New worktree')!);
+        const add = textButton(group('car-rental-api'), 'New worktree')!;
+
+        expect(add.closest('li')).toBe(group('car-rental-api').querySelector('ul')!.lastElementChild);
+        await click(add);
         await settle();
 
         const input = document.querySelector<HTMLInputElement>('input[aria-label="Worktree name"]')!;
@@ -170,10 +178,14 @@ describe('Manage worktrees', () => {
                 input.dispatchEvent(new Event('input', { bubbles: true }));
             });
 
+        expect(textButton(form, 'Cancel')?.dataset.variant).toBe('filled');
+        expect(form.textContent).not.toContain('Repository:');
+        expect(form.textContent).toContain('Settings → Chat → Branch prefix');
         expect(submit.disabled).toBe(true);
         await typeName('../next');
         expect(submit.disabled).toBe(true);
         await typeName('next');
+        expect(form.textContent).toContain('Creates a separate Git branch named clowdy/next');
         await click(submit);
         await settle();
 
@@ -306,19 +318,31 @@ describe('Manage worktrees', () => {
         expect(buttonIn(row(FOUND_WORKTREE), 'New chat in this worktree: search-filters')!.disabled).toBe(false);
     });
 
-    it('lists the chats that work in a worktree, the archived ones too, and none for a worktree nobody works in', async () => {
+    it('shows a chat count beside the changes and previews the chat names on keyboard focus', async () => {
         await open();
 
-        const chats = row(CLOWDY_WORKTREE).querySelector<HTMLElement>('[aria-label="Chats"]')!;
-        const buttons = [...chats.querySelectorAll('button')].map(button => button.textContent);
+        const worktree = row(CLOWDY_WORKTREE);
+        const count = textButton(worktree, '2 chats')!;
 
-        expect(buttons).toEqual(['Weekend surcharge in a worktree', 'Show the weekend surcharge in the formArchived']);
-        expect(row(FOUND_WORKTREE).querySelector('[aria-label="Chats"]')).toBeNull();
+        expect(worktree.textContent).toContain('3 changes·2 chats');
+        expect(worktree.textContent).not.toContain('Weekend surcharge in a worktree');
+        expect(textButton(row(FOUND_WORKTREE), '0 chats')).toBeUndefined();
+
+        await act(async () => {
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+            count.focus();
+        });
+        await settle();
+
+        const tooltip = document.querySelector('[role="tooltip"]');
+        expect(tooltip?.textContent).toContain('Weekend surcharge in a worktree');
+        expect(tooltip?.textContent).toContain('Show the weekend surcharge in the form (archived)');
     });
 
     it('opens the chat that works in a worktree when it is pressed, and closes the dialog', async () => {
         await open();
-        await click(textButton(row(CLOWDY_WORKTREE), 'Weekend surcharge in a worktree')!);
+        await openChats();
+        await click(item('Weekend surcharge in a worktree')!);
         await flush();
 
         expect(store.ui.forProject(FIXTURE_PROJECT_ID).chatId).toBe(FIXTURE_WORKSPACE_CHAT_ID);
@@ -327,7 +351,8 @@ describe('Manage worktrees', () => {
 
     it('brings an archived chat out of the archive, as a link to one does, when it is pressed', async () => {
         await open();
-        await click(textButton(row(CLOWDY_WORKTREE), 'Show the weekend surcharge in the formArchived')!);
+        await openChats();
+        await click(item('Show the weekend surcharge in the form')!);
         await flush();
 
         const ui = store.ui.forProject(FIXTURE_PROJECT_ID);
@@ -389,7 +414,8 @@ describe('Manage worktrees', () => {
 
         trigger.focus();
         await open();
-        await click(textButton(row(CLOWDY_WORKTREE), 'Weekend surcharge in a worktree')!);
+        await openChats();
+        await click(item('Weekend surcharge in a worktree')!);
         await flush();
 
         expect(isOpen()).toBe(false);

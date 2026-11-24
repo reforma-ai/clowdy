@@ -1,7 +1,7 @@
 import { Button } from '@clowdy/components/Button';
 import { For } from '@clowdy/components/For';
-import { MenuTrigger } from '@clowdy/components/List';
-import { Popover, useContextMenu } from '@clowdy/components/Popover';
+import { Menu, MenuItem, MenuTrigger } from '@clowdy/components/List';
+import { Popover, PopoverScroll, useContextMenu } from '@clowdy/components/Popover';
 import { Show } from '@clowdy/components/Show';
 import { Badge } from '@clowdy/components/Tag';
 import { Text } from '@clowdy/components/Text';
@@ -35,9 +35,60 @@ interface WorktreeRowProps extends WorktreeRowActions {
     worktree: WorktreeInfo;
 }
 
+const CHAT_PREVIEW_LIMIT = 6;
+
+function WorktreeChats({ chats, onOpenChat }: { chats: WorktreeChat[]; onOpenChat: (chat: WorktreeChat) => void }) {
+    const [open, setOpen] = useState(false);
+    const count = chats.length;
+    const remaining = count - CHAT_PREVIEW_LIMIT;
+
+    return (
+        <MenuTrigger isOpen={open} onOpenChange={setOpen}>
+            <Tooltip
+                placement="top start"
+                className={styles.chatPreview}
+                isDisabled={open}
+                shouldCloseOnPress
+                content={
+                    <>
+                        {chats.slice(0, CHAT_PREVIEW_LIMIT).map(chat => (
+                            <div key={chat.id}>{chat.archived ? `${chat.title} (archived)` : chat.title}</div>
+                        ))}
+                        {remaining > 0 && <div>{`+${remaining} more`}</div>}
+                    </>
+                }
+            >
+                <Button variant="inline" className={styles.chatCount}>
+                    {`${count} ${count === 1 ? 'chat' : 'chats'}`}
+                </Button>
+            </Tooltip>
+            <Popover placement="bottom start" spacing="xs" width={280}>
+                <PopoverScroll maxHeight={280}>
+                    <Menu aria-label="Chats in this worktree" size="sm">
+                        <For each={chats}>
+                            {chat => (
+                                <MenuItem
+                                    key={chat.id}
+                                    id={chat.id}
+                                    textValue={chat.title}
+                                    description={chat.archived ? 'Archived' : undefined}
+                                    stacked={chat.archived}
+                                    onAction={() => onOpenChat(chat)}
+                                >
+                                    {chat.title}
+                                </MenuItem>
+                            )}
+                        </For>
+                    </Menu>
+                </PopoverScroll>
+            </Popover>
+        </MenuTrigger>
+    );
+}
+
 /**
  * One worktree of a folder, as git lists it: its branch (or the commit it is on), the one badge that matters most (`worktreeMark`: the folder's own checkout, gone from the disk, locked, or whether its work is in the base), how
- * many files are changed, and the chats that work in it, archived ones too, each a button that opens it. At the end: a new
+ * many files are changed, and a count of chats with a preview on hover and a menu for opening them. At the end: a new
  * chat in it, and More (`WorktreeMenu`: the same new chat, the copy of the path, the programs that open it, and Remove, which the folder's own checkout does not have). A
  * worktree whose folder is gone has no chat to start in it.
  *
@@ -45,7 +96,7 @@ interface WorktreeRowProps extends WorktreeRowActions {
  * which this window shows far larger than the lists around it. The branch is one line cut with an ellipsis, so it never pushes the actions. The path is not a line of the
  * row: it is the tooltip of the branch (in the home folder's `~` form), and the reason a Remove is off (`removeHint`) is the line under it in the menu. A right-click anywhere on
  * the row opens the same menu at the pointer (and a long touch, which is a right-click to the app), so the strip is as good as the button. The buttons show on hover, on focus
- * inside the row and while a menu of the row is open (`data-open`), and always where there is no hover (a touch screen): a list of rows would otherwise be a fence of icons.
+ * inside the row and while its actions menu is open, and always on a touch screen.
  */
 export function WorktreeRow({ projectId, group, folder, worktree, onNewChat, onOpenChat, onRemove }: WorktreeRowProps) {
     const label = worktreeLabel(worktree);
@@ -86,27 +137,13 @@ export function WorktreeRow({ projectId, group, folder, worktree, onNewChat, onO
                                 {changesLabel(worktree.changes)}
                             </Text>
                         )}
+                        {worktree.chats.length > 0 && (
+                            <Text as="span" variant="sm" color="secondary" className={styles.chatFact}>
+                                {!worktree.missing && <span aria-hidden="true">·</span>}
+                                <WorktreeChats chats={worktree.chats} onOpenChat={onOpenChat} />
+                            </Text>
+                        )}
                     </span>
-                    {worktree.chats.length > 0 && (
-                        <span className={styles.chats} role="group" aria-label="Chats">
-                            <For each={worktree.chats}>
-                                {chat => (
-                                    <Button
-                                        key={chat.id}
-                                        variant="filling"
-                                        color="secondary"
-                                        size="xs"
-                                        truncate
-                                        className={styles.chat}
-                                        onPress={() => onOpenChat(chat)}
-                                    >
-                                        <span className={styles.chatTitle}>{chat.title}</span>
-                                        {chat.archived && <span className={styles.archived}>Archived</span>}
-                                    </Button>
-                                )}
-                            </For>
-                        </span>
-                    )}
                 </span>
                 <span className={styles.actions}>
                     <Unavailable
@@ -180,15 +217,9 @@ export function WorktreeGroup({
 
     return (
         <section className={styles.group} aria-labelledby={headingId} data-folder-id={group.folderId}>
-            <div className={styles.groupHeading}>
-                <Text as="h3" id={headingId} variant="heading-5" truncate title={group.name}>
-                    {group.name}
-                </Text>
-                <Button variant="filled" color="secondary" size="xs" onPress={onCreate}>
-                    <Plus aria-hidden="true" />
-                    New worktree
-                </Button>
-            </div>
+            <Text as="h3" id={headingId} variant="heading-5" truncate title={group.name}>
+                {group.name}
+            </Text>
             <ul className={styles.card}>
                 <For each={group.worktrees}>
                     {worktree => (
@@ -202,6 +233,12 @@ export function WorktreeGroup({
                         />
                     )}
                 </For>
+                <li>
+                    <button type="button" className={styles.add} onClick={onCreate}>
+                        <Plus aria-hidden="true" />
+                        New worktree
+                    </button>
+                </li>
             </ul>
         </section>
     );
