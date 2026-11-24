@@ -202,7 +202,7 @@ describe('the sync button in the sidebar', () => {
         expect(items().map(candidate => candidate.textContent)).toEqual(['Fetch origin', 'Pull origin', 'Push origin']);
     });
 
-    it('is Fetch origin for a branch that is level, a press fetches and the line says just now, and Never fetched where the repository has not', async () => {
+    it('is Fetch origin for a branch that is level, a press updates its timestamp without a separate notice, and Never fetched appears where the repository has not', async () => {
         await start({ key: CHECKOUT });
 
         expect(syncButton().textContent).toBe('Fetch originLast fetched 3 minutes ago');
@@ -215,7 +215,7 @@ describe('the sync button in the sidebar', () => {
         await settle();
 
         expect(fetch).toHaveBeenCalledWith(FIXTURE_PROJECT_ID, { folderId: 'fld_car_rental' });
-        expect(status()?.textContent).toBe('Fetched origin');
+        expect(status()).toBeNull();
         expect(syncButton().textContent).toBe('Fetch originLast fetched just now');
 
         act(() => root.unmount());
@@ -419,7 +419,7 @@ describe('the sync button in the sidebar', () => {
         await settle();
         await settle();
         expect(alert()).toBeNull();
-        expect(status()?.textContent).toBe('Fetched origin');
+        expect(status()).toBeNull();
     });
 
     it('shows a push that origin rejected by its line with a Fetch origin button beside it, which fetches and takes the line away', async () => {
@@ -439,7 +439,7 @@ describe('the sync button in the sidebar', () => {
 
         expect(fetch).toHaveBeenCalledTimes(1);
         expect(alert()).toBeNull();
-        expect(status()?.textContent).toBe('Fetched origin');
+        expect(status()).toBeNull();
     });
 
     it('says what it is doing while an action runs, with its progress as the label and a spinner, holds the dropdown, and goes back when it ends', async () => {
@@ -465,7 +465,7 @@ describe('the sync button in the sidebar', () => {
         await settle();
         await settle();
         expect(syncButton().getAttribute('data-sync')).toBe('fetch');
-        expect(status()?.textContent).toBe('Fetched origin');
+        expect(status()).toBeNull();
     });
 
     it('names each action by what it is doing: Pulling origin, Pushing origin, Publishing branch', async () => {

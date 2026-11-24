@@ -465,7 +465,7 @@ describe('isFetchFirst', () => {
 
 describe('remoteNotice', () => {
     it('says what each action did', () => {
-        expect(remoteNotice({ state: 'done', action: 'fetch' })).toEqual({ words: 'Fetched origin' });
+        expect(remoteNotice({ state: 'done', action: 'fetch' })).toBeUndefined();
         expect(remoteNotice({ state: 'done', action: 'pull', pulled: 1 })).toEqual({ words: 'Pulled 1 commit' });
         expect(remoteNotice({ state: 'done', action: 'pull', pulled: 3 })).toEqual({ words: 'Pulled 3 commits' });
         expect(remoteNotice({ state: 'done', action: 'pull', pulled: 0 })).toEqual({ words: 'Already up to date' });
