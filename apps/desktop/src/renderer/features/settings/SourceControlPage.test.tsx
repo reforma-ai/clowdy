@@ -32,6 +32,7 @@ beforeEach(async () => {
 afterEach(() => {
     act(() => root.unmount());
     container.remove();
+    store.dispose();
     branchPrefix.setValue('');
 });
 
