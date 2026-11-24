@@ -477,10 +477,20 @@ describe('a chat whose orchestrator waits for background work', () => {
         await start();
         await draw('c-5');
 
-        // The first command can be stopped alone and has a row of its own; the other is counted.
+        // The commands are folded under one line that counts them. Opened, each has a row, and only the first can be stopped alone: the other is counted.
+        const commands = [
+            ...container.querySelectorAll<HTMLButtonElement>('[aria-label="Work in progress"] button[aria-expanded]'),
+        ].find(button => button.textContent === 'Commands2 running')!;
+
+        expect(commands.getAttribute('aria-expanded')).toBe('false');
+
+        await act(async () => commands.click());
+
         expect(
-            [...container.querySelectorAll('[aria-label="Work in progress"] > div')].map(row => row.textContent)
-        ).toEqual(['Command · bun run testStop', 'Background task runningStop']);
+            [...container.querySelectorAll('[aria-label="Work in progress"] [class*="agentRows"] > div')].map(
+                row => row.textContent
+            )
+        ).toEqual(['Command · bun run testStop', 'Command · bun run typecheck', 'Background task runningStop run']);
         expect(container.textContent).not.toContain('Waiting for background work…');
         expect(notice()).toBeNull();
         expect(field()).not.toBeNull();
