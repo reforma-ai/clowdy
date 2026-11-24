@@ -1,7 +1,7 @@
 import { MenuTrigger } from '@clowdy/components/List';
 import { Popover } from '@clowdy/components/Popover';
 import { Text } from '@clowdy/components/Text';
-import { Folder } from '@clowdy/icons/14';
+import { Folder, Split, Version } from '@clowdy/icons/14';
 
 import { tildePath } from '../../shared/displayPath';
 import { homeFolder } from '../../shared/homeFolder';
@@ -15,8 +15,8 @@ import {
     useFolderRepair,
 } from '../openWith';
 import styles from './ChatFolder.module.css';
+import { ChipTrigger } from './ChipTrigger';
 import { FolderTrigger } from './DraftFolderSelect';
-import { WorkspaceLabel } from './WorkspaceChips';
 
 import type { ChatWorkspace, ProjectFolder } from '@clowdy/protocol';
 
@@ -90,28 +90,65 @@ export interface ChatFolderProps {
     showFolder?: boolean;
 }
 
-/**
- * The line under the message box of a chat that has started, read only: its folder (`FolderPill`) and one label (`WorkspaceLabel`) for where it works: the branch the tree has
- * checked out now, with `Worktree` before it for a chat in a worktree, as the new-chat page's control (`WorkspaceChips`) had it. The branch is read live, with the folder's `git` (see `useFolderGit`): an agent may switch
- * branches in a worktree, so the name the chat was made with is not shown once the worktree exists. A worktree that is gone from the disk makes the folder pill the warning colour.
- */
+/** The current place of an existing chat; its menu opens or copies that place, never changes it. */
 export function ChatFolder({ name, folder, missing, workspace, showFolder = true }: ChatFolderProps) {
     const project = useProjectState();
     const git = useFolderGit(project.id, folder.id, workspace);
+    const gone = missing || git?.gone === true;
+    const path = workspace?.path ?? folder.path;
+    const repair = useFolderRepair(folder, gone && workspace === undefined);
+    const branch = git?.branch;
+    const place = [workspace ? 'Worktree' : undefined, branch].filter(Boolean).join(' ');
+    // A non-git folder still needs a name when it is the project's only folder.
+    const label = [showFolder || !place ? name : undefined, place].filter(Boolean).join(' · ');
+    const detail = branch ? (git?.detached ? `detached at ${branch}` : `branch ${branch}`) : undefined;
+    const ariaLabel = `Current place: ${[showFolder || !place ? name : undefined, workspace ? 'Worktree' : undefined, detail].filter(Boolean).join(', ')}`;
+    const title = [
+        tildePath(path, homeFolder.path),
+        gone ? 'This folder no longer exists' : undefined,
+        git?.detached ? 'Detached HEAD' : undefined,
+    ]
+        .filter(Boolean)
+        .join('\n');
+    const icon = workspace ? (
+        <Split aria-hidden="true" />
+    ) : branch ? (
+        <Version aria-hidden="true" />
+    ) : (
+        <Folder aria-hidden="true" />
+    );
+
+    if (!canOpenPaths()) {
+        return (
+            <div
+                role="group"
+                aria-label={ariaLabel}
+                className={styles.folder}
+                data-missing={gone || undefined}
+                title={title}
+            >
+                {icon}
+                <Text truncate>{label}</Text>
+            </div>
+        );
+    }
+
+    const target: OpenTarget = {
+        projectId: project.id,
+        folder,
+        path,
+        relative: '',
+        kind: 'directory',
+        ...(workspace && { workspace }),
+    };
 
     return (
-        <>
-            {showFolder && (
-                <FolderPill
-                    name={name}
-                    folder={folder}
-                    missing={missing || git?.gone === true}
-                    git={git}
-                    workspace={workspace}
-                />
-            )}
-            <WorkspaceLabel worktree={workspace?.path} git={git} />
-        </>
+        <MenuTrigger>
+            <ChipTrigger icon={icon} label={label} aria-label={ariaLabel} tooltip={title} missing={gone} />
+            <Popover placement="bottom start" spacing="xs">
+                <OpenWithMenu target={target} missing={gone} repair={repair} git={git} aria-label="Open folder" />
+            </Popover>
+        </MenuTrigger>
     );
 }
 

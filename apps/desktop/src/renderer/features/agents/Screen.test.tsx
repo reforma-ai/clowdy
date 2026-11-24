@@ -370,9 +370,10 @@ describe('grouped by folder', () => {
     const field = () => container.querySelector<HTMLElement>('[contenteditable="true"]');
     const editor = () => (field() as HTMLElement & { editor: Editor }).editor;
     /** The select under the new-chat page's message box, and the rows of its list. */
-    const folderSelect = () => container.querySelector<HTMLButtonElement>('button[aria-label^="Folder:"]');
+    const folderSelect = () =>
+        container.querySelector<HTMLButtonElement>('button[aria-label^="Where it runs"][aria-label*="folder "]');
     /** The read only line of a chat that is made, in the place the select had. */
-    const folderLine = () => container.querySelector<HTMLElement>('[role="group"][aria-label="Folder"]');
+    const folderLine = () => container.querySelector<HTMLElement>('[role="group"][aria-label^="Current place:"]');
     const folderItem = (name: string) =>
         [...document.body.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find(row => row.textContent === name)!;
     const filtersMenu = async () => {
@@ -708,7 +709,7 @@ describe('grouped by folder', () => {
         await draw();
 
         expect([ui().draft, ui().draftFolderId]).toEqual([true, API.id]);
-        expect(folderSelect()?.textContent).toBe('car-rental-api');
+        expect(folderSelect()?.textContent).toContain('car-rental-api');
         // Whatever folder the page is for, the row at the top is the one marked, and no heading is.
         expect(isSelected('@new-chat')).toBe(true);
         expect(rowOf(head(API.id)).hasAttribute('data-open')).toBe(false);
@@ -719,7 +720,7 @@ describe('grouped by folder', () => {
 
         expect([ui().draft, ui().draftFolderId]).toEqual([true, null]);
         expect(isSelected('@new-chat')).toBe(true);
-        expect(folderSelect()?.textContent).toBe('car-rental');
+        expect(folderSelect()?.textContent).toContain('car-rental');
     });
 
     it("shows the main folder's page when the folder the new-chat page was for left the project", async () => {
@@ -728,7 +729,7 @@ describe('grouped by folder', () => {
 
         expect(isSelected('@new-chat')).toBe(true);
         expect(rowOf(head(API.id)).hasAttribute('data-open')).toBe(false);
-        expect(folderSelect()?.textContent).toBe('car-rental');
+        expect(folderSelect()?.textContent).toContain('car-rental');
         expect(container.textContent).not.toContain('fld_gone');
     });
 
@@ -738,15 +739,14 @@ describe('grouped by folder', () => {
             await press(rowOf('@new-chat'));
             await draw();
 
-            expect(folderSelect()?.getAttribute('aria-label')).toBe('Folder: car-rental');
+            expect(folderSelect()?.getAttribute('aria-label')).toContain('folder car-rental');
 
             await press(folderSelect()!);
 
-            // The names are all of it: no path.
-            expect([...document.body.querySelectorAll('[role^="menuitem"]')].map(row => row.textContent)).toEqual([
-                'car-rental',
-                'car-rental-api',
-            ]);
+            // The same menu offers folders and workspace choices.
+            expect(folderItem('car-rental')).toBeDefined();
+            expect(folderItem('car-rental-api')).toBeDefined();
+            expect(document.body.textContent).toContain('New worktree');
             // The chosen folder is told to assistive technology, not only drawn as a tick, and the other is not.
             expect(folderItem('car-rental').getAttribute('aria-checked')).toBe('true');
             expect(folderItem('car-rental-api').getAttribute('aria-checked')).toBe('false');
@@ -756,7 +756,7 @@ describe('grouped by folder', () => {
             await draw();
 
             expect([ui().draft, ui().draftFolderId]).toEqual([true, API.id]);
-            expect(folderSelect()?.textContent).toBe('car-rental-api');
+            expect(folderSelect()?.textContent).toContain('car-rental-api');
             // The new-chat row stays the open one, as when the heading's own button opened the page.
             expect(rowOf(head(API.id)).hasAttribute('data-open')).toBe(false);
             expect(isSelected('@new-chat')).toBe(true);
@@ -771,7 +771,7 @@ describe('grouped by folder', () => {
             await draw();
 
             expect([ui().draft, ui().draftFolderId]).toEqual([true, null]);
-            expect(folderSelect()?.textContent).toBe('car-rental');
+            expect(folderSelect()?.textContent).toContain('car-rental');
             expect(isSelected('@new-chat')).toBe(true);
         });
 
@@ -907,7 +907,7 @@ describe('grouped by folder', () => {
             await restart();
             await draw(() => ui().openChat('c-2'));
 
-            expect(folderLine()?.textContent).toBe('car-rental-api');
+            expect(folderLine()?.textContent).toBe('car-rental-api · feature/payments');
             expect(folderLine()?.getAttribute('title')).toBe('~/car-rental-api');
             // Read only: nothing in it opens a list or takes a press.
             expect(folderSelect()).toBeNull();
@@ -916,7 +916,7 @@ describe('grouped by folder', () => {
             // A chat with no folder works in the main one.
             await draw(() => ui().openChat('c-1'));
 
-            expect(folderLine()?.textContent).toBe('car-rental');
+            expect(folderLine()?.textContent).toBe('car-rental · main');
         });
 
         it('is under the message box of the chat the page made, in the folder picked there', async () => {
@@ -936,7 +936,7 @@ describe('grouped by folder', () => {
 
             expect([...project().chats.keys()].some(id => !before.has(id))).toBe(true);
             expect(folderSelect()).toBeNull();
-            expect(folderLine()?.textContent).toBe('car-rental-api');
+            expect(folderLine()?.textContent).toBe('car-rental-api · feature/payments');
         });
 
         it('says when the folder is gone from the disk', async () => {
@@ -957,7 +957,7 @@ describe('grouped by folder', () => {
             await draw(() => ui().openChat('c-2'));
 
             expect(folderLine()?.hasAttribute('data-missing')).toBe(true);
-            expect(folderLine()?.getAttribute('title')).toBe('This folder no longer exists');
+            expect(folderLine()?.getAttribute('title')).toBe('~/car-rental-api\nThis folder no longer exists');
 
             await draw(() => ui().openChat('c-1'));
 
@@ -968,11 +968,11 @@ describe('grouped by folder', () => {
             await restart({ grouping: false });
             await draw(() => ui().openChat('c-2'));
 
-            expect(folderLine()?.textContent).toBe('car-rental-api');
+            expect(folderLine()?.textContent).toBe('car-rental-api · feature/payments');
 
             await draw(() => ui().setGroupByFolder(true));
 
-            expect(folderLine()?.textContent).toBe('car-rental-api');
+            expect(folderLine()?.textContent).toBe('car-rental-api · feature/payments');
 
             // The fixture project has one folder.
             act(() => reactRoot.unmount());
@@ -985,7 +985,7 @@ describe('grouped by folder', () => {
                 ui().openChat('c-1');
             });
 
-            expect(folderLine()).toBeNull();
+            expect(folderLine()?.textContent).toBe('main');
         });
     });
 
@@ -1627,16 +1627,14 @@ describe('a chat that works in a worktree', () => {
         );
         await vi.waitFor(() =>
             expect(
-                container.querySelector('[aria-label="Where it runs: Worktree, branch clowdy/ab12cd34"]')?.textContent
-            ).toBe('Worktreeclowdy/ab12cd34')
+                container.querySelector('[aria-label="Current place: Worktree, branch clowdy/ab12cd34"]')?.textContent
+            ).toBe('Worktree clowdy/ab12cd34')
         );
 
         await draw(() => ui().openChat('c-1'));
 
         await vi.waitFor(() =>
-            expect(
-                container.querySelector('[aria-label="Where it runs: Main worktree, branch main"]')?.textContent
-            ).toBe('main')
+            expect(container.querySelector('[aria-label="Current place: branch main"]')?.textContent).toBe('main')
         );
     });
 });
