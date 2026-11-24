@@ -466,7 +466,7 @@ withScripts('POST /v1/projects/:id/git/fetch, pull and push', () => {
             expect(git(path, 'rev-parse', 'HEAD')).toBe(mine);
         });
 
-        test('answers a branch that diverged from its upstream as diverged, not as an error, and leaves it exactly as it was: no merge, no rebase, no reset', async () => {
+        test('merges a branch that diverged from its upstream, and leaves uncommitted work that does not overlap', async () => {
             const h = await start();
             const { path, origin } = repository();
             const { result } = await open(path, h);
@@ -477,22 +477,49 @@ withScripts('POST /v1/projects/:id/git/fetch, pull and push', () => {
             writeFileSync(join(path, 'wip.txt'), 'wip\n');
 
             const mine = commitFile(path, 'mine.txt');
-            const reflog = git(path, 'reflog', '--format=%H %gs');
-            const index = git(path, 'ls-files', '--stage');
 
             expect(await result('pull')).toEqual({
-                state: 'diverged',
-                upstream: { name: 'origin/main', ahead: 1, behind: 1 },
+                state: 'done',
+                action: 'pull',
+                pulled: 1,
+                merged: true,
+                upstream: { name: 'origin/main', ahead: 2, behind: 0 },
             });
-            expect(git(path, 'rev-parse', 'HEAD')).toBe(mine);
-            // The fetch did bring origin's commit in, which is all that moved.
-            expect(git(path, 'rev-parse', 'origin/main')).toBe(theirs);
-            expect(git(path, 'reflog', '--format=%H %gs')).toBe(reflog);
-            expect(git(path, 'ls-files', '--stage')).toBe(index);
+            expect(git(path, 'rev-parse', 'HEAD^1')).toBe(mine);
+            expect(git(path, 'rev-parse', 'HEAD^2')).toBe(theirs);
+            expect(existsSync(join(path, 'theirs.txt'))).toBe(true);
+            expect(existsSync(join(path, 'mine.txt'))).toBe(true);
             expect(existsSync(join(path, '.git', 'MERGE_HEAD'))).toBe(false);
-            expect(existsSync(join(path, '.git', 'rebase-merge'))).toBe(false);
-            expect(existsSync(join(path, 'theirs.txt'))).toBe(false);
             expect(left(path)).toEqual(['?? wip.txt']);
+        });
+
+        test('stops a pull on a conflict, says so, and abort puts the branch back as it was', async () => {
+            const h = await start();
+            const { path, origin } = repository();
+            const { project, folderId, result } = await open(path, h);
+            const other = neighbour(origin);
+
+            commitFile(other, 'README.md', 'theirs\n');
+            git(other, 'push', '-q');
+
+            const mine = commitFile(path, 'README.md', 'mine\n');
+            const pulled = await result('pull');
+
+            expect(pulled).toMatchObject({ state: 'conflicts', action: 'pull', conflicts: 1 });
+            expect(existsSync(join(path, '.git', 'MERGE_HEAD'))).toBe(true);
+            expect(git(path, 'rev-parse', 'HEAD')).toBe(mine);
+
+            const status = await json<{ merging?: { conflicts: number; subject?: string } }>(
+                await h.fetch(`/v1/projects/${project.id}/git/status?folderId=${folderId}`)
+            );
+
+            expect(status.merging?.conflicts).toBe(1);
+            expect(status.merging?.subject).toMatch(/Merge/);
+
+            expect(await result('abort')).toEqual({ state: 'done', action: 'abort' });
+            expect(existsSync(join(path, '.git', 'MERGE_HEAD'))).toBe(false);
+            expect(git(path, 'rev-parse', 'HEAD')).toBe(mine);
+            expect(readFileSync(join(path, 'README.md'), 'utf8')).toBe('mine\n');
         });
 
         test("does not touch an uncommitted change that the incoming commits would overwrite, and says git's own line", async () => {
@@ -553,6 +580,70 @@ withScripts('POST /v1/projects/:id/git/fetch, pull and push', () => {
                 'feat tracks origin/main, not a branch of its own, publish it first'
             );
             expect(git(path, 'rev-parse', 'HEAD')).toBe(before);
+        });
+    });
+
+    describe('update and abort', () => {
+        test('merges the base into a branch that fell behind it, and does nothing when the branch already has it', async () => {
+            const h = await start();
+            const { path, origin } = repository();
+            const { result } = await open(path, h);
+            const other = neighbour(origin);
+
+            git(path, 'switch', '-q', '-c', 'feature');
+
+            const level = await result('update');
+
+            expect(level).toMatchObject({ state: 'done', action: 'update', pulled: 0 });
+            expect(level).not.toHaveProperty('merged');
+
+            const base = commitFile(other, 'base.txt');
+
+            git(other, 'push', '-q');
+            commitFile(path, 'feature.txt');
+
+            const updated = await result('update');
+
+            expect(updated).toMatchObject({ state: 'done', action: 'update', pulled: 1, merged: true });
+            expect(updated).not.toHaveProperty('upstream');
+            expect(git(path, 'rev-parse', 'HEAD^2')).toBe(base);
+            expect(existsSync(join(path, 'base.txt'))).toBe(true);
+            expect(existsSync(join(path, 'feature.txt'))).toBe(true);
+        });
+
+        test('refuses to update the branch that is the base, and moves nothing', async () => {
+            const h = await start();
+            const { path, origin } = repository();
+            const { failure } = await open(path, h);
+            const other = neighbour(origin);
+
+            commitFile(other, 'base.txt');
+            git(other, 'push', '-q');
+
+            const before = git(path, 'rev-parse', 'HEAD');
+
+            expect((await failure('update', 400)).message).toBe('Already on main');
+            expect(git(path, 'rev-parse', 'HEAD')).toBe(before);
+        });
+
+        test('stops an update on a conflict, and abort is refused when nothing is merging', async () => {
+            const h = await start();
+            const { path, origin } = repository();
+            const { failure, result } = await open(path, h);
+            const other = neighbour(origin);
+
+            git(path, 'switch', '-q', '-c', 'feature');
+            commitFile(path, 'README.md', 'feature\n');
+            commitFile(other, 'README.md', 'base\n');
+            git(other, 'push', '-q');
+
+            const before = git(path, 'rev-parse', 'HEAD');
+
+            expect(await result('update')).toMatchObject({ state: 'conflicts', action: 'update', conflicts: 1 });
+            expect(existsSync(join(path, '.git', 'MERGE_HEAD'))).toBe(true);
+            expect(await result('abort')).toEqual({ state: 'done', action: 'abort' });
+            expect(git(path, 'rev-parse', 'HEAD')).toBe(before);
+            expect((await failure('abort', 400)).message).toBe('No merge to abort');
         });
     });
 
@@ -1134,7 +1225,7 @@ withScripts('GitRemote', () => {
         const runs = readFileSync(log, 'utf8').trim().split('\n');
 
         expect(runs).toContain('fetch --no-recurse-submodules origin');
-        expect(runs).toContain('merge --ff-only @{upstream}');
+        expect(runs).toContain('merge --no-edit @{upstream}');
         expect(runs).toContain('push --no-follow-tags --no-recurse-submodules origin refs/heads/main:refs/heads/main');
         // A branch that was never published is sent as a full ref too, never as `HEAD`, which is whatever is checked out when git runs.
         expect(runs).toContain(

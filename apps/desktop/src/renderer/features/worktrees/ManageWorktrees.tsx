@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef } from 'react';
 
 import { RootStoreProvider, useRootStore } from '../../stores';
 import { openChat } from '../chats/archiveChat';
+import { openCreateWorktree } from './CreateWorktreeDialog';
 import styles from './ManageWorktrees.module.css';
 import { openRemoveWorktree } from './RemoveWorktreeDialog';
 import { useProjectWorktrees } from './useProjectWorktrees';
@@ -170,6 +171,7 @@ function ManageWorktrees({ projectId, folderId }: Omit<ManageWorktreesProps, 'ro
                             projectId={projectId}
                             group={group}
                             folder={folder}
+                            onCreate={() => openCreateWorktree({ root, projectId, group, reload })}
                             {...actions}
                         />
                     )}

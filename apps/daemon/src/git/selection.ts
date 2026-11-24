@@ -18,11 +18,12 @@ export interface Selection {
  * The paths a client sends for a commit or a message, judged against what git lists as changed in the place right now (`placeChanges` of `uncommitted`: the working tree against
  * HEAD, new files too, the same list the sidebar ticks from). The list is a body, not a promise: no paths, more than `MAX_GIT_COMMIT_PATHS`, a path that is not a path of the
  * repository (`checkPath`) and a path that is not a changed file are `invalid`, so nothing is ever added that the person was not shown. A renamed file brings its old path along.
+ * `limit` is the most paths the caller takes: a commit's, or a discard's, which is smaller.
  */
-export async function selectChanged(place: Place, paths: unknown): Promise<Selection> {
+export async function selectChanged(place: Place, paths: unknown, limit = MAX_GIT_COMMIT_PATHS): Promise<Selection> {
     if (!Array.isArray(paths) || paths.length === 0) throw invalid('Pick at least one file');
 
-    if (paths.length > MAX_GIT_COMMIT_PATHS) throw invalid(`Pick at most ${MAX_GIT_COMMIT_PATHS} files`);
+    if (paths.length > limit) throw invalid(`Pick at most ${limit} files`);
 
     const wanted = [...new Set(paths)];
 

@@ -1,0 +1,12 @@
+@reference '@clowdy/styles/rulesets';
+
+/* Under the list, in the popover: why the branches are off, or why the daemon refused. What it says is the person's to copy. */
+.reason {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+    padding: var(--spacing-6) var(--spacing-10) var(--spacing-8);
+    border-block-start: 1px solid var(--color-surface-border);
+    overflow-wrap: anywhere;
+    user-select: text;
+}

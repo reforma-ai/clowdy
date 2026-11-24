@@ -5,7 +5,7 @@ import { runProgram } from '../providers/exec';
 import { printedLines, shownLine, writeLine } from './commit';
 import { rememberFetch } from './lastFetch';
 import { workingTreeRoot } from './state';
-import { parseStatus } from './status';
+import { mergeBaseOf, parseStatus } from './status';
 import { namesSigningKey, SIGNING_HINT, WriteEnvironment } from './writeEnv';
 
 import type { GitErrorDetails, GitRemoteAction, GitRemoteResult, GitUpstream } from '@clowdy/protocol';
@@ -34,6 +34,15 @@ const ownName = (branch: string, tracking: { merge: string }): boolean => tracki
 
 /** Keeps a fetch to `origin`: git also fetches a submodule from its own remote when the commit of it that the superproject points at has moved, which is another remote and another failure. */
 const NO_SUBMODULES = ['--no-recurse-submodules'];
+
+/** What a failed run is said to have been unable to do, when git itself said nothing. */
+const FAILURE: Record<GitRemoteAction, string> = {
+    fetch: `fetch from ${ORIGIN}`,
+    pull: `take what is on ${ORIGIN}`,
+    push: `push to ${ORIGIN}`,
+    update: 'update from the base',
+    abort: 'abort the merge',
+};
 
 /**
  * What git says around the line that matters, and says in every failure: the summary after the cause of a failed push, the second line of a failed connection, and the page a fetch
@@ -80,8 +89,9 @@ interface Head {
  *
  * - fetch is `git fetch --no-recurse-submodules origin`: the submodules' own remotes are not asked (git does that by itself for a submodule whose commit moved, and a failure there ends the
  *   fetch with an error though `origin` was fetched);
- * - pull fetches, then takes what the upstream has with `git merge --ff-only`, for a branch whose upstream is the branch of its own name (`invalid` for one that tracks another); a branch that diverged from its upstream (commits on both sides, counted with `rev-list --left-right --count`
- *   before anything moves) is answered as `diverged` and left alone: no merge, no rebase, no reset. It merges itself, and does not call `git pull`, so the network is asked once;
+ * - pull fetches, then takes what the upstream has with `git merge --no-edit @{upstream}`, for a branch whose upstream is the branch of its own name (`invalid` for one that tracks another): a fast-forward when the branch has nothing of its own, a merge commit when it has (`merged`), and `conflicts` when the merge stops on conflicts (the merge has started). No rebase, no reset. It merges itself, and does not call `git pull`, so the network is asked once;
+ * - update fetches, then merges the place's base the same way (`git merge --no-edit <base ref>`), refused when HEAD is that base branch;
+ * - abort is `git merge --abort`, and only while a merge is in progress;
  * - push is `git push origin refs/heads/<branch>:refs/heads/<branch>` for a branch whose upstream is `origin/<branch>`, the branch of its own name, and `git push -u origin
  *   refs/heads/<branch>:refs/heads/<branch>` (publish) for any other: one that tracks nothing, one whose upstream is gone from origin and one that tracks a branch of another name
  *   (`git switch -c feat origin/main`), which is sent under its own name and never to the branch it tracks, so a push cannot update `main` from `feat`. The branch is spelled as a full ref, never `HEAD`, so a branch that an agent or the person switched to while the push waited is not sent in its place, and a tag of its name
@@ -121,7 +131,7 @@ export class GitRemote {
         });
     }
 
-    /** `POST .../git/pull`: fetches `origin` and fast-forwards the branch to its upstream; a diverged branch is `diverged` and untouched. */
+    /** `POST .../git/pull`: fetches `origin` and merges the upstream (`--no-edit`, a fast-forward when it can). A merge that stops on conflicts is `conflicts`, not an error. */
     pull(place: Place): Promise<GitRemoteResult> {
         return this.#alone(place, async () => {
             const { branch, tracking } = await this.#branchOf(place, 'pull');
@@ -136,28 +146,102 @@ export class GitRemote {
             await this.#run(place, 'pull', ['fetch', ...NO_SUBMODULES, ORIGIN]);
             await rememberFetch(place.path);
 
+            const underway = await this.#conflictCount(place);
+
+            if (underway !== undefined) return { state: 'conflicts', action: 'pull', conflicts: underway };
+
             const apart = await this.#apart(place);
 
             if (!apart) throw invalid(`${tracking.merge.replace(/^refs\/heads\//, '')} is no longer on origin`);
 
-            if (apart.ahead > 0 && apart.behind > 0) {
-                const upstream = await this.#upstream(place);
+            if (apart.behind > 0) {
+                const stopped = await this.#merge(place, 'pull', '@{upstream}');
 
-                return {
-                    state: 'diverged',
-                    upstream: {
-                        name: upstream?.name ?? `${ORIGIN}/${branch}`,
-                        ahead: apart.ahead,
-                        behind: apart.behind,
-                    },
-                };
+                if (stopped) return { state: 'conflicts', action: 'pull', conflicts: stopped.conflicts };
             }
-
-            if (apart.behind > 0) await this.#run(place, 'pull', ['merge', '--ff-only', '@{upstream}']);
 
             const upstream = await this.#upstream(place);
 
-            return { state: 'done', action: 'pull', pulled: apart.behind, ...(upstream && { upstream }) };
+            return {
+                state: 'done',
+                action: 'pull',
+                pulled: apart.behind,
+                ...(apart.behind > 0 && apart.ahead > 0 && { merged: true as const }),
+                ...(upstream && { upstream }),
+            };
+        });
+    }
+
+    /** `POST .../git/update`: fetches `origin` and merges the place's base into the branch. Already being that branch is `invalid`. */
+    update(place: Place): Promise<GitRemoteResult> {
+        return this.#alone(place, async () => {
+            const head = await this.#inspect(place);
+
+            if (head.branch === undefined) throw invalid('HEAD is detached, switch to a branch to update');
+
+            if (!head.born) throw invalid(`${head.branch} has no commits yet`);
+
+            await this.#run(place, 'update', ['fetch', ...NO_SUBMODULES, ORIGIN]);
+            await rememberFetch(place.path);
+
+            const underway = await this.#conflictCount(place);
+
+            if (underway !== undefined) return { state: 'conflicts', action: 'update', conflicts: underway };
+
+            const base = await mergeBaseOf(place);
+
+            if (base.state === 'no_base') throw invalid('There is no branch to update from');
+
+            if (base.state === 'no_merge_base') throw invalid(`${head.branch} shares no history with ${base.name}`);
+
+            if (base.state !== 'ready') throw invalid(`${head.branch} has no commits yet`);
+
+            const baseBranch = base.name.startsWith(`${ORIGIN}/`) ? base.name.slice(ORIGIN.length + 1) : base.name;
+
+            if (head.branch === baseBranch || head.branch === base.name) throw invalid(`Already on ${head.branch}`);
+
+            const counts = await gitAnswer(place.path, ['rev-list', '--left-right', '--count', `${base.commit}...HEAD`]);
+            const [behind, ahead] = (counts ?? '').split(/\s+/).map(Number);
+
+            if (
+                counts === undefined ||
+                behind === undefined ||
+                ahead === undefined ||
+                Number.isNaN(behind) ||
+                Number.isNaN(ahead)
+            )
+                throw unavailable('git did not answer');
+
+            if (behind > 0) {
+                // A short hash is a commit, not a ref a person would read in the merge message: merge the commit itself.
+                const ref = /^[0-9a-f]{7,40}$/i.test(base.name) ? base.commit : base.name;
+                const stopped = await this.#merge(place, 'update', ref);
+
+                if (stopped) return { state: 'conflicts', action: 'update', conflicts: stopped.conflicts };
+            }
+
+            const upstream = await this.#upstream(place);
+
+            return {
+                state: 'done',
+                action: 'update',
+                pulled: behind,
+                ...(behind > 0 && ahead > 0 && { merged: true as const }),
+                ...(upstream && { upstream }),
+            };
+        });
+    }
+
+    /** `POST .../git/abort`: `git merge --abort`, and only while a merge is in progress. */
+    abort(place: Place): Promise<GitRemoteResult> {
+        return this.#alone(place, async () => {
+            if (!(await workingTreeRoot(place.path))) throw invalid('The folder is not the root of a git repository');
+
+            if ((await this.#conflictCount(place)) === undefined) throw invalid('No merge to abort');
+
+            await this.#run(place, 'abort', ['merge', '--abort']);
+
+            return { state: 'done', action: 'abort' };
         });
     }
 
@@ -277,10 +361,44 @@ export class GitRemote {
         return read.ok ? parseStatus(read.stdout.split('\0')).upstream : undefined;
     }
 
-    /** `git <args>` in the place with the write environment, asked to stop with `SIGTERM` so it removes its lock files when the time is up; throws what a run that did not succeed came to. */
-    async #run(place: Place, action: GitRemoteAction, args: string[]): Promise<void> {
+    /**
+     * How many paths are still unmerged, when a merge is in progress (`MERGE_HEAD`); nothing when no merge is. The count is the whole tree, not the status list, which is cut.
+     */
+    async #conflictCount(place: Place): Promise<number | undefined> {
+        if ((await gitAnswer(place.path, ['rev-parse', '-q', '--verify', 'MERGE_HEAD'])) === undefined) return undefined;
+
+        const unmerged = await gitRead(place.path, ['diff', '--name-only', '--diff-filter=U', '-z'], { parsed: true });
+
+        return unmerged.ok ? unmerged.stdout.split('\0').filter(path => path !== '').length : 0;
+    }
+
+    /**
+     * `git merge --no-edit <ref>` in the place. A clean merge (a fast-forward or a merge commit) is nothing; a merge that stops on conflicts is how many paths are unmerged, and the merge is
+     * left in progress. A refusal before a merge starts (a local change in the way) is thrown, and nothing was started.
+     */
+    async #merge(
+        place: Place,
+        action: 'pull' | 'update',
+        ref: string
+    ): Promise<{ conflicts: number } | undefined> {
+        const run = await this.#git(place, ['merge', '--no-edit', ref]);
+
+        if (run.code === 0) return undefined;
+
+        const conflicts = await this.#conflictCount(place);
+
+        if (conflicts !== undefined) return { conflicts };
+
+        this.#check(run, action);
+
+        return undefined;
+    }
+
+    /** `git <args>` in the place with the write environment, asked to stop with `SIGTERM` so it removes its lock files when the time is up. */
+    async #git(place: Place, args: string[]): Promise<RunResult> {
         const env = await this.environment.of(place.path);
-        const run = await runProgram('git', args, {
+
+        return runProgram('git', args, {
             env,
             cwd: place.path,
             timeoutMs: this.#timeoutMs,
@@ -288,8 +406,11 @@ export class GitRemote {
             signal: this.#stopper.signal,
             stopSignal: 'SIGTERM',
         });
+    }
 
-        this.#check(run, action);
+    /** `git <args>` in the place; throws what a run that did not succeed came to. */
+    async #run(place: Place, action: GitRemoteAction, args: string[]): Promise<void> {
+        this.#check(await this.#git(place, args), action);
     }
 
     /** Throws what a run that did not succeed came to, in words the person reads; returns when it did. */
@@ -302,11 +423,7 @@ export class GitRemote {
 
         if (run.code === 0) return;
 
-        const line = remoteFailureLine(
-            run.stderr,
-            run.stdout,
-            `git could not ${action === 'fetch' ? 'fetch from' : action === 'push' ? 'push to' : 'take what is on'} ${ORIGIN}`
-        );
+        const line = remoteFailureLine(run.stderr, run.stdout, `git could not ${FAILURE[action]}`);
 
         if (namesSigningKey(`${run.stderr}\n${run.stdout}`)) {
             // What was found of the agent may be what failed: it is looked for again at the next write.

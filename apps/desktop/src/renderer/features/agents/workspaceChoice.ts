@@ -37,6 +37,8 @@ const hasBase = (repository: Repository, base: string) =>
  * What the new chat is made with: the person's choice, as far as the folder's repository allows it, and `undefined` for Project checkout. The daemon refuses a worktree of a
  * folder that is no repository, a base that is no ref, and a path that is no worktree of the folder, so a choice that the read does not bear out (nothing read yet, the read
  * failed, the folder is no repository, the worktree is gone since, the folder has no commit to start from) is never sent. A base that has gone is dropped, which is the default one.
+ * A branch of the folder's own checkout (`main`) is kept while the folder is not on it: the branch it is on already is no change, so nothing is sent. Whether the branch is still there
+ * is the daemon's to say when the chat is made (`There is no branch called x`): the list it was picked from is only as old as the popover.
  */
 export function effectiveChoice(
     choice: ChatWorkspaceChoice | null,
@@ -45,6 +47,8 @@ export function effectiveChoice(
     const git = repositoryOf(repository);
 
     if (!choice || !git) return undefined;
+
+    if (choice.mode === 'main') return choice.branch === git.branch && !git.detached ? undefined : { ...choice };
 
     if (choice.mode === 'existing') {
         const worktree = pickableWorktrees(git).find(candidate => samePath(candidate.path, choice.path));

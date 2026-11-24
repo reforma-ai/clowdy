@@ -6,19 +6,26 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
     createFixtureData,
-    FIXTURE_GIT_COMMITS,
+    FIXTURE_LAST_RUN_CHAT_ID,
     FIXTURE_PERSONAL_PROJECT_ID,
     FIXTURE_PROJECT_ID,
+    FIXTURE_QUIET_CHAT_ID,
+    FIXTURE_RUN_FILES,
+    FIXTURE_RUN_SCOPE,
     FIXTURE_WORKSPACE_CHAT_ID,
     type FixtureData,
+    withFixtureLastRun,
     withFixtureWorkspace,
 } from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { overrideTransport } from '../../daemon/testing';
 import { type Transport, TransportError } from '../../daemon/transport';
 import { RootStore, RootStoreProvider } from '../../stores';
+import { chatFolder } from '../agents/agentTree';
+import { chatPlace } from '../sidePanel/currentPlace';
 import ChangesTab from './ChangesTab';
 import { gitFactsOf } from './gitFacts';
+import { openRunInChanges } from './openRunInChanges';
 import { changesSidebarLayout } from './sidebarLayout';
 
 import type { GitChanges, GitFileSides } from '@clowdy/protocol';
@@ -26,7 +33,9 @@ import type { GitChanges, GitFileSides } from '@clowdy/protocol';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 // happy-dom has no layout: the view builds its resizable group once its box has a width, which it is told.
-vi.mock('./useBoxWidth', () => ({ useBoxWidth: () => [() => undefined, 900] }));
+vi.mock('./useBoxWidth', () => ({
+    useBoxWidth: () => [() => undefined, 900],
+}));
 // The diff view has specs of its own (`packages/file-manager/specs`); here it only has to be given the right texts.
 vi.mock('@clowdy/file-manager/react', () => ({
     DiffView: ({
@@ -147,11 +156,8 @@ const press = (target: Element) =>
 const cards = () => [...container.querySelectorAll<HTMLElement>('[data-card]')];
 const cardPaths = () => cards().map(card => card.dataset.card);
 const card = (path: string) => cards().find(element => element.dataset.card === path)!;
-const sidebarFiles = () => [...container.querySelectorAll<HTMLButtonElement>('[aria-label="Changed files"] button')];
+const sidebarFiles = () => [...container.querySelectorAll<HTMLElement>('[aria-label="Changed files"] [role="row"]')];
 const sidebarPaths = () => sidebarFiles().map(row => row.querySelector('[class*="name"]')?.textContent);
-const commitRows = () => [
-    ...container.querySelectorAll<HTMLButtonElement>('[aria-label="Committed on branch"] button'),
-];
 const scopeTrigger = () => container.querySelector<HTMLButtonElement>('button[aria-haspopup="listbox"]')!;
 const options = () => [...document.querySelectorAll('[role="option"]')];
 const filter = () => container.querySelector<HTMLInputElement>('input[aria-label="Filter files"]')!;
@@ -226,7 +232,9 @@ afterEach(() => {
 });
 
 describe('the Changes tab of a chat in a worktree', () => {
-    it('has a card for each file of all the changes, the totals of the list, and the files and commits in the sidebar', async () => {
+    it('shows all file diffs and totals, with only changed files in the sidebar list', async () => {
+        localStorage.setItem('clowdy:changes-commits-open', 'true');
+        localStorage.setItem('clowdy:changes-commits-height', '200');
         await start();
         await draw();
 
@@ -248,10 +256,9 @@ describe('the Changes tab of a chat in a worktree', () => {
             'weekend.ts',
             'limits.ts',
         ]);
-        expect(commitRows().map(row => row.textContent)).toEqual([
-            expect.stringContaining('Charge a weekend surcharge'),
-            expect.stringContaining('Price a booking by the day'),
-        ]);
+        expect(container.querySelector('[aria-label="Changes sidebar"]')?.textContent).not.toContain(
+            'Commits on branch'
+        );
         expect(container.querySelector('[aria-label="Changes sidebar"]')?.textContent).toContain('clowdy/ab12cd34');
         expect(container.querySelector('[aria-label="Changes sidebar"]')?.textContent).toContain(
             '→ origin/main · 2 ahead, 1 behind'
@@ -470,7 +477,7 @@ describe('the Changes tab of a chat in a worktree', () => {
         expect(write).toHaveBeenCalledExactlyOnceWith('src/booking/price.ts');
     });
 
-    it('folds a card on a press on its header, and opens it again, and has a button to fold every card and one to open them all', async () => {
+    it('folds individual cards and uses one button to collapse a mixed list or expand a folded list', async () => {
         await start();
         await draw();
         await bringNear();
@@ -483,13 +490,20 @@ describe('the Changes tab of a chat in a worktree', () => {
         await press(button('Unfold src/booking/price.ts'));
         expect(card('src/booking/price.ts').hasAttribute('data-open')).toBe(true);
 
-        await press(button('Collapse all files'));
-        expect(cards().some(element => element.hasAttribute('data-open'))).toBe(false);
-        expect(button('Collapse all files').disabled).toBe(true);
+        await press(button('Fold src/booking/price.ts'));
+        const foldAll = button('Collapse all files');
 
-        await press(button('Expand all files'));
+        expect(foldAll.disabled).toBe(false);
+        expect(button('Expand all files')).toBeNull();
+        await press(foldAll);
+        expect(cards().some(element => element.hasAttribute('data-open'))).toBe(false);
+        expect(button('Collapse all files')).toBeNull();
+        expect(button('Expand all files')).toBe(foldAll);
+
+        await press(foldAll);
         expect(cards().every(element => element.hasAttribute('data-open'))).toBe(true);
-        expect(button('Expand all files').disabled).toBe(true);
+        expect(button('Expand all files')).toBeNull();
+        expect(button('Collapse all files')).toBe(foldAll);
     });
 });
 
@@ -523,41 +537,28 @@ describe('the scope', () => {
         expect(summary()).toBe('3 files,+10−3');
     });
 
-    it('shows one commit alone when it is pressed in the sidebar, goes back to all changes on a second press on it, and on the row that says so', async () => {
+    it('shows the selected commit in both file lists and returns to all changes from the toolbar', async () => {
         await start();
         await draw();
 
-        const second = FIXTURE_GIT_COMMITS[1]!;
+        const selectScope = async (label: string) => {
+            await press(scopeTrigger());
+            await vi.waitFor(() => expect(options().length).toBeGreaterThan(0));
+            await press(options().find(option => option.textContent === label)!);
+            await settle();
+        };
 
-        await press(commitRows()[1]!);
-        await settle();
+        await selectScope('a155555 Price a booking by the day');
 
-        expect(scopeTrigger().textContent).toContain(`${second.shortSha} ${second.subject}`);
+        expect(scopeTrigger().textContent).toContain('a155555 Price a booking by the day');
         expect(cardPaths()).toEqual(['assets/logo.png', 'src/booking/price.test.ts', 'src/booking/price.ts']);
-        expect(commitRows()[0]!.textContent).toContain('Back to all changes');
-        expect(commitRows()[2]!.getAttribute('aria-pressed')).toBe('true');
+        expect(sidebarPaths()).toEqual(['logo.png', 'price.test.ts', 'price.ts']);
 
-        // A second press on the same commit clears it.
-        await press(commitRows()[2]!);
-        await settle();
+        await selectScope('All changes');
+
         expect(scopeTrigger().textContent).toContain('All changes');
         expect(cards()).toHaveLength(6);
-        expect(
-            commitRows()
-                .map(row => row.textContent)
-                .join('')
-        ).not.toContain('Back to all changes');
-
-        // And so does the row that goes back.
-        await press(commitRows()[0]!);
-        await settle();
-        expect(cards()).toHaveLength(2);
-        expect(cardPaths()).toEqual(['src/booking/price.ts', 'src/booking/weekend.ts']);
-        expect(commitRows()[0]!.textContent).toContain('Back to all changes');
-
-        await press(commitRows()[0]!);
-        await settle();
-        expect(cards()).toHaveLength(6);
+        expect(sidebarFiles()).toHaveLength(6);
     });
 
     it('has the commit box in the sidebar whichever scope is shown, with the uncommitted files read for it and the commit sent from the scope that is not theirs', async () => {
@@ -722,6 +723,8 @@ describe('the filter', () => {
         await type('*.rs');
 
         expect(cards()).toHaveLength(0);
+        expect(button('Collapse all files').disabled).toBe(true);
+        expect(button('Expand all files')).toBeNull();
         expect(container.textContent).toContain('No files match the filter');
         expect(container.querySelector('[aria-label="Changed files"]')?.textContent).toContain(
             'No files match the filter'
@@ -1123,15 +1126,13 @@ describe('the viewed files', () => {
         await draw();
         await tick('notes.md');
 
-        expect(button('Expand all files').disabled).toBe(false);
+        expect(button('Expand all files')).toBeNull();
+        await press(button('Collapse all files'));
+        expect(cards().every(element => !element.hasAttribute('data-open'))).toBe(true);
 
         await press(button('Expand all files'));
         expect(cards().every(element => element.hasAttribute('data-open'))).toBe(true);
-        expect(button('Expand all files').disabled).toBe(true);
-
-        await press(button('Collapse all files'));
-        expect(cards().every(element => !element.hasAttribute('data-open'))).toBe(true);
-        expect(button('Collapse all files').disabled).toBe(true);
+        expect(button('Collapse all files').disabled).toBe(false);
     });
 
     it('does not read the texts of a file because it was ticked: the state of the tick is out of the cache and the diff', async () => {
@@ -1250,7 +1251,7 @@ describe('the states instead of the cards', () => {
 
         expect(container.textContent).toContain('No changes');
         expect(container.textContent).toContain('There is no base branch to compare with yet');
-        expect(container.querySelector('[aria-label="Committed on branch"]')).toBeNull();
+        expect(container.querySelector('[data-commits-bar]')).toBeNull();
     });
 
     it('says a worktree that is not made yet is not, and reads nothing of it', async () => {
@@ -1443,5 +1444,202 @@ describe('the reads of the texts', () => {
         await finishAll();
 
         expect(names).toEqual(['src/f0.ts', 'src/f1.ts', 'src/f2.ts', 'src/f3.ts']);
+    });
+});
+
+describe('the last run of the open chat', () => {
+    const withRuns = (data: FixtureData) => void withFixtureLastRun(data);
+    const run = { tweak: withRuns, chat: FIXTURE_LAST_RUN_CHAT_ID };
+    const openMenu = async () => {
+        await press(scopeTrigger());
+        await vi.waitFor(() => expect(options().length).toBeGreaterThan(0));
+    };
+    const optionLabels = () => options().map(option => option.textContent);
+
+    it('is a scope of the menu after what is not committed, with a line that says the edits of others are in it, while the open chat has one', async () => {
+        await start(run);
+        await draw();
+        await openMenu();
+
+        expect(optionLabels()).toEqual([
+            'All changes',
+            'Branch',
+            'Uncommitted',
+            'Last runEdits of others in the place are in it too',
+            'b744444 Charge a weekend surcharge',
+            'a155555 Price a booking by the day',
+        ]);
+    });
+
+    it('is not offered for a chat whose latest run changed nothing, or for one with no run in the place', async () => {
+        await start({ ...run, chat: FIXTURE_QUIET_CHAT_ID });
+        await draw();
+        await openMenu();
+        expect(optionLabels()).toEqual([
+            'All changes',
+            'Branch',
+            'Uncommitted',
+            'b744444 Charge a weekend surcharge',
+            'a155555 Price a booking by the day',
+        ]);
+    });
+
+    it("is not offered while the new-chat page is shown, whose place is not a chat's", async () => {
+        await start(run);
+        store.ui.forProject(FIXTURE_PROJECT_ID).openDraft();
+        await draw();
+        await openMenu();
+        expect(optionLabels()).not.toContain('Last runEdits of others in the place are in it too');
+    });
+
+    it('lists the files the run changed when it is picked, with their totals and the tooltip that says what the list is, and goes back to all changes', async () => {
+        await start(run);
+        await draw();
+        await openMenu();
+        await press(options().find(option => option.textContent?.startsWith('Last run'))!);
+        await settle();
+
+        expect(scopeTrigger().textContent).toContain('Last run');
+        expect(scopeTrigger().closest('[title]')?.getAttribute('title')).toContain(
+            'What the latest run of this chat changed'
+        );
+        expect(cardPaths()).toEqual(FIXTURE_RUN_FILES.map(file => file.path));
+        expect(summary()).toBe('7 files,+178−29');
+        // The two ends of a run are trees: no commit, no base.
+        expect(sidebarFiles()).toHaveLength(7);
+
+        await openMenu();
+        await press(options().find(option => option.textContent === 'All changes')!);
+        await settle();
+        expect(scopeTrigger().textContent).toContain('All changes');
+        expect(scopeTrigger().closest('[title]')).toBeNull();
+        expect(cards()).toHaveLength(6);
+    });
+
+    it("reads the texts of the files of the run from the run's own scope, with no start of the list", async () => {
+        await start(run);
+        await draw();
+
+        const read = vi.spyOn(transport, 'getGitFile');
+
+        await openMenu();
+        await press(options().find(option => option.textContent?.startsWith('Last run'))!);
+        await settle();
+        await bringNear();
+        await settle();
+
+        expect(read).toHaveBeenCalled();
+        expect(read.mock.calls.every(call => call[2] === FIXTURE_RUN_SCOPE && call[5] === undefined)).toBe(true);
+        expect(card('src/booking/price.ts').querySelector('[data-diff]')?.textContent).toContain('weekend');
+    });
+
+    it('opens on the run with the card of the pressed file brought up and opened, when it was asked for before the tab was drawn', async () => {
+        await start(run);
+
+        const project = store.selectedProject!;
+        const chat = project.chats.get(FIXTURE_LAST_RUN_CHAT_ID)!;
+        const place = chatPlace(
+            project.project.folders,
+            chat,
+            chatFolder(project.chats, project.project.folders, chat.id)?.folder
+        );
+
+        expect(
+            openRunInChanges(store, FIXTURE_PROJECT_ID, place, chat.id, FIXTURE_RUN_SCOPE, 'src/booking/weekend.ts')
+        ).toBe(true);
+        expect(store.ui.forProject(FIXTURE_PROJECT_ID).sidePanelTab).toBe('changes');
+        expect(store.ui.forProject(FIXTURE_PROJECT_ID).sidePanelOpen).toBe(true);
+
+        await draw();
+        await vi.waitFor(() => expect(scrolled).toEqual([card('src/booking/weekend.ts')]));
+
+        expect(scopeTrigger().textContent).toContain('Last run');
+        expect(cardPaths()).toEqual(FIXTURE_RUN_FILES.map(file => file.path));
+        expect(card('src/booking/weekend.ts').hasAttribute('data-open')).toBe(true);
+        // The request is answered once: the tab does not scroll again to the file on a later round of reads.
+        gitFactsOf(transport).refresh({
+            projectId: FIXTURE_PROJECT_ID,
+            folderId: place.folder.id,
+            workspaceId: place.workspace!.id,
+        });
+        await settle();
+        await new Promise(resolve => setTimeout(resolve, 40));
+        expect(scrolled).toEqual([card('src/booking/weekend.ts')]);
+    });
+
+    it('opens a viewed card of the run when its file is the one that was pressed, and keeps its mark', async () => {
+        await start(run);
+        await draw();
+        await openMenu();
+        await press(options().find(option => option.textContent?.startsWith('Last run'))!);
+        await settle();
+
+        const tick = (path: string) => container.querySelector<HTMLInputElement>(`input[aria-label="Viewed ${path}"]`)!;
+
+        await press(tick('src/booking/price.ts'));
+        await settle();
+        expect(card('src/booking/price.ts').hasAttribute('data-open')).toBe(false);
+        expect(summary()).toContain('1 of 7 viewed');
+        expect(
+            (
+                await transport.getGitViewed(
+                    FIXTURE_PROJECT_ID,
+                    { folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' },
+                    FIXTURE_RUN_SCOPE
+                )
+            ).map(mark => mark.path)
+        ).toEqual(['src/booking/price.ts']);
+        // Another scope has none of it.
+        expect(
+            await transport.getGitViewed(
+                FIXTURE_PROJECT_ID,
+                { folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' },
+                'all'
+            )
+        ).toEqual([]);
+    });
+
+    it('says the changes of the run are gone when git has pruned its trees, with a way to try again, and the other scopes still work', async () => {
+        await start({
+            ...run,
+            tweak: data => {
+                withRuns(data);
+                data.chats.find(chat => chat.id === FIXTURE_LAST_RUN_CHAT_ID)!.lastRun = {
+                    startTree: 'c'.repeat(40),
+                    endTree: 'd'.repeat(40),
+                    seq: 2,
+                    at: 1,
+                };
+            },
+        });
+        await draw();
+        await openMenu();
+        await press(options().find(option => option.textContent?.startsWith('Last run'))!);
+        await settle();
+
+        expect(container.textContent).toContain("Couldn't read the changes");
+        expect(container.textContent).toContain('The changes of that run are no longer in the repository');
+        expect(cards()).toHaveLength(0);
+
+        await openMenu();
+        await press(options().find(option => option.textContent === 'Uncommitted')!);
+        await settle();
+        expect(cards()).toHaveLength(3);
+    });
+
+    it('is not followed to another chat of the place: the tab is back on all changes', async () => {
+        await start(run);
+        await draw();
+        await openMenu();
+        await press(options().find(option => option.textContent?.startsWith('Last run'))!);
+        await settle();
+        expect(cards()).toHaveLength(7);
+
+        act(() => store.ui.forProject(FIXTURE_PROJECT_ID).openChat(FIXTURE_QUIET_CHAT_ID));
+        await draw();
+        await settle();
+
+        expect(scopeTrigger().textContent).toContain('All changes');
+        expect(cards()).toHaveLength(6);
     });
 });

@@ -7,11 +7,9 @@ const OPEN_KEY = 'clowdy:changes-sidebar-open';
 const WIDTH_KEY = 'clowdy:changes-sidebar-width';
 
 const clampWidth = (width: number) => Math.max(CHANGES_SIDEBAR_MIN_WIDTH, Math.round(width));
+const isSize = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
 
-/**
- * How the Changes tab's sidebar is shown, one choice for the whole window whichever project or place is on show, as the file tree's is (`TreeLayout`): whether it is beside the
- * diffs, and how wide when it is.
- */
+/** Sidebar visibility and width, shared by all projects and places in the window. */
 export class ChangesSidebarLayout {
     open: boolean;
     width: number;
@@ -21,8 +19,7 @@ export class ChangesSidebarLayout {
         const width = readStored(storage, WIDTH_KEY);
 
         this.open = open !== false;
-        this.width =
-            typeof width === 'number' && Number.isFinite(width) ? clampWidth(width) : CHANGES_SIDEBAR_DEFAULT_WIDTH;
+        this.width = isSize(width) ? clampWidth(width) : CHANGES_SIDEBAR_DEFAULT_WIDTH;
         makeAutoObservable<ChangesSidebarLayout, 'storage'>(this, { storage: false });
     }
 

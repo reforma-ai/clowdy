@@ -5,9 +5,11 @@ import type { AgentRegistry } from '../engine/acp/registry';
 import type { FilesService } from '../files/service';
 import type { FsService } from '../fs/service';
 import type { GitWrites } from '../git/commit';
+import type { GitDiscard } from '../git/discard';
 import type { CommitMessages } from '../git/message';
 import type { PullRequests } from '../git/pullRequest';
 import type { GitRemote } from '../git/remote';
+import type { GitSwitch } from '../git/switch';
 import type { ModelCatalog } from '../providers/models';
 import type { ProvidersService } from '../providers/service';
 import type { RunDriver } from '../runs/driver';
@@ -44,6 +46,10 @@ export interface Services {
     gitWrites: GitWrites;
     /** What the daemon does between a person's branch and their `origin`: fetch, pull and push. */
     gitRemote: GitRemote;
+    /** What the daemon does to the branch of a folder's own checkout: the switch. */
+    gitSwitch: GitSwitch;
+    /** The discard of the changes of single files, with the copy it keeps of what it removes. */
+    gitDiscard: GitDiscard;
     /** The commit message an agent the person chose writes for the files they ticked. */
     commitMessages: CommitMessages;
 }
@@ -51,13 +57,14 @@ export interface Services {
 export type CommandOf<T extends CommandType> = Extract<Command, { type: T }>;
 
 /** The commands that wait for an agent or for git before they change anything (a fork, an edit, the removal of a worktree): they have an `AsyncHandlers` entry and no `Handlers` one. */
-export type AsyncCommandType = 'chat.fork' | 'chat.edit' | 'workspace.remove';
+export type AsyncCommandType = 'chat.fork' | 'chat.edit' | 'workspace.create' | 'workspace.remove';
 
 /**
- * The commands that wait only when they ask for something that needs it (a delete that also removes the chat's worktree waits for git): they have a `Handlers` entry for
- * the ordinary case and an `AsyncHandlers` one for the other, which `waitsWhen` (`commands/index.ts`) tells apart.
+ * The commands that wait only when they ask for something that needs it (a delete that also removes the chat's worktree waits for git, and so does a chat that is to work in
+ * the folder's checkout on another branch): they have a `Handlers` entry for the ordinary case and an `AsyncHandlers` one for the other, which `waitsWhen`
+ * (`commands/index.ts`) tells apart.
  */
-export type SometimesAsyncCommandType = 'chat.delete';
+export type SometimesAsyncCommandType = 'chat.create' | 'chat.delete';
 
 /**
  * One handler per command type, run inside the transaction that also stores the command's result. Handlers are

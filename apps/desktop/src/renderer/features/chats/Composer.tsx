@@ -47,6 +47,7 @@ import type {
     ChatMode,
     ChatWorkspace,
     ChatWorkspaceChoice,
+    CommandResult,
     FolderId,
     ProjectId,
     QueuedMessage,
@@ -109,6 +110,11 @@ export interface ComposerProps {
         folderId?: FolderId;
         workspace?: ChatWorkspaceChoice;
         workspaceRow?: ChatWorkspace;
+        /**
+         * Wraps the making of the chat (`chat.create`) when the page has something to say of it as it runs: a choice of the folder's own branch is switched by the daemon first, which may take a
+         * while and be refused. The wrapper runs `create` and hands back its result, and may show it as it goes; a refusal gives the message back to the box as for any other command.
+         */
+        around?: (create: () => Promise<CommandResult>) => Promise<CommandResult>;
         waiting?: string;
         onStarted: (chatId: ChatId) => void;
         defaults?: { engine?: string; mode?: ChatMode };
@@ -280,19 +286,21 @@ export function Composer({ chat, run, start, minLines, editMode, controls, ref }
 
             const { choice } = model;
             // The chat starts on what the picker holds: the provider, its model and the level of that model.
-            const created = await perform(root, {
-                type: 'chat.create',
-                projectId: start.projectId,
-                ...(start.folderId && { folderId: start.folderId }),
-                // A copy of the choice (the store keeps the one it holds, and the command is what the transport sends on), with the app's branch prefix for a new worktree.
-                ...(start.workspace && { workspace: branchPrefix.withPrefix(start.workspace) }),
-                mode: draftMode,
-                ...(choice && {
-                    engine: choice.engine,
-                    ...(choice.model && { model: choice.model }),
-                    ...(choice.effort && { effort: choice.effort }),
-                }),
-            });
+            const create = () =>
+                perform(root, {
+                    type: 'chat.create',
+                    projectId: start.projectId,
+                    ...(start.folderId && { folderId: start.folderId }),
+                    // A copy of the choice (the store keeps the one it holds, and the command is what the transport sends on), with the app's branch prefix for a new worktree.
+                    ...(start.workspace && { workspace: branchPrefix.withPrefix(start.workspace) }),
+                    mode: draftMode,
+                    ...(choice && {
+                        engine: choice.engine,
+                        ...(choice.model && { model: choice.model }),
+                        ...(choice.effort && { effort: choice.effort }),
+                    }),
+                });
+            const created = await (start.around ? start.around(create) : create());
             const fresh = (created.ok ? created.data : {}) as { chat?: Chat };
 
             if (!fresh.chat) {

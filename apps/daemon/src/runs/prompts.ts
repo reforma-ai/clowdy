@@ -123,13 +123,15 @@ function projectFacts(project: Project, cwd: string, worktreeOf?: string): strin
 
 /**
  * The system prompt: where the system skills are, the mode, the facts about the project and, for a run of a chat, a paragraph on threads; a thread's
- * run is also told whose thread it is. Everything else is in the skills. `cwd` is the folder the run works in.
+ * run is also told whose thread it is. `terminalsDir`, when given, is where that project's terminal logs are. Everything else is in the skills. `cwd` is
+ * the folder the run works in.
  */
 export function systemPrompt(
     mode: ChatMode,
     project: Project,
     cwd = mainFolder(project).path,
-    chat?: PromptChat
+    chat?: PromptChat,
+    terminalsDir?: string
 ): string {
     return [
         'Clowdy is a desktop app where a person who manages software work chats with an orchestrator and watches tasks, agents and documents while agents do the engineering.',
@@ -137,6 +139,8 @@ export function systemPrompt(
         chat?.parent && threadIntro(chat.parent),
         `Mode: ${modeLabel(mode)}.`,
         projectFacts(project, cwd, chat?.workspace?.folder),
+        terminalsDir &&
+            `The app's terminal logs for this project are in ${terminalsDir}, one plain file per shell. Read one when the person mentions the terminal.`,
         chat?.workspace && workspaceFacts(chat.workspace),
         TASKS,
         chat && THREADS,

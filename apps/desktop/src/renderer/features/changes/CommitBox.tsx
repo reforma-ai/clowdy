@@ -1,7 +1,7 @@
 import { Button } from '@clowdy/components/Button';
 import { Checkbox } from '@clowdy/components/Checkbox';
 import { For } from '@clowdy/components/For';
-import { Menu, MenuItem, MenuTrigger } from '@clowdy/components/List';
+import { GridList, GridListItem, Menu, MenuItem, MenuTrigger } from '@clowdy/components/List';
 import { Popover } from '@clowdy/components/Popover';
 import { Scrollable } from '@clowdy/components/Scrollable';
 import { Text } from '@clowdy/components/Text';
@@ -181,71 +181,72 @@ function NoLocalChanges({
                 </div>
             )}
             {quiet.length > 0 && (
-                <div className={styles.quiet}>
+                <GridList
+                    aria-label="Open the place"
+                    size="sm"
+                    className={styles.quiet}
+                    onAction={key => quiet.find(action => action.id === key)?.run()}
+                >
                     {quiet.map(action => (
-                        <Button
+                        <GridListItem
                             key={action.id}
-                            variant="filling"
-                            color="secondary"
-                            size="xs"
-                            className={styles.quietButton}
-                            contentClassName={styles.quietContent}
+                            id={action.id}
+                            text={quietLabel(action)}
+                            icon={actionIcon(action)}
                             isDisabled={action.isDisabled}
-                            onPress={action.run}
-                        >
-                            {actionIcon(action)}
-                            <Text variant="xs" weight="medium" truncate>
-                                {quietLabel(action)}
-                            </Text>
-                        </Button>
+                        />
                     ))}
-                </div>
+                </GridList>
             )}
         </section>
     );
 }
 
-/** One file of the commit: a tick, what happened to it, its name with its folder dimmed after it, and its lines. A press anywhere on the row ticks or unticks it. */
+/**
+ * One file of the commit, a row of the design system's list as the sidebar's files are: a tick, what happened to it, its name with its folder dimmed after it, and its lines. The
+ * row's action (a press anywhere on it, or Enter) ticks or unticks it, and so does the tick itself, which is a real checkbox named by the path.
+ */
 function CommitFileRow({ file, draft }: { file: GitChangedFile; draft: CommitDraft }) {
     const kind = CHANGE_KIND_VIEW[file.kind];
     const { folder, name } = splitPath(file.path);
 
     return (
-        <Checkbox
-            size="sm"
-            className={styles.row}
-            isSelected={draft.isTicked(file.path)}
+        <GridListItem
+            id={file.path}
+            textValue={file.path}
             isDisabled={draft.writing}
-            aria-label={file.path}
-            onChange={on => draft.setTicked(file.path, on)}
+            icon={
+                <Checkbox
+                    size="sm"
+                    isSelected={draft.isTicked(file.path)}
+                    isDisabled={draft.writing}
+                    aria-label={file.path}
+                    onChange={on => draft.setTicked(file.path, on)}
+                />
+            }
+            endAffix={
+                file.additions !== undefined && file.deletions !== undefined ? (
+                    <span className={styles.counts}>
+                        <Text variant="sm" color="success">{`+${file.additions}`}</Text>
+                        <Text variant="sm" color="danger">{`−${file.deletions}`}</Text>
+                    </span>
+                ) : undefined
+            }
         >
-            <Text
-                variant="xs"
-                weight="medium"
-                color={kind.color}
-                className={styles.glyph}
-                title={kind.label}
-                aria-hidden="true"
-            >
-                {kind.glyph}
-            </Text>
-            <span className={styles.fileName} title={file.path}>
-                <Text variant="xs" weight="medium" truncate className={styles.name}>
+            <Text slot="label" className={styles.fileName} title={file.path}>
+                <Text weight="medium" color={kind.color} className={styles.glyph} title={kind.label} aria-hidden="true">
+                    {kind.glyph}
+                </Text>
+                <Text weight="medium" truncate className={styles.name}>
                     {name}
                 </Text>
                 {folder && (
-                    <Text variant="xs" color="secondary" truncate className={styles.folderHint}>
+                    <Text color="secondary" truncate className={styles.folderHint}>
                         {folder.slice(0, -1)}
                     </Text>
                 )}
-            </span>
-            {file.additions !== undefined && file.deletions !== undefined && (
-                <span className={styles.counts}>
-                    <Text variant="xs" color="success">{`+${file.additions}`}</Text>
-                    <Text variant="xs" color="danger">{`−${file.deletions}`}</Text>
-                </span>
-            )}
-        </Checkbox>
+            </Text>
+        </GridListItem>
     );
 }
 
@@ -280,6 +281,12 @@ export function CommitBox({ model, place, projectId, git }: CommitBoxProps) {
     useEffect(() => model.syncUncommitted(generation), [model, generation, scope]);
     // Files that went are forgotten, so one that comes back is ticked again.
     useEffect(() => draft.reconcile(), [draft, names]);
+    // A resolved merge commits with the message git prepared, unless the person has written one.
+    const mergeSubject = draft.mergeSubject;
+
+    useEffect(() => {
+        if (mergeSubject) draft.prefill(mergeSubject);
+    }, [draft, mergeSubject]);
 
     if (model.isRepository === false || !draft.known) return null;
 
@@ -287,8 +294,8 @@ export function CommitBox({ model, place, projectId, git }: CommitBoxProps) {
     const ticked = draft.ticked.length;
     const busy = draft.busy !== undefined;
 
-    // Nothing is uncommitted: the commit that was made, or why the push after it failed, and the next step of the branch.
-    if (files.length === 0)
+    // Nothing is uncommitted: the commit that was made, or why the push after it failed, and the next step of the branch. A resolved merge still has its commit to make.
+    if (files.length === 0 && !draft.concluding)
         return (
             <NoLocalChanges
                 model={model}
@@ -322,7 +329,13 @@ export function CommitBox({ model, place, projectId, git }: CommitBoxProps) {
             </div>
 
             <Scrollable className={styles.list} contentClass={styles.rows}>
-                <For each={[...files]}>{file => <CommitFileRow key={file.path} file={file} draft={draft} />}</For>
+                <GridList
+                    aria-label="Files to commit"
+                    size="sm"
+                    onAction={key => draft.setTicked(String(key), !draft.isTicked(String(key)))}
+                >
+                    <For each={[...files]}>{file => <CommitFileRow key={file.path} file={file} draft={draft} />}</For>
+                </GridList>
             </Scrollable>
             {draft.truncated && <Text variant="xs" color="secondary">{`Showing the first ${files.length} files`}</Text>}
 
@@ -364,7 +377,7 @@ export function CommitBox({ model, place, projectId, git }: CommitBoxProps) {
                 )}
                 {/* Commit and its menu wrap together, so the menu's button is never left alone on a line. */}
                 <div className={styles.commitGroup}>
-                    <Unavailable label={commitLabel(ticked, target?.name)} hint={reason} className={styles.commitHost}>
+                    <Unavailable label={draft.concluding ? 'Commit merge' : commitLabel(ticked, target?.name)} hint={reason} className={styles.commitHost}>
                         <Button
                             color="primary"
                             size="sm"
@@ -376,7 +389,9 @@ export function CommitBox({ model, place, projectId, git }: CommitBoxProps) {
                             tooltipPlacement="top"
                             onPress={() => void draft.commit()}
                         >
-                            <span className={styles.commitText}>{breakable(commitLabel(ticked, target?.name))}</span>
+                            <span className={styles.commitText}>
+                                {breakable(draft.concluding ? 'Commit merge' : commitLabel(ticked, target?.name))}
+                            </span>
                         </Button>
                     </Unavailable>
                     <MenuTrigger>

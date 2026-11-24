@@ -6,7 +6,7 @@ import { Show } from '@clowdy/components/Show';
 import { Badge } from '@clowdy/components/Tag';
 import { Text } from '@clowdy/components/Text';
 import { Tooltip } from '@clowdy/components/Tooltip';
-import { Folder, More, NewChat, Version } from '@clowdy/icons/14';
+import { Folder, More, NewChat, Plus, Version } from '@clowdy/icons/14';
 import { useId, useState } from 'react';
 
 import { tildePath } from '../../shared/displayPath';
@@ -169,14 +169,26 @@ export function WorktreeRow({ projectId, group, folder, worktree, onNewChat, onO
 }
 
 /** One folder of the project: its name, and its worktrees in a card, the folder's own checkout first. */
-export function WorktreeGroup({ projectId, group, folder, ...actions }: Omit<WorktreeRowProps, 'worktree'>) {
+export function WorktreeGroup({
+    projectId,
+    group,
+    folder,
+    onCreate,
+    ...actions
+}: Omit<WorktreeRowProps, 'worktree'> & { onCreate: () => void }) {
     const headingId = useId();
 
     return (
         <section className={styles.group} aria-labelledby={headingId} data-folder-id={group.folderId}>
-            <Text as="h3" id={headingId} variant="heading-5" truncate title={group.name}>
-                {group.name}
-            </Text>
+            <div className={styles.groupHeading}>
+                <Text as="h3" id={headingId} variant="heading-5" truncate title={group.name}>
+                    {group.name}
+                </Text>
+                <Button variant="filled" color="secondary" size="xs" onPress={onCreate}>
+                    <Plus aria-hidden="true" />
+                    New worktree
+                </Button>
+            </div>
             <ul className={styles.card}>
                 <For each={group.worktrees}>
                     {worktree => (

@@ -3,7 +3,8 @@
  * one of them, and the pull request of its branch. A place is a folder's own checkout or a worktree of it (`resolvePlace`), named by `folderId` and an optional
  * `workspaceId` as the file routes name it. The reads (status, changes, file, pull request) write nothing to a repository and take no index lock, and only the pull request
  * goes to the network, through the person's own `gh` (no token is kept or read by the daemon). The writes (`POST .../git/commit`, `.../git/fetch`, `.../git/pull` and `.../git/push`) run the
- * person's own `git` with their configuration, signing included, one at a time for a place; the last three are the only routes that reach `origin`.
+ * person's own `git` with their configuration, signing included, one at a time for a place; fetch, pull and push are the only routes that reach `origin`. `POST .../git/switch` changes the
+ * branch of the folder's own checkout and nothing else.
  *
  * GET  /v1/projects/:id/git/status?folderId=&workspaceId=
  *                                      -> GitStatus. The branch (or the detached or unborn HEAD), its upstream with ahead and behind and when the repository last
@@ -13,7 +14,8 @@
  *                                         answers `isRepository: false` and nothing else, as `FolderGit` does.
  * GET  /v1/projects/:id/git/changes?folderId=&workspaceId=&scope=
  *                                      -> GitChanges. The files that changed in `scope` (`all` when it is left out), each with its line counts and revision.
- *                                         `scope` is a `GitScope`; a commit the repository does not have is `not_found`, a scope that is none is `invalid`.
+ *                                         `scope` is a `GitScope`; a commit the repository does not have is `not_found`, a scope that is none is `invalid`, and the scope of a run
+ *                                         whose trees git has pruned is `unavailable`.
  * GET  /v1/projects/:id/git/file?folderId=&workspaceId=&scope=&path=&oldPath=&from=
  *                                      -> GitFileSides. The text of one changed file before and after, for a diff to be drawn from. `path` is the file as it is
  *                                         after the change and `oldPath` the one it had before when the change renamed it (`GitChangedFile.oldPath`). A path
@@ -49,7 +51,7 @@
  *                                         (a renamed file brings both its paths), so what else is changed or staged in the place is left as it is. The person's git
  *                                         configuration applies (signing, hooks: nothing is skipped). A message that is empty or over `MAX_GIT_MESSAGE_CHARS`, no paths,
  *                                         a path that is not a changed file of the place and a folder that is not a repository are `invalid`; a merge, a cherry-pick or a revert
- *                                         in progress, a file with merge conflicts and a commit git refuses (a hook that fails, no signature, no identity) are `conflict`
+ *                                         in progress (unless `conclude` finishes a merge that has no conflict left), a file with merge conflicts and a commit git refuses (a hook that fails, no signature, no identity) are `conflict`
  *                                         with git's first `fatal:`, `error:` or hook line as the message and, for a signing key that cannot be used, `details.hint`
  *                                         (`GitErrorDetails`); a commit that did not end in time is `unavailable`.
  * POST /v1/projects/:id/git/message   -> GitMessage. Body `GitMessageRequest`: the ticked `paths`. The first line of a Conventional Commits message for them, written by
@@ -58,13 +60,26 @@
  *                                         `Couldn't write the message` when no agent is on and signed in, or every one that is fails or does not end in time
  *                                         (`unavailable`, or `invalid` for none on; `details.reason`: `off`, `signed_out`, `failed`, `timed_out`); the paths are judged as
  *                                         the commit judges them.
+ * POST /v1/projects/:id/git/discard   -> GitDiscardResult. Body `GitDiscardRequest`: the `paths` of at most `MAX_GIT_DISCARD_PATHS` files, never a whole tree. The only route that
+ *                                         deletes work, so it is slow on purpose: the paths are judged against what `GET .../git/changes?scope=uncommitted` lists right now (a renamed file
+ *                                         brings its old path along), a copy of what each file holds now is made in the daemon's own data folder and checked before anything is touched (`copy`,
+ *                                         kept `GIT_DISCARD_KEEP_DAYS` days, never in the repository), and then a file git has in its last commit goes back to it (`git restore --source=HEAD --staged
+ *                                         --worktree`: the staged and the edited versions are both replaced) and a file it has not (new, staged or not) is deleted, only that file. The person's own `post-checkout` hook runs
+ *                                         as git runs it for a restore; a hook that fails after the files are back is told as `warning` of the answer, as a switch tells it.
+ *                                         A path that is not a changed file or that escapes the place (`..`, an absolute path, a symbolic link in the way), a submodule, a file over the copy's size limit and
+ *                                         a request whose copies would not fit are `invalid`; a file with merge conflicts is `conflict` (`Resolve the conflict first`); a copy that could not be made is
+ *                                         `unavailable` with nothing discarded; git's own refusal is `conflict` with its first `fatal:` or `error:` line. One request at a time per place, on the line of writes.
  *
  * POST /v1/projects/:id/git/fetch    -> GitRemoteResult. Body `GitRemoteRequest` (`folderId`, `workspaceId?`). `git fetch --no-recurse-submodules origin` and nothing else: no `--prune` of its own, no other
  *                                         remote, no submodule's. The answer carries the branch's upstream as it stands after the fetch (`upstream`, with `ahead` and `behind`), when it has one.
- * POST /v1/projects/:id/git/pull     -> GitRemoteResult. Same body. Fetches `origin`, then takes what the upstream has with `git merge --ff-only` (only for a branch whose upstream is the branch of its own
- *                                         name: one that tracks another, as `git switch -c feat origin/main` does, is `invalid`, since it is not published): nothing is merged, rebased, reset or
- *                                         discarded. A branch that has commits of its own and falls behind its upstream as well has diverged: the answer is `state: 'diverged'` (not an
- *                                         error) and the branch is left as it was. `pulled` says how many commits came in (0: already up to date).
+ * POST /v1/projects/:id/git/pull     -> GitRemoteResult. Same body. Fetches `origin`, then takes what the upstream has with `git merge --no-edit @{upstream}` (only for a branch whose upstream is the
+ *                                         branch of its own name: one that tracks another, as `git switch -c feat origin/main` does, is `invalid`, since it is not published). A fast-forward when the
+ *                                         branch has nothing of its own, a merge commit when it does (`merged`). A merge that stops on conflicts answers `state: 'conflicts'` (not an error): the merge
+ *                                         has started and is left for the person. Nothing is rebased, reset or discarded. `pulled` says how many commits came in (0: already up to date).
+ * POST /v1/projects/:id/git/update   -> GitRemoteResult. Same body. Fetches `origin`, then merges the place's base (`git merge --no-edit <base>`, the same base a comparison uses) into the branch.
+ *                                         Refused when HEAD is that base branch, is detached or has no commit, and when there is no base. Already containing the base answers `pulled: 0`. Conflicts are
+ *                                         `state: 'conflicts'`, as a pull's are.
+ * POST /v1/projects/:id/git/abort    -> GitRemoteResult. Same body. `git merge --abort`, and only while a merge is in progress (`invalid` otherwise). Nothing else is touched.
  * POST /v1/projects/:id/git/push     -> GitRemoteResult. Same body. Sends the branch to the branch of its own name (`git push origin refs/heads/<branch>:refs/heads/<branch>`) when that is its upstream, and
  *                                         publishes it in every other case, when it has no upstream, its upstream is gone or its upstream is a branch of another name (`feat` made from `origin/main`
  *                                         is never sent to `main`): `git push -u origin refs/heads/<branch>:refs/heads/<branch>`, with `published: true` in the answer. Never forced, never with `--no-verify`, never with a tag.
@@ -73,6 +88,20 @@
  *                                         with git's own line as the message (the line that says what went wrong, not the summary that follows it), and a `details.hint` when it names the
  *                                         signing agent; one that does not end in about two minutes (a fingerprint that is waited for, a network that does not answer) is stopped and
  *                                         `unavailable`. They run on the place's one line of writes, so a commit and a push never overlap.
+ *
+ * GET  /v1/projects/:id/git/branches?folderId=&workspaceId=
+ *                                      -> GitBranches. The branches of the place's repository a person may switch to: the local ones (the place's own, the default one, the upstream, the
+ *                                         place that holds a branch another place has checked out, when the tip was committed), the branches of `origin` that have no local branch
+ *                                         of their name, and the last few branches the place's HEAD was on (from its reflog). Read only, nothing fetched; no ahead and behind per branch.
+ *                                         A folder that is not the root of a working tree answers `isRepository: false`. The lists are cut at `MAX_GIT_BRANCH_ENTRIES` (`truncated`).
+ * POST /v1/projects/:id/git/switch   -> GitSwitchResult. Body `GitSwitchRequest` (`folderId`, `workspaceId?`, `branch`, `create?`). Changes the branch the folder's own checkout is on with
+ *                                         `git switch`: to a local branch, to one that only `origin` has (a local branch of that name that tracks it), or to a new branch cut from the current
+ *                                         HEAD or from the default branch (`create`). **Only the folder's own checkout**: a chat's worktree keeps its branch (`invalid`). It is refused, and
+ *                                         nothing is changed, while the tree has a change of any kind (tracked, staged or untracked), a merge, rebase, cherry-pick, revert or bisect is under
+ *                                         way, a run is working in the place, or another worktree has the branch checked out; the person's hooks run as ever (a `post-checkout` that fails
+ *                                         or hangs leaves the branch switched and is told as `warning`, as are the commits a detached HEAD left on no branch). A name that is no branch name, a branch that does not exist, one that is there already
+ *                                         (`create`) and a folder that is not a repository are `invalid`; a refusal that is the repository's state and a switch git refused are `conflict`
+ *                                         with a short reason as the message (and, for a change count or a way out, `details.hint`); one that did not end in time is `unavailable`.
  *
  * The first three reads answer `invalid` for no `folderId`, `not_found` for a folder or a workspace that is not the project's, and `unavailable` for a folder or a worktree
  * that is gone from the disk or not made yet and for a git that does not answer in time; the fourth and the viewed routes answer the same.
@@ -84,9 +113,12 @@
  * - `branch`: HEAD against the merge base, what is committed on the branch;
  * - `uncommitted`: the working tree against HEAD, what is staged or edited, and what is new;
  * - `commit:<sha>`: that commit alone, against its first parent (a root commit against nothing).
+ * - `turn:<start>:<end>`: what a run of a chat changed, as the difference of two trees of the working directory that the daemon took when the run's turn started and when it ended
+ *   (`ChatLastRun`). Nothing else decides it, so it stays what that run did whatever happens to the files, the branch and the index afterwards. In a place that other chats or the person
+ *   edit too, it holds their edits of that time as well. A tree that git has pruned (it is kept as an object nothing refers to) makes a read of the scope `unavailable`.
  * With no base branch to compare with, `all` counts as `uncommitted` and `branch` is empty (`GitChanges.baseState` says so).
  */
-export type GitScope = 'all' | 'branch' | 'uncommitted' | `commit:${string}`;
+export type GitScope = 'all' | 'branch' | 'uncommitted' | `commit:${string}` | `turn:${string}:${string}`;
 
 /** What a commit scope's text starts with. */
 export const GIT_COMMIT_SCOPE_PREFIX = 'commit:';
@@ -94,9 +126,30 @@ export const GIT_COMMIT_SCOPE_PREFIX = 'commit:';
 /** The scope of one commit, by the hash `GitCommit.sha` gives. */
 export const commitScope = (sha: string): GitScope => `${GIT_COMMIT_SCOPE_PREFIX}${sha}`;
 
-/** A scope as a route's query writes it: one of the three words, or `commit:` and 7 to 64 hexadecimal digits (a hash, short or whole). Nothing for anything else. */
+/** What a run's scope text starts with. */
+export const GIT_TURN_SCOPE_PREFIX = 'turn:';
+
+/** The scope of what one run changed: the ids of the tree it started from and the tree it ended with (`ChatLastRun.startTree`, `endTree`). */
+export const turnScope = (startTree: string, endTree: string): GitScope =>
+    `${GIT_TURN_SCOPE_PREFIX}${startTree}:${endTree}`;
+
+/** The two tree ids a run's scope is made of, and nothing for any other scope. */
+export function turnScopeTrees(scope: string): { startTree: string; endTree: string } | undefined {
+    const found = /^turn:([0-9a-f]{40}|[0-9a-f]{64}):([0-9a-f]{40}|[0-9a-f]{64})$/.exec(scope);
+
+    return found && found[1]!.length === found[2]!.length ? { startTree: found[1]!, endTree: found[2]! } : undefined;
+}
+
+/**
+ * A scope as a route's query writes it: one of the three words, `commit:` and 7 to 64 hexadecimal digits (a hash, short or whole), or `turn:` and two whole tree ids (40 or 64
+ * hexadecimal digits each, of one length) joined by `:`. Nothing for anything else.
+ */
 export function parseGitScope(text: string): GitScope | undefined {
     if (text === 'all' || text === 'branch' || text === 'uncommitted') return text;
+
+    const trees = turnScopeTrees(text.toLowerCase());
+
+    if (trees) return turnScope(trees.startTree, trees.endTree);
 
     return text.startsWith(GIT_COMMIT_SCOPE_PREFIX) &&
         /^[0-9a-f]{7,64}$/i.test(text.slice(GIT_COMMIT_SCOPE_PREFIX.length))
@@ -222,6 +275,11 @@ export type GitStatus =
           entries: GitStatusEntry[];
           /** `entries` was cut: the tree has more uncommitted paths than are listed. */
           truncated?: true;
+          /**
+           * A merge is in progress (`MERGE_HEAD`). `conflicts` is how many paths are still unmerged (0: they are resolved, and the merge can be committed). `subject` is the first line of the
+           * message git prepared.
+           */
+          merging?: { conflicts: number; subject?: string };
           base: GitBase;
       };
 
@@ -405,10 +463,13 @@ export type GitPullRequestInfo =
           pullRequest?: GitPullRequest;
       };
 
-/** The three ways a branch is moved to and from `origin`. Publishing a branch is a `push` of one that is not on origin under its own name. */
-export type GitRemoteAction = 'fetch' | 'pull' | 'push';
+/**
+ * How a branch is moved. `fetch`, `pull` and `push` go to and from `origin` (publishing is a `push` of a branch that is not on origin under its own name). `update` merges the place's base into
+ * the branch. `abort` undoes a merge that is in progress.
+ */
+export type GitRemoteAction = 'fetch' | 'pull' | 'push' | 'update' | 'abort';
 
-/** The body of `POST /v1/projects/:id/git/fetch`, `.../pull` and `.../push`: the place. */
+/** The body of `POST /v1/projects/:id/git/fetch`, `.../pull`, `.../push`, `.../update` and `.../abort`: the place. */
 export interface GitRemoteRequest {
     folderId: string;
     workspaceId?: string;
@@ -422,24 +483,113 @@ export interface GitRemoteDone {
     state: 'done';
     action: GitRemoteAction;
     upstream?: GitUpstream;
-    /** `pull`: how many commits came in; 0 when the branch was up to date already. */
+    /** `pull` and `update`: how many commits came in; 0 when the branch already had them. */
     pulled?: number;
+    /** `pull` and `update`: a merge commit was made, because the branch had commits of its own. Absent for a fast-forward. */
+    merged?: true;
     /** `push`: the branch was not on origin under its own name (no upstream, a gone one, or another branch's), so it was published and now tracks `origin/<name>`. */
     published?: true;
 }
 
 /**
- * A pull that was not made: the branch has commits that its upstream lacks and the upstream has commits that the branch lacks, so taking the upstream would need a merge or a
- * rebase, which Clowdy does not make. Not an error: `origin` was fetched, and nothing else was touched.
+ * A pull or an update whose merge stopped on conflicts. Not an error: the merge has started (`MERGE_HEAD` is there) and is left for the person, who resolves the paths, commits the merge or
+ * aborts it. `conflicts` is how many paths are still unmerged.
  */
-export interface GitRemoteDiverged {
-    state: 'diverged';
-    /** The upstream, with both counts above 0. */
-    upstream: GitUpstream;
+export interface GitRemoteConflicts {
+    state: 'conflicts';
+    action: 'pull' | 'update';
+    conflicts: number;
 }
 
-/** What `POST .../git/fetch`, `.../pull` and `.../push` answer. */
-export type GitRemoteResult = GitRemoteDone | GitRemoteDiverged;
+/** What `POST .../git/fetch`, `.../pull`, `.../push`, `.../update` and `.../abort` answer. */
+export type GitRemoteResult = GitRemoteDone | GitRemoteConflicts;
+
+/** The most entries each list of `GitBranches` (the local branches, the remote ones) holds: a repository with more is cut at the newest, and `truncated` says so. */
+export const MAX_GIT_BRANCH_ENTRIES = 300;
+
+/** How many of the branches the place's HEAD was on lately `GitBranches.recent` names. */
+export const MAX_GIT_RECENT_BRANCHES = 5;
+
+/** The place that has a branch checked out when it is not the one that asked: the folder's own checkout or a worktree a chat works in. */
+export interface GitBranchHolder {
+    /** Where the worktree is, as the machine writes it. */
+    path: string;
+    /** It is the folder's own checkout. */
+    main?: true;
+    /** The chat's worktree (`WorkspaceRecord.id`) when Clowdy keeps a record of it; absent for one that the person made. */
+    workspaceId?: string;
+}
+
+/** A local branch of the place's repository. */
+export interface GitLocalBranch {
+    /** `feature/x`, as git names the branch (no `refs/heads/`). */
+    name: string;
+    /** The place's HEAD is on it. */
+    current?: true;
+    /** It is the default branch (`GitBranches.defaultBranch`). */
+    default?: true;
+    /** The branch it tracks, as git writes it (`origin/feature/x`); absent for a branch that tracks nothing. */
+    upstream?: string;
+    /** Another worktree has it checked out, so git would refuse a second checkout of it. Never set for the place's own branch. */
+    heldBy?: GitBranchHolder;
+    /** When the commit it points at was made, in milliseconds. */
+    committedAt?: number;
+}
+
+/** A branch of `origin` that no local branch of the same name tracks yet: switching to it makes the local branch. */
+export interface GitRemoteBranch {
+    /** The branch's name on `origin`, without `origin/`: `feature/x`. */
+    name: string;
+    /** It is the default branch (`GitBranches.defaultBranch`), which has no local branch. */
+    default?: true;
+    /** When the commit it points at was made, in milliseconds. */
+    committedAt?: number;
+}
+
+/** What `GET /v1/projects/:id/git/branches` says: the branches a place can switch to, or that the folder is no repository. */
+export type GitBranches =
+    | { isRepository: false }
+    | {
+          isRepository: true;
+          /** The branch the folder's default branch is, without `origin/`: the base a new worktree starts from (`FolderGit.defaultBranch`), as a branch name. Absent in a repository with no commit. */
+          defaultBranch?: string;
+          /** Newest commit first. */
+          local: GitLocalBranch[];
+          /** Newest commit first; the branches of `origin` that have no local branch of their name. */
+          remote: GitRemoteBranch[];
+          /** The branches the place's HEAD was on lately, newest first, at most `MAX_GIT_RECENT_BRANCHES`: local branches that still exist, the current one left out. */
+          recent: string[];
+          /** A list was cut at `MAX_GIT_BRANCH_ENTRIES`. */
+          truncated?: true;
+      };
+
+/** Where a new branch starts: at the place's HEAD, or at the repository's default branch. */
+export type GitSwitchStart = 'current' | 'default';
+
+/** The body of `POST /v1/projects/:id/git/switch`. */
+export interface GitSwitchRequest {
+    folderId: string;
+    /** A worktree is refused: it is here so the daemon, not the client, judges the place. */
+    workspaceId?: string;
+    /** The branch to be on: an existing one (local, or one that only `origin` has) or, with `create`, the name of the new one. */
+    branch: string;
+    /** Makes the branch from `start` and switches to it. It tracks nothing, so a push of it never goes to the branch it was cut from. */
+    create?: { start: GitSwitchStart };
+}
+
+/** What a switch did: where the place's HEAD is now, so the client reads the rest again. */
+export interface GitSwitchResult {
+    head: GitHead;
+    /** The branch's upstream: set when the branch was made from one on `origin`. */
+    upstream?: GitUpstream;
+    /** The branch was made by this switch (a new one, or a local one made for a branch of `origin`). */
+    created?: true;
+    /**
+     * What the person is told of a switch that was made: what their `post-checkout` hook said when it failed after the switch (git reports its exit status as the switch's, though the branch has
+     * changed) or that it did not finish in time, and the commits a detached HEAD left on no branch. Several are joined with `; `.
+     */
+    warning?: string;
+}
 
 /** The most paths a commit takes: the files `GitChanges.files` lists, which are what the person ticks from. */
 export const MAX_GIT_COMMIT_PATHS = MAX_GIT_CHANGED_FILES;
@@ -451,10 +601,12 @@ export const MAX_GIT_MESSAGE_CHARS = 10_000;
 export interface GitCommitRequest {
     folderId: string;
     workspaceId?: string;
-    /** The files to commit, as `GitChangedFile.path` writes them: at most `MAX_GIT_COMMIT_PATHS`, each a changed file of the place's uncommitted changes. */
+    /** The files to commit, as `GitChangedFile.path` writes them: at most `MAX_GIT_COMMIT_PATHS`, each a changed file of the place's uncommitted changes. Ignored when `conclude` is set. */
     paths: string[];
     /** The whole message; its first line is the subject. At most `MAX_GIT_MESSAGE_CHARS`. */
     message: string;
+    /** Finish the merge that is in progress, once no path is still unmerged. The commit is not limited to `paths`. */
+    conclude?: true;
 }
 
 /** The commit that was made. */
@@ -465,6 +617,50 @@ export interface GitCommitResult {
     shortSha: string;
     /** The first line of the message. */
     subject: string;
+}
+
+/**
+ * The most files one discard names. Discarding deletes work, so the route takes the files one by one and never a whole list; this is the largest handful the sidebar may send
+ * (a renamed file counts once, though it brings its old path along).
+ */
+export const MAX_GIT_DISCARD_PATHS = 50;
+
+/** How many days the daemon keeps the copy it makes of what a discard removes. The dialog says it, and the daemon's own limit is this many days in milliseconds. */
+export const GIT_DISCARD_KEEP_DAYS = 7;
+
+/** The body of `POST /v1/projects/:id/git/discard`. */
+export interface GitDiscardRequest {
+    folderId: string;
+    workspaceId?: string;
+    /** The files to discard, as `GitChangedFile.path` writes them: at most `MAX_GIT_DISCARD_PATHS`, each a changed file of the place's uncommitted changes. */
+    paths: string[];
+}
+
+/** One file a discard dealt with. */
+export interface GitDiscardedFile {
+    /** The path as `GitChangedFile.path` writes it. */
+    path: string;
+    /** `restored`: the file is back as the last commit has it (its staged and edited versions are gone); `removed`: git had no such file in the last commit, so it is deleted (and no longer staged). */
+    action: 'restored' | 'removed';
+}
+
+/** Where what a discard removed is kept, for `GIT_DISCARD_KEEP_DAYS` days. */
+export interface GitDiscardCopy {
+    /** The folder on the machine the daemon runs on: a `manifest.json` that says what was discarded, from which place and when, and the files themselves under `files/`. */
+    folder: string;
+    /** When the daemon is free to remove it, in milliseconds since the epoch. */
+    keptUntil: number;
+    /** How many files the copy holds, which is fewer than the files discarded when some had nothing on the disk (a deleted file). */
+    files: number;
+}
+
+/** What `POST /v1/projects/:id/git/discard` answers once the files are discarded. */
+export interface GitDiscardResult {
+    /** In the order they were sent; a renamed file is its new path, and its old one is not listed (it is back too). */
+    discarded: GitDiscardedFile[];
+    copy: GitDiscardCopy;
+    /** What the person is told besides: the line of their `post-checkout` hook, which failed (or did not end in time) after the files were put back. Every file is discarded all the same. */
+    warning?: string;
 }
 
 /** The body of `POST /v1/projects/:id/git/message`. */

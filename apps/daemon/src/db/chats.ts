@@ -3,7 +3,7 @@ import { deleteRuns } from './runs';
 import { EMBEDDED_WORKSPACE, embeddedWorkspace } from './workspaces';
 
 import type { Database } from 'bun:sqlite';
-import type { Chat, ChatTaskLink, QueuedMessage, Run } from '@clowdy/protocol';
+import type { Chat, ChatLastRun, ChatTaskLink, QueuedMessage, Run } from '@clowdy/protocol';
 import type { EmbeddedWorkspaceRow } from './workspaces';
 
 interface ChatRow extends EmbeddedWorkspaceRow {
@@ -23,6 +23,7 @@ interface ChatRow extends EmbeddedWorkspaceRow {
     archived_at: number | null;
     queue: string | null;
     queue_paused: Chat['queuePaused'] | null;
+    last_run: string | null;
     created_at: number;
     updated_at: number;
 }
@@ -47,6 +48,7 @@ const toChat = (row: ChatRow): Chat =>
         archivedAt: row.archived_at,
         queue: parseJson<QueuedMessage[]>(row.queue),
         queuePaused: row.queue_paused,
+        lastRun: parseJson<ChatLastRun>(row.last_run),
         createdAt: row.created_at,
         updatedAt: row.updated_at,
     }) as Chat;
@@ -100,6 +102,21 @@ export function upsertChat(db: Database, chat: Chat): void {
         chat.createdAt,
         chat.updatedAt
     );
+}
+
+/**
+ * What the chat's latest turn changed (`Chat.lastRun`), or `undefined` for a chat that has none or does not exist. `upsertChat` never writes it, so a copy of a chat that
+ * was read before the turn ended cannot bring back an older turn; `setChatLastRun` is its one writer.
+ */
+export function getChatLastRun(db: Database, chatId: string): ChatLastRun | undefined {
+    const row = db.query('SELECT last_run FROM chats WHERE id = ?').get(chatId) as { last_run: string | null } | null;
+
+    return row ? parseJson<ChatLastRun>(row.last_run) : undefined;
+}
+
+/** Keeps what a chat's latest turn changed, or forgets it (`undefined`): the chat's `updated_at` stays as it was, since the chat did not change for anyone who orders by it. */
+export function setChatLastRun(db: Database, chatId: string, lastRun: ChatLastRun | undefined): void {
+    db.query('UPDATE chats SET last_run = ? WHERE id = ?').run(toJson(lastRun), chatId);
 }
 
 /** Moves where a fork's inherited history ends (`forkedFrom.atSeq`), for an edit that cut into it: an update leaves the relation alone, so this is its one writer. */

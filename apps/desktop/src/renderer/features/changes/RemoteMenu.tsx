@@ -13,8 +13,8 @@ import { useRemoteActions } from './useRemoteActions';
 import type { ReactNode } from 'react';
 import type { PlaceFacts } from './gitFacts';
 
-/** The mark of each entry of the dropdown. Publishing sends the branch up as pushing does. */
-const ICONS: Record<RemoteActionId, ReactNode> = {
+/** The mark of each entry of the dropdown. Publishing sends the branch up as pushing does. Update and abort are not entries of it. */
+const ICONS: Record<Exclude<RemoteActionId, 'update' | 'abort'>, ReactNode> = {
     fetch: <Refresh />,
     pull: <ArrowDown />,
     push: <ArrowUp />,
@@ -45,10 +45,10 @@ function Counts({ ahead, behind }: Pick<SyncView, 'ahead' | 'behind'>) {
 
 /**
  * The one button that moves the branch, with GitHub Desktop's words: its label is the next action (`Publish branch`, `Pull origin` or `Push origin` with the commits it moves, `Fetch origin`),
- * and under it is when the last fetch was (`Last fetched 3 minutes ago`, `Never fetched`) or the one thing to know of the state (`Merge or rebase in a terminal` for a branch that diverged, which
- * the app leaves alone). It is `syncButton`'s rule. While an action runs the label is its progress with a spinner, and nothing can be pressed; where there is nothing to press (no origin, no
- * branch, diverged) it is off, and its tooltip says why. The words are cut by the sidebar's edge, narrow as it is dragged: the tooltip has all of them. Beside it a dropdown keeps every
- * action with the reason it cannot run (`remoteActions`: nothing to pull, nothing to push, not published, diverged, no origin), Fetch origin first and always. When an action ends a quiet line
+ * and under it is when the last fetch was (`Last fetched 3 minutes ago`, `Never fetched`) or the one thing to know of the state. A branch that diverged is `Pull origin`: the pull merges. It is
+ * `syncButton`'s rule. While an action runs the label is its progress with a spinner, and nothing can be pressed; where there is nothing to press (no origin, no branch) it is off, and its
+ * tooltip says why. The words are cut by the sidebar's edge, narrow as it is dragged: the tooltip has all of them. Beside it a dropdown keeps every action with the reason it cannot run
+ * (`remoteActions`: nothing to pull, nothing to push, not published, pull first, no origin), Fetch origin first and always. When an action ends a quiet line
  * says what it did, or git's own line says why it could not (selectable, with the hint of the daemon under it, as the commit box does), and a push that origin turned down for commits the
  * branch lacks has a Fetch origin button beside it, as GitHub Desktop's `Newer Commits on Remote` has Fetch. The place's facts, and with them the line against the base, the counts and the
  * pull request, are read again when it ends.
@@ -89,7 +89,7 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
                                 <Text
                                     variant="xs"
                                     weight="medium"
-                                    color={view.tone === 'warning' && view.kind === 'diverged' ? 'warning' : undefined}
+                                    color={view.tone === 'warning' ? 'warning' : undefined}
                                     truncate
                                     className={styles.label}
                                 >

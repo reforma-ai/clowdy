@@ -46,7 +46,7 @@ export const MAX_TERMINAL_ROWS = 200;
 export const MAX_TERMINAL_INPUT_BYTES = 64 * 1024;
 
 /** Lines the daemon keeps above the screen, which a `screen` message replays; the client's scrollback should match. */
-export const TERMINAL_SCROLLBACK = 5000;
+export const TERMINAL_SCROLLBACK = 500;
 
 export interface TerminalInfo {
     id: TerminalId;
@@ -64,6 +64,8 @@ export interface TerminalInfo {
     /** Set once `state` is `exited`. */
     exitCode?: number;
     createdAt: number;
+    /** Absolute path of this terminal's plain-text log. Absent when the daemon is not writing one. */
+    logPath?: string;
 }
 
 export interface TerminalCreate {

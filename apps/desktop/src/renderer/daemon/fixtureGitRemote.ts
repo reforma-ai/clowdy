@@ -157,6 +157,14 @@ export class FixtureGitRemote {
             return { state: 'done', action, ...this.#upstream(place) };
         }
 
+        if (action === 'abort') throw new TransportError('No merge to abort', 400);
+
+        if (action === 'update') {
+            this.#fetchedAt = this.#now();
+
+            return { state: 'done', action, pulled: place.worktree ? 1 : 0, ...this.#upstream(place) };
+        }
+
         if (action === 'pull') {
             if (!state.published)
                 throw new TransportError(`${branch} has no upstream to pull from, publish it first`, 400);
@@ -170,7 +178,14 @@ export class FixtureGitRemote {
             // A pull fetches first, whatever it finds.
             this.#fetchedAt = this.#now();
 
-            if (state.ahead > 0 && state.behind > 0) return { state: 'diverged', upstream: this.upstreamOf(place)! };
+            if (state.ahead > 0 && state.behind > 0) {
+                const pulled = state.behind;
+
+                state.behind = 0;
+                state.ahead += 1;
+
+                return { state: 'done', action, pulled, merged: true, ...this.#upstream(place) };
+            }
 
             const pulled = state.behind;
 

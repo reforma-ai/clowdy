@@ -1,6 +1,6 @@
 import { requireProject } from '../domain/projects';
 import { removeWorktree } from '../domain/workspaceRemoval';
-import { openWorkspace } from '../domain/workspaces';
+import { createStandaloneWorktree, openWorkspace } from '../domain/workspaces';
 
 import type { AsyncHandlers, Handlers } from './context';
 
@@ -11,11 +11,18 @@ export const workspaceHandlers: Pick<Handlers, 'workspace.open'> = {
     }),
 };
 
-/**
- * `workspace.remove` waits for git to remove the worktree and, when asked, its branch (`removeWorktree`, which refuses with a `conflict` that says why when it must). It changes the
- * store as it goes, since a branch that cannot be deleted after the worktree went must not bring the worktree's row back; what it gives back is only the answer.
- */
-export const workspaceAsyncHandlers: Pick<AsyncHandlers, 'workspace.remove'> = {
+export const workspaceAsyncHandlers: Pick<AsyncHandlers, 'workspace.create' | 'workspace.remove'> = {
+    'workspace.create': async ({ store, config }, command) => {
+        const created = await createStandaloneWorktree(
+            store,
+            config,
+            requireProject(store, command.projectId),
+            command
+        );
+
+        return () => created;
+    },
+    /** Waits for Git to remove the worktree and, when asked, its branch. The removal updates the store as it goes. */
     'workspace.remove': async ({ store, config }, command) => {
         const removed = await removeWorktree(store, config, requireProject(store, command.projectId), command);
 

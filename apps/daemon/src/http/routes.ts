@@ -18,6 +18,7 @@ import { DEFAULT_LIMIT } from '../domain/taskQuery';
 import { workspaceRemoval } from '../domain/workspaceRemoval';
 import { projectWorktrees } from '../domain/worktrees';
 import { CommandError, invalid, notFound } from '../errors';
+import { placeBranches } from '../git/branches';
 import { placeChanges, placeFile } from '../git/changes';
 import { projectFolderGit } from '../git/state';
 import { placeStatus } from '../git/status';
@@ -84,8 +85,15 @@ const gitCommitBody = z.object({
     workspaceId: z.string().optional(),
     paths: z.array(z.string()),
     message: z.string(),
+    conclude: z.literal(true).optional(),
 });
 const gitMessageBody = z.object({
+    folderId: z.string(),
+    workspaceId: z.string().optional(),
+    paths: z.array(z.string()),
+});
+/** The body of `POST .../git/discard` (`GitDiscardRequest`): the place and the files, which the route judges (`selectChanged`, at most `MAX_GIT_DISCARD_PATHS`). */
+const gitDiscardBody = z.object({
     folderId: z.string(),
     workspaceId: z.string().optional(),
     paths: z.array(z.string()),
@@ -93,6 +101,14 @@ const gitMessageBody = z.object({
 
 /** The body of `POST .../git/fetch`, `.../pull` and `.../push` (`GitRemoteRequest`): the place and nothing else, so nothing a client sends changes what is run. */
 const gitRemoteBody = z.object({ folderId: z.string(), workspaceId: z.string().optional() });
+
+/** The body of `POST .../git/switch` (`GitSwitchRequest`): the place, the branch and, for a new one, where it starts; what is wrong with the name or the start is the switch's to say. */
+const gitSwitchBody = z.object({
+    folderId: z.string(),
+    workspaceId: z.string().optional(),
+    branch: z.string(),
+    create: z.object({ start: z.string() }).optional(),
+});
 
 function integerParam(raw: string | null, name: string, fallback: number): number {
     if (raw === null) {
@@ -142,7 +158,7 @@ export function createRoutes(context: RouteContext): Route[] {
         const scope = parseGitScope(url.searchParams.get('scope') ?? 'all');
 
         if (!scope) {
-            throw invalid('The scope is none of all, branch, uncommitted and commit:<hash>');
+            throw invalid('The scope is none of all, branch, uncommitted, commit:<hash> and turn:<tree>:<tree>');
         }
 
         return scope;
@@ -360,6 +376,26 @@ export function createRoutes(context: RouteContext): Route[] {
         },
         {
             method: 'GET',
+            pattern: /^\/v1\/projects\/([^/]+)\/git\/branches$/,
+            handle: async (_request, url, [id]) => {
+                const project = requireProject(store, id);
+
+                return json(
+                    await placeBranches(
+                        store,
+                        project,
+                        resolvePlace(
+                            store,
+                            project,
+                            url.searchParams.get('folderId') ?? '',
+                            url.searchParams.get('workspaceId') ?? undefined
+                        )
+                    )
+                );
+            },
+        },
+        {
+            method: 'GET',
             pattern: /^\/v1\/projects\/([^/]+)\/git\/file$/,
             handle: async (_request, url, [id]) => {
                 const place = gitPlaceOf(id, url);
@@ -395,7 +431,9 @@ export function createRoutes(context: RouteContext): Route[] {
                 const scope = parseGitScope(body.scope);
 
                 if (!scope) {
-                    throw invalid('The scope is none of all, branch, uncommitted and commit:<hash>');
+                    throw invalid(
+                        'The scope is none of all, branch, uncommitted, commit:<hash> and turn:<tree>:<tree>'
+                    );
                 }
 
                 checkViewedPath(body.path);
@@ -451,7 +489,21 @@ export function createRoutes(context: RouteContext): Route[] {
         },
         {
             method: 'POST',
-            pattern: /^\/v1\/projects\/([^/]+)\/git\/(fetch|pull|push)$/,
+            pattern: /^\/v1\/projects\/([^/]+)\/git\/discard$/,
+            handle: async (request, _url, [id]) => {
+                const body = await readJson(request, gitDiscardBody);
+                const project = requireProject(store, id);
+                const place = resolvePlace(store, project, body.folderId, body.workspaceId);
+
+                // The copy of a few files and a restore are quick, but a filter that has to fetch (Git LFS) may take longer than the connection's idle timeout.
+                context.keepOpen(request);
+
+                return json(await services.gitDiscard.discard(place, { projectId: project.id, paths: body.paths }));
+            },
+        },
+        {
+            method: 'POST',
+            pattern: /^\/v1\/projects\/([^/]+)\/git\/(fetch|pull|push|update|abort)$/,
             handle: async (request, _url, [id, action]) => {
                 const body = await readJson(request, gitRemoteBody);
                 const place = resolvePlace(store, requireProject(store, id), body.folderId, body.workspaceId);
@@ -465,6 +517,20 @@ export function createRoutes(context: RouteContext): Route[] {
                     // What GitHub says of the branch moves with what was sent (a pull request opened, its checks started): the next read of it asks again, not after the short while it is kept.
                     await services.pullRequests.forget(place).catch(() => undefined);
                 }
+            },
+        },
+        {
+            method: 'POST',
+            pattern: /^\/v1\/projects\/([^/]+)\/git\/switch$/,
+            handle: async (request, _url, [id]) => {
+                const body = await readJson(request, gitSwitchBody);
+                const project = requireProject(store, id);
+                const place = resolvePlace(store, project, body.folderId, body.workspaceId);
+
+                // A `post-checkout` hook of the person's may take a while, longer than the connection's idle timeout.
+                context.keepOpen(request);
+
+                return json(await services.gitSwitch.switch(project, place, body));
             },
         },
         {

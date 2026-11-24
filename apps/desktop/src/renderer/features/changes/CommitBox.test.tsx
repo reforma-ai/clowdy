@@ -165,6 +165,20 @@ describe('the commit box', () => {
         expect(buttonOf('Generate')?.disabled).toBe(false);
     });
 
+    it('ticks and unticks a file on a press anywhere on its row, as on its tick', async () => {
+        await start();
+
+        const row = tickOf('src/limits.ts').closest('[role="row"]')!;
+
+        await press(row);
+        expect(tickOf('src/limits.ts').checked).toBe(false);
+        expect(box()?.textContent).toContain('2 of 3');
+
+        await press(row);
+        expect(tickOf('src/limits.ts').checked).toBe(true);
+        expect(box()?.textContent).toContain('3 of 3');
+    });
+
     it('commits only the files that are ticked, with the message as typed, clears the box, and reads the place again', async () => {
         await start();
 
@@ -574,7 +588,7 @@ describe('Commit & Push', () => {
 
         await openMenu();
         expect(entry()?.getAttribute('aria-disabled')).toBe('true');
-        expect(entry()?.textContent).toContain('Diverged: 1 ahead, 2 behind');
+        expect(entry()?.textContent).toContain('Pull first');
         await press(entry()!);
         await settle();
         expect(commit).not.toHaveBeenCalled();
@@ -676,7 +690,7 @@ describe('the empty box, No local changes', () => {
     const stepButton = () =>
         container.querySelector<HTMLButtonElement>('[aria-label="Commit"] button[class*="stepButton"]');
     const quietButtons = () => [
-        ...container.querySelectorAll<HTMLButtonElement>('[aria-label="Commit"] button[class*="quietButton"]'),
+        ...container.querySelectorAll<HTMLElement>('[aria-label="Commit"] [aria-label="Open the place"] [role="row"]'),
     ];
     let opened: string[];
 
@@ -748,7 +762,7 @@ describe('the empty box, No local changes', () => {
         expect(opened).toEqual(['https://github.com/acme/car-rental/compare/main...clowdy/ab12cd34?expand=1']);
     });
 
-    it('has no step for a branch that has a pull request, one that diverged, and the base branch itself', async () => {
+    it('has no step for a branch that has a pull request and for the base branch itself, and pulls one that diverged', async () => {
         await start({ gitWrites: { clean: true, remote: 'level' } });
         expect(stepButton()).toBeNull();
 
@@ -757,7 +771,7 @@ describe('the empty box, No local changes', () => {
         store.dispose();
         root = createRoot(container);
         await start({ tweak: noPullRequest, gitWrites: { clean: true, remote: 'diverged' } });
-        expect(stepButton()).toBeNull();
+        expect(stepButton()?.textContent).toBe('Pull 2 commits from the origin remote');
 
         act(() => root.unmount());
         stop();

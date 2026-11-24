@@ -232,6 +232,16 @@ describe('the prompts of a run', () => {
         expect(systemPrompt('autopilot', project)).toContain('Mode: autopilot.');
     });
 
+    test('the system prompt names the terminal logs when it is told where they are', () => {
+        const logs = '/data/terminals/prj_1';
+        const prompt = systemPrompt('semi', project, '/work/cars', undefined, logs);
+
+        expect(prompt).toContain(
+            `The app's terminal logs for this project are in ${logs}, one plain file per shell. Read one when the person mentions the terminal.`
+        );
+        expect(systemPrompt('semi', project)).not.toContain('terminal logs');
+    });
+
     test('a project of several folders names each by path, marks the main one and the one the run works in, and says where instructions and documents are', () => {
         const several = {
             ...project,

@@ -68,7 +68,7 @@ export interface NewRun {
     model?: string;
     /** The reasoning level, in the engine's own spelling. */
     effort?: string;
-    /** Where the engine works; absent, the folder its chat works in, else the project's main folder (`workingFolder` in `runs/driver.ts`). */
+    /** Where the engine works; absent, the folder its chat works in, else the project's main folder (`workingFolder` in `domain/places.ts`). */
     cwd?: string;
     /** What the run's first turn is told. */
     nextPrompt?: string;

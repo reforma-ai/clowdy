@@ -350,42 +350,40 @@ describe('the sync button in the sidebar', () => {
         expect(syncButton().getAttribute('data-sync')).toBe('fetch');
     });
 
-    it('is a Diverged button that cannot be pressed for a branch that diverged, says what to do, and has Fetch origin in the dropdown with Pull and Push off', async () => {
+    it('is Pull origin for a branch that diverged, which merges, and holds Push until the pull', async () => {
         await start({ gitWrites: { remote: 'diverged' } });
 
         const pull = vi.spyOn(transport, 'pullGit');
         const push = vi.spyOn(transport, 'pushGit');
 
-        expect(syncButton().getAttribute('data-sync')).toBe('diverged');
-        expect(syncButton().textContent).toBe('Diverged12Merge or rebase in a terminal');
-        expect(syncButton().disabled).toBe(true);
-        expect(syncButton().textContent).not.toMatch(/Pull origin|Force push/);
-        await press(syncButton());
-        expect(pull).not.toHaveBeenCalled();
-        expect(push).not.toHaveBeenCalled();
+        expect(syncButton().getAttribute('data-sync')).toBe('pull');
+        expect(syncButton().textContent).toBe('Pull origin12Last fetched 3 minutes ago');
+        expect(syncButton().disabled).toBe(false);
+        expect(syncButton().textContent).not.toMatch(/Force push/);
 
         await openMenu();
         expect(isOff('Fetch origin')).toBe(false);
-        expect(isOff('Pull origin')).toBe(true);
+        expect(isOff('Pull origin')).toBe(false);
         expect(isOff('Push origin')).toBe(true);
-        expect(item('Pull origin').textContent).toContain('Diverged: 1 ahead, 2 behind');
+        expect(item('Push origin').textContent).toContain('Pull first');
         await press(item('Pull origin'));
-        await press(item('Push origin'));
-        expect(pull).not.toHaveBeenCalled();
+        await settle();
+        expect(pull).toHaveBeenCalledTimes(1);
         expect(push).not.toHaveBeenCalled();
     });
 
-    it('says a pull that found the branch diverged as a warning, and leaves it as it was', async () => {
+    it('says a pull that stopped on conflicts as a warning', async () => {
         await start({ gitWrites: { remote: 'behind' } });
         vi.spyOn(transport, 'pullGit').mockResolvedValue({
-            state: 'diverged',
-            upstream: { name: 'origin/clowdy/ab12cd34', ahead: 1, behind: 3 },
+            state: 'conflicts',
+            action: 'pull',
+            conflicts: 2,
         } satisfies GitRemoteResult);
 
         await press(syncButton());
         await settle();
 
-        expect(status()?.textContent).toBe('Diverged: 1 ahead, 3 behind, left as it was');
+        expect(status()?.textContent).toBe('2 conflicts');
         expect(alert()).toBeNull();
     });
 

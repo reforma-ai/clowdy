@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, symlinkSync } from 'node:fs';
-import { join } from 'node:path';
-import { TERMINAL_SUBPROTOCOL, terminalTokenProtocol } from '@clowdy/protocol';
+import { existsSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { TERMINAL_SCROLLBACK, TERMINAL_SUBPROTOCOL, terminalTokenProtocol } from '@clowdy/protocol';
 import { Terminal } from '@xterm/headless';
 
 import { SocketClient } from '../src/http/terminals';
@@ -87,7 +87,7 @@ class Viewer implements TerminalListener {
     #parsed = Promise.resolve();
 
     constructor(cols = 40, rows = 10) {
-        this.screen_ = new Terminal({ cols, rows, scrollback: 5000, allowProposedApi: true });
+        this.screen_ = new Terminal({ cols, rows, scrollback: TERMINAL_SCROLLBACK, allowProposedApi: true });
     }
 
     /** Everything a window draws goes through one chain, so a screen never lands in the middle of output that was sent before it. */
@@ -369,6 +369,149 @@ describe('a terminal session', () => {
         s.write('lost');
 
         expect(pty.state.written).toEqual(['ls\r']);
+    });
+});
+
+describe('the plain log of a terminal', () => {
+    /** The log once it holds `marker`, or undefined until it does. */
+    async function untilLogged(path: string, marker: string): Promise<string> {
+        return waitFor(
+            () => {
+                try {
+                    const text = readFileSync(path, 'utf8');
+
+                    return text.includes(marker) ? text : false;
+                } catch {
+                    return false;
+                }
+            },
+            `${marker} in the log`,
+            6000
+        );
+    }
+
+    test('rewrites the active buffer as plain rows, and drops the file when the session goes', async () => {
+        const logPath = join(tempDir('terminal-log'), 'prj_1', 'trm_test.log');
+        const { session: s, pty } = session({ logPath, cols: 10 });
+
+        pty.emit('\x1b[31mred\x1b[0m\r\nabcdefghijKLM\r\n');
+
+        const text = await untilLogged(logPath, 'KLM');
+
+        expect(text).not.toContain('\u001b');
+        expect(text.replace(/\n$/, '').split('\n')).toEqual(expect.arrayContaining(['red', 'abcdefghij']));
+        expect(text).toContain('KLM');
+        expect(s.info().logPath).toBe(logPath);
+        expect(statSync(logPath).mode & 0o777).toBe(0o600);
+        expect(statSync(dirname(logPath)).mode & 0o777).toBe(0o700);
+        expect(existsSync(join(dirname(logPath), '.trm_test.log.tmp'))).toBe(false);
+
+        s.resize(8, 10);
+
+        const wrapped = await waitFor(
+            () => {
+                try {
+                    const next = readFileSync(logPath, 'utf8');
+
+                    return !next.includes('abcdefghij') && next.includes('abcdefgh') ? next : false;
+                } catch {
+                    return false;
+                }
+            },
+            'the reflowed log',
+            6000
+        );
+
+        expect(wrapped).toContain('abcdefgh');
+        s.dispose();
+        await tick(30);
+
+        expect(existsSync(logPath)).toBe(false);
+    });
+
+    test('keeps only the scrollback', async () => {
+        const logPath = join(tempDir('terminal-log'), 'scroll.log');
+        const { session: s, pty } = session({ logPath, rows: 10 });
+        const count = TERMINAL_SCROLLBACK + 300;
+
+        pty.emit(`${Array.from({ length: count }, (_, index) => `line-${index}`).join('\r\n')}\r\n`);
+
+        const text = await untilLogged(logPath, `line-${count - 1}`);
+        const rows = text.replace(/\n$/, '').split('\n');
+
+        expect(rows.length).toBeGreaterThan(TERMINAL_SCROLLBACK);
+        expect(rows.length).toBeLessThanOrEqual(TERMINAL_SCROLLBACK + 10);
+        expect(rows.at(-1)).toBe(`line-${count - 1}`);
+        expect(rows).not.toContain('line-0');
+        s.dispose();
+    });
+
+    test('names the file under the project, and a write still in flight does not bring it back', async () => {
+        const root = tempDir('terminal-home');
+        const logs = tempDir('terminal-logs');
+        const pty = fakePty();
+        const service = new TerminalService({
+            shell: () => SH,
+            env: () => ({}),
+            spawn: pty.spawn,
+            logsDir: logs,
+        });
+        const project = { id: 'prj_1', name: 'P', folders: [{ id: 'fld_1', path: root }] } as unknown as Project;
+        const info = service.create(project, { projectId: 'prj_1', folderId: 'fld_1', cols: 40, rows: 10 });
+
+        expect(info.logPath).toBe(join(logs, 'prj_1', `${info.id}.log`));
+        // At least one burst, so the flush and the log write start before remove returns.
+        pty.emit('x'.repeat(64 * 1024));
+        service.remove(info.id);
+        await tick(300);
+
+        expect(existsSync(info.logPath)).toBe(false);
+        expect(existsSync(join(logs, 'prj_1', `.${info.id}.log.tmp`))).toBe(false);
+        service.stop();
+    });
+
+    test('a shell that fails to start leaves no log', async () => {
+        const logs = tempDir('terminal-logs-fail');
+        const root = tempDir('terminal-home-fail');
+        const service = new TerminalService({
+            shell: () => SH,
+            env: () => ({}),
+            spawn: spec => {
+                spec.onData(encoder.encode('x'.repeat(64 * 1024)));
+
+                throw new Error('no shell');
+            },
+            logsDir: logs,
+        });
+        const project = { id: 'prj_1', name: 'P', folders: [{ id: 'fld_1', path: root }] } as unknown as Project;
+
+        expect(() => service.create(project, { projectId: 'prj_1', folderId: 'fld_1', cols: 40, rows: 10 })).toThrow(
+            'could not be started'
+        );
+        await tick(300);
+
+        expect(existsSync(join(logs, 'prj_1'))).toBe(false);
+        service.stop();
+    });
+
+    test('drops logs a daemon that did not stop left behind', () => {
+        const logs = tempDir('terminal-logs-stale');
+        const stale = join(logs, 'prj_old', 'trm_old.log');
+        const partial = join(logs, 'prj_old', '.trm_old.log.tmp');
+        const kept = join(logs, 'notes.txt');
+
+        mkdirSync(dirname(stale), { recursive: true });
+        writeFileSync(stale, 'old\n');
+        writeFileSync(partial, 'partial');
+        writeFileSync(kept, 'keep');
+
+        const service = new TerminalService({ logsDir: logs });
+
+        expect(existsSync(stale)).toBe(false);
+        expect(existsSync(partial)).toBe(false);
+        expect(existsSync(dirname(stale))).toBe(false);
+        expect(existsSync(kept)).toBe(true);
+        service.stop();
     });
 });
 

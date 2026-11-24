@@ -1,5 +1,10 @@
 @reference '@clowdy/styles/rulesets';
 
+/* Carries the tooltip of the run's scope and is no box: its child is what the header lays out. */
+.titled {
+    display: contents;
+}
+
 /* The scope menu takes the header's room that the buttons leave, and gives way to them. */
 .scope {
     flex: 0 1 auto;
@@ -17,11 +22,6 @@
 /* A commit is a short hash and a line of its message: the list opens wider than its button, as far as the view allows. */
 .scopeList {
     min-width: min(24rem, 90vw);
-}
-
-/* "Expand all" is the collapse icon turned over: its chevrons point away from the middle. */
-.flipped {
-    scale: 1 -1;
 }
 
 .filter {

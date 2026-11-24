@@ -1,4 +1,4 @@
-import { realpathSync, statSync } from 'node:fs';
+import { lstatSync, readdirSync, realpathSync, rmdirSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { isTerminalSize, MAX_TERMINALS } from '@clowdy/protocol';
 
@@ -28,6 +28,8 @@ export interface TerminalServiceOptions {
     spawn?: SpawnPty;
     maxTerminals?: number;
     exitedTtlMs?: number;
+    /** `<dataDir>/terminals`. Absent when no log is written. */
+    logsDir?: string;
 }
 
 /**
@@ -41,6 +43,8 @@ export class TerminalService {
 
     constructor(options: TerminalServiceOptions = {}) {
         this.#options = options;
+        // A killed daemon never reached stop(), and no shell is alive to own what it left.
+        clearLeftoverLogs(options.logsDir);
         this.#sweeper = setInterval(() => this.#sweep(), SWEEP_MS);
         this.#sweeper.unref?.();
     }
@@ -76,7 +80,8 @@ export class TerminalService {
             throw notFound('Folder', request.folderId);
         }
 
-        const session = new TerminalSession(newId('trm'), {
+        const id = newId('trm');
+        const session = new TerminalSession(id, {
             projectId: project.id,
             folderId: folder.id,
             ...(place?.workspace && { workspaceId: place.workspace.id }),
@@ -85,6 +90,7 @@ export class TerminalService {
             env: terminalEnvironment(this.#options.env?.() ?? process.env),
             cols: request.cols,
             rows: request.rows,
+            ...(this.#options.logsDir && { logPath: join(this.#options.logsDir, project.id, `${id}.log`) }),
         });
 
         try {
@@ -146,6 +152,63 @@ export class TerminalService {
                 session.dispose();
                 this.#sessions.delete(id);
             }
+        }
+    }
+}
+
+/** Deletes log files left under `root`. A link is left alone, and so is anything that is not a log. */
+function clearLeftoverLogs(root: string | undefined): void {
+    if (!root) {
+        return;
+    }
+
+    let projects: string[];
+
+    try {
+        projects = readdirSync(root);
+    } catch {
+        return;
+    }
+
+    for (const project of projects) {
+        const dir = join(root, project);
+
+        try {
+            if (!lstatSync(dir).isDirectory()) {
+                continue;
+            }
+        } catch {
+            continue;
+        }
+
+        let names: string[];
+
+        try {
+            names = readdirSync(dir);
+        } catch {
+            continue;
+        }
+
+        for (const name of names) {
+            if (!name.endsWith('.log') && !name.endsWith('.log.tmp')) {
+                continue;
+            }
+
+            const file = join(dir, name);
+
+            try {
+                if (lstatSync(file).isFile()) {
+                    rmSync(file);
+                }
+            } catch {
+                // locked, or already gone
+            }
+        }
+
+        try {
+            rmdirSync(dir);
+        } catch {
+            // still holds something
         }
     }
 }

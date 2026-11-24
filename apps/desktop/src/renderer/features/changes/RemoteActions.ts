@@ -8,7 +8,7 @@ import { type PlaceFacts, placeRef } from './gitFacts';
 import type { GitRemoteResult } from '@clowdy/protocol';
 
 /** What the actions ask of the transport. */
-export type RemoteTransport = Pick<Transport, 'fetchGit' | 'pullGit' | 'pushGit'>;
+export type RemoteTransport = Pick<Transport, 'fetchGit' | 'pullGit' | 'pushGit' | 'updateGit' | 'abortGit'>;
 
 /** How long the line that says what an action did stays under the button, before it goes by itself. A failure stays until the person acts again. */
 export const NOTICE_MS = 6000;
@@ -52,9 +52,9 @@ export class RemoteActions {
         });
     }
 
-    /** An action is running. */
+    /** An action is running, or the place's branch is being changed: the daemon would run the action after the switch, on the new branch. */
     get busy(): boolean {
-        return this.running !== undefined;
+        return this.running !== undefined || this.facts.switching;
     }
 
     /**
@@ -63,6 +63,8 @@ export class RemoteActions {
      */
     async run(id: RemoteActionId, { report = true }: { report?: boolean } = {}): Promise<RemoteOutcome> {
         if (this.running !== undefined) return { ok: false, failure: { action: id, message: 'An action is running' } };
+
+        if (this.facts.switching) return { ok: false, failure: { action: id, message: 'The branch is being changed' } };
 
         const { key } = this.facts;
         const place = placeRef(key);
@@ -76,7 +78,11 @@ export class RemoteActions {
                 ? this.transport.fetchGit(key.projectId, place)
                 : call === 'pull'
                   ? this.transport.pullGit(key.projectId, place)
-                  : this.transport.pushGit(key.projectId, place));
+                  : call === 'update'
+                    ? this.transport.updateGit(key.projectId, place)
+                    : call === 'abort'
+                      ? this.transport.abortGit(key.projectId, place)
+                      : this.transport.pushGit(key.projectId, place));
 
             runInAction(() => {
                 if (report) this.#say(remoteNotice(result));

@@ -1,4 +1,4 @@
-import { commitScope } from '@clowdy/protocol';
+import { commitScope, turnScope } from '@clowdy/protocol';
 import { runInAction } from 'mobx';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -345,10 +345,11 @@ describe('the filter and the cards', () => {
     it('has every card open, shuts them all and opens them all, and a press on a file in the sidebar opens its card', async () => {
         const model = await filled();
 
-        expect([model.isFolded('src/a.ts'), model.allFolded, model.noneFolded]).toEqual([false, false, true]);
+        expect(model.allFolded).toBe(false);
+        expect(model.files.every(file => !model.isFolded(file.path))).toBe(true);
 
         model.toggleFolded('src/a.ts');
-        expect([model.isFolded('src/a.ts'), model.noneFolded]).toEqual([true, false]);
+        expect([model.isFolded('src/a.ts'), model.allFolded]).toEqual([true, false]);
 
         model.foldAll();
         expect(model.allFolded).toBe(true);
@@ -361,7 +362,7 @@ describe('the filter and the cards', () => {
         ]);
 
         model.unfoldAll();
-        expect(model.noneFolded).toBe(true);
+        expect(model.files.every(file => !model.isFolded(file.path))).toBe(true);
     });
 
     it('shuts only the cards the filter shows, and opens every card the filter hides too', async () => {
@@ -693,10 +694,10 @@ describe('the viewed files', () => {
     it('shut and open the viewed cards with the others when asked to, and start a tab with the viewed ones shut and the rest open', async () => {
         const { model } = await viewedModel([{ path: 'src/a.ts', revision: 'r1' }]);
 
-        expect([model.allFolded, model.noneFolded]).toEqual([false, false]);
+        expect([model.isFolded('src/a.ts'), model.allFolded]).toEqual([true, false]);
 
         model.unfoldAll();
-        expect([model.isFolded('src/a.ts'), model.noneFolded]).toEqual([false, true]);
+        expect(model.files.every(file => !model.isFolded(file.path))).toBe(true);
 
         model.foldAll();
         expect([model.isFolded('src/b.ts'), model.allFolded]).toEqual([true, true]);
@@ -766,5 +767,157 @@ describe('the uncommitted files for the commit box', () => {
         model.sync(4);
         await tick();
         expect(model.uncommitted?.files.map(entry => entry.path)).toEqual(['b.ts']);
+    });
+});
+
+describe('the last run of the open chat', () => {
+    const RUN = turnScope('a'.repeat(40), 'b'.repeat(40));
+    const NEXT_RUN = turnScope('b'.repeat(40), 'c'.repeat(40));
+    const OTHER_RUN = turnScope('d'.repeat(40), 'e'.repeat(40));
+
+    const runs = () =>
+        transportOf({
+            all: list('all', [file('a.ts')]),
+            [RUN]: list(RUN, [file('run.ts', 'rr'), file('also.ts', 'ra')], { from: undefined }),
+            [NEXT_RUN]: list(NEXT_RUN, [file('next.ts')]),
+        });
+
+    it("is a scope of its own only while the tab is told the chat has one: the choice follows the chat's run, and a newer run replaces it", async () => {
+        const transport = runs();
+        const { model } = await modelOf(transport);
+
+        model.setRun('chat-1', RUN);
+        expect(model.effectiveScope).toBe('all');
+
+        model.setScope(RUN);
+        expect(model.effectiveScope).toBe(RUN);
+        // What the person chose among the other scopes is left as it was.
+        expect(model.scope).toBe('all');
+
+        model.sync(1);
+        await tick();
+        expect(transport.getGitChanges).toHaveBeenCalledWith('p1', { folderId: 'f1', workspaceId: 'w1' }, RUN);
+        expect(model.changes?.files.map(entry => entry.path)).toEqual(['run.ts', 'also.ts']);
+
+        // The chat's next run ends: the tab follows it, as the person was looking at the last one.
+        model.setRun('chat-1', NEXT_RUN);
+        expect(model.effectiveScope).toBe(NEXT_RUN);
+        model.sync(1);
+        await tick();
+        expect(model.changes?.files.map(entry => entry.path)).toEqual(['next.ts']);
+
+        // A chat with no run that changed files has none to follow.
+        model.setRun('chat-1', undefined);
+        expect(model.effectiveScope).toBe('all');
+    });
+
+    it('stops following the run on a pick of another scope or commit, and is not followed to another chat', async () => {
+        const { model } = await modelOf(runs());
+
+        model.setRun('chat-1', RUN);
+        model.setScope(RUN);
+        model.setScope('uncommitted');
+        expect(model.effectiveScope).toBe('uncommitted');
+
+        model.setScope(RUN);
+        model.pickCommit(NEWEST.sha);
+        expect(model.effectiveScope).toBe(commitScope(NEWEST.sha));
+        model.setScope('all');
+        expect(model.effectiveScope).toBe('all');
+
+        // Following one chat's run is not following the next chat's: the place is shared, the run is the open chat's.
+        model.setScope(RUN);
+        expect(model.effectiveScope).toBe(RUN);
+        model.setRun('chat-2', OTHER_RUN);
+        expect(model.effectiveScope).toBe('all');
+        // The same chat with a newer run keeps following.
+        model.setScope(OTHER_RUN);
+        model.setRun('chat-2', NEXT_RUN);
+        expect(model.effectiveScope).toBe(NEXT_RUN);
+    });
+
+    it("takes no scope for the run that is not the chat's own", async () => {
+        const { model } = await modelOf(runs());
+
+        model.setRun('chat-1', RUN);
+        model.setScope(OTHER_RUN);
+        expect(model.effectiveScope).toBe('all');
+        model.setScope(NEXT_RUN);
+        expect(model.effectiveScope).toBe('all');
+    });
+
+    it("is shown by a press on the plate: the chat's run is followed from the start, and the file to bring up waits for the list that has it", async () => {
+        const { model } = await modelOf(runs());
+
+        model.showRun('chat-1', RUN, 'also.ts');
+        expect(model.effectiveScope).toBe(RUN);
+        expect(model.revealRequest).toBe('also.ts');
+        // The tab is drawn after, and tells the model the same chat and run: nothing is undone.
+        model.setRun('chat-1', RUN);
+        expect(model.effectiveScope).toBe(RUN);
+        expect(model.revealRequest).toBe('also.ts');
+
+        model.clearRevealRequest();
+        expect(model.revealRequest).toBeUndefined();
+
+        model.showRun('chat-1', RUN);
+        expect(model.revealRequest).toBeUndefined();
+    });
+
+    it('drops the file to bring up when the person picks another scope before the list of the run has it', async () => {
+        const { model } = await modelOf(runs());
+
+        model.showRun('chat-1', RUN, 'also.ts');
+        model.setScope('uncommitted');
+        expect(model.revealRequest).toBeUndefined();
+
+        model.showRun('chat-1', RUN, 'also.ts');
+        model.pickCommit('c1');
+        expect(model.revealRequest).toBeUndefined();
+    });
+
+    it('keeps its viewed marks under its own scope, which an edit of the files afterwards does not change', async () => {
+        const transport = runs();
+        const { model } = await modelOf(transport);
+
+        model.showRun('chat-1', RUN);
+        model.sync(1);
+        await tick();
+        expect(transport.getGitViewed).toHaveBeenCalledWith('p1', { folderId: 'f1', workspaceId: 'w1' }, RUN);
+
+        await model.setViewed(model.changes!.files[0]!, true);
+        expect(transport.setGitViewed).toHaveBeenCalledWith(
+            'p1',
+            { folderId: 'f1', workspaceId: 'w1' },
+            RUN,
+            'run.ts',
+            'rr'
+        );
+        expect(model.isViewed('run.ts')).toBe(true);
+        expect(model.isViewed('also.ts')).toBe(false);
+    });
+
+    it('says the run is gone when its trees were pruned, and keeps the choice of the run', async () => {
+        const transport = runs();
+
+        transport.getGitChanges.mockImplementation(async (_project, _place, scope) => {
+            if (scope === RUN) throw new TransportError('The changes of that run are no longer in the repository', 503);
+
+            return list(scope, []);
+        });
+
+        const { model } = await modelOf(transport);
+
+        model.showRun('chat-1', RUN);
+        model.sync(1);
+        await tick();
+
+        expect(model.changes).toBeUndefined();
+        expect(model.list.error).toBe('The changes of that run are no longer in the repository');
+        expect(listStateOf(model)).toEqual({
+            kind: 'failed',
+            message: 'The changes of that run are no longer in the repository',
+        });
+        expect(model.effectiveScope).toBe(RUN);
     });
 });

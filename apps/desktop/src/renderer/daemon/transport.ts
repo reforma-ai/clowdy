@@ -12,14 +12,18 @@ import type {
     FolderGit,
     FolderId,
     FolderWorktrees,
+    GitBranches,
     GitChanges,
     GitCommitResult,
+    GitDiscardResult,
     GitFileSides,
     GitMessage,
     GitPullRequestInfo,
     GitRemoteResult,
     GitScope,
     GitStatus,
+    GitSwitchRequest,
+    GitSwitchResult,
     GitViewedMark,
     Health,
     ProjectFileMatch,
@@ -139,7 +143,13 @@ export interface Transport {
      * the daemon's reason (git's own `fatal:`, `error:` or hook line, and `hint` when the line names the signing key): 400 for no paths, no message or a path that is not a changed file,
      * 409 for a merge in progress or a commit git refused, 503 for one that did not end in time. Not retried: a commit is not asked for twice.
      */
-    commitGit: (projectId: ProjectId, place: PlaceRef, paths: string[], message: string) => Promise<GitCommitResult>;
+    commitGit: (
+        projectId: ProjectId,
+        place: PlaceRef,
+        paths: string[],
+        message: string,
+        options?: { conclude?: true }
+    ) => Promise<GitCommitResult>;
     /**
      * A commit message for the files of a place that the person ticked (`POST git/message`), written by the agent they turned `Commit messages` on for: one Conventional Commits subject.
      * Runs only when asked. Rejects with a `TransportError`: 400 for paths that are not changed files or when no agent has the switch on, 503 with `Couldn't write the message` when the agent
@@ -147,22 +157,58 @@ export interface Transport {
      */
     generateGitMessage: (projectId: ProjectId, place: PlaceRef, paths: string[]) => Promise<GitMessage>;
     /**
+     * Discards the changes of the files of a place (`POST git/discard`): the daemon keeps a copy of what each holds now (for a few days, in its own data folder, never in the repository), and
+     * then a file the last commit has goes back to it (staged and edited versions alike) while one it has not (a new file) is deleted, that file alone. `paths` are `GitChangedFile.path`s of the
+     * place's uncommitted changes, at most `MAX_GIT_DISCARD_PATHS`, and the UI sends one file at a time. Answers what was discarded and where the copy is. Rejects with a `TransportError` carrying
+     * the daemon's reason: 400 for a path that is not a changed file, a submodule, a file over the copy's limit, 409 for a file with merge conflicts or a git that refused (its own line), 503 when
+     * the copy could not be made (nothing was discarded) or git did not end in time. Not retried: a discard is not asked for twice.
+     */
+    discardGit: (projectId: ProjectId, place: PlaceRef, paths: string[]) => Promise<GitDiscardResult>;
+    /**
      * `git fetch origin` in a place (`POST git/fetch`, without the submodules' remotes): brings in what origin has, moves no branch and prunes nothing. Answers the branch's upstream as it stands, with how far apart the two are.
      * Rejects with a `TransportError` carrying git's own line (`conflict`, 409: no network, no permission, a hook) and `hint` when the line names the signing agent, 400 for a place that is no repository or
      * has no `origin`, 503 for one that did not end in about two minutes (a fingerprint that was waited for). Not retried.
      */
     fetchGit: (projectId: ProjectId, place: PlaceRef) => Promise<GitRemoteResult>;
     /**
-     * Fetches origin and fast-forwards the place's branch to its upstream (`POST git/pull`): never a merge, a rebase or a reset. A branch that has commits of its own and falls behind its upstream too
-     * answers `{ state: 'diverged' }`, which is not an error, and stays as it was. Rejects as `fetchGit` does, and with 400 for a detached HEAD, a branch with no upstream or one that tracks another
-     * remote, and 409 with git's line when an uncommitted change is in the way.
+     * Fetches origin and merges the place's branch with its upstream (`POST git/pull`): a fast-forward when the branch has nothing of its own, a merge commit when it does (`merged`). A merge that
+     * stops on conflicts answers `{ state: 'conflicts' }`, which is not an error: the merge has started. Rejects as `fetchGit` does, and with 400 for a detached HEAD, a branch with no upstream or
+     * one that tracks another remote, and 409 with git's line when an uncommitted change is in the way (nothing was started).
      */
     pullGit: (projectId: ProjectId, place: PlaceRef) => Promise<GitRemoteResult>;
+    /**
+     * Fetches origin and merges the place's base into the branch (`POST git/update`), the same base the Changes tab compares with. Already being that branch is 400. A merge that stops on
+     * conflicts answers `{ state: 'conflicts' }`, as a pull's does. Rejects as `pullGit` does.
+     */
+    updateGit: (projectId: ProjectId, place: PlaceRef) => Promise<GitRemoteResult>;
+    /**
+     * Undoes a merge that is in progress (`POST git/abort`, `git merge --abort`). 400 when no merge is. Rejects as `fetchGit` does when git refuses.
+     */
+    abortGit: (projectId: ProjectId, place: PlaceRef) => Promise<GitRemoteResult>;
     /**
      * Sends the place's branch to its upstream on origin (`POST git/push`), or publishes it (`-u`, `published: true`) when it has none. Never forced, never with a tag. Rejects as `pullGit` does, and
      * with 409 and git's own line for a push that origin rejects (`! [rejected] main -> main (fetch first)`), a hook or no permission.
      */
     pushGit: (projectId: ProjectId, place: PlaceRef) => Promise<GitRemoteResult>;
+    /**
+     * The branches a place can switch to (`GET git/branches`): the local ones with the current and the default one, the upstream and the worktree that has one checked out, the branches
+     * only `origin` has, and the last few the place was on, newest first; or that the folder is no repository. Read when asked, never pushed, nothing fetched: a branch changes in a
+     * terminal or by an agent. Rejects as `getGitStatus` does.
+     */
+    getGitBranches: (projectId: ProjectId, place: PlaceRef) => Promise<GitBranches>;
+    /**
+     * Changes the branch of the folder's own checkout (`POST git/switch`): to an existing local branch, to one only `origin` has (a local branch that tracks it), or with `create` to a new branch
+     * cut from the current branch or the default one. Never for a chat's worktree. Nothing is stashed or carried along: a change in the tree, a merge or rebase under way, a run working in the
+     * place and a branch that another worktree has checked out are refused with the daemon's short reason. Rejects with a `TransportError`: 400 for a worktree place, a name that is no branch name, a
+     * branch that does not exist or a new one that does, 409 for a refusal that is the repository's state (its `message` is the reason, and `hint` says how many files or what to do) or a switch git
+     * refused, 503 for one that did not end in time. Not retried: a switch is not asked for twice. `warning` in the answer is what the person is told of a switch that was made: what a failed `post-checkout` hook said, or the commits a detached HEAD left on no branch.
+     */
+    switchGitBranch: (
+        projectId: ProjectId,
+        place: PlaceRef,
+        branch: string,
+        create?: GitSwitchRequest['create']
+    ) => Promise<GitSwitchResult>;
     /**
      * Every worktree of every folder of a project, with the chats that work in each, how many files are changed and whether its work is in the base: what the Manage worktrees
      * dialog lists. One entry per folder in the project's order, a folder that is no repository (or is gone) with no worktrees. Read when asked, never pushed: worktrees change

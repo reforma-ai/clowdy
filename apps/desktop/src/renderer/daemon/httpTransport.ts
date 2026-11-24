@@ -26,8 +26,11 @@ import type {
     FolderGit,
     FolderId,
     FolderWorktrees,
+    GitBranches,
     GitChanges,
     GitCommitResult,
+    GitDiscardRequest,
+    GitDiscardResult,
     GitErrorDetails,
     GitFileSides,
     GitMessage,
@@ -36,6 +39,8 @@ import type {
     GitRemoteResult,
     GitScope,
     GitStatus,
+    GitSwitchRequest,
+    GitSwitchResult,
     GitViewedMark,
     GitViewedSet,
     Health,
@@ -211,12 +216,27 @@ export class HttpTransport implements Transport {
         if (!response.ok) throw await refusal(response, route);
     }
 
-    commitGit(projectId: ProjectId, place: PlaceRef, paths: string[], message: string): Promise<GitCommitResult> {
-        return this.#write(ROUTES.projectGitCommit(projectId), { ...place, paths, message });
+    commitGit(
+        projectId: ProjectId,
+        place: PlaceRef,
+        paths: string[],
+        message: string,
+        options?: { conclude?: true }
+    ): Promise<GitCommitResult> {
+        return this.#write(ROUTES.projectGitCommit(projectId), {
+            ...place,
+            paths,
+            message,
+            ...(options?.conclude && { conclude: true as const }),
+        });
     }
 
     generateGitMessage(projectId: ProjectId, place: PlaceRef, paths: string[]): Promise<GitMessage> {
         return this.#write(ROUTES.projectGitMessage(projectId), { ...place, paths });
+    }
+
+    discardGit(projectId: ProjectId, place: PlaceRef, paths: string[]): Promise<GitDiscardResult> {
+        return this.#write(ROUTES.projectGitDiscard(projectId), { ...place, paths } satisfies GitDiscardRequest);
     }
 
     fetchGit(projectId: ProjectId, place: PlaceRef): Promise<GitRemoteResult> {
@@ -229,6 +249,31 @@ export class HttpTransport implements Transport {
 
     pushGit(projectId: ProjectId, place: PlaceRef): Promise<GitRemoteResult> {
         return this.#write(ROUTES.projectGitRemote(projectId, 'push'), { ...place } satisfies GitRemoteRequest);
+    }
+
+    updateGit(projectId: ProjectId, place: PlaceRef): Promise<GitRemoteResult> {
+        return this.#write(ROUTES.projectGitRemote(projectId, 'update'), { ...place } satisfies GitRemoteRequest);
+    }
+
+    abortGit(projectId: ProjectId, place: PlaceRef): Promise<GitRemoteResult> {
+        return this.#write(ROUTES.projectGitRemote(projectId, 'abort'), { ...place } satisfies GitRemoteRequest);
+    }
+
+    getGitBranches(projectId: ProjectId, place: PlaceRef): Promise<GitBranches> {
+        return this.#read(`${ROUTES.projectGitBranches(projectId)}?${placeQuery(place)}`);
+    }
+
+    switchGitBranch(
+        projectId: ProjectId,
+        place: PlaceRef,
+        branch: string,
+        create?: GitSwitchRequest['create']
+    ): Promise<GitSwitchResult> {
+        return this.#write(ROUTES.projectGitSwitch(projectId), {
+            ...place,
+            branch,
+            ...(create && { create }),
+        } satisfies GitSwitchRequest);
     }
 
     getProjectWorktrees(projectId: ProjectId): Promise<FolderWorktrees[]> {

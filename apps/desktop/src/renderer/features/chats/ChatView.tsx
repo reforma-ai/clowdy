@@ -19,6 +19,7 @@ import { Composer, type ComposerHandle } from './Composer';
 import { canCompactChat, chatProvider, chatWritability, handoffAgents } from './chatProvider';
 import { isRunActive, liveLine, overflowed } from './chatRun';
 import { perform } from './commands';
+import { LastRunPlate } from './LastRunPlate';
 import { ProgressCard } from './ProgressCard';
 import { chatProgress } from './progress';
 import { ReadOnlyNotice } from './ReadOnlyNotice';
@@ -192,6 +193,8 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
 
             <ContentColumn className={styles.composer}>
                 <RunningAgents chat={chat} />
+                {/* What the chat's latest run changed, once it is at rest and the person has not written since; for a read only chat too. */}
+                <LastRunPlate chat={chat} run={run} items={stream?.status === 'ready' ? items : undefined} />
                 {/* The composer draws the line under its box itself, with the mode at the end of it; a chat that is read only has no mode to show. */}
                 {writability.writable ? (
                     <Composer ref={composer} chat={chat} run={run} controls={controls} />

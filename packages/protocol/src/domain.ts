@@ -232,8 +232,29 @@ export interface Chat {
     queue?: QueuedMessage[];
     /** Why the queue waits for the person (Send now on a message) instead of going out when the orchestrator rests. Absent while it flows, and whenever it is empty. */
     queuePaused?: QueuePause;
+    /**
+     * What the orchestrator's latest turn changed in the chat's place, when it changed files that git tracks or does not ignore: the daemon's own record, which a turn that
+     * changes nothing, one it could not measure and a chat that never ran in a repository leave absent. Set by the daemon when the turn ends and never by a command.
+     */
+    lastRun?: ChatLastRun;
     createdAt: number;
     updatedAt: number;
+}
+
+/**
+ * The two trees of a chat's place that the daemon took around the latest turn of the chat's orchestrator: when it started and when it ended (a temporary index and
+ * `git write-tree`, so the repository's own index and refs are untouched). Their difference is the turn's work (`turnScope`, read through `GET .../git/changes`), and the
+ * two ids stay valid for as long as git keeps the objects.
+ */
+export interface ChatLastRun {
+    /** The tree of the working directory (tracked and not ignored files) when the turn started. */
+    startTree: string;
+    /** The tree of the working directory when the turn ended. It differs from `startTree`: a turn that changed nothing is not kept. */
+    endTree: string;
+    /** The last `seq` of the orchestrator's stream when the turn ended: a message of the person after it (a larger `seq`) is a newer turn than this one. */
+    seq: number;
+    /** When the turn ended, in epoch milliseconds. */
+    at: number;
 }
 
 /**
@@ -255,13 +276,20 @@ export interface ChatWorkspace {
 }
 
 /**
- * Where a new chat works when it is not in the folder itself: in a new worktree started from `base` (the folder's default branch when absent) on the branch
- * `<branchPrefix>/<branchName>` (`DEFAULT_BRANCH_PREFIX` when the prefix is absent or empty; the chat's id8 when there is no name, which is what a chat the person starts
- * has), or in a worktree that exists. The folder of the worktree is named by its chat's id8 whatever the branch is called.
+ * Where a new chat works: in a new worktree started from `base` (the folder's default branch when absent) on the branch `<branchPrefix>/<branchName>`
+ * (`DEFAULT_BRANCH_PREFIX` when the prefix is absent or empty; the chat's id8 when there is no name, which is what a chat the person starts has), in a worktree that exists, or
+ * in the folder's own checkout on `branch` (`main`): the daemon changes the checkout to that branch first, as the Changes sidebar's branch button does (`POST .../git/switch`,
+ * with all of its refusals: a tree with any change, an operation under way, a chat working there, a branch another worktree holds) and makes the chat only once that is done, so a
+ * refusal leaves no chat behind. A branch the checkout is on already changes nothing. No choice at all is the folder's own checkout as it is, which is what every chat made before
+ * `main` existed has. The folder of a worktree is named by its chat's id8 whatever the branch is called.
  */
 export type ChatWorkspaceChoice =
     | { mode: 'new'; base?: string; branchPrefix?: string; branchName?: string }
-    | { mode: 'existing'; path: string };
+    | { mode: 'existing'; path: string }
+    | { mode: 'main'; branch: string };
+
+/** The choices that make a worktree row for the chat (`ChatWorkspace`): `main` is the folder's own checkout, which has none. */
+export type ChatWorktreeChoice = Exclude<ChatWorkspaceChoice, { mode: 'main' }>;
 
 /** What the branch of a new worktree starts with when none is chosen: `clowdy/<chat id8>`. */
 export const DEFAULT_BRANCH_PREFIX = 'clowdy';

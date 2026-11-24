@@ -1,6 +1,6 @@
-import { isTerminalRunStatus } from '@clowdy/protocol';
+import { isTerminalRunStatus, mainFolder } from '@clowdy/protocol';
 
-import { deleteChatAndRuns, getChat, listChatDescendants, runsOfChat, upsertChat } from '../db/chats';
+import { deleteChatAndRuns, getChat, getChatLastRun, listChatDescendants, runsOfChat, upsertChat } from '../db/chats';
 import { getRun } from '../db/runs';
 import { chatsOfWorkspace, deleteWorkspace, getWorkspace, toChatWorkspace } from '../db/workspaces';
 import { conflict, invalid, notFound } from '../errors';
@@ -8,7 +8,16 @@ import { newId } from '../ids';
 import { requireProject } from './projects';
 import { createWorkspace, inheritWorkspace } from './workspaces';
 
-import type { Chat, ChatMode, ChatWorkspace, ChatWorkspaceChoice, EngineId, Run } from '@clowdy/protocol';
+import type {
+    Chat,
+    ChatMode,
+    ChatWorkspace,
+    ChatWorktreeChoice,
+    EngineId,
+    Project,
+    ProjectFolder,
+    Run,
+} from '@clowdy/protocol';
 import type { AttachmentsService } from '../attachments/service';
 import type { Config } from '../config';
 import type { Store } from '../store';
@@ -44,11 +53,16 @@ export function requireChat(store: Store, chatId: string): Chat {
 
 /**
  * Writes the chat and publishes it. A chat that works in a worktree is published with the worktree as it is now: the copy the caller holds may be older than
- * the turn that made the worktree ready.
+ * the turn that made the worktree ready. It is published with the latest turn's changes as the daemon holds them (`Chat.lastRun`, which no save writes), for the same reason.
  */
 export function saveChat(store: Store, chat: Chat): Chat {
     const record = chat.workspace && getWorkspace(store.db, chat.workspace.id);
-    const saved: Chat = record ? { ...chat, workspace: toChatWorkspace(record) } : chat;
+    const { lastRun: _held, ...rest } = chat;
+    const lastRun = getChatLastRun(store.db, chat.id);
+    const saved: Chat = {
+        ...(record ? { ...rest, workspace: toChatWorkspace(record) } : rest),
+        ...(lastRun && { lastRun }),
+    };
 
     upsertChat(store.db, saved);
     store.emit(saved.projectId, { type: 'chat.upserted', chat: saved });
@@ -83,9 +97,24 @@ export interface NewChat extends ChatChoice {
      * worktree to be made into a path. The chat then has the folder the worktree is a checkout of, the main folder's own id when none was named, so it stays
      * with it whichever folder the project makes main later.
      */
-    workspace?: ChatWorkspaceChoice;
+    workspace?: ChatWorktreeChoice;
     /** The worktree of another chat, taken as it is (the same row): a thread's, a fork's. */
     workspaceId?: string;
+}
+
+/** The folder of the project a new chat works in: the one named, which has to be one of the project's (`invalid` otherwise), else the main folder. */
+export function chatFolder(project: Project, folderId: string | undefined): ProjectFolder {
+    if (folderId === undefined) {
+        return mainFolder(project);
+    }
+
+    const folder = project.folders.find(candidate => candidate.id === folderId);
+
+    if (!folder) {
+        throw invalid(`Folder ${folderId} does not belong to project ${project.id}`);
+    }
+
+    return folder;
 }
 
 /**
@@ -96,8 +125,8 @@ export function createChat(store: Store, input: NewChat, workspaces?: Pick<Confi
     return store.tx(() => {
         const project = requireProject(store, input.projectId);
 
-        if (input.folderId !== undefined && !project.folders.some(folder => folder.id === input.folderId)) {
-            throw invalid(`Folder ${input.folderId} does not belong to project ${project.id}`);
+        if (input.folderId !== undefined) {
+            chatFolder(project, input.folderId);
         }
 
         if (input.workspace && input.workspaceId) {

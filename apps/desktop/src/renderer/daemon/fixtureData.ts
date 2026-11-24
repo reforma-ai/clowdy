@@ -8,6 +8,8 @@ import {
     MAX_GIT_VIEWED_PATH_LENGTH,
     PERMISSION_PRESET_NAMES,
     PERMISSION_PRESETS,
+    turnScope,
+    turnScopeTrees,
 } from '@clowdy/protocol';
 
 import type {
@@ -19,7 +21,7 @@ import type {
     Chat,
     ChatTaskLink,
     ChatWorkspace,
-    ChatWorkspaceChoice,
+    ChatWorktreeChoice,
     DocNode,
     DocsSource,
     FolderGit,
@@ -67,8 +69,8 @@ export interface FixtureData {
      * (`worktree`, `open` when it is left out). See `fixtureGitPullRequest`.
      */
     pullRequests: Record<string, { checkout?: FixturePullRequestScript; worktree?: FixturePullRequestScript }>;
-    /** What `workspace.remove` took out of each folder's git, by the folder's path (`FixtureRemovals`): the reads answer as if git no longer had it. A folder that is not listed lost nothing. */
-    removed?: Record<string, FixtureRemovals>;
+    /** Worktree and branch changes by repository path. */
+    worktreeEdits?: Record<string, FixtureWorktreeEdits>;
     statuses: Record<string, TaskStatus[]>;
     chats: Chat[];
     /** Every task of every project, the archived ones too: the snapshot leaves those out, and `getTaskDetail` and the archive's pages read them. */
@@ -675,13 +677,9 @@ const API_FILES = [
     'src/limits.ts',
 ];
 
-/**
- * What `workspace.remove` took out of a fixture folder's git. `fixtureFolderGit` is a function of the folder, so the removals are kept beside it and applied to what it lists:
- * the paths of the worktrees that are gone, the local branches that were deleted with them, and the branches that stay now that their worktree is gone (a branch git lists as a
- * local one once no worktree holds it).
- */
-export interface FixtureRemovals {
-    worktrees: string[];
+interface FixtureWorktreeEdits {
+    created: Array<{ path: string; branch: string }>;
+    removed: string[];
     deleted: string[];
     kept: string[];
 }
@@ -689,26 +687,28 @@ export interface FixtureRemovals {
 /**
  * What `GET git` answers for a fixture folder: no repository when `git` says nothing of it, else the branch it has checked out, a few more branches (local and
  * `origin`'s), `origin/main` as the default one, and two worktrees: the folder itself and one Clowdy made for a chat, with changes in it. The folder's own
- * `baseBranch` is the default one when the repository has it, as the daemon answers. `removals` are what `workspace.remove` took out since.
+ * `baseBranch` is the default one when the repository has it, as the daemon answers. `edits` include checkouts created or removed since.
  */
 export function fixtureFolderGit(
     path: string,
     head: { branch?: string; detached?: true } | undefined,
     baseBranch?: string,
-    removals?: FixtureRemovals
+    edits?: FixtureWorktreeEdits
 ): FolderGit {
     if (!head?.branch) return { isRepository: false };
 
     const name = path.split('/').filter(Boolean).at(-1) ?? 'folder';
+    const created = edits?.created.filter(worktree => !edits.removed.includes(worktree.path)) ?? [];
     const locals = [
         ...new Set([
             ...(head.detached ? [] : [head.branch]),
             'main',
             'dev',
             'feature/payments',
-            ...(removals?.kept ?? []),
+            ...(edits?.kept ?? []),
+            ...created.map(worktree => worktree.branch),
         ]),
-    ].filter(branch => !removals?.deleted.includes(branch));
+    ].filter(branch => !edits?.deleted.includes(branch));
     const branches = [
         ...locals.map(branch => ({ name: branch, remote: false })),
         ...['origin/main', 'origin/dev'].map(branch => ({ name: branch, remote: true })),
@@ -732,7 +732,8 @@ export function fixtureFolderGit(
                 main: false,
                 dirty: true,
             },
-        ].filter(worktree => !removals?.worktrees.includes(worktree.path)),
+            ...created.map(worktree => ({ ...worktree, head: 'a1b2c3d', main: false, dirty: false })),
+        ].filter(worktree => !edits?.removed.includes(worktree.path)),
     };
 }
 
@@ -751,14 +752,14 @@ const FIXTURE_CHANGES = 3;
  */
 export function fixtureProjectWorktrees(
     project: Pick<Project, 'id' | 'folders'>,
-    data: Pick<FixtureData, 'git' | 'worktrees' | 'removed' | 'chats'>
+    data: Pick<FixtureData, 'git' | 'worktrees' | 'worktreeEdits' | 'chats'>
 ): FolderWorktrees[] {
     const names = folderNames(project.folders);
 
     return project.folders.map((folder, index): FolderWorktrees => {
         const group = { folderId: folder.id, name: names[index] };
-        const removals = data.removed?.[folder.path];
-        const repository = fixtureFolderGit(folder.path, data.git[folder.path], folder.settings?.baseBranch, removals);
+        const edits = data.worktreeEdits?.[folder.path];
+        const repository = fixtureFolderGit(folder.path, data.git[folder.path], folder.settings?.baseBranch, edits);
 
         if (!repository.isRepository) return { ...group, isRepository: false, worktrees: [] };
 
@@ -771,9 +772,9 @@ export function fixtureProjectWorktrees(
                     ...(branch !== undefined && { branch }),
                     head,
                     changes: dirty ? FIXTURE_CHANGES : 0,
-                    merged: false,
+                    merged: !dirty,
                 })),
-            ...(data.worktrees?.[folder.path] ?? []).filter(worktree => !removals?.worktrees.includes(worktree.path)),
+            ...(data.worktrees?.[folder.path] ?? []).filter(worktree => !edits?.removed.includes(worktree.path)),
         ];
         const own = repository.worktrees.find(worktree => worktree.main)!;
         const main: WorktreeInfo = {
@@ -969,7 +970,7 @@ export function fixtureGitPullRequest(
 }
 
 /** The commit the fixture's `origin/main` is at, and the one the worktree's branch started from: 40 hexadecimal digits of one digit, which is all a fixture needs of an id. */
-const FIXTURE_BASE_COMMIT = '3'.repeat(40);
+export const FIXTURE_BASE_COMMIT = '3'.repeat(40);
 
 /** The commits of the fixture worktree's branch, newest first: what `GitBase.commits` lists, each a `commit:<sha>` scope with the files below. */
 export const FIXTURE_GIT_COMMITS: GitCommit[] = [
@@ -1151,13 +1152,38 @@ const fixtureCommitOf = (scope: GitScope) =>
         ? FIXTURE_GIT_COMMITS.find(commit => commit.sha.startsWith(scope.slice('commit:'.length)))
         : undefined;
 
-/** The files of one scope of the fixture worktree, and what each is counted from. */
-function fixtureScopeFiles(scope: GitScope): { files: GitChangedFile[]; from: string } | undefined {
+/**
+ * The two trees of the fixture chat whose latest run changed seven files (`withFixtureLastRun`), and what that run changed: the example of the Last run plate, a long path, a
+ * deleted file and a new one among them, as a run of an agent leaves them. A run's list has no start of its own (`GitChanges.from`), as the daemon's has none.
+ */
+export const FIXTURE_RUN_TREES = { startTree: '6'.repeat(40), endTree: '7'.repeat(40) } as const;
+export const FIXTURE_RUN_SCOPE = turnScope(FIXTURE_RUN_TREES.startTree, FIXTURE_RUN_TREES.endTree);
+
+export const FIXTURE_RUN_FILES: GitChangedFile[] = [
+    changedFile(
+        'docs/pricing/a/deeply/nested/folder/for/the/weekend-surcharge-rules/weekend-surcharge-calculation-notes.md',
+        'added',
+        [38, 0],
+        ['0', 'f']
+    ),
+    changedFile('src/booking/BookingForm.tsx', 'modified', [9, 2], ['8', '9']),
+    changedFile('src/booking/price.ts', 'modified', [101, 15], ['6', '7']),
+    changedFile('src/booking/weekend.ts', 'modified', [12, 3], ['a', 'b']),
+    changedFile('src/db/migrations/0042_weekend_surcharge.sql', 'added', [14, 0], ['0', 'c']),
+    changedFile('src/legacy/old-price.ts', 'deleted', [0, 8], ['d', '0']),
+    changedFile('src/mail/confirmation.ts', 'modified', [4, 1], ['e', '1']),
+];
+
+/** The files of one scope of the fixture worktree, and what each is counted from (a run's list is counted from nothing a client could name). */
+function fixtureScopeFiles(scope: GitScope): { files: GitChangedFile[]; from?: string } | undefined {
     if (scope === 'all') return { files: FIXTURE_ALL_FILES, from: FIXTURE_BASE_COMMIT };
 
     if (scope === 'branch') return { files: FIXTURE_BRANCH_FILES, from: FIXTURE_BASE_COMMIT };
 
     if (scope === 'uncommitted') return { files: FIXTURE_UNCOMMITTED_FILES, from: FIXTURE_GIT_COMMITS[0]!.sha };
+
+    // Only the one run the fixture has trees of; any other pair is trees git has pruned.
+    if (turnScopeTrees(scope)) return scope === FIXTURE_RUN_SCOPE ? { files: FIXTURE_RUN_FILES } : undefined;
 
     const commit = fixtureCommitOf(scope);
 
@@ -1171,34 +1197,47 @@ function fixtureScopeFiles(scope: GitScope): { files: GitChangedFile[]; from: st
 
 /**
  * What `GET git/changes` answers for a fixture folder. A checkout that is clean has no changes in any scope; the worktree has the files above. `undefined` for a commit the
- * fixture's repository does not have, which the daemon answers `not_found`.
+ * fixture's repository does not have, which the daemon answers `not_found`, and for a run whose trees are not the fixture's (`unavailable`: git has pruned them).
  */
 export function fixtureGitChanges(
     head: { branch?: string } | undefined,
     inWorktree: boolean,
     scope: GitScope,
-    committed: ReadonlySet<string> = new Set()
+    committed: ReadonlySet<string> = new Set(),
+    discarded: ReadonlySet<string> = new Set()
 ): GitChanges | undefined {
     if (!head?.branch) return { isRepository: false };
 
     const scoped = inWorktree
         ? fixtureScopeFiles(scope)
-        : scope.startsWith('commit:')
+        : scope.startsWith('commit:') || turnScopeTrees(scope)
           ? undefined
           : { files: [], from: FIXTURE_BASE_COMMIT };
-    // What a commit made here took out of the uncommitted files (the fixture keeps no repository, so the other scopes stay as they were).
+    // What a commit made here took out of the uncommitted files (the fixture keeps no repository, so the other scopes stay as they were), and what a discard put back at the last commit
+    // is in none of the working-tree scopes any more, but for a file the branch had changed already, which `all` still lists as the branch left it.
     const found =
         scoped && scope === 'uncommitted'
-            ? { ...scoped, files: scoped.files.filter(file => !committed.has(file.path)) }
-            : scoped;
+            ? { ...scoped, files: scoped.files.filter(file => !committed.has(file.path) && !discarded.has(file.path)) }
+            : scoped && scope === 'all'
+              ? {
+                    ...scoped,
+                    files: scoped.files.flatMap(file =>
+                        discarded.has(file.path)
+                            ? FIXTURE_BRANCH_FILES.filter(branchFile => branchFile.path === file.path)
+                            : [file]
+                    ),
+                }
+              : scoped;
 
     if (!found) return undefined;
 
     return {
         isRepository: true,
         scope,
-        from: found.from,
-        ...(!scope.startsWith('commit:') && scope !== 'uncommitted' && { baseState: 'ready' as const }),
+        ...(found.from && { from: found.from }),
+        ...(!scope.startsWith('commit:') &&
+            !turnScopeTrees(scope) &&
+            scope !== 'uncommitted' && { baseState: 'ready' as const }),
         files: structuredClone(found.files),
         ...totalsOf(found.files),
         statsComplete: true,
@@ -1240,6 +1279,23 @@ const FIXTURE_FILE_TEXT: Record<string, [original: string | null, modified: stri
     ],
     'src/limits.ts': [['export const MAX_DAYS = 30;', ''].join('\n'), ['export const MAX_DAYS = 28;', ''].join('\n')],
     'notes.md': [null, ['# Notes', '', '- Ask about the weekend rate for holidays', ''].join('\n')],
+    'src/booking/BookingForm.tsx': [
+        ['export function BookingForm() {', '    return <form>{ /* dates, car, extras */ }</form>;', '}', ''].join(
+            '\n'
+        ),
+        [
+            'export function BookingForm() {',
+            '    const { total, weekendSurcharge } = usePrice();',
+            '',
+            '    return <form>{ /* dates, car, extras */ }<p>{ weekendSurcharge }</p></form>;',
+            '}',
+            '',
+        ].join('\n'),
+    ],
+    'src/db/migrations/0042_weekend_surcharge.sql': [
+        null,
+        ['ALTER TABLE bookings ADD COLUMN weekend_surcharge INTEGER NOT NULL DEFAULT 0;', ''].join('\n'),
+    ],
 };
 
 /**
@@ -1296,24 +1352,24 @@ const kebab = (name: string) =>
  * not made yet (`ready` false: the chat's first turn makes it); an existing one is ready, and a chat that has it already shares its row.
  */
 export function fixtureChatWorkspace(
-    choice: ChatWorkspaceChoice,
+    choice: ChatWorktreeChoice,
     {
         projectName,
         folder,
         chatId,
         head,
         known,
-        removed,
+        edits,
     }: {
         projectName: string;
         folder: ProjectFolder;
         chatId: string;
         head: FixtureData['git'][string] | undefined;
         known: readonly ChatWorkspace[];
-        removed?: FixtureRemovals;
+        edits?: FixtureWorktreeEdits;
     }
 ): { workspace: ChatWorkspace } | { error: string } {
-    const repository = fixtureFolderGit(folder.path, head, undefined, removed);
+    const repository = fixtureFolderGit(folder.path, head, undefined, edits);
 
     if (!repository.isRepository) return { error: `${folder.path} is not a git repository` };
 
@@ -1733,6 +1789,96 @@ export function withFixtureWorkspace(data: FixtureData, now = Date.now()): Fixtu
         createdAt: ago(30),
         updatedAt: ago(28),
     });
+
+    return data;
+}
+
+export const FIXTURE_LAST_RUN_CHAT_ID = 'c-11';
+export const FIXTURE_LAST_RUN_RUN_ID = 'r-orch-11';
+export const FIXTURE_QUIET_CHAT_ID = 'c-12';
+export const FIXTURE_QUIET_RUN_ID = 'r-orch-12';
+
+/**
+ * Adds to `data` two chats that work in the worktree of `withFixtureWorkspace` and have finished a turn, and gives it back: one whose latest run changed seven files (`lastRun` is the
+ * pair of trees `FIXTURE_RUN_TREES`, so the Last run plate lists `FIXTURE_RUN_FILES`) and one whose latest run changed nothing (no `lastRun`, so no plate). Not in `createFixtureData`, for the
+ * reason `withFixtureFork` gives: two chats more in the car project move the counts and the order other screens' tests read. `withFixtureWorkspace` has to have been applied.
+ */
+export function withFixtureLastRun(data: FixtureData, now = Date.now()): FixtureData {
+    const ago = (minutes: number) => now - minutes * MINUTE;
+    const first = data.chats.find(chat => chat.id === FIXTURE_WORKSPACE_CHAT_ID) as Chat;
+    const orchestrator = data.runs.find(run => run.id === 'r-orch-3') as Run;
+    const chats: Array<{
+        chatId: string;
+        runId: string;
+        title: string;
+        asked: string;
+        said: string;
+        changed: boolean;
+    }> = [
+        {
+            chatId: FIXTURE_LAST_RUN_CHAT_ID,
+            runId: FIXTURE_LAST_RUN_RUN_ID,
+            title: 'Show the weekend surcharge in the form',
+            asked: 'Show the weekend surcharge as its own line in the booking form, and keep the old price helper out of it.',
+            said: 'The form shows the surcharge as its own line. `price.ts` has the rule, a migration adds the column, and the old helper is gone.',
+            changed: true,
+        },
+        {
+            chatId: FIXTURE_QUIET_CHAT_ID,
+            runId: FIXTURE_QUIET_RUN_ID,
+            title: 'Explain the weekend surcharge',
+            asked: 'How is the weekend surcharge worked out?',
+            said: 'It is 15% of the base price for each weekend day of the booking, added in `price.ts`.',
+            changed: false,
+        },
+    ];
+
+    for (const { chatId, runId, title, asked, said, changed } of chats) {
+        const entries: Array<[number, StreamItemBody]> = [
+            [12, { kind: 'user', text: asked }],
+            [10, { kind: 'assistant', done: true, text: said }],
+        ];
+        const items = entries.map(
+            ([minutes, body], index): StreamItem => ({
+                id: `${runId}-${index + 1}`,
+                runId,
+                seq: index + 1,
+                at: ago(minutes),
+                body,
+            })
+        );
+
+        data.items[runId] = items;
+        data.runs.push({
+            id: runId,
+            projectId: orchestrator.projectId,
+            rootRunId: runId,
+            chatId,
+            role: 'orchestrator',
+            name: `Orchestrator ${chatId.slice(2)}`,
+            summary: title,
+            status: 'succeeded',
+            engine: orchestrator.engine,
+            ...(orchestrator.model && { model: orchestrator.model }),
+            result: said,
+            createdAt: ago(12),
+            startedAt: ago(12),
+            finishedAt: ago(10),
+        });
+        data.chats.push({
+            id: chatId,
+            projectId: orchestrator.projectId,
+            title,
+            mode: 'autopilot',
+            engine: orchestrator.engine,
+            ...(orchestrator.model && { model: orchestrator.model }),
+            orchestratorRunId: runId,
+            workspace: structuredClone(first.workspace),
+            ...(changed && { lastRun: { ...FIXTURE_RUN_TREES, seq: items.length, at: ago(10) } }),
+            createdAt: ago(12),
+            updatedAt: ago(10),
+        });
+    }
 
     return data;
 }

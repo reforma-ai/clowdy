@@ -105,6 +105,23 @@
     padding-inline: var(--spacing-6);
 }
 
+/*
+ * The button that discards the file's changes, a button of the header as the copy button is: its place is kept at the end of the header, and it shows while the pointer is over the
+ * header or the focus is in it, as the design system's lists show a row's actions (`data-show` of `ListBox.module.css`, which a header out of a list does not have).
+ */
+.discard {
+    flex-shrink: 0;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--transition-duration-fast) ease;
+}
+
+.header:hover .discard,
+.header:focus-within .discard {
+    opacity: 1;
+    pointer-events: auto;
+}
+
 .body {
     min-width: 0;
 }

@@ -1,26 +1,26 @@
-import { Button } from '@clowdy/components/Button';
 import { For } from '@clowdy/components/For';
+import { GridList, GridListItem, listBoxItemDataShow } from '@clowdy/components/List';
 import { Panel, PanelEmptyRow, PanelHeader } from '@clowdy/components/Panel';
 import { Scrollable } from '@clowdy/components/Scrollable';
 import { Text } from '@clowdy/components/Text';
-import { ArrowLeft, Check, Version } from '@clowdy/icons/14';
+import { Check, Version } from '@clowdy/icons/14';
 import { Github } from '@clowdy/icons/logo';
-import { commitScope } from '@clowdy/protocol';
 
-import { formatFullTime, formatMessageTime } from '../../shared/time';
 import { openEffects, useFolderGit } from '../openWith';
 import { githubLink } from '../openWith/openTarget';
+import { BranchPicker } from './BranchPicker';
 import styles from './ChangesSidebar.module.css';
 import { CommitBox } from './CommitBox';
 import { CreatePullRequest } from './CreatePullRequest';
-import { isCommitScope } from './changeScopes';
+import { DiscardButton } from './DiscardButton';
 import { accessHint, accessHintTitle, aheadBehindCounts, CHANGE_KIND_VIEW, splitPath } from './gitSummary';
 import { LIST_TEXT } from './listState';
+import { MergeBanner, UpdateFromBase } from './MergeBanner';
 import { PullRequestChip } from './PullRequestChip';
 import { RemoteMenu } from './RemoteMenu';
 
-import type { GitChangedFile, GitCommit, GitStatus } from '@clowdy/protocol';
-import type { ReactNode } from 'react';
+import type { GitChangedFile, GitStatus } from '@clowdy/protocol';
+import type { ReactNode, SyntheticEvent } from 'react';
 import type { Place } from '../sidePanel/currentPlace';
 import type { PlaceChanges } from './PlaceChanges';
 
@@ -58,88 +58,90 @@ function SectionHeader({ title, count }: { title: string; count?: number }) {
     );
 }
 
-/** One changed file of the scope: what happened to it, its name with its folder dimmed after it, its lines, and a tick when it is viewed. A press brings its card to the top and opens it. */
-function FileRow({ file, viewed, onOpen }: { file: GitChangedFile; viewed: boolean; onOpen: (path: string) => void }) {
+/** What the row's own controls keep to themselves: a press or a key on them is theirs, and not the row's action too. */
+const ownEvents = {
+    onClick: (event: SyntheticEvent) => event.stopPropagation(),
+    onPointerDown: (event: SyntheticEvent) => event.stopPropagation(),
+    onKeyDown: (event: SyntheticEvent) => event.stopPropagation(),
+};
+
+/**
+ * One changed file of the scope, a row of the design system's list: what happened to it, its name with its folder dimmed after it (the whole path on hover), its lines, and a tick when it is
+ * viewed. Its action (a press, or Enter on the row the arrows reached) brings its card to the top and opens it. A file whose changes can be discarded (`discard`, its uncommitted entry) has
+ * `Discard changes…` at the end of its row, in the place of the tick, while the pointer is over the row or the focus is in it: the row action of the design system's list, as a chat's
+ * row has its own (`listBoxItemDataShow`), reached from the row with the right arrow.
+ */
+function FileRow({
+    file,
+    viewed,
+    model,
+    discard,
+}: {
+    file: GitChangedFile;
+    viewed: boolean;
+    model: PlaceChanges;
+    discard: GitChangedFile | undefined;
+}) {
     const kind = CHANGE_KIND_VIEW[file.kind];
     const { folder, name } = splitPath(file.path);
 
     return (
-        <Button
-            variant="filling"
-            color="secondary"
-            size="xs"
-            className={styles.row}
-            contentClassName={styles.rowContent}
-            tooltip={file.path}
-            tooltipPlacement="left"
-            onPress={() => onOpen(file.path)}
+        <GridListItem
+            id={file.path}
+            textValue={file.path}
+            data-path={file.path}
+            icon={
+                <Text
+                    variant="sm"
+                    weight="medium"
+                    color={kind.color}
+                    className={styles.glyph}
+                    title={kind.label}
+                    aria-label={kind.label}
+                >
+                    {kind.glyph}
+                </Text>
+            }
+            endAffix={
+                <span className={styles.rowEnd}>
+                    {file.additions !== undefined && file.deletions !== undefined && (
+                        <span className={styles.counts}>
+                            <Text variant="sm" color="success">{`+${file.additions}`}</Text>
+                            <Text variant="sm" color="danger">{`−${file.deletions}`}</Text>
+                        </span>
+                    )}
+                    {/* The tick and the button share one place: the tick at rest, the button while the row is aimed at. */}
+                    <span className={styles.mark}>
+                        <span className={styles.tick} data-show={discard ? listBoxItemDataShow.itemRest : undefined}>
+                            {viewed && <Check role="img" title="Viewed" aria-label="Viewed" />}
+                        </span>
+                        {discard && (
+                            // The button is a React child of the row, so its presses and keys would reach the row through the tree too.
+                            <span className={styles.discard} data-show={listBoxItemDataShow.itemBoth} {...ownEvents}>
+                                <DiscardButton model={model} file={discard} />
+                            </span>
+                        )}
+                    </span>
+                </span>
+            }
         >
-            <Text
-                variant="xs"
-                weight="medium"
-                color={kind.color}
-                className={styles.glyph}
-                title={kind.label}
-                aria-label={kind.label}
-            >
-                {kind.glyph}
-            </Text>
-            <span className={styles.fileName}>
-                <Text variant="xs" weight="medium" truncate className={styles.name}>
+            <Text slot="label" className={styles.fileName} title={file.path}>
+                <Text weight="medium" truncate className={styles.name}>
                     {name}
                 </Text>
                 {folder && (
-                    <Text variant="xs" color="secondary" truncate className={styles.folderHint}>
+                    <Text color="secondary" truncate className={styles.folderHint}>
                         {folder.slice(0, -1)}
                     </Text>
                 )}
-            </span>
-            {file.additions !== undefined && file.deletions !== undefined && (
-                <span className={styles.counts}>
-                    <Text variant="xs" color="success">{`+${file.additions}`}</Text>
-                    <Text variant="xs" color="danger">{`−${file.deletions}`}</Text>
-                </span>
-            )}
-            <span className={styles.tick}>{viewed && <Check role="img" title="Viewed" aria-label="Viewed" />}</span>
-        </Button>
-    );
-}
-
-/** One commit of the branch: its message, and under it its short hash and when it was made. A press shows that commit alone; the one that is shown is marked. */
-function CommitRow({ commit, current, onPick }: { commit: GitCommit; current: boolean; onPick: () => void }) {
-    return (
-        <Button
-            variant="filling"
-            color="secondary"
-            size="xs"
-            className={styles.commit}
-            contentClassName={styles.commitContent}
-            isPressed={current}
-            tooltip={`${commit.shortSha} by ${commit.author}`}
-            tooltipPlacement="left"
-            onPress={onPick}
-        >
-            <Text variant="xs" weight="medium" truncate className={styles.subject}>
-                {commit.subject}
             </Text>
-            <span className={styles.commitMeta}>
-                <Text variant="xs" color="secondary" className={styles.sha}>
-                    {commit.shortSha}
-                </Text>
-                <time dateTime={new Date(commit.committedAt).toISOString()} title={formatFullTime(commit.committedAt)}>
-                    <Text variant="xs" color="secondary">
-                        {formatMessageTime(commit.committedAt)}
-                    </Text>
-                </time>
-            </span>
-        </Button>
+        </GridListItem>
     );
 }
 
 /**
  * The sidebar of the tab, at the right of the diffs: the branch the place is on with its base and how far it is from it, the pull request, the files of the scope (a press brings
- * their card up, and the filter above the cards narrows this list too) and the commits of the branch (a press shows one commit alone, and a row above them goes back to all
- * changes). The facts at the top are where the person acts on the branch: the base and how far the branch is from it, the row that says how it stands against its upstream and opens the menu
+ * their card up, and the filter above the cards narrows this list too), and the commit box. The facts at the top show how far the branch is from its base and upstream and open the menu
  * of Fetch, Pull and Push or Publish (`RemoteMenu`), and the pull request as the shared chip, or, while there is none, Create PR (`CreatePullRequest`), which opens GitHub's compare page
  * once the branch is on origin. `toggle` is the button that hides the sidebar, at the end of its header.
  */
@@ -168,18 +170,22 @@ export function ChangesSidebar({
     const files = model.files;
     // Read here, with the list: the rows are drawn by a callback of `For`, which does not follow the model, so a tick that changes reaches them through this component.
     const viewed = model.viewedPaths;
-    const commits = base?.commits ?? [];
-    const onCommit = isCommitScope(model.effectiveScope);
+    // Read here for the same reason: the rows are drawn by a callback, and the files that can be discarded change with the scope and with the uncommitted list.
+    const discardable = model.discardable;
 
     return (
         <Panel side="right" className={styles.sidebar} aria-label="Changes sidebar">
             <PanelHeader>
-                <span className={styles.branch}>
-                    <Version aria-hidden="true" className={styles.branchIcon} />
-                    <Text weight="medium" truncate title={branch}>
-                        {branch ?? 'Changes'}
-                    </Text>
-                </span>
+                {branch !== undefined && status?.isRepository === true && status.head.kind !== 'unborn' ? (
+                    <BranchPicker facts={facts} place={place} label={branch} />
+                ) : (
+                    <span className={styles.branch}>
+                        <Version aria-hidden="true" className={styles.branchIcon} />
+                        <Text weight="medium" truncate title={branch}>
+                            {branch ?? 'Changes'}
+                        </Text>
+                    </span>
+                )}
                 <PanelHeader.Actions>
                     {repositoryLink && (
                         <PanelHeader.Button
@@ -204,6 +210,8 @@ export function ChangesSidebar({
                                 {counts && ` · ${counts}`}
                             </Text>
                         )}
+                        <UpdateFromBase facts={facts} />
+                        <MergeBanner facts={facts} />
                         <RemoteMenu facts={facts} />
                         {pr ? (
                             <PullRequestChip pr={pr} stale={facts.pullRequest.stale} />
@@ -223,68 +231,33 @@ export function ChangesSidebar({
                     </div>
                 )}
 
-                <section className={styles.files} aria-label="Changed files">
+                {/* Focusable from code alone: it takes the focus when a discard took the list's last row (`keepFocusWhenGone`). */}
+                <section className={styles.files} aria-label="Changed files" tabIndex={-1}>
                     <SectionHeader title="Changed files" count={model.changes ? files.length : undefined} />
                     {files.length > 0 ? (
                         <Scrollable className={styles.list} contentClass={styles.rows}>
-                            <For each={[...files]}>
-                                {file => (
-                                    <FileRow
-                                        key={file.path}
-                                        file={file}
-                                        viewed={viewed.has(file.path)}
-                                        onOpen={onOpenFile}
-                                    />
-                                )}
-                            </For>
+                            <GridList aria-label="Changed files" size="sm" onAction={key => onOpenFile(String(key))}>
+                                <For each={[...files]}>
+                                    {file => (
+                                        <FileRow
+                                            key={file.path}
+                                            file={file}
+                                            viewed={viewed.has(file.path)}
+                                            model={model}
+                                            discard={discardable.get(file.path)}
+                                        />
+                                    )}
+                                </For>
+                            </GridList>
                         </Scrollable>
                     ) : (
                         <PanelEmptyRow>{emptyFilesWords(model)}</PanelEmptyRow>
                     )}
                 </section>
 
-                <CommitBox model={model} place={place} projectId={projectId} git={git} />
-
-                {base && (
-                    <section className={styles.commits} aria-label="Committed on branch">
-                        <SectionHeader title="Committed on branch" count={base.ahead} />
-                        {onCommit && (
-                            <Button
-                                variant="filling"
-                                color="secondary"
-                                size="xs"
-                                className={styles.back}
-                                onPress={() => model.setScope('all')}
-                            >
-                                <ArrowLeft aria-hidden="true" />
-                                Back to all changes
-                            </Button>
-                        )}
-                        {commits.length > 0 ? (
-                            <Scrollable className={styles.list} contentClass={styles.rows}>
-                                <For each={commits}>
-                                    {commit => (
-                                        <CommitRow
-                                            key={commit.sha}
-                                            commit={commit}
-                                            current={model.effectiveScope === commitScope(commit.sha)}
-                                            onPick={() => model.pickCommit(commit.sha)}
-                                        />
-                                    )}
-                                </For>
-                                {base.ahead > commits.length && (
-                                    <Text
-                                        variant="xs"
-                                        color="secondary"
-                                        className={styles.more}
-                                    >{`Showing the newest ${commits.length}`}</Text>
-                                )}
-                            </Scrollable>
-                        ) : (
-                            <PanelEmptyRow>No commits on the branch yet</PanelEmptyRow>
-                        )}
-                    </section>
-                )}
+                <div className={styles.commitBox}>
+                    <CommitBox model={model} place={place} projectId={projectId} git={git} />
+                </div>
             </div>
         </Panel>
     );

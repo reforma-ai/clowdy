@@ -1,5 +1,8 @@
 import { MemoryFileSystem } from '@clowdy/file-manager/memory';
 import {
+    branchNameProblem,
+    branchPrefixOf,
+    branchPrefixProblem,
     folderNames,
     isBusyRunStatus,
     isTerminalRunStatus,
@@ -8,6 +11,7 @@ import {
     mainFolder,
     PROTOCOL_VERSION,
     STOPPED_TOOL,
+    turnScopeTrees,
     writesCommitMessages,
 } from '@clowdy/protocol';
 
@@ -20,6 +24,7 @@ import {
     FIXTURE_LIVE_TEXT_ID,
     FIXTURE_LIVE_TOOL_ID,
     FIXTURE_PULL_REQUEST_UNAVAILABLE,
+    FIXTURE_WORKSPACES_ROOT,
     type FixtureData,
     fixtureChatWorkspace,
     fixtureFolderGit,
@@ -34,6 +39,7 @@ import {
 } from './fixtureData';
 import { fixtureFileContents } from './fixtureFiles';
 import { applyFolderSettings } from './fixtureFolderSettings';
+import { type FixtureBranchPlace, type FixtureBranchScript, FixtureGitBranches } from './fixtureGitBranches';
 import { FixtureGitRemote, type FixtureRemotePlace } from './fixtureGitRemote';
 import { FixtureGitWrites, type FixtureGitWritesOptions } from './fixtureGitWrites';
 import { fail, type Outcome, ok } from './fixtureOutcome';
@@ -67,8 +73,11 @@ import type {
     FolderGit,
     FolderId,
     FolderWorktrees,
+    GitBranches,
+    GitChangedFile,
     GitChanges,
     GitCommitResult,
+    GitDiscardResult,
     GitFileSides,
     GitMessage,
     GitPullRequestInfo,
@@ -76,6 +85,8 @@ import type {
     GitRemoteResult,
     GitScope,
     GitStatus,
+    GitSwitchRequest,
+    GitSwitchResult,
     GitViewedMark,
     Health,
     Project,
@@ -112,6 +123,8 @@ export interface FixtureTransportOptions {
     timeline?: boolean;
     /** How a commit and a request for a commit message end (`fixtureGitWrites.ts`): they go through unless a script says otherwise. */
     gitWrites?: FixtureGitWritesOptions;
+    /** What the folder's branches and a switch are like (`fixtureGitBranches.ts`): a plain list and a switch that goes through unless a script says otherwise. */
+    branches?: readonly FixtureBranchScript[];
 }
 
 /** What the fixture keeps of a file: its bytes, and whether a message carries it already. */
@@ -254,12 +267,19 @@ export class FixtureTransport implements Transport {
     readonly #gitWrites: FixtureGitWrites;
     /** Where each place's branch stands against its upstream, which a fetch, a pull, a push and a commit move. */
     readonly #gitRemote: FixtureGitRemote;
+    readonly #branches: FixtureGitBranches;
 
-    constructor({ data = createFixtureData(), timeline = false, gitWrites }: FixtureTransportOptions = {}) {
+    constructor({ data = createFixtureData(), timeline = false, gitWrites, branches }: FixtureTransportOptions = {}) {
         this.#data = data;
         this.#timeline = timeline;
         this.#gitWrites = new FixtureGitWrites(gitWrites);
         this.#gitRemote = new FixtureGitRemote(gitWrites?.remote);
+        this.#branches = new FixtureGitBranches(branches);
+
+        // `&branches=idle`: no run is working, so nothing but the tree stands in the way of a switch.
+        if (this.#branches.idle)
+            for (const run of data.runs) if (!isTerminalRunStatus(run.status)) run.status = 'succeeded';
+
         this.#tasks = new FixtureTasks(data, {
             emit: (projectId, event) => this.#emit(projectId, event),
             id: prefix => this.#id(prefix),
@@ -334,7 +354,7 @@ export class FixtureTransport implements Transport {
                 folder.path,
                 this.#data.git[folder.path],
                 folder.settings?.baseBranch,
-                this.#data.removed?.[folder.path]
+                this.#data.worktreeEdits?.[folder.path]
             )
         );
     }
@@ -349,14 +369,14 @@ export class FixtureTransport implements Transport {
         const upstream = this.#gitRemote.upstreamOf(this.#remotePlace(head, workspace, place));
         const { lastFetchedAt, hasOrigin, head: script } = this.#gitRemote;
 
-        return structuredClone(
-            fixtureGitStatus(head, workspace, this.#gitWrites.committedOf(place.workspaceId ?? ''), {
-                ...(upstream && { upstream }),
-                ...(lastFetchedAt !== undefined && { lastFetchedAt }),
-                ...(!hasOrigin && { origin: false }),
-                ...(script && { head: script }),
-            })
-        );
+        const status = fixtureGitStatus(head, workspace, this.#gitWrites.settledOf(place.workspaceId ?? ''), {
+            ...(upstream && { upstream }),
+            ...(lastFetchedAt !== undefined && { lastFetchedAt }),
+            ...(!hasOrigin && { origin: false }),
+            ...(script && { head: script }),
+        });
+
+        return structuredClone(workspace ? status : this.#branches.dirtied(status));
     }
 
     /** The place as the fixture's remote keeps it: a checkout is level with its upstream, a worktree's branch is not published until a push says so. */
@@ -396,14 +416,84 @@ export class FixtureTransport implements Transport {
         return this.#remote('push', projectId, place);
     }
 
+    updateGit(projectId: ProjectId, place: PlaceRef): Promise<GitRemoteResult> {
+        return this.#remote('update', projectId, place);
+    }
+
+    abortGit(projectId: ProjectId, place: PlaceRef): Promise<GitRemoteResult> {
+        return this.#remote('abort', projectId, place);
+    }
+
+    /** The place as the fixture's branches keep it: the folder's head, or the worktree's branch. */
+    #branchPlace(
+        head: { branch?: string; detached?: true } | undefined,
+        workspace: Pick<ChatWorkspace, 'branch'> | undefined,
+        place: PlaceRef
+    ): FixtureBranchPlace {
+        return {
+            key: `${place.folderId}/${place.workspaceId ?? ''}`,
+            branch: head?.detached ? undefined : head?.branch,
+            worktree: workspace !== undefined,
+            ...(workspace && { worktreeBranch: workspace.branch ?? 'clowdy/ab12cd34' }),
+        };
+    }
+
+    async getGitBranches(projectId: ProjectId, place: PlaceRef): Promise<GitBranches> {
+        const { head, workspace } = this.#gitPlace(projectId, place);
+
+        if (!head?.branch) return { isRepository: false };
+
+        return structuredClone(this.#branches.list(this.#branchPlace(head, workspace, place)));
+    }
+
+    async switchGitBranch(
+        projectId: ProjectId,
+        place: PlaceRef,
+        branch: string,
+        create?: GitSwitchRequest['create']
+    ): Promise<GitSwitchResult> {
+        const { folder, head, workspace } = this.#gitPlace(projectId, place);
+
+        if (!head?.branch) throw new TransportError('The folder is not the root of a git repository', 400);
+
+        const answer = structuredClone(
+            await this.#branches.switch(this.#branchPlace(head, workspace, place), {
+                branch,
+                ...(create && { create }),
+            })
+        );
+
+        // The folder's checkout is on the branch from now on, which every read of its head says.
+        if (answer.head.kind === 'branch')
+            this.#data.git[folder.path] = {
+                ...(head.remoteUrl !== undefined && { remoteUrl: head.remoteUrl }),
+                branch: answer.head.name,
+            };
+
+        return answer;
+    }
+
     async getGitChanges(projectId: ProjectId, place: PlaceRef, scope: GitScope): Promise<GitChanges> {
         const { head, workspace } = this.#gitPlace(projectId, place);
-        const changes = fixtureGitChanges(
+        const committed = this.#gitWrites.committedOf(place.workspaceId ?? '');
+        // A checkout that has uncommitted files (`&branches=dirty`) has the worktree's, in the scopes that list them.
+        const dirtyCheckout =
+            workspace === undefined && this.#branches.dirty && (scope === 'all' || scope === 'uncommitted');
+        const found = fixtureGitChanges(
             head,
-            workspace !== undefined,
-            scope,
-            this.#gitWrites.committedOf(place.workspaceId ?? '')
+            workspace !== undefined || dirtyCheckout,
+            dirtyCheckout ? 'uncommitted' : scope,
+            committed,
+            this.#gitWrites.discardedOf(place.workspaceId ?? '')
         );
+        const changes =
+            dirtyCheckout && found?.isRepository
+                ? { ...found, scope, ...(scope === 'all' && { baseState: 'ready' as const }) }
+                : found;
+
+        // A run whose trees git has pruned is `unavailable`, a commit the repository does not have is `not_found`.
+        if (!changes && turnScopeTrees(scope))
+            throw new TransportError('The changes of that run are no longer in the repository', 503);
 
         if (!changes) throw new TransportError(`Commit ${scope.slice('commit:'.length)} does not exist`, 404);
 
@@ -429,7 +519,7 @@ export class FixtureTransport implements Transport {
         if (from !== undefined && !fixtureHasCommit(from))
             throw new TransportError(`Commit ${from} does not exist`, 404);
 
-        const sides = workspace && fixtureGitFile(scope, path);
+        const sides = (workspace !== undefined || this.#branches.dirty) && fixtureGitFile(scope, path);
 
         if (!sides) throw new TransportError(`Changed file ${path} does not exist`, 404);
 
@@ -488,7 +578,20 @@ export class FixtureTransport implements Transport {
         return kept;
     }
 
-    async commitGit(projectId: ProjectId, place: PlaceRef, paths: string[], message: string): Promise<GitCommitResult> {
+    async commitGit(
+        projectId: ProjectId,
+        place: PlaceRef,
+        paths: string[],
+        message: string,
+        options?: { conclude?: true }
+    ): Promise<GitCommitResult> {
+        if (options?.conclude) {
+            if (message.trim() === '') throw new TransportError('Write a message for the commit', 400);
+
+            const subject = message.trim().split('\n')[0]!.trim();
+
+            return { sha: 'a'.repeat(40), shortSha: 'aaaaaaa', subject };
+        }
         const committed = structuredClone(
             await this.#gitWrites.commit(place.workspaceId ?? '', this.#uncommitted(projectId, place), paths, message)
         );
@@ -500,6 +603,21 @@ export class FixtureTransport implements Transport {
         return committed;
     }
 
+    async discardGit(projectId: ProjectId, place: PlaceRef, paths: string[]): Promise<GitDiscardResult> {
+        const { head } = this.#gitPlace(projectId, place);
+
+        if (!head?.branch) throw new TransportError('The folder is not the root of a git repository', 400);
+
+        return structuredClone(
+            await this.#gitWrites.discard(
+                place.workspaceId ?? '',
+                projectId,
+                this.#uncommittedFiles(projectId, place),
+                paths
+            )
+        );
+    }
+
     async generateGitMessage(projectId: ProjectId, place: PlaceRef, paths: string[]): Promise<GitMessage> {
         // The daemon asks the agents' settings; so does the fixture, of the agents it lists.
         if (!this.#data.agents.some(writesCommitMessages)) throw new TransportError("Couldn't write the message", 400);
@@ -509,17 +627,23 @@ export class FixtureTransport implements Transport {
         );
     }
 
-    /** The paths the place's uncommitted changes list now (the fixture's checkout is clean; the worktree has files, less what was committed). */
+    /** The paths the place's uncommitted changes list now (the fixture's checkout is clean; the worktree has files, less what was committed or discarded). */
     #uncommitted(projectId: ProjectId, place: PlaceRef): string[] {
+        return this.#uncommittedFiles(projectId, place).map(file => file.path);
+    }
+
+    /** The files the place's uncommitted changes list now. */
+    #uncommittedFiles(projectId: ProjectId, place: PlaceRef): GitChangedFile[] {
         const { head, workspace } = this.#gitPlace(projectId, place);
         const changes = fixtureGitChanges(
             head,
             workspace !== undefined,
             'uncommitted',
-            this.#gitWrites.committedOf(place.workspaceId ?? '')
+            this.#gitWrites.committedOf(place.workspaceId ?? ''),
+            this.#gitWrites.discardedOf(place.workspaceId ?? '')
         );
 
-        return changes?.isRepository ? changes.files.map(file => file.path) : [];
+        return changes?.isRepository ? changes.files : [];
     }
 
     async getGitPullRequest(projectId: ProjectId, place: PlaceRef): Promise<GitPullRequestInfo> {
@@ -572,6 +696,53 @@ export class FixtureTransport implements Transport {
         };
     }
 
+    #worktreeEdits(path: string) {
+        const edits = (this.#data.worktreeEdits ??= {});
+
+        return (edits[path] ??= { created: [], removed: [], deleted: [], kept: [] });
+    }
+
+    #createWorktree(command: Extract<CommandInput, { type: 'workspace.create' }>): Outcome {
+        const project = this.#data.projects.find(candidate => candidate.id === command.projectId);
+
+        if (!project) return fail('not_found', `Project ${command.projectId} does not exist`);
+
+        const problem = branchPrefixProblem(command.branchPrefix) ?? branchNameProblem(command.branchName);
+
+        if (problem) return fail('invalid', problem);
+
+        const folder = project.folders.find(candidate => candidate.id === command.folderId);
+
+        if (!folder) return fail('invalid', `Folder ${command.folderId} does not belong to project ${project.id}`);
+
+        const group = fixtureProjectWorktrees(project, this.#data).find(candidate => candidate.folderId === folder.id);
+        const edits = this.#worktreeEdits(folder.path);
+        const git = fixtureFolderGit(folder.path, this.#data.git[folder.path], folder.settings?.baseBranch, edits);
+
+        if (!git.isRepository)
+            return fail('invalid', 'A worktree needs the root of a git repository, and this folder is not one');
+
+        const branch = `${branchPrefixOf(command.branchPrefix)}/${command.branchName}`;
+
+        if (
+            group?.worktrees.some(worktree => worktree.branch === branch) ||
+            git.branches.some(candidate => !candidate.remote && candidate.name === branch)
+        )
+            return fail('conflict', `The branch name ${branch} is taken`);
+
+        const id = this.#id('wks');
+        const path = `${FIXTURE_WORKSPACES_ROOT}/${id}/${group?.name ?? 'folder'}`;
+
+        edits.deleted = edits.deleted.filter(name => name !== branch);
+        edits.created.push({ path, branch });
+        this.#opened.set(id, {
+            projectId: project.id,
+            workspace: { id, path, branch, folderId: folder.id, managed: false, ready: true },
+        });
+
+        return ok({ path, branch });
+    }
+
     /**
      * `workspace.remove` as the daemon answers it, from what `getProjectWorktrees` describes: a worktree the folder's repository lists goes, and the reads then answer as if git no
      * longer had it (`FixtureData.removed`). Refused, in the daemon's words, for the folder's own checkout, a locked worktree, one a chat works in and a changed tree without
@@ -616,14 +787,12 @@ export class FixtureTransport implements Transport {
             );
         }
 
-        const removals = data.removed?.[folder.path] ?? { worktrees: [], deleted: [], kept: [] };
+        const edits = this.#worktreeEdits(folder.path);
         const deleted = command.deleteBranch === true && worktree.branch !== undefined;
 
-        removals.worktrees.push(worktree.path);
+        edits.removed.push(worktree.path);
 
-        if (worktree.branch !== undefined) (deleted ? removals.deleted : removals.kept).push(worktree.branch);
-
-        data.removed = { ...data.removed, [folder.path]: removals };
+        if (worktree.branch !== undefined) (deleted ? edits.deleted : edits.kept).push(worktree.branch);
 
         for (const [id, opened] of this.#opened) {
             if (opened.workspace.path === worktree.path) this.#opened.delete(id);
@@ -677,7 +846,11 @@ export class FixtureTransport implements Transport {
 
     async command(command: CommandInput): Promise<CommandResult> {
         const requestId = crypto.randomUUID();
-        const outcome = this.#apply(command);
+        // A chat on a branch of the folder's checkout waits for the switch, as the daemon's does (`&branches=slow` makes it take a while).
+        const outcome =
+            command.type === 'chat.create' && command.workspace?.mode === 'main'
+                ? await this.#createOnBranch(command, command.workspace.branch)
+                : this.#apply(command);
 
         return outcome.ok
             ? { ok: true, requestId, data: outcome.data }
@@ -691,6 +864,48 @@ export class FixtureTransport implements Transport {
                 : this.#data.chats.find(chat => chat.id === target.chatId)?.orchestratorRunId;
 
         return structuredClone((runId ? (this.#data.items[runId] ?? []) : []).filter(item => item.seq > afterSeq));
+    }
+
+    /**
+     * `chat.create` with `{ mode: 'main', branch }`, as the daemon answers it: the agent and the folder are judged first, then the folder's checkout is switched with the rules of the
+     * Changes sidebar's switch (`switchGitBranch`: the same refusals, in the same words, as `conflict` with `details.hint`), and only then is the chat made, as the folder's own checkout
+     * with no worktree; a refusal makes no chat. The answer carries the switch's `warning` when it had one.
+     */
+    async #createOnBranch(command: Extract<CommandInput, { type: 'chat.create' }>, branch: string): Promise<Outcome> {
+        const project = this.#data.projects.find(candidate => candidate.id === command.projectId);
+
+        if (!project) return fail('not_found', `Project ${command.projectId} does not exist`);
+
+        const refused = this.#refuseEngine(command.engine);
+
+        if (refused) return refused;
+
+        const folder =
+            command.folderId === undefined
+                ? mainFolder(project)
+                : project.folders.find(candidate => candidate.id === command.folderId);
+
+        if (!folder)
+            return fail('invalid', `Folder ${command.folderId} does not belong to project ${command.projectId}`);
+
+        let warning: string | undefined;
+
+        try {
+            ({ warning } = await this.switchGitBranch(project.id, { folderId: folder.id }, branch));
+        } catch (error) {
+            if (!(error instanceof TransportError)) throw error;
+
+            return fail(
+                error.status === 409 ? 'conflict' : 'invalid',
+                error.message,
+                error.hint === undefined ? undefined : { hint: error.hint }
+            );
+        }
+
+        const { workspace: _branch, ...own } = command;
+        const made = this.#apply(own);
+
+        return made.ok && warning !== undefined ? ok({ ...(made.data as object), warning }) : made;
     }
 
     async getTaskDetail(taskId: TaskId): Promise<TaskDetail> {
@@ -1430,7 +1645,7 @@ export class FixtureTransport implements Transport {
                         chatId: '',
                         head: data.git[folder.path],
                         known,
-                        removed: data.removed?.[folder.path],
+                        edits: data.worktreeEdits?.[folder.path],
                     }
                 );
 
@@ -1445,6 +1660,8 @@ export class FixtureTransport implements Transport {
                 // Like the daemon: `{ workspace }`.
                 return ok({ workspace });
             }
+            case 'workspace.create':
+                return this.#createWorktree(command);
             case 'workspace.remove':
                 return this.#removeWorktree(command);
             case 'chat.create': {
@@ -1470,7 +1687,8 @@ export class FixtureTransport implements Transport {
                 let workspace: Chat['workspace'];
 
                 // Like the daemon: a worktree of the chat's folder (the main one when none is named), refused where the folder is no repository, the base is no ref or the path is no worktree.
-                if (command.workspace && project) {
+                // The folder's own checkout on a branch has no worktree and is `#createOnBranch`'s.
+                if (command.workspace && command.workspace.mode !== 'main' && project) {
                     const folder =
                         project.folders.find(candidate => candidate.id === command.folderId) ?? mainFolder(project);
                     const made = fixtureChatWorkspace(command.workspace, {
@@ -1478,8 +1696,11 @@ export class FixtureTransport implements Transport {
                         folder,
                         chatId: id,
                         head: data.git[folder.path],
-                        known: data.chats.flatMap(chat => (chat.workspace ? [chat.workspace] : [])),
-                        removed: data.removed?.[folder.path],
+                        known: [
+                            ...data.chats.flatMap(chat => (chat.workspace ? [chat.workspace] : [])),
+                            ...[...this.#opened.values()].map(entry => entry.workspace),
+                        ],
+                        edits: data.worktreeEdits?.[folder.path],
                     });
 
                     if ('error' in made) return fail('invalid', made.error);

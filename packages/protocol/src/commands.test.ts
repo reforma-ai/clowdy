@@ -178,6 +178,37 @@ describe('chat.create with a new worktree', () => {
     });
 });
 
+describe('chat.create in the checkout of the folder on a branch', () => {
+    const create = (workspace: unknown) => ({ ...base, type: 'chat.create', projectId: 'p1', workspace });
+
+    test('takes the branch the checkout is to be on', () => {
+        expect(commandSchema.parse(create({ mode: 'main', branch: 'feature/search' }))).toMatchObject({
+            workspace: { mode: 'main', branch: 'feature/search' },
+        });
+    });
+
+    test('needs a branch, and leaves what is a name to the daemon so a refusal can say which rule', () => {
+        expect(commandSchema.safeParse(create({ mode: 'main' })).success).toBe(false);
+        expect(commandSchema.safeParse(create({ mode: 'main', branch: 'has a space' })).success).toBe(true);
+        expect(commandSchema.safeParse(create({ mode: 'main', branch: 'x'.repeat(1001) })).success).toBe(false);
+    });
+
+    test('has nothing of a worktree: a field of the other choices is refused', () => {
+        expect(commandSchema.safeParse(create({ mode: 'main', branch: 'dev', base: 'main' })).success).toBe(false);
+        expect(commandSchema.safeParse(create({ mode: 'main', branch: 'dev', branchPrefix: 'max' })).success).toBe(
+            false
+        );
+        expect(commandSchema.safeParse(create({ mode: 'new', branch: 'dev' })).success).toBe(false);
+        expect(commandSchema.safeParse(create({ mode: 'existing', path: '/work/tree', branch: 'dev' })).success).toBe(
+            false
+        );
+    });
+
+    test('a chat with no choice is still the folder as it is', () => {
+        expect(commandSchema.safeParse({ ...base, type: 'chat.create', projectId: 'p1' }).success).toBe(true);
+    });
+});
+
 describe('workspace.open', () => {
     const open = (fields: Record<string, unknown>) => ({ ...base, type: 'workspace.open', projectId: 'p1', ...fields });
 

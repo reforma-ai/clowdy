@@ -1,8 +1,9 @@
-import { commitScope } from '@clowdy/protocol';
+import { commitScope, turnScopeTrees } from '@clowdy/protocol';
 import { makeAutoObservable, observable, runInAction } from 'mobx';
 
 import { compileChangeFilter } from './changeFilter';
 import { isCommitScope, usableScope } from './changeScopes';
+import { discardableFiles } from './discardRules';
 import { SidesCache, type SidesRequest } from './fileSides';
 import { Fact, type PlaceFacts, placeRef } from './gitFacts';
 import { ViewedMarks, type ViewedTransport } from './viewedMarks';
@@ -38,6 +39,14 @@ export class PlaceChanges {
     readonly folded = observable.set<string>();
     /** The paths of viewed files whose card the person opened: a viewed card is shut until they do. */
     readonly openedViewed = observable.set<string>();
+    /** The scope of the open chat's latest run (`turnScope`), which the tab is told (`setRun`) and the scope menu offers as `Last run`; none while the chat has no run that changed files. */
+    runScope: GitScope | undefined = undefined;
+    /** The chat `runScope` is the run of. */
+    #runChatId: string | undefined;
+    /** The person chose the run's scope, so the tab follows the chat's run: a newer run replaces it. */
+    followsRun = false;
+    /** A file a press on the last run plate asked to be brought up, once the list that has it is read (`ChangesView`). */
+    revealRequest: string | undefined = undefined;
     /** The files' texts. */
     readonly sides: SidesCache;
     /** The files marked as viewed, and what is on its way to the daemon about them: not the texts' business, so it lives beside the cache and not in it. */
@@ -74,9 +83,9 @@ export class PlaceChanges {
         return this.facts.base;
     }
 
-    /** The scope that is read: the one chosen, except `branch` where there is no base to count it against. */
+    /** The scope that is read: the open chat's run while the person follows it, else the one chosen, except `branch` where there is no base to count it against. */
     get effectiveScope(): GitScope {
-        return usableScope(this.scope, this.base);
+        return this.followsRun && this.runScope ? this.runScope : usableScope(this.scope, this.base);
     }
 
     /** The fact of the scope that is read: its last list, and how the reads of it have gone. */
@@ -99,6 +108,15 @@ export class PlaceChanges {
         const { value } = this.#listOf('uncommitted');
 
         return value?.isRepository === true ? value : undefined;
+    }
+
+    /**
+     * The files whose changes can be discarded from the scope that is shown, by path: the place's uncommitted files in `all` and `uncommitted`, and none in the branch or a commit (`discardableFiles`).
+     * What each maps to is the file's uncommitted entry, which is what a discard acts on and the dialog speaks of. None while the branch is being changed.
+     */
+    get discardable(): ReadonlyMap<string, GitChangedFile> {
+        // While the branch is being changed what is uncommitted is in motion: nothing is offered until the list is read again.
+        return this.facts.switching ? new Map() : discardableFiles(this.effectiveScope, this.uncommitted);
     }
 
     /** Whether the place is a repository: the status says it, and so does a list that was read. `undefined` until one has answered. */
@@ -234,12 +252,16 @@ export class PlaceChanges {
         return files.length > 0 && files.every(file => this.isFolded(file.path));
     }
 
-    /** No card of the list is shut. */
-    get noneFolded(): boolean {
-        return !(this.changes?.files ?? []).some(file => this.isFolded(file.path));
-    }
-
+    /** The scope the person picked in the menu. The open chat's run (the one entry of the menu that is no choice of `scope`) is followed, so a newer run of the chat replaces it. */
     setScope(scope: GitScope): void {
+        if (turnScopeTrees(scope)) {
+            this.followsRun = this.runScope === scope;
+
+            return;
+        }
+
+        this.followsRun = false;
+        this.revealRequest = undefined;
         this.scope = scope;
     }
 
@@ -248,6 +270,34 @@ export class PlaceChanges {
         const scope = commitScope(sha);
 
         this.scope = this.effectiveScope === scope ? 'all' : scope;
+        this.followsRun = false;
+        this.revealRequest = undefined;
+    }
+
+    /**
+     * Tells the tab which chat is open and the scope of that chat's latest run (none when it changed no file). The tab is the place's, which several chats share, so a run is the open
+     * chat's alone: another chat that is opened is not shown the last one's run, and the choice of following it goes with the chat.
+     */
+    setRun(chatId: string | undefined, scope: GitScope | undefined): void {
+        if (chatId !== this.#runChatId) this.followsRun = false;
+
+        this.#runChatId = chatId;
+        this.runScope = scope;
+    }
+
+    /**
+     * Shows what the chat's latest run changed, and asks for one of its files to be brought up when the list has it (a press on a row of the last run plate): the run is followed, and
+     * `ChangesView` opens the card and scrolls to it once the list of the run is read.
+     */
+    showRun(chatId: string, scope: GitScope, path?: string): void {
+        this.setRun(chatId, scope);
+        this.followsRun = true;
+        this.revealRequest = path;
+    }
+
+    /** The request of `showRun` is answered or no longer wanted. */
+    clearRevealRequest(): void {
+        this.revealRequest = undefined;
     }
 
     setFilter(filter: string): void {

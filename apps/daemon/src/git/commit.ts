@@ -58,7 +58,7 @@ export function shownLine(line: string): string {
  * The first line of what git and its hooks printed that says what went wrong: the line that names the signing key when there is one, else git's own `fatal:` or `error:` line, else
  * the first line of what was printed on its error stream (a hook's), else of its output. One line, cut, without colour codes and without a credential in an address: never the whole of it, since a hook may print anything.
  */
-export function failureLine(stderr: string, stdout: string): string {
+export function failureLine(stderr: string, stdout: string, fallback = 'git could not make the commit'): string {
     const printed = printedLines(stderr);
     // The line that names the signing key comes first: git adds its own `fatal: failed to write commit object` after what the signing program said.
     const line =
@@ -66,7 +66,7 @@ export function failureLine(stderr: string, stdout: string): string {
         printed.find(candidate => /^(?:fatal|error):/i.test(candidate)) ??
         printed[0] ??
         printedLines(stdout)[0] ??
-        'git could not make the commit';
+        fallback;
 
     return shownLine(line);
 }
@@ -103,7 +103,7 @@ export class GitWrites {
      * cherry-pick or a revert in progress and a file with merge conflicts are refused (a partial commit would settle what the person has not looked at), and git's own refusal is the
      * error, as one line (`failureLine`). A commit that was refused takes back what the add staged: a path that was staged before the add stays staged as the person left it.
      */
-    async commit(place: Place, request: Pick<GitCommitRequest, 'paths' | 'message'>): Promise<GitCommitResult> {
+    async commit(place: Place, request: Pick<GitCommitRequest, 'paths' | 'message' | 'conclude'>): Promise<GitCommitResult> {
         const { message } = request;
 
         if (typeof message !== 'string' || message.trim() === '') throw invalid('Write a message for the commit');
@@ -112,6 +112,8 @@ export class GitWrites {
             throw invalid(`The message is over ${MAX_GIT_MESSAGE_CHARS} characters`);
 
         if (message.includes('\0')) throw invalid('The message has a character that cannot be in a commit');
+
+        if (request.conclude) return this.#conclude(place, message);
 
         // Judged and written on one line, so a second commit of the place reads what the first one left.
         return exclusive(this.#store, writeLine(place), this.#stopper.signal, async () => {
@@ -188,6 +190,41 @@ export class GitWrites {
         );
 
         return new Set(read.ok ? read.stdout.split('\0').filter(path => path !== '') : paths);
+    }
+
+    /**
+     * Finishes a merge that has no conflict left: `git commit -m <message>` of the index as it is, not limited to paths. A cherry-pick or a revert, a tree that is not merging, and a path that is
+     * still unmerged are refused, and nothing is committed.
+     */
+    #conclude(place: Place, message: string): Promise<GitCommitResult> {
+        return exclusive(this.#store, writeLine(place), this.#stopper.signal, async () => {
+            const cwd = place.path;
+            const [merging, cherry, revert, unmerged] = await Promise.all([
+                gitRead(cwd, ['rev-parse', '-q', '--verify', 'MERGE_HEAD']),
+                gitRead(cwd, ['rev-parse', '-q', '--verify', 'CHERRY_PICK_HEAD']),
+                gitRead(cwd, ['rev-parse', '-q', '--verify', 'REVERT_HEAD']),
+                gitRead(cwd, ['diff', '--name-only', '--diff-filter=U', '-z'], { parsed: true }),
+            ]);
+
+            if (cherry.ok || revert.ok)
+                throw conflict('A cherry-pick or revert is in progress here, finish it first');
+
+            if (!merging.ok) throw invalid('No merge to commit');
+
+            const conflicted = unmerged.ok ? unmerged.stdout.split('\0').filter(path => path !== '') : [];
+
+            if (conflicted.length > 0) throw conflict('Resolve the conflicts first');
+
+            const env = await this.environment.of(cwd);
+
+            this.#check(await this.#git(cwd, env, ['commit', '-m', message]));
+
+            const sha = await gitLine(cwd, ['rev-parse', 'HEAD']);
+
+            if (!sha) throw unavailable('The commit was made, but git did not say which');
+
+            return { sha, shortSha: sha.slice(0, 7), subject: message.trim().split('\n')[0]!.trim() };
+        });
     }
 
     /** A commit of some paths cannot be made in the middle of a merge (git says `cannot do a partial commit during a merge`), and a file with conflicts is not the person's to commit as it is. */

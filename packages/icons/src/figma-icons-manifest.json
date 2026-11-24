@@ -2226,12 +2226,6 @@
                     "name": "collapse-spoiler",
                     "sourceHash": "aecaac8c3b5c3c079774433cd6a276902c2fa3ff5e4b3779d1fe2420543d640a"
                 },
-                "9643:118169": {
-                    "file": "collapse.svg",
-                    "fingerprint": "0b647007ae4feb469b5e3316f70ba32f7c358cafaacaa2bcb119f25aeab87b77",
-                    "name": "collapse",
-                    "sourceHash": "e17d6eaed0e57ed77a7fc83287e310873f99d358734f4e9d0f1fc204ff10b7a6"
-                },
                 "9876:122942": {
                     "file": "lightbulb.svg",
                     "fingerprint": "63d587eeac8a8f2ee6aaf4323952c1f3418754cf9448f628ffc955942458a6f2",
@@ -2456,9 +2450,9 @@
                 },
                 "11881:142737": {
                     "file": "version-plus.svg",
-                    "fingerprint": "11af8ef9f5aada763c19f82ca78f7689269cf94ab8b4185d2d67d560f30700e3",
+                    "fingerprint": "1db33cd9e40dc75c2f90957ccfc4b13977055fbfb9e70aeeab5c22f17fe2498f",
                     "name": "version-plus",
-                    "sourceHash": "e13be7ab926ec53b056e9b9288055e5b6ac0be3115b1c916c5bc4929c2603cbd"
+                    "sourceHash": "8eb24bfb1dd32bb0ae157fac5dd12274c848a17b8c30a5ec217fcfdfd16ad7db"
                 },
                 "11881:142753": {
                     "file": "version-warn..svg",
@@ -2592,11 +2586,29 @@
                     "name": "сontext-usage",
                     "sourceHash": "b4fd8c57af772552adddcc774fc17416a244f7929db68b530e64b60b63886069"
                 },
+                "9643:118169": {
+                    "file": "collapse.svg",
+                    "fingerprint": "0b647007ae4feb469b5e3316f70ba32f7c358cafaacaa2bcb119f25aeab87b77",
+                    "name": "collapse",
+                    "sourceHash": "e17d6eaed0e57ed77a7fc83287e310873f99d358734f4e9d0f1fc204ff10b7a6"
+                },
                 "15007:147496": {
                     "file": "sort.svg",
                     "fingerprint": "28193a2d9adcdeb017baf834c9d94ba34633b48487d45deb75cddf76efc7a68e",
                     "name": "sort",
                     "sourceHash": "f2fe095e01f671e4ddafb9d90eed916518e0aa8bb669dd6c75c3e56a9053968d"
+                },
+                "16608:129151": {
+                    "file": "expand-all.svg",
+                    "fingerprint": "b8361cfceb875f308cf5a1243f7b0c9b48f1b052d3adf86f8e901071a43f0ceb",
+                    "name": "expand-all",
+                    "sourceHash": "524ed0384e8a89873209afee4593c6ecdee808197f8363671c9ac963f9045e9c"
+                },
+                "16608:129156": {
+                    "file": "collapse-all.svg",
+                    "fingerprint": "d47351ad4bce85c9515763d502763da667ff651746b9535af4ab0b5ffbd34fa6",
+                    "name": "collapse-all",
+                    "sourceHash": "0814d82c5924642198843b36c3103c6bc0f6d2334092643debb39a36a8129897"
                 },
                 "15255:9737": {
                     "file": "dimension.svg",
@@ -2723,24 +2735,6 @@
                     "fingerprint": "986de09bbb460f69dcfd9b39e43754f90396e08139b432e97593a14c77c47619",
                     "name": "add-folder",
                     "sourceHash": "359be41615cf058d034169492cbd0c78f91a50079c2d00735897ec378f90f8ce"
-                },
-                "16554:129132": {
-                    "file": "small-panel.svg",
-                    "fingerprint": "0c34fb60cdf63cb82c848295263ed32f742c8b203a07f90eaa9c7ef9490181d8",
-                    "name": "small-panel",
-                    "sourceHash": "7169e5585b893da16d7d1ac1f4c82899ab16bdbf8fefab0deb6654c26e781125"
-                },
-                "16554:129138": {
-                    "file": "large-panel.svg",
-                    "fingerprint": "9e3a9190823c60d101dd206270e28e14660488a703c067fb4c3ea5cb56b84f9e",
-                    "name": "large-panel",
-                    "sourceHash": "d085b1482586270647817504dbc46443e1bc94051d4cdb101fbfccd250cfc9af"
-                },
-                "16555:129142": {
-                    "file": "no-panel.svg",
-                    "fingerprint": "e8af934c71e4f970ea4fb1a25a68937be86c64671938dcdc347772758996102d",
-                    "name": "no-panel",
-                    "sourceHash": "26b89b07a4ae9ebe60414f7737385597d7074bd91fc3deef58f1331fd7e32a4b"
                 }
             },
             "nodeId": "12522:118247"

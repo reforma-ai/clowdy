@@ -1,11 +1,12 @@
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 
+import { executeCommandAsync } from '../src/commands';
 import { getChat } from '../src/db/chats';
 import { cleanTempDirs, git, makeRepo, ScriptEngine, scriptEngines, startHarness, tempDir, waitFor } from './helpers';
 
-import type { Chat, FolderWorktrees, Project, Run, WorktreeInfo } from '@clowdy/protocol';
+import type { Chat, CommandResult, FolderWorktrees, Project, Run, WorktreeInfo } from '@clowdy/protocol';
 import type { Harness, Script } from './helpers';
 
 afterAll(cleanTempDirs);
@@ -103,6 +104,84 @@ function commit(path: string, file = 'work.txt', message = 'Work'): void {
     git(path, 'add', file);
     git(path, 'commit', '-q', '-m', message);
 }
+
+test('creates a named checkout over HTTP, using the configured base and sharing it with a later chat', async () => {
+    const { h, repo, project, at, rows, start } = await setup();
+    const folderId = project.folders[0].id;
+
+    git(repo, 'checkout', '-b', 'next');
+    commit(repo, 'next-only');
+    h.ok('project.updateFolder', { projectId: project.id, folderId, settings: { baseBranch: 'next' } });
+
+    const create = async (requestId: string, branchName: string, folder = folderId) => {
+        const response = await h.fetch('/v1/commands', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+                requestId,
+                type: 'workspace.create',
+                projectId: project.id,
+                folderId: folder,
+                branchName,
+            }),
+        });
+
+        return (await response.json()) as CommandResult<{ path: string; branch: string }>;
+    };
+
+    const [first, second] = await Promise.all([create('create-next-1', 'next'), create('create-next-2', 'next')]);
+    const created = first.ok ? first : second;
+    const duplicate = first.ok ? second : first;
+
+    expect(duplicate).toMatchObject({ ok: false, error: { code: 'conflict' } });
+    if (!created.ok) throw new Error(created.error.message);
+
+    const { path, branch } = created.data;
+
+    expect(branch).toBe('clowdy/next');
+    expect(await create(created.requestId, 'next')).toEqual(created);
+    expect(await create('bad-name', '../next')).toMatchObject({ ok: false, error: { code: 'invalid' } });
+    expect(await create('bad-folder', 'next', 'another-folder')).toMatchObject({
+        ok: false,
+        error: { code: 'invalid' },
+    });
+    expect(await rows()).toHaveLength(2);
+    expect(git(repo, 'branch', '--show-current')).toBe('next');
+    expect(git(path, 'branch', '--show-current')).toBe(branch);
+    expect(git(path, 'rev-parse', 'HEAD')).toBe(git(repo, 'rev-parse', 'HEAD'));
+    expect(await at(path)).toMatchObject({ branch, chats: [] });
+
+    const chat = await start({ mode: 'existing', path });
+
+    expect(chat.workspace).toMatchObject({ path: real(path), branch, ready: true });
+    expect((await at(path)).chats.map(chat => chat.id)).toEqual([chat.id]);
+});
+
+test.skipIf(process.platform === 'win32')(
+    'reports a completed checkout with a warning when its hook fails',
+    async () => {
+        const { h, repo, project, rows } = await setup();
+        const hook = join(repo, '.git', 'hooks', 'post-checkout');
+
+        writeFileSync(hook, '#!/bin/sh\necho "Setup hook failed" >&2\nexit 3\n');
+        chmodSync(hook, 0o755);
+
+        const result = await executeCommandAsync(h.daemon.services, {
+            requestId: 'create-with-failing-hook',
+            type: 'workspace.create',
+            projectId: project.id,
+            folderId: project.folders[0].id,
+            branchName: 'hook',
+            branchPrefix: 'team',
+        });
+
+        expect(result).toMatchObject({
+            ok: true,
+            data: { branch: 'team/hook', warning: expect.stringContaining('Setup hook failed') },
+        });
+        expect(await rows()).toContainEqual(expect.objectContaining({ branch: 'team/hook', missing: false }));
+    }
+);
 
 describe('GET /v1/projects/:id/worktrees', () => {
     test("lists the folder's own checkout first, with its branch, clean, and nothing to remove or to compare with a base", async () => {

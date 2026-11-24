@@ -45,7 +45,7 @@ export function StarCard() {
             </Text>
             <Button
                 variant="filled"
-                color="primary"
+                color="contrast"
                 size="sm"
                 className={styles.star}
                 onPress={() => {

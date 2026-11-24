@@ -3,7 +3,7 @@ import { afterAll, describe, expect, test } from 'bun:test';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { clearChatFolders, getChat, upsertChat } from '../src/db/chats';
+import { clearChatFolders, getChat, getChatLastRun, setChatLastRun, upsertChat } from '../src/db/chats';
 import { openDatabase } from '../src/db/connection';
 import { getItem, itemRef, setItemRef } from '../src/db/items';
 import { MIGRATIONS } from '../src/db/migrations';
@@ -317,6 +317,67 @@ describe('migrations', () => {
         expect(version(fresh)).toBe(MIGRATIONS.length);
         expect(tables(fresh)).toContain('viewed_files');
         expect(fresh.query('SELECT COUNT(*) AS count FROM viewed_files').get()).toEqual({ count: 0 });
+        fresh.close();
+    });
+
+    test('version 27 adds the last run to the chats of a database at version 26 as nothing, and a new database has the column at once', () => {
+        const path = join(tempDir(), 'clowdy.db');
+        const before = openDatabase(
+            path,
+            MIGRATIONS.filter(migration => migration.version < 27)
+        );
+
+        expect(version(before)).toBe(26);
+        expect(
+            (before.query('PRAGMA table_info(chats)').all() as { name: string }[]).map(column => column.name)
+        ).not.toContain('last_run');
+        before
+            .query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)')
+            .run('prj_1', 'Old', 'OLD', 1);
+        before
+            .query('INSERT INTO chats (id, project_id, title, mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
+            .run('cht_1', 'prj_1', 'Old chat', 'hands_off', 1, 7);
+        before.close();
+
+        const db = openDatabase(path);
+
+        expect(version(db)).toBe(MIGRATIONS.length);
+        expect(MIGRATIONS.find(migration => migration.version === 27)).toBeDefined();
+        expect(existsSync(`${path}.bak-v26`)).toBe(true);
+        expect(
+            (db.query('PRAGMA table_info(chats)').all() as { name: string; notnull: number }[]).find(
+                column => column.name === 'last_run'
+            )
+        ).toMatchObject({ notnull: 0 });
+        // The chats of an older database have none, and read as chats without the field.
+        expect(getChat(db, 'cht_1')).not.toHaveProperty('lastRun');
+        expect(getChatLastRun(db, 'cht_1')).toBeUndefined();
+        expect(getChatLastRun(db, 'cht_unknown')).toBeUndefined();
+
+        const lastRun = { startTree: 'a'.repeat(40), endTree: 'b'.repeat(40), seq: 12, at: 1234 };
+
+        setChatLastRun(db, 'cht_1', lastRun);
+        expect(getChat(db, 'cht_1')).toMatchObject({ lastRun, updatedAt: 7 });
+        expect(getChatLastRun(db, 'cht_1')).toEqual(lastRun);
+
+        // Saving a chat never writes it, so a copy read before the turn ended cannot bring an earlier turn back or take this one away.
+        const chat = getChat(db, 'cht_1') as NonNullable<ReturnType<typeof getChat>>;
+
+        upsertChat(db, { ...chat, title: 'Renamed' });
+        expect(getChat(db, 'cht_1')).toMatchObject({ title: 'Renamed', lastRun });
+        upsertChat(db, { ...chat, lastRun: { ...lastRun, seq: 99 }, title: 'Renamed again' });
+        expect(getChatLastRun(db, 'cht_1')).toEqual(lastRun);
+
+        setChatLastRun(db, 'cht_1', undefined);
+        expect(getChat(db, 'cht_1')).not.toHaveProperty('lastRun');
+        db.close();
+
+        const fresh = openDatabase(join(tempDir(), 'fresh.db'));
+
+        expect(version(fresh)).toBe(MIGRATIONS.length);
+        expect(
+            (fresh.query('PRAGMA table_info(chats)').all() as { name: string }[]).map(column => column.name)
+        ).toContain('last_run');
         fresh.close();
     });
 

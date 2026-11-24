@@ -1,0 +1,82 @@
+@reference '@clowdy/styles/rulesets';
+
+/*
+ * The plate itself is `ComposerBanner`'s, which clips what leaves it (it is a rounded plate under the message box): everything here stays inside it. Its rows stand in the
+ * plate's column as `ComposerBannerStatus` rows do: words 12px from the plate's edge, the hover plate and the focus 4px from it.
+ */
+
+/* `Last run · 7 files` with the lines of the whole run at the end: as tall as a row of the plate, between its 2px insets. */
+.header {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    min-height: calc(var(--spacing-30) + var(--spacing-xxs) * 2);
+    padding: var(--spacing-xxs) var(--spacing-lg);
+}
+
+.icon {
+    display: flex;
+    flex-shrink: 0;
+    color: var(--color-secondary-muted-text);
+}
+
+.title {
+    flex: 1;
+    min-width: 0;
+}
+
+.counts {
+    display: inline-flex;
+    flex-shrink: 0;
+    gap: var(--spacing-xs);
+    margin-inline-start: auto;
+    white-space: nowrap;
+}
+
+/* The files: as many as they are, none of them cut. Unfolded, the rest is in a box that scrolls, so a run of hundreds of files does not push the chat off the screen. */
+.unfolded {
+    max-height: 40vh;
+}
+
+.rows {
+    padding: var(--spacing-xxs) var(--spacing-xs);
+}
+
+/* The list's rows keep the plate's column: their words 8px inside the hover plate, which is 4px inside the plate, as the plate's other rows have them. */
+.list {
+    --clowdy-listbox-item-padding-inline: var(--spacing-md);
+}
+
+.glyph {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: var(--spacing-14);
+}
+
+/*
+ * The path is cut at its start, which is why it is set right to left: the ellipsis goes where the text is cut, and the name at the end stays. The `bdi` inside is its own left to
+ * right run, so a path that starts or ends with a dot, a bracket or a slash keeps them where they are, as the Changes tab's cards have it.
+ */
+.path {
+    display: block;
+    text-align: left;
+}
+
+/* The button at the bottom that unfolds the rest and folds it again: one row of the plate, its words in line with the rows'. */
+.footer {
+    padding: var(--spacing-xxs) var(--spacing-xs);
+}
+
+.more[data-size][data-variant] {
+    justify-content: flex-start;
+    width: 100%;
+    padding-inline: var(--spacing-md);
+}
+
+.moreContent {
+    flex: 1;
+    justify-content: flex-start;
+    gap: var(--spacing-sm);
+}

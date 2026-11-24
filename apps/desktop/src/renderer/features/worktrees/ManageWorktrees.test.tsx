@@ -142,6 +142,50 @@ afterEach(async () => {
 });
 
 describe('Manage worktrees', () => {
+    it('adds a named worktree to the selected repository and returns to the refreshed list', async () => {
+        // A nested modal needs a visible parent; happy-dom has no layout.
+        vi.spyOn(Element.prototype, 'getClientRects').mockReturnValue([{}] as unknown as DOMRectList);
+        vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
+            x: 0,
+            y: 0,
+            top: 0,
+            left: 0,
+            right: 640,
+            bottom: 480,
+            width: 640,
+            height: 480,
+            toJSON: () => ({}),
+        });
+
+        await open();
+        await click(textButton(group('car-rental-api'), 'New worktree')!);
+        await settle();
+
+        const input = document.querySelector<HTMLInputElement>('input[aria-label="Worktree name"]')!;
+        const form = input.closest('form')!;
+        const submit = textButton(form, 'Create worktree')!;
+        const typeName = (value: string) =>
+            act(async () => {
+                Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+            });
+
+        expect(submit.disabled).toBe(true);
+        await typeName('../next');
+        expect(submit.disabled).toBe(true);
+        await typeName('next');
+        await click(submit);
+        await settle();
+
+        expect(input.isConnected).toBe(false);
+        expect(
+            rowsOf(group('car-rental-api'))
+                .map(row => row.textContent)
+                .join()
+        ).toContain('clowdy/next');
+        expect(group('car-rental').textContent).not.toContain('clowdy/next');
+    });
+
     it("lists the project's repositories, each with its own checkout first and a row for every worktree git lists, and no group for a folder that is no repository", async () => {
         await open();
 
