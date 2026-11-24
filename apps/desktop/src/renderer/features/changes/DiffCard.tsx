@@ -169,7 +169,7 @@ export function DiffCard({ model, file }: { model: PlaceChanges; file: GitChange
                 </Button>
                 <CopyButton
                     value={file.path}
-                    size="sm"
+                    size="xs"
                     variant="filling"
                     color="secondary"
                     tooltip="Copy path"
