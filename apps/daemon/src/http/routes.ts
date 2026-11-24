@@ -154,6 +154,19 @@ const gitSwitchBody = z.object({
     create: z.object({ start: z.string() }).optional(),
 });
 
+const gitBranchDeleteBody = z.discriminatedUnion('action', [
+    gitRemoteBody.extend({ action: z.literal('preview'), branch: z.string(), remote: z.literal(true).optional() }),
+    gitRemoteBody.extend({
+        action: z.literal('delete'),
+        branch: z.string(),
+        localCommit: gitCommitHash.optional(),
+        originCommit: gitCommitHash.optional(),
+        localUnmerged: z.literal(true).optional(),
+        originUnmerged: z.literal(true).optional(),
+        switchTo: z.string().optional(),
+    }),
+]);
+
 function integerParam(raw: string | null, name: string, fallback: number): number {
     if (raw === null) {
         return fallback;
@@ -621,6 +634,23 @@ export function createRoutes(context: RouteContext): Route[] {
                 context.keepOpen(request);
 
                 return json(await services.gitSwitch.switch(project, place, body));
+            },
+        },
+        {
+            method: 'POST',
+            pattern: /^\/v1\/projects\/([^/]+)\/git\/branch-delete$/,
+            handle: async (request, _url, [id]) => {
+                const body = await readJson(request, gitBranchDeleteBody);
+                const project = requireProject(store, id);
+                const place = resolvePlace(store, project, body.folderId, body.workspaceId);
+
+                context.keepOpen(request);
+
+                try {
+                    return json(await services.gitSwitch.deleteBranch(project, place, body));
+                } finally {
+                    if (body.action === 'delete') await services.pullRequests.forget(place).catch(() => undefined);
+                }
             },
         },
         {

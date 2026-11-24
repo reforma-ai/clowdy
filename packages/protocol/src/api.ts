@@ -137,6 +137,7 @@ export const ROUTES = {
     projectGitMessage: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/message`,
     projectGitBranches: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/branches`,
     projectGitSwitch: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/switch`,
+    projectGitBranchDelete: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/branch-delete`,
     projectGitMerge: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/merge`,
     projectGitDiscard: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/discard`,
     projectGitSync: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/sync`,

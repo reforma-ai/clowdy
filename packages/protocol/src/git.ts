@@ -3,8 +3,8 @@
  * one of them, and the pull request of its branch. A place is a folder's own checkout or a worktree of it (`resolvePlace`), named by `folderId` and an optional
  * `workspaceId` as the file routes name it. The reads (status, changes, file, pull request) write nothing to a repository and take no index lock, and only the pull request
  * goes to the network, through the person's own `gh` (no token is kept or read by the daemon). The writes (`POST .../git/commit`, `.../git/fetch`, `.../git/pull` and `.../git/push`) run the
- * person's own `git` with their configuration, signing included, one at a time for a place; fetch, pull and push are the only routes that reach `origin`. `POST .../git/switch` changes the
- * branch of the folder's own checkout and nothing else.
+ * person's own `git` with their configuration, signing included, one at a time for a place. `POST .../git/switch` changes the checkout's branch.
+ * An explicitly confirmed branch deletion can also reach `origin`.
  *
  * GET  /v1/projects/:id/git/status?folderId=&workspaceId=
  *                                      -> GitStatus. The branch (or the detached or unborn HEAD), its upstream with ahead and behind and when the repository last
@@ -104,6 +104,8 @@
  *                                         (`create`) and a folder that is not a repository are `invalid`; a refusal that is the repository's state and a switch git refused are `conflict`
  *                                         with a short reason as the message (and, for a change count or a way out, `details.hint`); one that did not end in time is `unavailable`.
  *
+ * POST /v1/projects/:id/git/branch-delete -> GitBranchDeleteResult. Body: the place and a GitBranchDeleteRequest. Preview reports local and fetched origin tips, unmerged commits
+ *                                         and a necessary checkout switch. Delete rechecks the confirmed tips, base and worktree protections. An origin deletion uses an explicit lease.
  * POST /v1/projects/:id/git/merge    -> GitBranchMergeResult. Body: the place and a GitBranchMergeRequest. Preview compares the selected source and local destination. Merge
  *                                         checks the previewed commits again, fast-forwards when possible, and otherwise merges in the destination checkout. A conflict identifies
  *                                         that checkout for resolution or abort. A separate push action sends the named destination and verifies its commit before sending.
@@ -587,6 +589,40 @@ export type GitBranches =
           /** A list was cut at `MAX_GIT_BRANCH_ENTRIES`. */
           truncated?: true;
       };
+
+/** The branch name is unqualified. A remote-only choice is previewed with remote: true. */
+export type GitBranchDeleteRequest =
+    | { action: 'preview'; branch: string; remote?: true }
+    | {
+          action: 'delete';
+          branch: string;
+          /** Delete only the local ref shown at this commit. */
+          localCommit?: string;
+          /** The confirmation showed a warning about unmerged local commits. */
+          localUnmerged?: true;
+          /** Delete the same-named branch on origin only if its tip is still this commit. */
+          originCommit?: string;
+          /** The confirmation showed a warning about unmerged commits on origin. */
+          originUnmerged?: true;
+          /** Switch away from the current branch to this destination before deleting. */
+          switchTo?: string;
+      };
+
+export interface GitBranchDeletePreview {
+    state: 'preview';
+    branch: string;
+    localCommit?: string;
+    originCommit?: string;
+    localUnmerged?: boolean;
+    originUnmerged?: boolean;
+    switchTo?: string;
+    /** A reason the requested deletion cannot proceed. */
+    blocked?: string;
+}
+
+export type GitBranchDeleteResult =
+    | GitBranchDeletePreview
+    | { state: 'done'; localDeleted: boolean; originDeleted: boolean; switchedTo?: string; warning?: string };
 
 export const GIT_BRANCH_MERGE_STRATEGIES = ['merge', 'fast-forward-only', 'squash', 'rebase'] as const;
 export type GitBranchMergeStrategy = (typeof GIT_BRANCH_MERGE_STRATEGIES)[number];
