@@ -12,24 +12,6 @@
     white-space: nowrap;
 }
 
-/* Five small list rows, with four gaps and two insets. */
-.files {
-    max-height: min(40vh, calc(5 * var(--spacing-30) + 6 * var(--spacing-xxs)));
-}
-
-.fileScroll {
-    overscroll-behavior-y: contain;
-}
-
-.rows {
-    padding: var(--spacing-xxs) var(--spacing-xs);
-}
-
-/* The list's rows keep the plate's column: their words 8px inside the hover plate, which is 4px inside the plate, as the plate's other rows have them. */
-.list {
-    --clowdy-listbox-item-padding-inline: var(--spacing-md);
-}
-
 .glyph {
     display: inline-flex;
     flex-shrink: 0;

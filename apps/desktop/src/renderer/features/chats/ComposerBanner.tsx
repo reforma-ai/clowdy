@@ -1,4 +1,7 @@
 import { Button } from '@clowdy/components/Button';
+import { CollapsibleContent } from '@clowdy/components/Collapsible';
+import { GridList } from '@clowdy/components/List';
+import { Scrollable } from '@clowdy/components/Scrollable';
 import { Text } from '@clowdy/components/Text';
 import { ChevronDown } from '@clowdy/icons/14';
 import { cn } from '@clowdy/lib';
@@ -14,6 +17,31 @@ export function ComposerBanner({ className, children, ...props }: HTMLAttributes
         <div className={cn(styles.root, className)} {...props}>
             {children}
         </div>
+    );
+}
+
+/** The scroll area and list shared by the file and task disclosures. */
+export function ComposerBannerList({
+    label,
+    onAction,
+    children,
+}: {
+    label: string;
+    onAction: (id: string) => void;
+    children: ReactNode;
+}) {
+    return (
+        <CollapsibleContent asChild>
+            <Scrollable
+                className={styles.listViewport}
+                containerClass={styles.listScroll}
+                contentClass={styles.listRows}
+            >
+                <GridList aria-label={label} size="sm" className={styles.list} onAction={key => onAction(String(key))}>
+                    {children}
+                </GridList>
+            </Scrollable>
+        </CollapsibleContent>
     );
 }
 
