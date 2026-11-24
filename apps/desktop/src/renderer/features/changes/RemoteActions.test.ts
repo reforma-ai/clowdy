@@ -41,7 +41,7 @@ afterEach(() => {
 });
 
 describe('the moves of a place to and from origin', () => {
-    it('sends each action to its own call with the place, says what it did, and reads the place again', async () => {
+    it('runs each action and refreshes the place without a success notice', async () => {
         const { actions, transport, refresh } = setup();
 
         expect(await actions.run('fetch')).toEqual({ ok: true, result: { state: 'done', action: 'fetch' } });
@@ -50,24 +50,25 @@ describe('the moves of a place to and from origin', () => {
 
         await actions.run('pull');
         expect(transport.pullGit).toHaveBeenCalledWith('prj_a', PLACE);
-        expect(actions.notice).toEqual({ words: 'Pulled 2 commits' });
+        expect(actions.notice).toBeUndefined();
 
         await actions.run('push');
         expect(transport.pushGit).toHaveBeenCalledTimes(1);
-        expect(actions.notice).toEqual({ words: 'Pushed to origin' });
+        expect(actions.notice).toBeUndefined();
 
-        // Publishing is a push too, and says it is the first.
+        // Publishing sends the branch through the push call.
         transport.pushGit.mockResolvedValueOnce({ state: 'done', action: 'push', published: true });
         await actions.run('publish');
         expect(transport.pushGit).toHaveBeenCalledTimes(2);
-        expect(actions.notice).toEqual({ words: 'Published to origin' });
+        expect(actions.notice).toBeUndefined();
         expect(refresh).toHaveBeenCalledTimes(4);
         expect(actions.running).toBeUndefined();
     });
 
-    it('lets the line that says what was done go after a while, and keeps a failure until the person acts again', async () => {
+    it('lets the conflict notice expire and keeps a failure until the person acts again', async () => {
         const { actions, transport } = setup();
 
+        transport.pullGit.mockResolvedValueOnce({ state: 'conflicts', action: 'pull', conflicts: 2 });
         await actions.run('pull');
         expect(actions.notice).toBeDefined();
         vi.advanceTimersByTime(NOTICE_MS - 1);
@@ -181,7 +182,7 @@ describe('the moves of a place to and from origin', () => {
     it('can be dismissed, and is one for a place for as long as its facts are', () => {
         const { actions, facts, transport, refresh } = setup();
 
-        actions.notice = { words: 'Pulled 2 commits' };
+        actions.notice = { words: '2 conflicts', tone: 'warning' };
         actions.dismiss();
         expect(actions.notice).toBeUndefined();
 

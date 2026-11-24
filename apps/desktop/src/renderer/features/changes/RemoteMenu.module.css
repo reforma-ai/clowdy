@@ -1,6 +1,6 @@
 @reference '@clowdy/styles/rulesets';
 
-/* The sync button, and under it what the last action did or why it failed: one block of the sidebar's facts, as wide as they are. */
+/* The sync actions and their errors. */
 .root {
     display: flex;
     flex-direction: column;
@@ -63,6 +63,16 @@
     justify-content: flex-start;
     min-width: 0;
     gap: var(--spacing-6);
+}
+
+.update[data-size][data-variant] {
+    width: 100%;
+    min-width: 0;
+}
+
+.update .content {
+    justify-content: space-between;
+    text-align: start;
 }
 
 .spinner {

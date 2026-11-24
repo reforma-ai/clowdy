@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { aheadBehindCounts, aheadBehindWords, CHANGE_KIND_VIEW, splitPath } from './gitSummary';
+import { aheadBehindWords, CHANGE_KIND_VIEW, splitPath } from './gitSummary';
 
 import type { GitBase, GitChangeKind } from '@clowdy/protocol';
 
@@ -15,19 +15,6 @@ const base = (ahead: number, behind: number): GitBase => ({
 });
 
 describe('how far the branch is from its base', () => {
-    it('says it without naming the base, for the sidebar, where the base is named beside it', () => {
-        expect(aheadBehindCounts(base(3, 1))).toBe('3 ahead, 1 behind');
-        expect(aheadBehindCounts(base(2, 0))).toBe('2 ahead');
-        expect(aheadBehindCounts(base(0, 4))).toBe('4 behind');
-        expect(aheadBehindCounts(base(0, 0))).toBe('Even');
-    });
-
-    it('says nothing without a base to compare with', () => {
-        expect(aheadBehindCounts(undefined)).toBeUndefined();
-        expect(aheadBehindCounts({ state: 'unborn' })).toBeUndefined();
-        expect(aheadBehindCounts({ state: 'no_base' })).toBeUndefined();
-    });
-
     it('keeps the words Info has, which name the base', () => {
         expect(aheadBehindWords(base(3, 1))).toBe('3 ahead, 1 behind origin/main');
         expect(aheadBehindWords(base(0, 0))).toBe('Even with origin/main');

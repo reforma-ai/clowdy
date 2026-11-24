@@ -10,7 +10,7 @@ import type { GitRemoteResult } from '@clowdy/protocol';
 /** What the actions ask of the transport. */
 export type RemoteTransport = Pick<Transport, 'fetchGit' | 'pullGit' | 'pushGit' | 'updateGit' | 'abortGit'>;
 
-/** How long the line that says what an action did stays under the button, before it goes by itself. A failure stays until the person acts again. */
+/** How long a conflict notice stays under the button. A failure stays until the person acts again. */
 export const NOTICE_MS = 6000;
 
 /** What git or the daemon said when an action could not be done: git's own line as the daemon gave it, and a hint beside it when it has one. */
@@ -24,8 +24,8 @@ export interface RemoteFailure {
 export type RemoteOutcome = { ok: true; result: GitRemoteResult } | { ok: false; failure: RemoteFailure };
 
 /**
- * What the sidebar and the commit box hold of one place's moves to and from `origin`: which action is running (one at a time for the place, as the daemon runs them), what the last one did
- * (a quiet line that goes after `NOTICE_MS`) and why the last one failed (git's own line, kept until the person acts again). It is kept for the place as the facts are (`remoteActionsOf`),
+ * What the sidebar and the commit box hold of one place's moves to and from `origin`: which action is running (one at a time for the place, as the daemon runs them), a temporary conflict
+ * notice and why the last action failed. It is kept for the place as the facts are (`remoteActionsOf`),
  * so the sidebar's menu and its Create PR are one: a push started in one shows as running in the other. The place's facts are read again when an action ends, either way: a push
  * that was rejected may still have moved something, and a fetch moves the counts the buttons are drawn from. The daemon forgets what it kept of the branch's pull request after an action,
  * so that read is the new one.
@@ -33,7 +33,7 @@ export type RemoteOutcome = { ok: true; result: GitRemoteResult } | { ok: false;
 export class RemoteActions {
     /** The action that is running. */
     running: RemoteActionId | undefined;
-    /** What the last action did, until it goes. */
+    /** The conflict notice, until it goes. */
     notice: { words: string; tone?: 'warning' } | undefined;
     /** Why the last action failed, until the person acts again. */
     failure: RemoteFailure | undefined;

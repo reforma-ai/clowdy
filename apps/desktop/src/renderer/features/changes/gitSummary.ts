@@ -48,21 +48,6 @@ export function aheadBehindWords(base: GitBase | undefined): string | undefined 
     return `Even with ${name}`;
 }
 
-/** How far the branch is from its base without naming it: `3 ahead, 1 behind`, `2 ahead`, `1 behind`, `Even`. Nothing when there is no base to compare with. */
-export function aheadBehindCounts(base: GitBase | undefined): string | undefined {
-    if (base?.state !== 'ready') return undefined;
-
-    const { ahead, behind } = base;
-
-    if (ahead > 0 && behind > 0) return `${ahead} ahead, ${behind} behind`;
-
-    if (ahead > 0) return `${ahead} ahead`;
-
-    if (behind > 0) return `${behind} behind`;
-
-    return 'Even';
-}
-
 /** What a changed file is called and drawn as: the letter of its status in the colour that status has in the lists of a tool such as this, and its name for a tooltip and a screen reader. */
 export const CHANGE_KIND_VIEW: Record<GitChangeKind, { glyph: string; label: string; color: TextColor }> = {
     added: { glyph: 'A', label: 'Added', color: 'success' },

@@ -81,6 +81,7 @@ const buttonOf = (label: string) =>
         candidate => candidate.textContent?.trim() === label
     );
 /** The sync button: the one that names the next action. */
+const createPRButton = () => container.querySelector<HTMLButtonElement>('button[aria-label="Create PR"]') ?? undefined;
 const syncButton = () => container.querySelector<HTMLButtonElement>('button[data-sync]')!;
 /** The dropdown beside it, which keeps every action. */
 const dropdown = () => container.querySelector<HTMLButtonElement>('button[aria-label="More source control actions"]')!;
@@ -193,7 +194,7 @@ describe('the sync button in the sidebar', () => {
         expect(isOff('Publish branch')).toBe(false);
     });
 
-    it('publishes the branch on a press, says so, and offers to update from the base', async () => {
+    it('publishes without a notice and then offers to update from the base', async () => {
         await start();
 
         const push = vi.spyOn(transport, 'pushGit');
@@ -206,9 +207,10 @@ describe('the sync button in the sidebar', () => {
             folderId: 'fld_car_rental',
             workspaceId: 'wks_ab12cd34',
         });
-        expect(status()?.textContent).toBe('Published to origin');
+        expect(status()).toBeNull();
         expect(syncButton().getAttribute('data-sync')).toBe('update');
-        expect(syncButton().textContent).toBe('Update from mainLast fetched 3 minutes ago');
+        expect(syncButton().textContent).toContain('Update from main');
+        expect(syncButton().querySelector('[data-commit-count="down"]')?.textContent).toBe('1');
 
         await openMenu();
         expect(items().map(candidate => candidate.textContent)).toEqual([
@@ -289,7 +291,7 @@ describe('the sync button in the sidebar', () => {
             workspaceId: 'wks_ab12cd34',
         });
         expect(pull).not.toHaveBeenCalled();
-        expect(status()?.textContent).toBe('Published to origin');
+        expect(status()).toBeNull();
         expect(syncButton().getAttribute('data-sync')).toBe('update');
         expect(
             await transport.getGitStatus(FIXTURE_PROJECT_ID, {
@@ -312,6 +314,22 @@ describe('the sync button in the sidebar', () => {
         ]);
         expect(isOff('Pull origin')).toBe(true);
         expect(isOff('Publish branch')).toBe(false);
+    });
+
+    it('keeps an update from the base available beside an upstream pull, with the base count', async () => {
+        await start({ gitWrites: { clean: true, remote: 'behind' } });
+        const update = vi.spyOn(transport, 'updateGit');
+        const pull = vi.spyOn(transport, 'pullGit');
+        const updateButton = sidebar().querySelector<HTMLButtonElement>('button[aria-label="Update from main"]')!;
+
+        expect(syncButton().getAttribute('data-sync')).toBe('pull');
+        expect(updateButton.querySelector('[data-commit-count="down"]')?.textContent).toBe('1');
+        await press(updateButton);
+        await settle();
+
+        expect(update).toHaveBeenCalledTimes(1);
+        expect(pull).not.toHaveBeenCalled();
+        expect(status()).toBeNull();
     });
 
     it('is Pull origin with the count for a branch that is behind, and a press pulls and reads the place again, so the counts and the pull request are the ones it left', async () => {
@@ -341,7 +359,7 @@ describe('the sync button in the sidebar', () => {
         expect(pull).toHaveBeenCalledTimes(1);
         expect(reads.status).toHaveBeenCalled();
         expect(reads.pullRequest).toHaveBeenCalled();
-        expect(status()?.textContent).toBe('Pulled 2 commits');
+        expect(status()).toBeNull();
         expect(syncButton().getAttribute('data-sync')).toBe('update');
     });
 
@@ -357,7 +375,7 @@ describe('the sync button in the sidebar', () => {
         await settle();
 
         expect(push).toHaveBeenCalledTimes(1);
-        expect(status()?.textContent).toBe('Pushed to origin');
+        expect(status()).toBeNull();
         expect(syncButton().getAttribute('data-sync')).toBe('update');
     });
 
@@ -572,7 +590,7 @@ describe('the sync button in the sidebar', () => {
         finish({ state: 'done', action: 'update', pulled: 1 });
         await settle();
         await settle();
-        expect(status()?.textContent).toBe('Updated with 1 commit');
+        expect(status()).toBeNull();
         expect(syncButton().getAttribute('data-sync')).toBe('push');
     });
 });
@@ -855,7 +873,7 @@ describe('Create PR in the sidebar', () => {
 
         expect(container.querySelector('[aria-label="Pull request"]')?.textContent).toContain('PR #128');
         expect(container.querySelector('button svg[data-state="open"]')).not.toBeNull();
-        expect(buttonOf('Create PR')).toBeUndefined();
+        expect(createPRButton()).toBeUndefined();
         expect(buttonOf('Publish first')).toBeUndefined();
     });
 
@@ -877,7 +895,7 @@ describe('Create PR in the sidebar', () => {
     it('shows a single Publish action for a clean unpublished branch and offers Create PR after publishing', async () => {
         await start({ tweak: noPullRequest, gitWrites: { clean: true } });
 
-        expect(buttonOf('Create PR')).toBeUndefined();
+        expect(createPRButton()).toBeUndefined();
         expect(buttonOf('Commit 0 files')?.disabled).toBe(true);
         expect(
             [...sidebar().querySelectorAll('button')].filter(button => /publish/i.test(button.textContent ?? ''))
@@ -888,11 +906,12 @@ describe('Create PR in the sidebar', () => {
         await settle();
 
         // The branch is on origin now, and nothing was opened: the page is the second step.
+        expect(createPRButton()?.querySelector('[data-commit-count="up"]')?.textContent).toBe('2');
         expect(opened).toEqual([]);
         expect(buttonOf('Publish first')).toBeUndefined();
-        expect(buttonOf('Create PR')?.disabled).toBe(false);
+        expect(createPRButton()?.disabled).toBe(false);
 
-        await press(buttonOf('Create PR')!);
+        await press(createPRButton()!);
         expect(opened).toEqual(['https://github.com/acme/car-rental/compare/main...clowdy/ab12cd34?expand=1']);
     });
 
@@ -907,14 +926,14 @@ describe('Create PR in the sidebar', () => {
 
         expect(opened).toEqual([]);
         expect(syncButton().textContent).toContain('Publish branch');
-        expect(buttonOf('Create PR')).toBeUndefined();
+        expect(createPRButton()).toBeUndefined();
         expect(alert()?.textContent).toBe('git@github.com: Permission denied (publickey).');
     });
 
     it('offers Create PR after pushing the remaining commits through the sync button', async () => {
         await start({ tweak: noPullRequest, gitWrites: { clean: true, remote: 'ahead' } });
 
-        expect(buttonOf('Create PR')).toBeUndefined();
+        expect(createPRButton()).toBeUndefined();
         expect(buttonOf('Push first')).toBeUndefined();
         expect(syncButton().getAttribute('data-sync')).toBe('push');
 
@@ -923,12 +942,12 @@ describe('Create PR in the sidebar', () => {
         await settle();
 
         expect(opened).toEqual([]);
-        expect(buttonOf('Create PR')?.disabled).toBe(false);
+        expect(createPRButton()?.disabled).toBe(false);
     });
 
     it('opens the page for a branch that is level with its upstream, or only behind it', async () => {
         await start({ tweak: noPullRequest, gitWrites: { remote: 'behind' } });
-        await press(buttonOf('Create PR')!);
+        await press(createPRButton()!);
 
         expect(opened).toEqual(['https://github.com/acme/car-rental/compare/main...clowdy/ab12cd34?expand=1']);
     });
@@ -949,7 +968,7 @@ describe('Create PR in the sidebar', () => {
         gitFactsOf(transport).refresh(WORKTREE);
         await settle();
         await settle();
-        expect(buttonOf('Create PR')).toBeUndefined();
+        expect(createPRButton()).toBeUndefined();
         expect(syncButton().textContent).toBe('Publish branchTracks origin/main');
 
         const push = vi.spyOn(transport, 'pushGit');
@@ -965,7 +984,7 @@ describe('Create PR in the sidebar', () => {
         gitFactsOf(transport).refresh(WORKTREE);
         await settle();
         await settle();
-        await press(buttonOf('Create PR')!);
+        await press(createPRButton()!);
 
         expect(opened).toEqual(['https://github.com/acme/car-rental/compare/main...clowdy/ab12cd34?expand=1']);
     });
@@ -973,13 +992,13 @@ describe('Create PR in the sidebar', () => {
     it('hides Create PR when a branch diverged from origin', async () => {
         await start({ tweak: noPullRequest, gitWrites: { remote: 'diverged' } });
 
-        expect(buttonOf('Create PR')).toBeUndefined();
+        expect(createPRButton()).toBeUndefined();
     });
 
     it('hides Create PR on the base branch', async () => {
         await start({ tweak: noPullRequest, key: CHECKOUT });
 
-        expect(buttonOf('Create PR')).toBeUndefined();
+        expect(createPRButton()).toBeUndefined();
     });
 
     it('is the page of a GitHub Enterprise server the person is signed in to, and nothing for another site', async () => {
@@ -991,7 +1010,7 @@ describe('Create PR in the sidebar', () => {
             gitWrites: { remote: 'behind' },
         });
 
-        await press(buttonOf('Create PR')!);
+        await press(createPRButton()!);
         expect(opened).toEqual(['https://ghe.example.com/team/service/compare/main...clowdy/ab12cd34?expand=1']);
 
         act(() => root.unmount());
@@ -1007,7 +1026,7 @@ describe('Create PR in the sidebar', () => {
             gitWrites: { remote: 'behind' },
         });
 
-        expect(buttonOf('Create PR')).toBeUndefined();
+        expect(createPRButton()).toBeUndefined();
         expect(buttonOf('Publish first')).toBeUndefined();
     });
 
@@ -1019,7 +1038,7 @@ describe('Create PR in the sidebar', () => {
             },
         });
 
-        expect(buttonOf('Create PR')).toBeUndefined();
+        expect(createPRButton()).toBeUndefined();
         expect(buttonOf('Publish first')).toBeUndefined();
     });
 });

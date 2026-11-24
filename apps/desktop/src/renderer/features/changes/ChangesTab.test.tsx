@@ -273,13 +273,12 @@ describe('the Changes tab of a chat in a worktree', () => {
             'Commits on branch'
         );
         expect(container.querySelector('[aria-label="Changes sidebar"]')?.textContent).toContain('clowdy/ab12cd34');
-        const base = container.querySelector('[title="origin/main, 2 ahead, 1 behind"]');
+        const sidebar = container.querySelector('[aria-label="Changes sidebar"]');
 
-        expect(base?.textContent).toContain('Base: origin/main');
-        expect(container.querySelector('[data-sync]')?.compareDocumentPosition(base!)).toBe(
-            Node.DOCUMENT_POSITION_FOLLOWING
-        );
-        expect(base?.querySelector('[role="img"][aria-label="2 ahead, 1 behind"]')?.textContent).toBe('21');
+        expect(sidebar?.textContent).not.toContain('Base:');
+        expect(
+            sidebar?.querySelector('button[aria-label="Update from main"] [data-commit-count="down"]')?.textContent
+        ).toBe('1');
         expect(container.querySelector('[aria-label="Pull request"]')?.textContent).toContain('PR #128');
     });
 
@@ -765,7 +764,7 @@ describe('the sidebar', () => {
         expect(branch.getAttribute('aria-expanded')).toBe('false');
     });
 
-    it('has the base, how far the branch is from it and the pull request with its checks, and opens the repository on GitHub', async () => {
+    it('offers a base update and the pull request, and opens the repository on GitHub', async () => {
         const open = vi.spyOn(window, 'open').mockReturnValue(null);
 
         await start({
