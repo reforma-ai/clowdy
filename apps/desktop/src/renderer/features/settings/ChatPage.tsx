@@ -5,6 +5,7 @@ import { LAST_USED, type QueuedMessageMode } from '@clowdy/protocol';
 import { hotkeys } from '../../hotkeys/registry';
 import { chatListPreferences } from '../agents/chatListPreferences';
 import { busyEnter } from '../chats/busyEnter';
+import { composerBannerPreferences } from '../chats/composerBannerPreferences';
 import { newChatDefaults } from '../chats/newChatDefaults';
 import { swipeToReply } from '../chats/swipeReplyPreference';
 import { modeOf, NewChatChoices } from './NewChatChoices';
@@ -74,6 +75,33 @@ export function ChatPage() {
                 onEngineChange={next => newChatDefaults.setEngine(next === LAST_USED ? undefined : next)}
                 onModeChange={next => newChatDefaults.setMode(modeOf(next))}
             />
+
+            <SettingsSection title="Above the composer">
+                <SettingsCard>
+                    <SettingsRow
+                        title="Show last run changes"
+                        description="Show changed files above the message box after the agent finishes"
+                    >
+                        <Switch
+                            size="sm"
+                            aria-label="Show last run changes"
+                            isSelected={composerBannerPreferences.showChanges}
+                            onChange={show => composerBannerPreferences.setShowChanges(show)}
+                        />
+                    </SettingsRow>
+                    <SettingsRow
+                        title="Show tasks"
+                        description="Show the chat's tasks and their progress above the message box"
+                    >
+                        <Switch
+                            size="sm"
+                            aria-label="Show tasks"
+                            isSelected={composerBannerPreferences.showTasks}
+                            onChange={show => composerBannerPreferences.setShowTasks(show)}
+                        />
+                    </SettingsRow>
+                </SettingsCard>
+            </SettingsSection>
 
             <SettingsSection title="Agents list">
                 <SettingsCard>

@@ -8,6 +8,7 @@ import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { chatListPreferences } from '../agents/chatListPreferences';
 import { busyEnter } from '../chats/busyEnter';
+import { ComposerBannerPreferences, composerBannerPreferences } from '../chats/composerBannerPreferences';
 import { newChatDefaults } from '../chats/newChatDefaults';
 import { swipeToReply } from '../chats/swipeReplyPreference';
 import { ChatPage } from './ChatPage';
@@ -38,6 +39,8 @@ const labels = (group: string) =>
 
 function reset() {
     busyEnter.setMode('steer');
+    composerBannerPreferences.setShowChanges(true);
+    composerBannerPreferences.setShowTasks(true);
     swipeToReply.setEnabled(true);
     newChatDefaults.setEngine(undefined);
     newChatDefaults.setMode(undefined);
@@ -73,6 +76,19 @@ afterEach(() => {
 describe('ChatPage', () => {
     it('leaves the worktree prefix to Source Control', () => {
         expect(container.querySelector('input[aria-label="Branch prefix"]')).toBeNull();
+    });
+
+    it('stores the two composer banner choices independently', () => {
+        const changes = container.querySelector<HTMLInputElement>('input[aria-label="Show last run changes"]')!;
+        const tasks = container.querySelector<HTMLInputElement>('input[aria-label="Show tasks"]')!;
+        expect([changes.checked, tasks.checked]).toEqual([true, true]);
+        act(() => changes.click());
+        expect([changes.checked, tasks.checked]).toEqual([false, true]);
+        act(() => tasks.click());
+        const restored = new ComposerBannerPreferences(window.localStorage);
+        expect([restored.showChanges, restored.showTasks]).toEqual([false, false]);
+        act(() => changes.click());
+        expect([changes.checked, tasks.checked]).toEqual([true, false]);
     });
 
     it('offers how a message sent while the agent works goes, steering by default', () => {
