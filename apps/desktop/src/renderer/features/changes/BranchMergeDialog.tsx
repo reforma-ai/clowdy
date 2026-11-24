@@ -288,7 +288,7 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
             )}
             {!result && preview && (
                 <div className={styles.detail} role="status">
-                    <Text>
+                    <Text variant="sm">
                         {preview.mode === 'up-to-date'
                             ? MODES[preview.mode]
                             : `${commitsWords(preview.commits)} · ${MODES[preview.mode]}`}
