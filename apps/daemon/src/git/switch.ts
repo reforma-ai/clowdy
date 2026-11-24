@@ -322,7 +322,7 @@ export class GitSwitch {
 }
 
 /** Two worktrees share a checkout lock even when they belong to different projects or have different path aliases. */
-async function switchRepositoryKey(cwd: string): Promise<string> {
+export async function switchRepositoryKey(cwd: string): Promise<string> {
     const read = await gitRead(cwd, ['rev-parse', '--git-common-dir']);
     const common = read.ok ? read.stdout.replace(/\r?\n$/, '') : '';
     const repo = common ? await placeOf(resolve(cwd, common)) : undefined;
@@ -432,7 +432,7 @@ async function heldBy(cwd: string, branch: string): Promise<string | undefined> 
 }
 
 /** What the repository has under way that a switch would leave half done: a merge, a rebase, a cherry-pick, a revert or a bisect (`A merge`, `A rebase`, ...). Nothing when none. */
-async function operationUnderWay(cwd: string): Promise<string | undefined> {
+export async function operationUnderWay(cwd: string): Promise<string | undefined> {
     const paths = await gitRead(cwd, ['rev-parse', ...UNDER_WAY.flatMap(({ file }) => ['--git-path', file])]);
 
     if (!paths.ok) throw unavailable('git did not answer');

@@ -202,8 +202,8 @@ export async function placeBranches(store: Store, project: Project, place: Place
     ]);
     const listed = parseLocalBranches(localOutput);
     const names = new Set(listed.map(branch => branch.name));
-    const remoteOnly = parseRemoteBranches(remoteOutput).filter(branch => !names.has(branch.name));
-    const defaultBranch = defaultOf(base, names, new Set(remoteOnly.map(branch => branch.name)));
+    const originBranches = parseRemoteBranches(remoteOutput);
+    const defaultBranch = defaultOf(base, names, new Set(originBranches.map(branch => branch.name)));
     const current = listed.find(branch => branch.current)?.name;
     const local: GitLocalBranch[] = listed.map(({ name, ...rest }) => ({
         name,
@@ -213,18 +213,20 @@ export async function placeBranches(store: Store, project: Project, place: Place
         ...(!rest.current && held.has(name) && { heldBy: held.get(name) }),
         ...(rest.committedAt !== undefined && { committedAt: rest.committedAt }),
     }));
-    const remote: GitRemoteBranch[] = remoteOnly.map(branch => ({
+    const origin: GitRemoteBranch[] = originBranches.map(branch => ({
         ...branch,
         ...(branch.name === defaultBranch && { default: true as const }),
     }));
+    const remote = origin.filter(branch => !names.has(branch.name));
 
-    const truncated = local.length > MAX_GIT_BRANCH_ENTRIES || remote.length > MAX_GIT_BRANCH_ENTRIES;
+    const truncated = local.length > MAX_GIT_BRANCH_ENTRIES || origin.length > MAX_GIT_BRANCH_ENTRIES;
 
     return {
         isRepository: true,
         ...(defaultBranch !== undefined && { defaultBranch }),
         local: cut(local),
         remote: cut(remote),
+        ...(origin.length > 0 && { origin: cut(origin) }),
         recent: reflog.ok ? recentBranches(reflog.stdout, names, current) : [],
         ...(truncated && { truncated: true as const }),
     };
