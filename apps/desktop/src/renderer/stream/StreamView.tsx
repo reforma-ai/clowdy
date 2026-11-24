@@ -39,7 +39,7 @@ import { Worked } from './Worked';
 import { WorkingLine } from './WorkingLine';
 
 import type { ApprovalDecision, StreamItem } from '@clowdy/protocol';
-import type { ReactNode, Ref } from 'react';
+import type { CSSProperties, ReactNode, Ref } from 'react';
 import type { MessageActionsConfig, ReplyMessage } from './MessageActions';
 
 /**
@@ -87,6 +87,8 @@ export interface StreamViewHandle {
 export interface StreamViewProps {
     ref?: Ref<StreamViewHandle>;
     items: StreamItem[];
+    /** Height in pixels occupied by a composer overlaid on the bottom of the stream. */
+    composerInset?: number;
     /** The run is going, or waits for the person: its latest turn stays open. Once it is over, that turn folds its work too. */
     active?: boolean;
     /**
@@ -128,6 +130,7 @@ export interface StreamViewProps {
  */
 export function StreamView({
     items,
+    composerInset = 0,
     active = false,
     working,
     onAnswer,
@@ -142,6 +145,7 @@ export function StreamView({
     ref,
 }: StreamViewProps) {
     const scroller = useRef<HTMLDivElement>(null);
+    const inset = Number.isFinite(composerInset) ? Math.max(0, composerInset) : 0;
     const { scrollRef: stickScrollRef, contentRef, isAtBottom, scrollToBottom } = useStickToBottom();
     useImperativeHandle(ref, () => ({ followLatest: () => scrollToBottom({ animation: 'instant' }) }), [
         scrollToBottom,
@@ -301,7 +305,11 @@ export function StreamView({
 
     return (
         <StreamLinksContext value={links}>
-            <div className={styles.root}>
+            <div
+                className={styles.root}
+                data-composer-overlay={inset > 0 || undefined}
+                style={{ '--composer-inset': `${inset}px` } as CSSProperties}
+            >
                 <div ref={scrollRef} className={styles.scroll}>
                     <ContentColumn ref={contentRef} className={styles.content}>
                         {items.length === 0 && emptyState}
@@ -342,6 +350,7 @@ export function StreamView({
                             }
                         })}
                         {showWorking && <WorkingLine text={typeof working === 'string' ? working : undefined} />}
+                        {inset > 0 && <div className={styles.clearance} aria-hidden="true" />}
                     </ContentColumn>
                 </div>
 
