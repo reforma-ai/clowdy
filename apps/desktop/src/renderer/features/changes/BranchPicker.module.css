@@ -6,12 +6,12 @@
     justify-content: flex-start;
     min-width: 0;
     max-width: 100%;
-    padding-inline: var(--spacing-sm);
+    padding-inline: var(--spacing-xs) var(--spacing-2);
 }
 
 .content {
     min-width: 0;
-    gap: var(--spacing-sm);
+    gap: var(--spacing-xs);
 }
 
 .icon,
@@ -26,10 +26,6 @@
 
 /* At the sidebar's narrowest the name needs the room: the mark before it goes, and the chevron and the tooltip say the rest. */
 @container (max-width: 200px) {
-    .trigger[data-size][data-variant] {
-        padding-inline: var(--spacing-xs);
-    }
-
     .icon {
         display: none;
     }

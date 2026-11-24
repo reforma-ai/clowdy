@@ -748,6 +748,20 @@ describe('the filter', () => {
 });
 
 describe('the sidebar', () => {
+    it('copies the full current branch name without opening the branch picker', async () => {
+        const write = vi.fn().mockResolvedValue(undefined);
+
+        vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText: write } });
+        await start();
+        await draw();
+
+        const branch = button('Current branch: clowdy/ab12cd34');
+        await press(button('Copy branch name'));
+
+        expect(write).toHaveBeenCalledExactlyOnceWith('clowdy/ab12cd34');
+        expect(branch.getAttribute('aria-expanded')).toBe('false');
+    });
+
     it('has the base, how far the branch is from it and the pull request with its checks, and opens the repository on GitHub', async () => {
         const open = vi.spyOn(window, 'open').mockReturnValue(null);
 

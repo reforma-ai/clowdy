@@ -1,3 +1,4 @@
+import { CopyButton } from '@clowdy/components/CopyButton';
 import { Panel, PanelHeader } from '@clowdy/components/Panel';
 import { Text } from '@clowdy/components/Text';
 import { ArrowDown, ArrowUp, Version } from '@clowdy/icons/14';
@@ -49,6 +50,7 @@ export function ChangesSidebar({
     const git = useFolderGit(projectId, place.folder.id, place.workspace);
     const status = facts.status.value;
     const branch = headName(status);
+    const branchName = status?.isRepository === true && status.head.kind !== 'detached' ? status.head.name : undefined;
     const canPickBranch = branch !== undefined && status?.isRepository === true && status.head.kind !== 'unborn';
     const base = facts.base?.state === 'ready' ? facts.base : undefined;
     const counts = aheadBehindCounts(base);
@@ -58,16 +60,29 @@ export function ChangesSidebar({
     return (
         <Panel side="right" className={styles.sidebar} aria-label="Changes sidebar">
             <PanelHeader className={canPickBranch ? viewStyles.pickerHeader : undefined}>
-                {canPickBranch ? (
-                    <BranchPicker facts={facts} label={branch} />
-                ) : (
-                    <span className={styles.branch}>
-                        <Version aria-hidden="true" className={styles.branchIcon} />
-                        <Text weight="medium" truncate title={branch}>
-                            {branch ?? 'Changes'}
-                        </Text>
-                    </span>
-                )}
+                <div className={styles.branchControls}>
+                    {canPickBranch ? (
+                        <BranchPicker facts={facts} label={branch} />
+                    ) : (
+                        <span className={styles.branch}>
+                            <Version aria-hidden="true" className={styles.branchIcon} />
+                            <Text weight="medium" truncate title={branch}>
+                                {branch ?? 'Changes'}
+                            </Text>
+                        </span>
+                    )}
+                    {branchName !== undefined && (
+                        <CopyButton
+                            value={branchName}
+                            size="xs"
+                            variant="filling"
+                            color="secondary"
+                            aria-label="Copy branch name"
+                            tooltip="Copy branch name"
+                            tooltipPlacement="bottom"
+                        />
+                    )}
+                </div>
                 <PanelHeader.Actions>
                     {repositoryLink && (
                         <PanelHeader.Button
