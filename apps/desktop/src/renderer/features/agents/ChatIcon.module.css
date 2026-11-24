@@ -16,3 +16,7 @@
     width: var(--spacing-sm);
     height: var(--spacing-sm);
 }
+
+.draft {
+    color: var(--color-secondary-muted-text);
+}

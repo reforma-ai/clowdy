@@ -1,3 +1,4 @@
+import { Edit } from '@clowdy/icons/12';
 import { Message } from '@clowdy/icons/14';
 import { shownRunStatus } from '@clowdy/protocol';
 
@@ -65,9 +66,10 @@ export function ChatStatus({
             ? run
             : undefined;
     const ownStatus = own && shownRunStatus(own);
+    const showDraft = draft && tone === 'neutral' && ownStatus === undefined;
     const label = ownStatus
         ? RUN_STATUS_VIEW[ownStatus].label
-        : draft && tone === 'neutral'
+        : showDraft
           ? 'Unsent draft'
           : threads === 'asking'
             ? 'A thread is waiting for you'
@@ -75,7 +77,7 @@ export function ChatStatus({
 
     return (
         <span className={className} role="img" aria-label={label}>
-            <StatusDot status={ownStatus} tone={tone} />
+            {showDraft ? <Edit className={styles.draft} aria-hidden /> : <StatusDot status={ownStatus} tone={tone} />}
         </span>
     );
 }

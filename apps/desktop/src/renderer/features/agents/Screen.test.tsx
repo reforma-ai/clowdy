@@ -1352,19 +1352,20 @@ describe('threads', () => {
     const depthOf = (key: string) => rowOf(key).getAttribute('data-depth');
     const dotOf = (key: string) => rowOf(key).querySelector('[role="img"]')?.getAttribute('aria-label');
 
-    it('updates the draft dot when text or attachments are added and cleared', async () => {
-        const tone = () => rowOf('c-4').querySelector('[role="img"] [data-tone]')?.getAttribute('data-tone');
+    it('shows the draft icon when text or attachments are added and hides it when cleared', async () => {
+        const icon = () => rowOf('c-4').querySelector('[aria-label="Unsent draft"] svg');
 
         expect(dotOf('c-4')).toBeUndefined();
         await act(async () => saveDraft('c-4', plainTextToDoc('Unsent')));
         expect(dotOf('c-4')).toBe('Unsent draft');
-        expect(tone()).toBe('neutral');
+        expect(icon()?.getAttribute('viewBox')).toBe('0 0 12 12');
         await act(async () => saveDraft('c-4', emptyComposerDoc()));
         expect(dotOf('c-4')).toBeUndefined();
         await act(async () =>
             setFiles('c-4', [{ key: 'file', name: 'a.txt', mediaType: 'text/plain', size: 1, status: 'ready' }])
         );
         expect(dotOf('c-4')).toBe('Unsent draft');
+        expect(icon()).not.toBeNull();
         await act(async () => setFiles('c-4', []));
         expect(dotOf('c-4')).toBeUndefined();
     });

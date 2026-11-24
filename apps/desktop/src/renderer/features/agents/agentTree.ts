@@ -323,7 +323,7 @@ export function resolveSelection(
 /** What the threads below a chat are doing that its dot tells: some work, or some wait for the person (which wins). */
 export type ThreadsActivity = 'working' | 'asking';
 
-/** Working is green, unseen completion and requests for attention are yellow, and an unsent draft is gray. */
+/** The row's status tone. An unsent draft uses a neutral Edit icon. */
 export function chatDotTone(
     run: Run | undefined,
     threads?: ThreadsActivity,
