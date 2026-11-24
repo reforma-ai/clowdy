@@ -28,8 +28,6 @@ export interface UserBubbleProps {
     at: number;
     /** Draws the row of actions under the message (the time it was written, and what it offers); without it the message has none. */
     actions?: MessageActionsConfig;
-    /** The message came in while the stream was on screen: it rises into place. */
-    animate?: boolean;
     /** The stream item this message is, so the turn rail can scroll to it. */
     turn?: string;
 }
@@ -38,7 +36,7 @@ export interface UserBubbleProps {
  * What the person wrote: a tinted bubble on the right, with a row of actions and the time under it when it is given one. The text is Markdown, as the message box writes it; files and tasks it mentions are chips.
  * The root is marked `data-message`: a selection is quoted by `SelectionReply` only when it lies inside one such element.
  */
-export function UserBubble({ text, attachments, at, actions, animate, turn }: UserBubbleProps) {
+export function UserBubble({ text, attachments, at, actions, turn }: UserBubbleProps) {
     const { taskOfKey } = use(StreamLinksContext);
     const previews = useAttachmentPreviews(attachments);
     const body = <Markdown text={personMarkdown(text, taskOfKey)} fromPerson />;
@@ -47,7 +45,7 @@ export function UserBubble({ text, attachments, at, actions, animate, turn }: Us
     const row = useSwipeReply<HTMLDivElement>({ enabled: swipes, onReply: () => actions?.onReply?.(text) });
 
     return (
-        <div ref={row} className={styles.row} data-animate={animate || undefined} data-turn={turn} data-message="">
+        <div ref={row} className={styles.row} data-turn={turn} data-message="">
             {/* Before the row of actions, which stays the last child of the message (see `MessageActions`). */}
             <Show when={swipes}>
                 <SwipeHint />

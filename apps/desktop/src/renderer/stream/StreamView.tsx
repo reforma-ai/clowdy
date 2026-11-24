@@ -4,7 +4,7 @@ import { useStickToBottom } from '@clowdy/components/hooks';
 import { Show } from '@clowdy/components/Show';
 import { ArrowDown } from '@clowdy/icons/14';
 import { mergeRefs } from '@clowdy/lib';
-import { Fragment, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
 
 import { ApprovalCard } from './ApprovalCard';
 import { AssistantMessage } from './AssistantMessage';
@@ -151,8 +151,6 @@ export function StreamView({
         [stickScrollRef]
     );
     const marks = useMemo(() => turnMarks(items), [items]);
-    // What was there when the stream first showed is not news: only a message that comes later rises into place.
-    const [shown] = useState(() => new Set(items.map(item => item.id)));
     const blocks = useMemo(() => groupToolRuns(foldFinishedWork(items, active)), [items, active]);
     const lastWithActions = messageActions ? blocks.findLast(hasMessageActions)?.item.id : undefined;
     const forkPoint = forkedFrom && forkPointId(items, forkedFrom.atSeq);
@@ -165,8 +163,7 @@ export function StreamView({
         (last?.kind === 'tool' && last.name === COMPACT_TOOL && last.state === 'running');
     const showWorking = Boolean(working) && !live && !liveToolGroup;
 
-    // The frame of an edit stands in for a bubble that is drawn again when the frame goes. That bubble is no news, so it must not rise into place a second time,
-    // and a frame closed with the focus in it (Escape, the X) hands the focus to its message's Edit button, where the person pressed it, instead of dropping it.
+    // A frame closed with the focus in it (Escape, the X) hands the focus back to its message's Edit button.
     const editedId = editing?.itemId;
     const framed = useRef<string>(undefined);
 
@@ -175,11 +172,7 @@ export function StreamView({
 
         framed.current = editedId;
 
-        if (editedId !== undefined) {
-            shown.add(editedId);
-
-            return;
-        }
+        if (editedId !== undefined) return;
 
         // A focus that is somewhere else (the box at the bottom, typed in while a message went) is not taken back.
         if (was === undefined || (document.activeElement && document.activeElement !== document.body)) return;
@@ -188,7 +181,7 @@ export function StreamView({
             .find(row => row.dataset.turn === was)
             ?.querySelector<HTMLElement>('[aria-label="Edit message"]')
             ?.focus();
-    }, [editedId, shown]);
+    }, [editedId]);
 
     /** The row a block gets: none unless the caller asked for rows and the block is a message that has one; the last of them always shows. */
     const actionsOf = (block: StreamBlock): MessageActionsConfig | undefined => {
@@ -270,7 +263,6 @@ export function StreamView({
                         attachments={body.attachments}
                         at={item.at}
                         actions={actions}
-                        animate={!shown.has(item.id)}
                     />
                 );
             case 'assistant':

@@ -1413,26 +1413,6 @@ describe('StreamView', () => {
                 }
             });
 
-            it('does not make the bubble rise into place a second time when the frame goes, for a message that came after the stream was shown', async () => {
-                const bubble = () => container.querySelector('[data-message][data-turn="i-4"]');
-
-                // The first draw has the first turn alone, so the second message is news.
-                await drawWith(editable.slice(0, 4), { active: false, messageActions: { onEdit: vi.fn() } });
-                await drawWith(editable, { active: false, messageActions: { onEdit: vi.fn() } });
-
-                expect(bubble()?.hasAttribute('data-animate')).toBe(true);
-
-                await drawWith(editable, {
-                    active: false,
-                    messageActions: { onEdit: vi.fn() },
-                    editing: editing('i-4'),
-                });
-                await drawWith(editable, { active: false, messageActions: { onEdit: vi.fn() } });
-
-                expect(bubble()).not.toBeNull();
-                expect(bubble()?.hasAttribute('data-animate')).toBe(false);
-            });
-
             it('stops editing from the X of the frame', async () => {
                 const onCancel = vi.fn();
 
