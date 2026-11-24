@@ -64,9 +64,9 @@
 
 **This stage:** A turn that can take extra directories is given this project's terminals folder, and only when that folder is already there, the same way a missing project folder is left out. The system prompt names the absolute path whether or not the folder exists yet, so the agent knows where to look when the person says the terminal is wrong and selected nothing. Agents that do not advertise the capability are unchanged apart from that sentence. Exact `additionalDirectories` assertions that never create the folder stay as they are.
 
-- [ ] Complete
-  - [ ] `additionalDirectories` includes `<dataDir>/terminals/<projectId>` when that directory exists, and omits it when it does not
-  - [ ] The system prompt names that absolute path and says one file there is one shell
+- [x] Complete
+  - [x] `additionalDirectories` includes `<dataDir>/terminals/<projectId>` when that directory exists, and omits it when it does not
+  - [x] The system prompt names that absolute path and says one file there is one shell
 
 **Files**
 
@@ -77,7 +77,9 @@
 
 **Done when:** a turn for a project that has had a terminal is handed that project's log directory and told its path, and a project that has not is told the path without being handed a missing directory.
 **Verify:** `bun test --cwd apps/daemon test/chat-folders.test.ts test/orchestration.test.ts`
-**Commits:** None yet.
+**Commits:**
+
+- `a48e8d5` feat(daemon): tell the agent where terminal logs are.
 
 ## Stage 3 — Add to chat from the terminal
 
@@ -85,10 +87,10 @@
 
 **This stage:** While a message box is mounted, a non-empty terminal selection shows Add to chat and Mod-i does the same thing. Mod-i is not sent to the shell when it quotes. The quote is `codeQuote` of the session's `logPath`: the range is the 1-based index of the buffer rows the selection covers (line 1 is the first row of the active buffer, the same numbering as the file), and the body is those rows, not the joined string `getSelection()` returns where a row wraps. A selection past 100,000 characters is cut the way a file quote is. The composer takes the text and the chat is shown. The exit line the renderer paints is not in the daemon file; a selection of it can name a range the file does not have, and the text in the message is still what was selected. The button is the terminal's own, because the file editor's selection action never sees an xterm selection.
 
-- [ ] Complete
-  - [ ] Add to chat and Mod-i quote the selected buffer rows through the composer, and only while a composer is mounted
-  - [ ] The quote is the absolute log path, the row range, and those rows
-  - [ ] The desktop guide says the terminal offers Add to chat
+- [x] Complete
+  - [x] Add to chat and Mod-i quote the selected buffer rows through the composer, and only while a composer is mounted
+  - [x] The quote is the absolute log path, the row range, and those rows
+  - [x] The desktop guide says the terminal offers Add to chat
 
 **Files**
 
@@ -100,4 +102,6 @@
 
 **Done when:** selecting text in a terminal and pressing Add to chat or Mod-i puts a file quote of that log into the composer and shows the chat.
 **Verify:** `bun run --cwd apps/desktop test -- features/terminal`
-**Commits:** None yet.
+**Commits:**
+
+- `2be6641` feat(desktop): add a terminal selection to the chat. The quote rows live in `terminalSelection.ts` because `TerminalTab.test.tsx` mocks `TerminalView`.
