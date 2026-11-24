@@ -47,6 +47,19 @@ async function settle() {
     });
 }
 
+/** The tooltip that a keyboard focus opens: it is there once the library's own timer has run, which a loaded machine delays past a fixed wait. */
+const openTooltip = () =>
+    vi.waitFor(
+        () => {
+            const found = document.querySelector('[role="tooltip"]');
+
+            expect(found).not.toBeNull();
+
+            return found!;
+        },
+        { timeout: 5000 }
+    );
+
 /** The projects' state is loaded by the feed: the chats of the project are there once it has answered. */
 async function flush() {
     await act(async () => {
@@ -296,9 +309,8 @@ describe('Manage worktrees', () => {
             document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
             name.focus();
         });
-        await settle();
 
-        expect(document.querySelector('[role="tooltip"]')?.textContent).toBe('~/orca/car-rental/search-filters');
+        expect((await openTooltip()).textContent).toBe('~/orca/car-rental/search-filters');
     });
 
     it('gives each row one badge at most, the one that matters most: Locked over Merged, Missing on disk over the rest', async () => {
@@ -352,11 +364,11 @@ describe('Manage worktrees', () => {
             document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
             count.focus();
         });
-        await settle();
 
-        const tooltip = document.querySelector('[role="tooltip"]');
-        expect(tooltip?.textContent).toContain('Weekend surcharge in a worktree');
-        expect(tooltip?.textContent).toContain('Show the weekend surcharge in the form (archived)');
+        const tooltip = await openTooltip();
+
+        expect(tooltip.textContent).toContain('Weekend surcharge in a worktree');
+        expect(tooltip.textContent).toContain('Show the weekend surcharge in the form (archived)');
     });
 
     it('opens the chat that works in a worktree when it is pressed, and closes the dialog', async () => {
