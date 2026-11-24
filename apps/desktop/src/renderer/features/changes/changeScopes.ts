@@ -1,5 +1,7 @@
 import { commitScope, GIT_COMMIT_SCOPE_PREFIX, turnScopeTrees } from '@clowdy/protocol';
 
+import { formatMessageTime } from '../../shared/time';
+
 import type { GitBase, GitCommit, GitScope } from '@clowdy/protocol';
 
 /** One entry of the scope menu: what it is called, and the scope the tab reads when it is chosen. */
@@ -24,12 +26,10 @@ export const LAST_RUN_NOTE = 'Edits of others in the place are in it too';
 export const LAST_RUN_TOOLTIP =
     'What the latest run of this chat changed. Edits that others made in the place meanwhile are in it too.';
 
-const commitDate = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium' });
-
-function commitNote({ shortSha, committedAt }: GitCommit): string {
+function commitNote({ shortSha, committedAt }: GitCommit, now: number): string {
     const date = new Date(committedAt);
 
-    return Number.isNaN(date.getTime()) ? shortSha : `${shortSha} · ${commitDate.format(date)}`;
+    return Number.isNaN(date.getTime()) ? shortSha : `${formatMessageTime(committedAt, now)} · ${shortSha}`;
 }
 
 /** The base the branch is compared with is there: the branch's own scope and its commits make sense. */
@@ -40,7 +40,7 @@ const hasBase = (base: GitBase | undefined): base is Extract<GitBase, { state: '
  * chat has one: the scope of its two snapshots), and one entry for each commit of the branch, newest first. The commits are the status's own list of the branch's work
  * (`GitBase.commits`), which the daemon cuts at `MAX_GIT_COMMITS`.
  */
-export function scopeOptions(base: GitBase | undefined, runScope?: GitScope): ScopeOption[] {
+export function scopeOptions(base: GitBase | undefined, runScope?: GitScope, now = Date.now()): ScopeOption[] {
     const comparison = hasBase(base) ? base : undefined;
 
     return [
@@ -60,7 +60,7 @@ export function scopeOptions(base: GitBase | undefined, runScope?: GitScope): Sc
             ? comparison.commits.map(commit => ({
                   scope: commitScope(commit.sha),
                   label: commit.subject || 'No commit message',
-                  note: commitNote(commit),
+                  note: commitNote(commit, now),
                   commit,
               }))
             : []),

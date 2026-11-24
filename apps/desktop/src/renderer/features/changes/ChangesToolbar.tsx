@@ -5,6 +5,7 @@ import { Select } from '@clowdy/components/Select';
 import { Text } from '@clowdy/components/Text';
 import { CollapseAll, ExpandAll, EyeOff } from '@clowdy/icons/14';
 import { observer } from 'mobx-react-lite';
+import { useState } from 'react';
 import { Collection } from 'react-aria-components';
 
 import styles from './ChangesToolbar.module.css';
@@ -64,7 +65,8 @@ const Summary = observer(function Summary({ model }: { model: PlaceChanges }) {
  * while there is a base, what is not committed, the open chat's last run while it has one, and one entry for each commit of the branch, newest first.
  */
 export function ChangesToolbar({ model, end }: { model: PlaceChanges; end?: ReactNode }) {
-    const options = scopeOptions(model.base, model.runScope);
+    const [openedAt, setOpenedAt] = useState(Date.now);
+    const options = scopeOptions(model.base, model.runScope, openedAt);
     const sections = [
         { id: 'filters', title: 'Filters', options: options.filter(option => !option.commit) },
         { id: 'commits', title: 'Commits', options: options.filter(option => option.commit) },
@@ -88,6 +90,9 @@ export function ChangesToolbar({ model, end }: { model: PlaceChanges; end?: Reac
                         placement="bottom start"
                         items={sections}
                         selectedKey={model.effectiveScope}
+                        onOpenChange={open => {
+                            if (open) setOpenedAt(Date.now());
+                        }}
                         onSelectionChange={(key: unknown) => typeof key === 'string' && model.setScope(key as GitScope)}
                     >
                         {section => (

@@ -531,8 +531,8 @@ const filterRows = [
     'UncommittedStaged, unstaged and untracked changes',
 ];
 const commitRows = [
-    expect.stringMatching(/^Charge a weekend surchargeb744444 · \d{1,2} Nov 2026$/),
-    expect.stringMatching(/^Price a booking by the daya155555 · \d{1,2} Nov 2026$/),
+    expect.stringMatching(/^Charge a weekend surcharge(?:\d{1,2} Nov(?: 2026)?, )?\d{2}:\d{2} · b744444$/),
+    expect.stringMatching(/^Price a booking by the day(?:\d{1,2} Nov(?: 2026)?, )?\d{2}:\d{2} · a155555$/),
 ];
 
 describe('the scope', () => {

@@ -22,7 +22,11 @@ const commit = (sha: string, subject: string): GitCommit => ({
     committedAt: new Date(2026, 10, 20, 12).getTime(),
 });
 const NEWEST = commit('b', 'Charge a weekend surcharge');
-const OLDEST = commit('a', 'Price a booking by the day');
+const OLDEST = {
+    ...commit('a', 'Price a booking by the day'),
+    committedAt: new Date(2026, 10, 19, 23, 59).getTime(),
+};
+const now = new Date(2026, 10, 20, 13).getTime();
 
 const ready: GitBase = {
     state: 'ready',
@@ -35,8 +39,8 @@ const ready: GitBase = {
 };
 
 describe('the scope menu', () => {
-    it("has all changes, the branch, what is not committed, and a commit for each of the branch's, newest first with a subject, short hash and date", () => {
-        const options = scopeOptions(ready);
+    it("has all changes, the branch, what is not committed, and a commit for each of the branch's, newest first with the subject and local time before the hash", () => {
+        const options = scopeOptions(ready, undefined, now);
 
         expect(options.map(option => option.label)).toEqual([
             ALL_CHANGES_LABEL,
@@ -53,8 +57,25 @@ describe('the scope menu', () => {
             commitScope(OLDEST.sha),
         ]);
         expect(options[3]?.commit).toBe(NEWEST);
-        expect(options[3]?.note).toBe('bbbbbbb · 20 Nov 2026');
-        expect(options[4]?.note).toBe('aaaaaaa · 20 Nov 2026');
+        expect(options[3]?.note).toBe('12:00 · bbbbbbb');
+        expect(options[4]?.note).toBe('19 Nov, 23:59 · aaaaaaa');
+    });
+
+    it('includes the year for older commits and keeps the hash if the timestamp is invalid', () => {
+        const options = scopeOptions(
+            {
+                ...ready,
+                commits: [
+                    { ...NEWEST, committedAt: new Date(2025, 10, 20, 9, 5).getTime() },
+                    { ...OLDEST, committedAt: Number.NaN },
+                ],
+            },
+            undefined,
+            now
+        );
+
+        expect(options[3]?.note).toBe('20 Nov 2025, 09:05 · bbbbbbb');
+        expect(options[4]?.note).toBe('aaaaaaa');
     });
 
     it('leaves the branch and its commits out while the base is not there, whatever the reason', () => {
