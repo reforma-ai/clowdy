@@ -1,5 +1,5 @@
 import { statSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { isTerminalRunStatus, STOPPED_TOOL } from '@clowdy/protocol';
 
 import { getChat } from '../db/chats';
@@ -154,16 +154,23 @@ function commonGitDir(folder: string): string | undefined {
  * risk an agent that refuses to start on a path that does not exist; `ProjectInfo` reports it missing to the app. A turn that works in its chat's worktree
  * leaves out the folder the worktree is a checkout of too: that main checkout is the person's, and an agent that is handed it wanders back into it. It is
  * handed the repository's git directory instead (`commonGitDir`), which is what committing in a worktree needs and holds none of the person's files.
+ * `terminalsDir` is the project's terminal logs (`<dataDir>/terminals/<projectId>`), added when that directory is already there.
  */
-function additionalFolders(project: Project, cwd: string, workspace: ChatWorkspace | undefined): string[] {
+function additionalFolders(
+    project: Project,
+    cwd: string,
+    workspace: ChatWorkspace | undefined,
+    terminalsDir?: string
+): string[] {
     const left = workspace?.path === cwd ? workspace.folderId : undefined;
     const folders = project.folders.flatMap(folder =>
         folder.path !== cwd && folder.id !== left && isFolder(folder.path) ? [folder.path] : []
     );
     const checkout = left === undefined ? undefined : project.folders.find(folder => folder.id === left);
     const gitDir = checkout && isFolder(checkout.path) ? commonGitDir(checkout.path) : undefined;
+    const granted = gitDir ? [...folders, gitDir] : folders;
 
-    return gitDir ? [...folders, gitDir] : folders;
+    return terminalsDir && isFolder(terminalsDir) ? [...granted, terminalsDir] : granted;
 }
 
 /** What the system prompt says about a run's chat: none for a run without one, the parent's id and title for a thread (`Chat.parentChatId`). */
@@ -592,11 +599,19 @@ export class RunDriver {
             throw new EngineFailure(`The folder ${cwd} no longer exists`);
         }
 
+        const terminalsDir = join(config.dataDir, 'terminals', project.id);
+
         return {
             cwd,
-            additionalDirectories: additionalFolders(project, cwd, ownChat?.workspace),
+            additionalDirectories: additionalFolders(project, cwd, ownChat?.workspace, terminalsDir),
             systemPrompt: [
-                systemPrompt(mode, project, cwd, chat && { ...chat, ...(workspace && { workspace }) }),
+                systemPrompt(
+                    mode,
+                    project,
+                    cwd,
+                    chat && { ...chat, ...(workspace && { workspace }) },
+                    terminalsDir
+                ),
                 skillPrompt(config.systemSkillsDir, chat?.parent !== undefined),
             ]
                 .filter(Boolean)

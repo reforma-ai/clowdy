@@ -95,6 +95,22 @@ describe('a chat and its folder', () => {
         expect(inMain).toMatchObject({ cwd: web.path, additionalDirectories: [api.path, notes.path] });
     });
 
+    test('a turn is handed the terminal logs when that folder is there, and is told the path either way', async () => {
+        const { h, make, say, project, web, api, notes } = await setup();
+        const logs = join(h.config.dataDir, 'terminals', project.id);
+        const told = `The app's terminal logs for this project are in ${logs}, one plain file per shell.`;
+        const before = await say(make(), 'Before any terminal');
+
+        expect(before.additionalDirectories).not.toContain(logs);
+        expect(before.systemPrompt).toContain(told);
+        mkdirSync(logs, { recursive: true });
+
+        const after = await say(make(api.id), 'The terminal failed');
+
+        expect(after.additionalDirectories).toEqual([web.path, notes.path, logs]);
+        expect(after.systemPrompt).toContain(told);
+    });
+
     test('a chat stays in the folder it was made in when the main folder changes, and one without a folder follows the main folder', async () => {
         const { h, project, make, say, web, api, notes, folders } = await setup();
         const inNotes = make(notes.id);
