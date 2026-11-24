@@ -105,6 +105,20 @@
     min-width: 0;
 }
 
+.generateProgress {
+    position: relative;
+}
+
+.generateProgress::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    width: var(--spacing-4);
+    height: var(--spacing-4);
+    margin: auto;
+    background: currentColor;
+}
+
 /* The Commit button's stop (`Unavailable`), when it is off and says why: it is the button's place in the group, and its focus ring follows the button's corners. */
 .commitHost {
     flex: 1 1 0;

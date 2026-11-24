@@ -35,6 +35,7 @@ export class CommitDraft {
     /** Why the last request failed, until the person acts again. */
     failure: CommitFailure | undefined;
     readonly #unticked = observable.set<string>();
+    #generation?: AbortController;
 
     constructor(
         readonly model: PlaceChanges,
@@ -219,12 +220,21 @@ export class CommitDraft {
 
         const { key } = this.model.facts;
         const paths = this.ticked.map(file => file.path);
+        const request = new AbortController();
 
+        this.#generation = request;
         this.busy = 'generate';
         this.failure = undefined;
 
         try {
-            const { message } = await this.transport.generateGitMessage(key.projectId, placeRef(key), paths);
+            const { message } = await this.transport.generateGitMessage(
+                key.projectId,
+                placeRef(key),
+                paths,
+                request.signal
+            );
+
+            if (request.signal.aborted) return;
 
             runInAction(() => {
                 // The person typed while it was written: what they typed stays.
@@ -234,14 +244,27 @@ export class CommitDraft {
                 }
             });
         } catch (error) {
-            runInAction(() => {
-                this.failure = failureOf('generate', error);
-            });
+            if (!request.signal.aborted)
+                runInAction(() => {
+                    this.failure = failureOf('generate', error);
+                });
         } finally {
-            runInAction(() => {
-                this.busy = undefined;
-            });
+            if (this.#generation === request) {
+                this.#generation = undefined;
+                runInAction(() => {
+                    this.busy = undefined;
+                });
+            }
         }
+    }
+
+    stopGenerating(): void {
+        const request = this.#generation;
+        if (!request) return;
+
+        this.#generation = undefined;
+        this.busy = undefined;
+        request.abort();
     }
 
     /**

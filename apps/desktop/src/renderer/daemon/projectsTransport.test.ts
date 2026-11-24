@@ -1545,13 +1545,20 @@ describe('FixtureTransport projects', () => {
 describe('HttpTransport git writes', () => {
     /** A transport whose daemon answers `body` with `status`, and what it was sent. */
     function transportFor(body: unknown, status = 200) {
-        const sent: Array<{ url: string; method?: string; body?: unknown; headers: Record<string, string> }> = [];
+        const sent: Array<{
+            url: string;
+            method?: string;
+            body?: unknown;
+            headers: Record<string, string>;
+            signal?: AbortSignal | null;
+        }> = [];
         const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
             sent.push({
                 url: String(input),
                 method: init?.method,
                 body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined,
                 headers: init?.headers as Record<string, string>,
+                signal: init?.signal,
             });
 
             return new Response(JSON.stringify(body), { status });
@@ -1585,9 +1592,10 @@ describe('HttpTransport git writes', () => {
 
     it('asks for the message of the ticked files', async () => {
         const { sent, transport } = transportFor({ message: 'feat: add a' });
+        const { signal } = new AbortController();
 
         expect(
-            await transport.generateGitMessage('prj_a', { folderId: 'fld_b', workspaceId: 'wks_c' }, ['a.ts'])
+            await transport.generateGitMessage('prj_a', { folderId: 'fld_b', workspaceId: 'wks_c' }, ['a.ts'], signal)
         ).toEqual({ message: 'feat: add a' });
         expect(sent.map(request => [request.url, request.method, request.body])).toEqual([
             [
@@ -1596,6 +1604,7 @@ describe('HttpTransport git writes', () => {
                 { folderId: 'fld_b', workspaceId: 'wks_c', paths: ['a.ts'] },
             ],
         ]);
+        expect(sent[0]?.signal).toBe(signal);
     });
 
     it('discards the files of a place, a worktree of its folder included, with the paths named, and gives what was discarded and where the copy is', async () => {

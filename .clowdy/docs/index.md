@@ -25,6 +25,7 @@
 
 - [Source Control with a PR and merge conflicts](checks/2026-11-24-source-control-combination.md) covers the compact PR row, split file lists, and narrow layout. Status: passed.
 - [Commit message provider](checks/2026-11-24-commit-message-provider.md) covers setup from Generate, switching providers and daemon routing. Status: passed.
+- [Stop commit message generation](checks/2026-11-24-stop-commit-message-generation.md) covers the stop control, retry and provider process cancellation. Status: passed.
 
 ## Superseded
 

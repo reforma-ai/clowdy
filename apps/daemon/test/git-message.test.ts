@@ -20,7 +20,7 @@ import { claude } from '../src/providers/claude';
 import { codex } from '../src/providers/codex';
 import { GenerateFailure, TextGeneration } from '../src/providers/generate';
 import { ProvidersService } from '../src/providers/service';
-import { cleanTempDirs, git, Harness, makeRepo, tempDir, testAgents, testConfig } from './helpers';
+import { cleanTempDirs, git, Harness, makeRepo, tempDir, testAgents, testConfig, waitFor } from './helpers';
 
 import type { SignInStatus } from '@clowdy/protocol';
 import type { Config } from '../src/config';
@@ -196,6 +196,7 @@ function agentStandIn(name: 'codex' | 'claude' = 'codex') {
             `dir='${dir}'`,
             `if [ "$1" = "--version" ]; then echo "${name === 'codex' ? 'codex-cli 0.171.0' : '2.1.312 (Claude Code)'}"; exit 0; fi`,
             'echo run >> "$dir/count"',
+            'echo "$$" > "$dir/pid"',
             ': > "$dir/argv"',
             'for arg in "$@"; do printf \'%s\\n\' "$arg" >> "$dir/argv"; done',
             'cat > "$dir/stdin"',
@@ -331,10 +332,11 @@ async function start(options: AgentState & { timeoutMs?: number; config?: Partia
 
     const { project } = h.ok('project.add', { folders: [path] });
     const folderId = project.folders[0].id as string;
-    const generate = (paths: unknown) =>
+    const generate = (paths: unknown, signal?: AbortSignal) =>
         h.fetch(`/v1/projects/${project.id}/git/message`, {
             method: 'POST',
             body: JSON.stringify({ folderId, paths }),
+            signal,
         });
 
     return { h, config, standIn, claudeStandIn, state, providers, path, project, folderId, generate };
@@ -592,6 +594,53 @@ withStandIn('POST /v1/projects/:id/git/message', () => {
         expect(await json<{ message: string }>(one)).toEqual(await json<{ message: string }>(two));
         // The two identical requests were one run; the different one had its own, after it.
         expect(standIn.runs).toBe(2);
+    });
+
+    test('stops the provider when its last HTTP client cancels, and starts a fresh run on retry', async () => {
+        const { standIn, path, generate } = await start();
+        writeFileSync(join(path, 'b.txt'), 'changed\n');
+        standIn.sleep(20);
+
+        const controller = new AbortController();
+        const request = generate(['b.txt'], controller.signal);
+        const pid = await waitFor(
+            () => existsSync(join(standIn.dir, 'pid')) && Number(standIn.read('pid')),
+            'provider process'
+        );
+
+        controller.abort();
+        await expect(request).rejects.toMatchObject({ name: 'AbortError' });
+
+        await waitFor(() => {
+            try {
+                process.kill(pid, 0);
+                return false;
+            } catch (error) {
+                if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error;
+                return true;
+            }
+        }, 'provider process to exit');
+
+        standIn.sleep(0);
+        standIn.answer('fix: retry');
+        expect(await json<{ message: string }>(await generate(['b.txt']))).toEqual({ message: 'fix: retry' });
+        expect(standIn.runs).toBe(2);
+    });
+
+    test('keeps the shared run when a second client is still waiting', async () => {
+        const { h, standIn, path, project, folderId } = await start();
+        writeFileSync(join(path, 'b.txt'), 'changed\n');
+
+        const place = resolvePlace(h.store, project, folderId);
+        const controller = new AbortController();
+        const service = h.daemon.services.commitMessages;
+        const first = service.generate(place, ['b.txt'], controller.signal);
+        const second = service.generate(place, ['b.txt']);
+
+        controller.abort();
+        await expect(first).rejects.toMatchObject({ name: 'AbortError' });
+        expect(await second).toEqual({ message: 'feat(files): add fresh' });
+        expect(standIn.runs).toBe(1);
     });
 
     test('names a file it cannot show, and keeps its excerpt to a budget shared among the files', async () => {

@@ -73,6 +73,8 @@ const everyTick = () =>
 const message = () => container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Commit message"]')!;
 const generateButton = () =>
     message().parentElement?.querySelector<HTMLButtonElement>('button[aria-label="Generate commit message"]');
+const stopButton = () =>
+    message().parentElement?.querySelector<HTMLButtonElement>('button[aria-label="Stop generating commit message"]');
 const buttonOf = (label: string) =>
     [...container.querySelectorAll<HTMLButtonElement>('button')].find(
         candidate => candidate.textContent?.trim() === label
@@ -214,7 +216,12 @@ describe('the commit box', () => {
         await press(generateButton()!);
         await settle();
 
-        expect(generate).toHaveBeenCalledWith(FIXTURE_PROJECT_ID, PLACE, ['src/booking/price.ts', 'src/limits.ts']);
+        expect(generate).toHaveBeenCalledWith(
+            FIXTURE_PROJECT_ID,
+            PLACE,
+            ['src/booking/price.ts', 'src/limits.ts'],
+            expect.any(AbortSignal)
+        );
         expect(message().value).toBe('feat(booking): add the weekend surcharge');
         // What Generate wrote may be written again.
         expect(generateButton()?.disabled).toBe(false);
@@ -231,7 +238,7 @@ describe('the commit box', () => {
         expect(generateButton()?.disabled).toBe(false);
     });
 
-    it('keeps what is put in the box while a message is being written, and holds the buttons meanwhile', async () => {
+    it('keeps what is put in the box while a message is being written, and holds Commit meanwhile', async () => {
         let release: () => void = () => undefined;
 
         await start();
@@ -243,7 +250,7 @@ describe('the commit box', () => {
         );
 
         await press(generateButton()!);
-        expect(generateButton()?.disabled).toBe(true);
+        expect(stopButton()?.disabled).toBe(false);
         expect(commitButton()?.disabled).toBe(true);
         expect(message().placeholder).toBe('Writing the message');
 
@@ -262,6 +269,33 @@ describe('the commit box', () => {
 
         expect(message().value).toBe('typed meanwhile');
         expect(commitButton()?.disabled).toBe(false);
+    });
+
+    it('aborts generation and ignores its late answer while the next request is running', async () => {
+        const first = Promise.withResolvers<{ message: string }>();
+        const second = Promise.withResolvers<{ message: string }>();
+
+        await start();
+        const generate = vi
+            .spyOn(transport, 'generateGitMessage')
+            .mockReturnValueOnce(first.promise)
+            .mockReturnValueOnce(second.promise);
+
+        await press(generateButton()!);
+        await press(stopButton()!);
+
+        expect(generate.mock.calls[0]?.[3]?.aborted).toBe(true);
+        expect(message().readOnly).toBe(false);
+        expect(message().value).toBe('');
+        expect(alert()).toBeNull();
+
+        await press(generateButton()!);
+        await act(async () => first.resolve({ message: 'feat: stale result' }));
+
+        expect(stopButton()?.disabled).toBe(false);
+        expect(message().value).toBe('');
+        await act(async () => second.resolve({ message: 'feat: new result' }));
+        expect(message().value).toBe('feat: new result');
     });
 
     it('leaves the box as it was and says so when the message could not be written', async () => {

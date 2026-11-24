@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { COMMIT_MESSAGE_PROVIDERS, COMMIT_MESSAGE_SETTING_ID } from '@clowdy/protocol';
 
 import { gitRead } from '../domain/git';
-import { exclusive, pathKey, placeOf } from '../domain/workspaces';
+import { exclusive, pathKey, placeOf, until } from '../domain/workspaces';
 import { CommandError, conflict } from '../errors';
 import { GenerateFailure } from '../providers/generate';
 import { selectChanged } from './selection';
@@ -297,13 +297,19 @@ export interface CommitMessagesOptions {
 const failed = (reason: GitMessageFailure, code: 'invalid' | 'unavailable' = 'unavailable') =>
     new CommandError(code, MESSAGE_FAILED, { reason } satisfies GitErrorDetails);
 
+interface MessageRun {
+    controller: AbortController;
+    result: Promise<GitMessage>;
+    waiters: number;
+}
+
 /**
  * The selected provider writes one commit subject for the ticked files in a run of its own with no tools (`TextGeneration`). Only an explicit request starts a run.
  * Requests for a place run one at a time. Two requests for the same files and provider share the same answer while one is pending.
  */
 export class CommitMessages {
     readonly #options: CommitMessagesOptions;
-    readonly #running = new Map<string, Promise<GitMessage>>();
+    readonly #running = new Map<string, MessageRun>();
 
     constructor(options: CommitMessagesOptions) {
         this.#options = options;
@@ -329,35 +335,61 @@ export class CommitMessages {
     }
 
     /** What the agent writes for these files, or the reason it could not (`MESSAGE_FAILED` with `details.reason`). */
-    async generate(place: Place, paths: unknown): Promise<GitMessage> {
+    async generate(place: Place, paths: unknown, signal?: AbortSignal): Promise<GitMessage> {
+        signal?.throwIfAborted();
+
         const provider = this.#selectedProvider();
         const line = `message:${pathKey(placeOf(place.path))}`;
         const same = `${line}\0${provider}\0${Array.isArray(paths) ? paths.join('\0') : ''}`;
-        const running = this.#running.get(same);
+        let run = this.#running.get(same);
 
-        if (running) return running;
+        if (!run) {
+            const controller = new AbortController();
+            const result = exclusive(this.#options.store, line, controller.signal, () =>
+                this.#write(place, paths, provider, controller.signal)
+            ).finally(() => {
+                if (this.#running.get(same)?.controller === controller) this.#running.delete(same);
+            });
 
-        const run = exclusive(this.#options.store, line, undefined, () => this.#write(place, paths, provider)).finally(
-            () => this.#running.delete(same)
-        );
+            run = { controller, result, waiters: 0 };
+            this.#running.set(same, run);
+        }
 
-        this.#running.set(same, run);
-
-        return run;
+        run.waiters++;
+        try {
+            return await until(run.result, signal);
+        } finally {
+            // A shared run stays alive until its last client stops waiting.
+            if (--run.waiters === 0 && this.#running.get(same) === run) {
+                this.#running.delete(same);
+                run.controller.abort();
+            }
+        }
     }
 
-    async #write(place: Place, paths: unknown, provider: CommitMessageProvider): Promise<GitMessage> {
+    async #write(
+        place: Place,
+        paths: unknown,
+        provider: CommitMessageProvider,
+        signal: AbortSignal
+    ): Promise<GitMessage> {
+        signal.throwIfAborted();
         this.#checkProvider(provider);
         if (!(await this.#options.providers.signedIn(provider))) throw failed('signed_out');
 
+        signal.throwIfAborted();
         const selection = await selectChanged(place, paths);
         const [excerpt, recent] = await Promise.all([diffExcerpt(place, selection), recentSubjects(place.path)]);
         const prompt = buildPrompt({ files: selection.files, excerpt, recent });
         let answer: string;
 
         try {
-            answer = await this.#options.generation.run(provider, prompt, () => this.#checkProvider(provider));
+            answer = await this.#options.generation.run(provider, prompt, {
+                signal,
+                beforeStart: () => this.#checkProvider(provider),
+            });
         } catch (error) {
+            signal.throwIfAborted();
             if (error instanceof CommandError) throw error;
 
             throw failed(error instanceof GenerateFailure ? error.reason : 'failed');

@@ -4,6 +4,7 @@ import { For } from '@clowdy/components/For';
 import { GridList, GridListItem, Menu, MenuItem, MenuTrigger } from '@clowdy/components/List';
 import { Popover } from '@clowdy/components/Popover';
 import { Scrollable } from '@clowdy/components/Scrollable';
+import { Spinner } from '@clowdy/components/Spinner';
 import { Text } from '@clowdy/components/Text';
 import { Textarea } from '@clowdy/components/Textarea';
 import { AiStar, ArrowUp, ChevronDown } from '@clowdy/icons/14';
@@ -165,6 +166,8 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
     if (model.isRepository === false || (!draft.known && !merging)) return null;
 
     const { files, failure } = draft;
+    const generating = draft.busy === 'generate';
+    const generateLabel = generating ? 'Stop generating commit message' : 'Generate commit message';
     const hasFiles = files.length > 0;
     const ticked = draft.ticked.length;
     const hasChangesToCommit = hasFiles || merging !== undefined;
@@ -229,32 +232,36 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
                 rows={3}
                 isResizable={false}
                 aria-label="Commit message"
-                placeholder={draft.busy === 'generate' ? 'Writing the message' : 'Message'}
+                placeholder={generating ? 'Writing the message' : 'Message'}
                 value={draft.message}
                 isReadOnly={draft.busy !== undefined}
                 alwaysShowEndAction
                 endAction={
-                    !merging && (
+                    (!merging || generating) && (
                         <Button
                             variant="filling"
                             size="xs"
                             iconOnly
-                            isDisabled={canWrite && !draft.canGenerate}
-                            isPending={draft.busy === 'generate'}
-                            aria-label="Generate commit message"
-                            aria-haspopup={canWrite ? undefined : 'dialog'}
+                            isDisabled={!generating && canWrite && !draft.canGenerate}
+                            aria-label={generateLabel}
+                            aria-haspopup={!generating && !canWrite ? 'dialog' : undefined}
                             tooltip={
-                                canWrite
-                                    ? (draft.generateBlock ?? 'Generate commit message')
+                                generating || canWrite
+                                    ? (!generating && draft.generateBlock) || generateLabel
                                     : 'Set up commit message generation'
                             }
                             tooltipPlacement="top"
                             onPress={() => {
-                                if (canWrite) void draft.generate();
+                                if (generating) draft.stopGenerating();
+                                else if (canWrite) void draft.generate();
                                 else root.ui.openSettings('source-control');
                             }}
                         >
-                            <AiStar aria-hidden="true" />
+                            {generating ? (
+                                <Spinner size="xxs" className={styles.generateProgress} aria-hidden="true" />
+                            ) : (
+                                <AiStar aria-hidden="true" />
+                            )}
                         </Button>
                     )
                 }

@@ -221,7 +221,13 @@ export class TextGeneration {
     }
 
     /** Reads the agent's answer. A caller can check its permission again immediately before the prompt is sent. */
-    async run(agentId: string, prompt: string, beforeStart?: () => void): Promise<string> {
+    async run(
+        agentId: string,
+        prompt: string,
+        { signal, beforeStart }: { signal?: AbortSignal; beforeStart?: () => void } = {}
+    ): Promise<string> {
+        const stop = signal ? AbortSignal.any([signal, this.#stopper.signal]) : this.#stopper.signal;
+        stop.throwIfAborted();
         const recipe = RECIPES[agentId];
         const target = recipe ? await this.#options.target(agentId) : undefined;
 
@@ -237,6 +243,7 @@ export class TextGeneration {
         const cwd = await mkdtemp(join(tmpdir(), 'clowdy-generate-'));
 
         try {
+            stop.throwIfAborted();
             beforeStart?.();
 
             const run = await runProgram(target.program, recipe.args(instructions), {
@@ -248,9 +255,10 @@ export class TextGeneration {
                 timeoutMs: this.#options.timeoutMs ?? RUN_TIMEOUT_MS,
                 maxChars: MAX_PRINTED_CHARS,
                 input: prompt,
-                signal: this.#stopper.signal,
+                signal: stop,
             });
 
+            stop.throwIfAborted();
             if (run.timedOut) throw new GenerateFailure('timed_out');
 
             const answer = recipe.answer(run);

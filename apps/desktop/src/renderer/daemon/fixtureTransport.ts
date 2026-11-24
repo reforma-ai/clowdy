@@ -821,12 +821,17 @@ export class FixtureTransport implements Transport {
         );
     }
 
-    async generateGitMessage(projectId: ProjectId, place: PlaceRef, paths: string[]): Promise<GitMessage> {
+    async generateGitMessage(
+        projectId: ProjectId,
+        place: PlaceRef,
+        paths: string[],
+        signal?: AbortSignal
+    ): Promise<GitMessage> {
         const agent = commitMessageAgent(this.#data.agents);
         if (!writesCommitMessages(agent)) throw new TransportError("Couldn't write the message", agent ? 503 : 400);
 
         return structuredClone(
-            await this.#gitWrites.message(place.workspaceId ?? '', this.#uncommitted(projectId, place), paths)
+            await this.#gitWrites.message(place.workspaceId ?? '', this.#uncommitted(projectId, place), paths, signal)
         );
     }
 

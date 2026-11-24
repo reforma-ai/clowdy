@@ -581,7 +581,12 @@ export function createRoutes(context: RouteContext): Route[] {
                 // The agent has 30 seconds, and the place's other requests for a message may be ahead of this one.
                 context.keepOpen(request);
 
-                return json(await services.commitMessages.generate(place, body.paths));
+                try {
+                    return json(await services.commitMessages.generate(place, body.paths, request.signal));
+                } catch (error) {
+                    if (request.signal.aborted) return new Response(null, { status: 499 });
+                    throw error;
+                }
             },
         },
         {
