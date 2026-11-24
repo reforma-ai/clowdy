@@ -373,7 +373,11 @@ describe('grouped by folder', () => {
     /** The select under the new-chat page's message box, and the rows of its list. */
     const folderSelect = () => container.querySelector<HTMLButtonElement>('button[aria-label^="Folder:"]');
     /** The read only line of a chat that is made, in the place the select had. */
-    const folderLine = () => container.querySelector<HTMLElement>('[role="group"][aria-label="Folder"]');
+    const folderLine = () =>
+        container.querySelector<HTMLElement>(
+            '[role="group"][aria-label="Folder"], [role="group"][aria-label^="Folder:"]'
+        );
+    const folderLineName = () => folderLine()?.querySelector(':scope > span')?.textContent;
     const folderItem = (name: string) =>
         [...document.body.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find(row => row.textContent === name)!;
     const filtersMenu = async () => {
@@ -893,7 +897,7 @@ describe('grouped by folder', () => {
             });
 
             expect(folderSelect()).toBeNull();
-            expect(folderLine()?.textContent).toBe(SINGLE);
+            expect(folderLineName()).toBe(SINGLE);
             expect(container.textContent).toContain('What should we work on?');
         });
 
@@ -935,7 +939,7 @@ describe('grouped by folder', () => {
             await restart();
             await draw(() => ui().openChat('c-2'));
 
-            expect(folderLine()?.textContent).toBe('car-rental-api');
+            expect(folderLineName()).toBe('car-rental-api');
             expect(folderLine()?.getAttribute('title')).toBe('~/car-rental-api');
             // Read only: nothing in it opens a list or takes a press.
             expect(folderSelect()).toBeNull();
@@ -944,7 +948,7 @@ describe('grouped by folder', () => {
             // A chat with no folder works in the main one.
             await draw(() => ui().openChat('c-1'));
 
-            expect(folderLine()?.textContent).toBe('car-rental');
+            expect(folderLineName()).toBe('car-rental');
         });
 
         it('is under the message box of the chat the page made, in the folder picked there', async () => {
@@ -964,7 +968,7 @@ describe('grouped by folder', () => {
 
             expect([...project().chats.keys()].some(id => !before.has(id))).toBe(true);
             expect(folderSelect()).toBeNull();
-            expect(folderLine()?.textContent).toBe('car-rental-api');
+            expect(folderLineName()).toBe('car-rental-api');
         });
 
         it('says when the folder is gone from the disk', async () => {
@@ -996,11 +1000,11 @@ describe('grouped by folder', () => {
             await restart({ grouping: false });
             await draw(() => ui().openChat('c-2'));
 
-            expect(folderLine()?.textContent).toBe('car-rental-api');
+            expect(folderLineName()).toBe('car-rental-api');
 
             await draw(() => ui().setGroupByFolder(true));
 
-            expect(folderLine()?.textContent).toBe('car-rental-api');
+            expect(folderLineName()).toBe('car-rental-api');
 
             // The fixture project has one folder.
             act(() => reactRoot.unmount());
@@ -1013,7 +1017,7 @@ describe('grouped by folder', () => {
                 ui().openChat('c-1');
             });
 
-            expect(folderLine()?.textContent).toBe(SINGLE);
+            expect(folderLineName()).toBe(SINGLE);
         });
     });
 
@@ -1672,16 +1676,17 @@ describe('a chat that works in a worktree', () => {
         );
         await vi.waitFor(() =>
             expect(
-                container.querySelector('[aria-label="Where it runs: Worktree, branch clowdy/ab12cd34"]')?.textContent
-            ).toBe('Worktreeclowdy/ab12cd34')
+                container.querySelector('[aria-label="Folder: car-rental, worktree, branch clowdy/ab12cd34"]')
+                    ?.textContent
+            ).toBe('car-rentalWorktree clowdy/ab12cd34')
         );
 
         await draw(() => ui().openChat('c-1'));
 
         await vi.waitFor(() =>
-            expect(
-                container.querySelector('[aria-label="Where it runs: Main worktree, branch main"]')?.textContent
-            ).toBe('main')
+            expect(container.querySelector('[aria-label="Folder: car-rental, branch main"]')?.textContent).toBe(
+                'car-rentalmain'
+            )
         );
     });
 
