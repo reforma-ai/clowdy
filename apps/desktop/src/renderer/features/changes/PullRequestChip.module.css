@@ -2,11 +2,11 @@
 
 .chip {
     display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: var(--spacing-4);
+    align-items: center;
     width: 100%;
     min-width: 0;
+    border-radius: var(--radius-md);
+    background: var(--color-secondary-muted-light);
 }
 
 .chip[data-stale] {
@@ -16,9 +16,64 @@
 .pr[data-size][data-variant] {
     min-width: 0;
     max-width: 100%;
+    padding-inline: var(--spacing-6);
+}
+
+.prContent {
+    min-width: 0;
+    gap: var(--spacing-4);
+}
+
+.summary[data-size][data-variant] {
+    flex: 1 0 auto;
+    justify-content: flex-end;
+    min-width: 0;
+    padding-inline: var(--spacing-6);
+    border-start-start-radius: 0;
+    border-end-start-radius: 0;
+}
+
+.summary[data-size][data-variant][data-compact] {
+    padding-inline: var(--spacing-4);
+}
+
+.summary[data-compact] .checkCounts {
+    gap: var(--spacing-4);
+    padding-inline-start: var(--spacing-4);
+}
+
+.summary[data-compact] .summaryContent {
+    gap: var(--spacing-2);
+}
+
+.summaryContent {
+    gap: var(--spacing-4);
+}
+
+.checkCounts {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-6);
+    border-inline-start: 1px solid var(--color-surface-border);
+    padding-inline-start: var(--spacing-6);
+}
+
+.checkCount {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-2);
+    font-size: var(--text-xs);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.summary[data-compact] .summaryWord {
+    display: none;
 }
 
 .prMark,
+.prLink,
+.chevron,
 .checkLink {
     flex-shrink: 0;
     color: var(--color-secondary-muted-text);
@@ -65,8 +120,22 @@
     flex-shrink: 0;
 }
 
-@container (max-width: 12rem) {
-    .checkState {
+@container (max-width: 14rem) {
+    .prLink,
+    .prState,
+    .summaryWord {
+        display: none;
+    }
+}
+
+@container (max-width: 15rem) {
+    .checkCounts:has(.checkCount + .checkCount) .summaryWord {
+        display: none;
+    }
+}
+
+@container (max-width: 11rem) {
+    .checkCount:not(:first-child) {
         display: none;
     }
 }

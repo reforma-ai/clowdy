@@ -78,7 +78,7 @@ const press = (target: Element) =>
 const sidebar = () => container.querySelector('[aria-label="Changes sidebar"]')!;
 const buttonOf = (label: string) =>
     [...container.querySelectorAll<HTMLButtonElement>('button')].find(
-        candidate => candidate.textContent?.trim() === label
+        candidate => candidate.getAttribute('aria-label') === label || candidate.textContent?.trim() === label
     );
 /** The sync button: the one that names the next action. */
 const createPRButton = () => container.querySelector<HTMLButtonElement>('button[aria-label="Create PR"]') ?? undefined;
@@ -875,6 +875,14 @@ describe('Create PR in the sidebar', () => {
         expect(container.querySelector('button svg[data-state="open"]')).not.toBeNull();
         expect(createPRButton()).toBeUndefined();
         expect(buttonOf('Publish first')).toBeUndefined();
+        const summary = container.querySelector('button[aria-label^="Show checks"]')!;
+        expect(summary.getAttribute('aria-label')).toBe('Show checks: 1 failed, 2 pending, 3 passed, 1 skipped');
+        expect(document.querySelector('ul[aria-label="Checks"]')).toBeNull();
+        await press(summary);
+        await settle();
+        const checks = [...document.querySelectorAll<HTMLAnchorElement>('ul[aria-label="Checks"] a')];
+        expect(checks).toHaveLength(7);
+        expect(checks.every(check => check.protocol === 'https:' && check.target === '_blank')).toBe(true);
     });
 
     it('shows a merged pull request with a state icon and its checks', async () => {
@@ -889,7 +897,9 @@ describe('Create PR in the sidebar', () => {
 
         expect(link.textContent).toBe('PR #31');
         expect(link.querySelector('svg[data-state="merged"]')).not.toBeNull();
-        expect(pr.querySelectorAll('ul[aria-label="Checks"] a')).toHaveLength(3);
+        await press(pr.querySelector('button[aria-label^="Show checks"]')!);
+        await settle();
+        expect(document.querySelectorAll('ul[aria-label="Checks"] a')).toHaveLength(3);
     });
 
     it('shows a single Publish action for a clean unpublished branch and offers Create PR after publishing', async () => {
