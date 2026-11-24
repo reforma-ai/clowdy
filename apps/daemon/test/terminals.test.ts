@@ -834,12 +834,16 @@ describe.skipIf(!posix)('the terminal routes', () => {
             socket.onerror = () => reject(new Error('The stream was refused'));
         });
 
+        /** What the shell showed: the screen the stream began with, which holds a prompt a fast shell drew before the stream opened, and then its output. */
+        const shown = () =>
+            [...messages.flatMap(message => (message.type === 'screen' ? [message.screen] : [])), output].join('\n');
+
         return {
             socket,
             messages,
             output: () => output,
             send: (text: string) => socket.send(encoder.encode(text)),
-            until: (what: string) => waitFor(() => output.includes(what) && output, `${what} on the stream`, 6000),
+            until: (what: string) => waitFor(() => shown().includes(what) && shown(), `${what} on the stream`, 6000),
             close: () => socket.close(),
         };
     }
