@@ -38,7 +38,7 @@ import { categoryOf, linkRunTask, moveTask, requireTask } from '../domain/tasks'
 import { conflict, errorMessage, invalid, notFound, unavailable } from '../errors';
 import { newId } from '../ids';
 import { EngineLimits } from './limits';
-import { killSurvivor, signalProcess } from './processes';
+import { killSurvivor, mayBeSameProcess, signalProcess } from './processes';
 import { QUEUE_REASON, Scheduler } from './scheduler';
 import { canTransition, NEEDS_REASON, STOPPED_TO_SEND_REASON } from './transitions';
 
@@ -966,7 +966,11 @@ export class RunService {
             for (const run of dead) {
                 // `setStatus` clears what a run had open in the background, since a run that ended has nothing open; what the restart cost it is kept first,
                 // for the next turn's message (`lostBackgroundMessage`).
-                setRunWork(this.store.db, run.id, { process: null, lostBackground: run.background });
+                const process = getRunWork(this.store.db, run.id).process;
+                setRunWork(this.store.db, run.id, {
+                    ...(process && mayBeSameProcess(process) ? {} : { process: null }),
+                    lostBackground: run.background,
+                });
                 this.setStatus(run.id, 'interrupted', { reason: 'Daemon restarted' });
 
                 for (const { seq, body } of listRunningTools(this.store.db, run.id)) {

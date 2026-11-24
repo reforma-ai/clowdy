@@ -16,7 +16,7 @@ import { TurnSnapshots, type TurnTrees } from '../git/snapshot';
 import { conversationRecord } from './history';
 import { backoffDelay, engineName, formatMoment, parseLimit, sleep } from './limits';
 import { NativeAgents } from './native';
-import { describeProcess, killSurvivor } from './processes';
+import { describeProcess, killSurvivor, mayBeSameProcess } from './processes';
 import {
     backgroundEndedMessage,
     backgroundNote,
@@ -238,6 +238,8 @@ export class RunDriver {
     private flights = new Map<string, Promise<void>>();
     /** Engine sessions started and not yet closed. */
     private sessions = 0;
+    /** A session that failed to close must not be followed by another one in this daemon. */
+    private unclosed = new Set<string>();
     /** Aborted when the daemon stops. A session may run on after its turn (`EngineStartOptions.title`), when its run's own signal is gone. */
     private stopping = new AbortController();
 
@@ -538,6 +540,14 @@ export class RunDriver {
         live.signal = signal;
 
         try {
+            const previous = getRunWork(this.deps.store.db, runId).process;
+            if (previous && !mayBeSameProcess(previous)) {
+                setRunWork(this.deps.store.db, runId, { process: null });
+                this.unclosed.delete(runId);
+            }
+            if (this.unclosed.has(runId) || (previous && mayBeSameProcess(previous))) {
+                throw new EngineFailure('The previous agent session could not be confirmed stopped');
+            }
             // Cancelled or taken over while this flight waited behind the previous one.
             if (!['queued', 'blocked'].includes(runs.require(runId).status)) {
                 return;
@@ -743,15 +753,16 @@ export class RunDriver {
         const close = () =>
             (closing ??= (async () => {
                 try {
-                    await session.close();
-                } catch {
-                    // The session is over either way.
+                    await session.close({ ensureStopped: live.interrupted || live.restart });
+                } catch (error) {
+                    this.unclosed.add(runId);
+                    throw error;
                 }
             })());
         // A session that waits for background work is read from an iterator that blocks until the agent says something: a Stop or a daemon stop must not wait for it.
         const onEnded = () => {
             if (live.lingering) {
-                void close();
+                void close().catch(() => undefined);
             }
         };
 
@@ -773,6 +784,8 @@ export class RunDriver {
                 return { kind: 'resume' };
             }
 
+            // Do not publish a result or start a replacement before the session has closed.
+            await close();
             this.settle(runId, live, result);
 
             return undefined;
@@ -821,17 +834,22 @@ export class RunDriver {
             live.pausedUntil = undefined;
             live.lingering = false;
             this.forgetBackground(runId, live);
-            await close();
-            // A session that waited for background work was not counted.
-            if (live.counted) {
-                this.sessions--;
-                live.counted = false;
-            }
+            let closed = false;
+            try {
+                await close();
+                closed = true;
+            } finally {
+                // A session that waited for background work was not counted.
+                if (live.counted) {
+                    this.sessions--;
+                    live.counted = false;
+                }
 
-            runs.setProcess(runId, null);
-            // A turn that ended with no `done` (a Stop, a failure) is measured here, once its agent is gone, so what the agent wrote on its way out is in the tree and the Stop, the
-            // session and the process cap are not held for it; the daemon's own stop is not waited for.
-            if (!this.stopping.signal.aborted) await live.trees?.end();
+                // Keep a process reference after failed cleanup so recovery can still find it.
+                if (closed) runs.setProcess(runId, null);
+                // A turn that ended with no `done` is measured once its agent is gone.
+                if (!this.stopping.signal.aborted) await live.trees?.end();
+            }
         }
     }
 
@@ -1033,7 +1051,7 @@ export class RunDriver {
     private refuse(live: LiveRun): void {
         live.restart = true;
         live.delivering = false;
-        void live.close?.();
+        void live.close?.().catch(() => undefined);
     }
 
     /**

@@ -59,6 +59,15 @@ export function isSameProcess(ref: RunProcess): boolean {
     );
 }
 
+/** A recorded process may still be the agent when it is alive and cannot be proved to have a different start time. */
+export function mayBeSameProcess(ref: RunProcess): boolean {
+    if (!isAlive(ref.pid)) return false;
+    const started = startTimeOf(ref.pid);
+    return (
+        started === undefined || ref.startedAt === undefined || Math.abs(started - ref.startedAt) <= START_TOLERANCE_MS
+    );
+}
+
 /** Signals the process group of a run's engine (the whole tree), or the process alone when it has no group of its own. */
 export function signalProcess(ref: RunProcess, signal: 'SIGTERM' | 'SIGKILL'): void {
     if (process.platform === 'win32') {

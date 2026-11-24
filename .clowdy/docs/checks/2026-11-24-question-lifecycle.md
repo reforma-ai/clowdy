@@ -11,6 +11,7 @@ Related task: CLO-54
 - The targeted daemon tests cover a cancelled call, an agent ending its turn with a question open, an occupied execution slot, MCP disconnection and the provider capability. The renderer tests cover the waiting color and a withdrawn question.
 - An isolated Electron fixture showed the question and blue waiting indicator. It did not test the live provider flow in the desktop application.
 - The desktop build passed. The full desktop test run had 4 failures in `SourceControlPage.test.tsx` because its fixture lacks `RootStoreProvider`; 4,782 tests passed. The baseline typecheck failed in existing daemon files before these changes.
+- Verified session closure now waits for an in-flight process start and, when a verified stop is required, for a title-waiting process to exit. Focused tests cover failed closes, refused-session retries and process ID reuse. The durable question boundary has not been built yet.
 
 ## Limits
 
