@@ -1,0 +1,67 @@
+@reference '@clowdy/styles/rulesets';
+
+.track {
+    width: 90px;
+    max-width: 18vw;
+    height: var(--spacing-6);
+    border-radius: var(--radius-full);
+    background-color: var(--color-secondary-muted);
+    overflow: hidden;
+}
+
+.fill {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background-color: var(--color-primary);
+    transition: width 300ms ease-out;
+}
+
+.list {
+    max-height: min(40vh, 210px);
+    padding: var(--spacing-xxs) var(--spacing-xs);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.row {
+    @ruleset typography-text-xs;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    width: 100%;
+    min-width: 0;
+    min-height: var(--spacing-30);
+    padding: var(--spacing-xxs) var(--spacing-md);
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.row:hover {
+    background-color: var(--color-secondary-muted);
+}
+.row:focus-visible {
+    outline: 2px solid var(--color-primary-muted-border);
+    outline-offset: -2px;
+}
+.key {
+    flex-shrink: 0;
+    color: var(--color-secondary-muted-text);
+}
+.title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .fill {
+        transition: none;
+    }
+}
