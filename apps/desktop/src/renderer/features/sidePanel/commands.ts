@@ -1,3 +1,5 @@
+import { panelOrder } from './panelOrder';
+
 import type { SidePanelTab } from '../../stores';
 
 /** The command that opens and shuts the side panel, by the id the hotkeys registry knows it by. */
@@ -15,19 +17,11 @@ export const SIDE_PANEL_EXPAND_KEYS = '$mod+Shift+Enter';
 /** The command that opens the panel on a tab, or shuts the panel when that tab is already shown: it does what a click on the tab's item in the rail does. */
 export const sidePanelTabCommand = (tab: SidePanelTab) => `sidePanel.tab.${tab}`;
 
-/** `Cmd+0` to `Cmd+5` (`Ctrl+` off a Mac): the tabs, Files, Terminal, Docs, Tasks and Changes on the digits that are easy to reach and Info on 0 (Terminal kept `Cmd+2` when Docs came between it and Files). A second press shuts the panel, as `Cmd+1` shuts the Project tool window of JetBrains, and a second click on the tab's item does the same. */
-export const SIDE_PANEL_TAB_KEYS: Record<SidePanelTab, string> = {
-    info: '$mod+0',
-    files: '$mod+1',
-    docs: '$mod+3',
-    terminal: '$mod+2',
-    tasks: '$mod+4',
-    changes: '$mod+5',
-};
+/** The digit follows the tab's current position in the rail. */
+export const sidePanelTabKeys = (tab: SidePanelTab) => `$mod+${panelOrder.order.indexOf(tab) + 1}`;
 
 /** The tabs' names, on the rail, the tooltips and the shortcuts page. */
 export const SIDE_PANEL_TAB_LABELS: Record<SidePanelTab, string> = {
-    info: 'Info',
     files: 'Files',
     docs: 'Docs',
     terminal: 'Terminal',

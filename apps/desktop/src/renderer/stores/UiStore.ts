@@ -32,7 +32,7 @@ export type SettingsPage = (typeof SETTINGS_PAGES)[number];
 export type TasksView = 'board' | 'list';
 
 /** The tabs of the side panel's header, in the order they appear there. */
-export const SIDE_PANEL_TABS = ['info', 'files', 'docs', 'terminal', 'tasks', 'changes'] as const;
+export const SIDE_PANEL_TABS = ['files', 'changes', 'docs', 'terminal', 'tasks'] as const;
 
 export type SidePanelTab = (typeof SIDE_PANEL_TABS)[number];
 
@@ -187,7 +187,7 @@ export class ProjectUi {
     /** The side panel at the right of the window is open for this project. Closed until the person opens it, and kept for the project, whichever chat is on show. */
     sidePanelOpen = false;
     /** The tab the side panel shows, kept for the project: the one it was left on. */
-    sidePanelTab: SidePanelTab = 'info';
+    sidePanelTab: SidePanelTab = 'files';
     /**
      * The side panel takes the place of the chat, and only the list of chats stays beside it. It is the project's choice, kept for it and apart from whether the panel is open:
      * a shut panel shows the chat in full and brings the panel back expanded. Choosing a chat while the panel covers it shuts the panel and leaves the choice (`showChat`).

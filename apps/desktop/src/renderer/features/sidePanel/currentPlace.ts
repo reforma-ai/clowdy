@@ -7,8 +7,7 @@ import type { Chat, ChatWorkspace, FolderId, ProjectFolder, WorkspaceId } from '
 import type { ProjectState, ProjectUi } from '../../stores';
 
 /**
- * Where the window works: a folder of the project, and the worktree of that folder the open chat works in, when it has one. The side panel's Files, Docs, Terminal and
- * Info tabs, the quick search and the `@` menu all read the same place, so they list the same files. A chat in the folder's own checkout has no `workspace`.
+ * Where the window works: a folder of the project, and the worktree of that folder the open chat works in, when it has one. The side panel's Files, Docs and Terminal tabs, the quick search and the `@` menu all read the same place, so they list the same files. A chat in the folder's own checkout has no `workspace`.
  */
 export interface Place {
     folder: ProjectFolder;

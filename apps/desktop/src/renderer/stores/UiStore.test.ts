@@ -718,17 +718,17 @@ describe('UiStore', () => {
         );
     });
 
-    it('starts the side panel on its Info tab, and keeps the tab the person left it on per project', () => {
+    it('starts the side panel on Files and keeps each project’s chosen tab', () => {
         const storage = memoryStorage();
         const store = new UiStore(storage);
         const ui = store.forProject('p1');
 
-        expect(ui.sidePanelTab).toBe('info');
-
-        ui.showSidePanelTab('files');
         expect(ui.sidePanelTab).toBe('files');
-        expect(store.forProject('p2').sidePanelTab).toBe('info');
-        expect(new UiStore(storage).forProject('p1').sidePanelTab).toBe('files');
+
+        ui.showSidePanelTab('docs');
+        expect(ui.sidePanelTab).toBe('docs');
+        expect(store.forProject('p2').sidePanelTab).toBe('files');
+        expect(new UiStore(storage).forProject('p1').sidePanelTab).toBe('docs');
     });
 
     it('shuts the side panel, and does nothing to a shut one', () => {
@@ -879,7 +879,7 @@ describe('UiStore', () => {
         ui.showSidePanelTab('docs');
         expect(ui.sidePanelCoversChat).toBe(true);
 
-        for (const tab of ['terminal', 'info'] as const) {
+        for (const tab of ['terminal'] as const) {
             ui.showSidePanelTab(tab);
             expect([ui.sidePanelTabIsFull, ui.sidePanelCoversChat]).toEqual([false, false]);
         }
@@ -908,12 +908,12 @@ describe('UiStore', () => {
         const ui = new UiStore(memoryStorage()).forProject('p1');
 
         expect(
-            (['files', 'docs', 'terminal', 'info', 'tasks', 'changes'] as const).map(tab => {
+            (['files', 'docs', 'terminal', 'tasks', 'changes'] as const).map(tab => {
                 ui.showSidePanelTab(tab);
 
                 return ui.sidePanelTabHasTree;
             })
-        ).toEqual([true, true, false, false, false, true]);
+        ).toEqual([true, true, false, false, true]);
     });
 
     it("puts Changes beside the chat while the window fits it, and in the chat's place while it does not, as Files is", () => {
@@ -1018,10 +1018,13 @@ describe('UiStore', () => {
         expect(
             new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"sidePanelTab":"terminal"}' })).forProject('p1').sidePanelTab
         ).toBe('terminal');
-        // A stored tab that is none (one a later version had, or damage) falls back to Info.
+        expect(
+            new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"sidePanelTab":"info"}' })).forProject('p1').sidePanelTab
+        ).toBe('files');
+        // A stored tab that is none (one a later version had, or damage) falls back to Files.
         expect(
             new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"sidePanelTab":"checks"}' })).forProject('p1').sidePanelTab
-        ).toBe('info');
+        ).toBe('files');
     });
 
     it('reads the fold of the strip from the page URL, and drops what is damaged in storage', () => {

@@ -183,7 +183,7 @@ describe('opening a path in the Files tab', () => {
         expect(await tabs()).toEqual(['README.md', 'package.json']);
         expect(files.tabs.active?.path).toBe('README.md');
         expect(ui().sidePanelOpen).toBe(false);
-        expect(ui().sidePanelTab).toBe('info');
+        expect(ui().sidePanelTab).toBe('files');
     });
 
     it('closes none of the tabs that are open, at the most tabs, for a path that is not there', async () => {
