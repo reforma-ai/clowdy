@@ -1,7 +1,7 @@
 'use client';
 
 import { clamp, cn } from '@clowdy/lib';
-import { mergeAttributes, Node } from '@tiptap/core';
+import { mergeAttributes, Node, textblockTypeInputRule } from '@tiptap/core';
 import Bold from '@tiptap/extension-bold';
 import Code from '@tiptap/extension-code';
 import Document from '@tiptap/extension-document';
@@ -67,7 +67,7 @@ export type RichInputProps = {
     placeholder?: string;
     className?: string;
     disabled?: boolean;
-    /** Markdown input rules: bold/italic/code, lists (`- ` / `1. `). Default true. */
+    /** Markdown input rules: bold/italic/code, lists (`- ` / `1. `) and quotes (`> `). Default true. */
     markdown?: boolean;
     autoFocus?: boolean;
     minHeight?: number;
@@ -117,13 +117,17 @@ type Bridge = {
 
 const EMPTY_TRIGGERS: readonly RichInputTrigger[] = [];
 
-const ComposerQuote = Node.create({
+const ComposerQuote = Node.create<{ markdown: boolean }>({
     name: 'composerQuote',
     group: 'block',
     content: 'inline*',
     defining: true,
     parseHTML: () => [{ tag: 'blockquote[data-composer-quote]' }],
     renderHTML: () => ['blockquote', { 'data-composer-quote': '' }, 0],
+    addOptions: () => ({ markdown: true }),
+    addInputRules() {
+        return this.options.markdown ? [textblockTypeInputRule({ find: /^> $/, type: this.type })] : [];
+    },
 });
 
 function createBridge(setMenu: (menu: MenuState | null) => void): Bridge {
@@ -442,7 +446,7 @@ export function RichInput({
                 Document,
                 Paragraph,
                 Text,
-                ComposerQuote,
+                ComposerQuote.configure({ markdown }),
                 HardBreak.extend({
                     addKeyboardShortcuts() {
                         return {};
