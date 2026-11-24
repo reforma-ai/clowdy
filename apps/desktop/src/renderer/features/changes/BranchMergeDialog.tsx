@@ -13,6 +13,7 @@ import { PickerList, type PickerOption } from '../../shared/PickerPopover';
 import { canOpenPaths, chosenPrograms, openEffects, useOpenApps } from '../openWith';
 import styles from './BranchMergeDialog.module.css';
 import { commitsWords } from './changesActions';
+import { confirmAbortMerge } from './confirmAbortMerge';
 import { type GitPlaceKey, gitFactsOf, placeRef } from './gitFacts';
 
 import type {
@@ -229,7 +230,7 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
     const target = preview?.target ?? (direction === 'into' ? (choice?.label ?? '…') : current);
     const isWorking = pending !== undefined;
     const { editor, fileManager } = chosenPrograms(apps);
-    const openIn = editor ?? fileManager;
+    const openIn = canOpenPaths() ? (editor ?? fileManager) : undefined;
 
     return (
         <div
@@ -302,7 +303,7 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
             )}
             {result?.state === 'conflicts' && (
                 <div className={styles.detail} role="status">
-                    <Text color="warning">
+                    <Text variant="sm" color="warning">
                         {result.conflicts === 0
                             ? `Finish the merge in ${result.target}`
                             : `${result.conflicts} ${result.conflicts === 1 ? 'conflict' : 'conflicts'} in ${result.target}`}
@@ -312,9 +313,13 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
                     </Text>
                 </div>
             )}
-            {result?.state === 'done' && <Text role="status">{`Merged into ${result.target}`}</Text>}
-            {result?.state === 'pushed' && <Text role="status">{`Pushed ${result.target} to origin`}</Text>}
-            {result?.state === 'aborted' && <Text role="status">{`Merge into ${result.target} aborted`}</Text>}
+            {result?.state === 'done' && <Text variant="sm" role="status">{`Merged into ${result.target}`}</Text>}
+            {result?.state === 'pushed' && (
+                <Text variant="sm" role="status">{`Pushed ${result.target} to origin`}</Text>
+            )}
+            {result?.state === 'aborted' && (
+                <Text variant="sm" role="status">{`Merge into ${result.target} aborted`}</Text>
+            )}
             {failure && <FailureText failure={failure} />}
             <div className={styles.actions}>
                 {result?.state === 'conflicts' && (
@@ -324,32 +329,36 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
                         isDisabled={isWorking}
                         isPending={pending === 'abort'}
                         onPress={() =>
-                            void run({
-                                action: 'abort',
-                                target: result.target,
-                                commit: result.commit,
-                                sourceCommit: result.sourceCommit,
-                            })
+                            confirmAbortMerge(() =>
+                                run({
+                                    action: 'abort',
+                                    target: result.target,
+                                    commit: result.commit,
+                                    sourceCommit: result.sourceCommit,
+                                })
+                            )
                         }
                     >
                         Abort merge
                     </Button>
                 )}
-                <Button
-                    size="sm"
-                    variant="filled"
-                    color="secondary"
-                    isDisabled={isWorking}
-                    onPress={() => modal.cancel()}
-                >
-                    {result ? 'Done' : 'Cancel'}
-                </Button>
+                {(result?.state !== 'conflicts' || !openIn) && (
+                    <Button
+                        size="sm"
+                        variant="filled"
+                        color="secondary"
+                        isDisabled={isWorking}
+                        onPress={() => modal.cancel()}
+                    >
+                        {result ? 'Done' : 'Cancel'}
+                    </Button>
+                )}
                 {!result && choice && failure && (
                     <Button size="sm" variant="bordered" onPress={() => void pick(choice.id)}>
                         Refresh preview
                     </Button>
                 )}
-                {result?.state === 'conflicts' && openIn && canOpenPaths() && (
+                {result?.state === 'conflicts' && openIn && (
                     <Button
                         className={styles.action}
                         size="sm"

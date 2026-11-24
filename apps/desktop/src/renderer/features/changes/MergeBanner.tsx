@@ -4,6 +4,7 @@ import { Text } from '@clowdy/components/Text';
 import { useProjectUi } from '../../stores';
 import { quoteIntoComposer } from '../chats/composerBridge';
 import { mergeBanner } from './changesActions';
+import { confirmAbortMerge } from './confirmAbortMerge';
 import styles from './MergeBanner.module.css';
 import { useRemoteActions } from './useRemoteActions';
 
@@ -50,7 +51,11 @@ export function MergeBanner({ facts }: { facts: PlaceFacts }) {
                     size="sm"
                     isDisabled={remote.busy}
                     isPending={remote.running === 'abort'}
-                    onPress={() => void remote.run('abort')}
+                    onPress={() =>
+                        confirmAbortMerge(async () => {
+                            await remote.run('abort');
+                        })
+                    }
                 >
                     Abort merge
                 </Button>

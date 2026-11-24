@@ -169,6 +169,7 @@ afterEach(async () => {
     stop?.();
     store.dispose();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
 });
 
 describe('the sync button in the sidebar', () => {
@@ -569,6 +570,26 @@ describe('merging branches from the sync menu', () => {
         await press(item(label));
         await settle();
     };
+    const conflict = async () => {
+        await open('Merge from branch…');
+        await press(option('origin/feature/search'));
+        await settle();
+        await press(button('Merge into clowdy/ab12cd34'));
+        await settle();
+    };
+    const confirmButton = (name: string) =>
+        vi.waitFor(async () => {
+            await settle();
+            const confirmation = [...document.querySelectorAll('[data-modal-window]')].find(panel =>
+                panel.textContent?.includes('Abort merge?')
+            );
+            const button = [...(confirmation?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find(
+                element => element.textContent === name
+            );
+
+            expect(button, `Abort confirmation button: ${name}`).toBeDefined();
+            return button!;
+        });
 
     it('fetches origin before listing source branches and previews the selected ref before merging', async () => {
         await start({ gitWrites: { clean: true, remote: 'level' } });
@@ -680,20 +701,42 @@ describe('merging branches from the sync menu', () => {
     });
 
     it('identifies the destination checkout after a conflict and aborts only that merge', async () => {
+        // The nested confirmation needs a visible parent window. Happy DOM has no layout.
+        vi.spyOn(Element.prototype, 'getClientRects').mockReturnValue([{}] as unknown as DOMRectList);
+        vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 640, 480));
+        const openPath = vi.fn();
+        vi.stubGlobal('desktop', {
+            openPath,
+            getOpenApps: async () => ({
+                editors: [{ id: 'cursor', name: 'Cursor' }],
+                terminals: [],
+                fileManagers: [],
+            }),
+        });
         await start({ gitWrites: { clean: true, remote: 'level' }, branches: ['remote'] });
         const merge = vi.spyOn(transport, 'branchMergeGit');
 
-        await open('Merge from branch…');
-        await press(option('origin/feature/search'));
-        await settle();
+        await conflict();
+
         expect(heading()).toBe('Merge origin/feature/search to clowdy/ab12cd34');
         expect(merge.mock.calls[0]?.[2]).toMatchObject({ branch: 'feature/search', remote: true });
-        await press(button('Merge into clowdy/ab12cd34'));
-        await settle();
-
         expect(dialog().querySelector('[role="status"]')?.textContent).toContain('1 conflict in clowdy/ab12cd34');
         expect(dialog().querySelector('[role="status"]')?.textContent).toContain(currentPlace.workspace?.path);
+        expect(button('Done')).toBeUndefined();
+        await press(button('Open clowdy/ab12cd34'));
+        expect(openPath).toHaveBeenCalledWith(currentPlace.workspace?.path, { kind: 'editor', id: 'cursor' });
+
         await press(button('Abort merge'));
+        const cancel = await confirmButton('Cancel');
+        expect(cancel.dataset.variant).toBe('filled');
+        expect(merge).toHaveBeenCalledTimes(2);
+        await press(cancel);
+        await settle();
+        expect(dialog().querySelector('[role="status"]')?.textContent).toContain('1 conflict in clowdy/ab12cd34');
+        expect(merge).toHaveBeenCalledTimes(2);
+
+        await press(button('Abort merge'));
+        await press(await confirmButton('Abort merge'));
         await settle();
 
         expect(merge.mock.calls[2]?.[2]).toMatchObject({
@@ -703,6 +746,33 @@ describe('merging branches from the sync menu', () => {
             sourceCommit: expect.stringMatching(/^[0-9a-f]+$/),
         });
         expect(dialog().querySelector('[role="status"]')?.textContent).toBe('Merge into clowdy/ab12cd34 aborted');
+    });
+
+    it('asks before aborting from the sidebar and leaves conflicts alone on Cancel', async () => {
+        await start({ gitWrites: { clean: true, remote: 'level' }, branches: ['remote'] });
+        const abort = vi.spyOn(transport, 'abortGit').mockResolvedValue({ state: 'done', action: 'abort' });
+
+        await conflict();
+        expect(button('Done')).toBeDefined();
+        expect(button('Open clowdy/ab12cd34')).toBeUndefined();
+        await press(dialog().querySelector('button[aria-label="Close"]')!);
+        await settle();
+        await press(buttonOf('Abort merge')!);
+        const cancel = await confirmButton('Cancel');
+        expect(cancel.dataset.variant).toBe('filled');
+        expect(abort).not.toHaveBeenCalled();
+        await press(cancel);
+        await settle();
+        expect(abort).not.toHaveBeenCalled();
+        expect(buttonOf('Abort merge')).toBeDefined();
+
+        await press(buttonOf('Abort merge')!);
+        await press(await confirmButton('Abort merge'));
+        await settle();
+        expect(abort).toHaveBeenCalledExactlyOnceWith(FIXTURE_PROJECT_ID, {
+            folderId: WORKTREE.folderId,
+            workspaceId: WORKTREE.workspaceId,
+        });
     });
 });
 
