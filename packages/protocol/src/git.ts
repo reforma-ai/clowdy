@@ -596,6 +596,8 @@ export interface GitBranchMergePreview {
     mode: 'up-to-date' | 'fast-forward' | 'merge-commit';
     /** Existing checkout of the destination, when there is one. */
     targetPath?: string;
+    /** Preflight for an outgoing merge commit in the existing destination checkout. */
+    conflictCheck?: 'clean' | 'conflicts';
 }
 
 export type GitBranchMergeResult =

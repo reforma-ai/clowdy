@@ -545,10 +545,11 @@ export class FixtureTransport implements Transport {
             (isRemote ? undefined : this.#branchMerges.get(refKey(source))?.commit) ??
             mergeCommitId(refKey(isRemote ? `refs/remotes/${source}` : `refs/heads/${source}`));
         const targetCommit = merged?.commit ?? mergeCommitId(refKey(`refs/heads/${target}`));
+        const outgoingConflict = request.direction === 'into' && this.#branches.mergeConflict;
         const mode =
             source === target || merged?.sourceCommit === sourceCommit
                 ? 'up-to-date'
-                : source === 'origin/main' || source === 'origin/feature/search'
+                : outgoingConflict || source === 'origin/main' || source === 'origin/feature/search'
                   ? 'merge-commit'
                   : 'fast-forward';
         const preview: GitBranchMergePreview = {
@@ -560,12 +561,26 @@ export class FixtureTransport implements Transport {
             mode,
             commits: mode === 'up-to-date' ? 0 : 3,
             ...(targetPath && { targetPath }),
+            ...(targetPath &&
+                request.direction === 'into' &&
+                mode === 'merge-commit' && {
+                    conflictCheck: outgoingConflict ? 'conflicts' : 'clean',
+                }),
         };
 
         if (request.action === 'preview') return preview;
 
         if (request.sourceCommit !== sourceCommit || request.targetCommit !== targetCommit)
             throw new TransportError('The branches moved since the preview', 409);
+
+        if (mode === 'up-to-date') return { state: 'done', target, commit: targetCommit, canPush: false };
+        if (!targetPath) throw new TransportError(`Check out ${target} before merging into it`, 409);
+        if (outgoingConflict)
+            throw new TransportError(
+                `Can't merge into ${target} because the branches conflict`,
+                409,
+                `In a chat on ${target}, use Merge from branch to merge ${source} and resolve the conflicts`
+            );
 
         const status =
             target === current || workspaceId !== undefined || holder?.main
@@ -588,15 +603,10 @@ export class FixtureTransport implements Transport {
             return result;
         }
 
-        const commit =
-            mode === 'up-to-date'
-                ? targetCommit
-                : mode === 'fast-forward'
-                  ? sourceCommit
-                  : mergeCommitId(`${targetCommit}+${sourceCommit}`);
+        const commit = mode === 'fast-forward' ? sourceCommit : mergeCommitId(`${targetCommit}+${sourceCommit}`);
         this.#branchMerges.set(key, { sourceCommit, commit });
 
-        if (mode !== 'up-to-date') this.#gitRemote.committed(remotePlace);
+        this.#gitRemote.committed(remotePlace);
 
         return { state: 'done', target, commit, canPush: this.#gitRemote.hasOrigin };
     }

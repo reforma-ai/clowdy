@@ -719,6 +719,30 @@ describe('merging branches from the sync menu', () => {
         expect(dialog().querySelector('[role="status"]')?.textContent).toBe('Pushed main to origin');
     });
 
+    it('explains why an outgoing merge is blocked before the person can start it', async () => {
+        await start({ gitWrites: { clean: true, remote: 'level' }, branches: ['merge-conflict'] });
+        const merge = vi.spyOn(transport, 'branchMergeGit');
+
+        await open('Merge into branch…');
+        await press(option('main'));
+        await settle();
+
+        let alert = dialog().querySelector('[role="alert"]');
+        expect(alert?.textContent).toContain("Can't merge into main because the branches conflict");
+        expect(alert?.textContent).toContain('In a chat on main, use Merge from branch to merge clowdy/ab12cd34');
+        expect(dialog().textContent).toContain('3 commits');
+        expect(dialog().textContent).not.toContain('Creates a merge commit');
+        expect(button('Merge into main').disabled).toBe(true);
+
+        await press(option('dev'));
+        await settle();
+
+        alert = dialog().querySelector('[role="alert"]');
+        expect(alert?.textContent).toBe('Check out dev before merging into it');
+        expect(button('Merge into dev').disabled).toBe(true);
+        expect(merge.mock.calls.map(call => call[2].action)).toEqual(['preview', 'preview']);
+    });
+
     it('still lists local branches after an automatic fetch fails', async () => {
         await start();
         vi.spyOn(transport, 'fetchGit').mockRejectedValueOnce(new TransportError('Network is offline', 503));

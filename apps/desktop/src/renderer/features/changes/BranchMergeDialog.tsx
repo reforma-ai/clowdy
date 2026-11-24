@@ -78,6 +78,26 @@ const MODES: Record<GitBranchMergePreview['mode'], string> = {
     'merge-commit': 'Creates a merge commit',
 };
 
+function outgoingBlock({
+    source,
+    target,
+    targetPath,
+    mode,
+    conflictCheck,
+}: GitBranchMergePreview): Failure | undefined {
+    if (mode === 'up-to-date') return undefined;
+
+    if (!targetPath) return { message: `Check out ${target} before merging into it` };
+
+    if (conflictCheck === 'conflicts')
+        return {
+            message: `Can't merge into ${target} because the branches conflict`,
+            hint: `In a chat on ${target}, use Merge from branch to merge ${source} and resolve the conflicts`,
+        };
+
+    if (mode === 'merge-commit' && conflictCheck !== 'clean') return { message: "Couldn't check for merge conflicts" };
+}
+
 function FailureText({ failure }: { failure: Failure }) {
     return (
         <div className={styles.error} role="alert">
@@ -213,8 +233,10 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
         }
     };
 
+    const blocked = preview && direction === 'into' ? outgoingBlock(preview) : undefined;
+
     const merge = () => {
-        if (!selection || !preview || preview.mode === 'up-to-date') return;
+        if (!selection || !preview || preview.mode === 'up-to-date' || blocked) return;
 
         void run({
             action: 'merge',
@@ -288,9 +310,8 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
             {!result && preview && (
                 <div className={styles.detail} role="status">
                     <Text variant="sm">
-                        {preview.mode === 'up-to-date'
-                            ? MODES[preview.mode]
-                            : `${commitsWords(preview.commits)} · ${MODES[preview.mode]}`}
+                        {preview.mode === 'up-to-date' ? MODES[preview.mode] : commitsWords(preview.commits)}
+                        {preview.mode !== 'up-to-date' && !blocked && ` · ${MODES[preview.mode]}`}
                     </Text>
                     {direction === 'into' && preview.targetPath && (
                         <Text color="secondary" variant="xs" title={preview.targetPath}>
@@ -299,6 +320,7 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
                     )}
                 </div>
             )}
+            {!result && blocked && <FailureText failure={blocked} />}
             {result?.state === 'conflicts' && (
                 <div className={styles.detail} role="status">
                     <Text variant="sm" color="warning">
@@ -370,7 +392,7 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
                         className={styles.action}
                         size="sm"
                         color="contrast"
-                        isDisabled={!preview || preview.mode === 'up-to-date'}
+                        isDisabled={!preview || preview.mode === 'up-to-date' || blocked !== undefined}
                         isPending={pending === 'merge'}
                         onPress={merge}
                     >

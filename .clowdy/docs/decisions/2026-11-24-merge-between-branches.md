@@ -1,6 +1,7 @@
 # Merge between branches from Source Control
 
-- Status: accepted
+- Status: superseded
+- Superseded by: [Merge into existing checkouts](2026-11-24-merge-into-existing-checkouts.md)
 - Date: 2026-11-24
 - Decided by: user
 - Scope: branch merges in the Changes sidebar
