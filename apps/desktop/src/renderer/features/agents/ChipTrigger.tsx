@@ -14,6 +14,8 @@ export interface ChipTriggerProps {
     /** Words before the label in the dim tone (`Worktree` before a branch), which stay whole while the label gives way. */
     lead?: string;
     label: string;
+    /** More context beside the label, as part of the same button. */
+    detail?: ReactNode;
     /** Words after the label in the dim tone (`from main` after `New worktree`), which keep their place while a long label is cut. */
     trail?: string;
     /** What a screen reader says of the pill: its kind and the label (`Folder: web`). */
@@ -37,6 +39,7 @@ export function ChipTrigger({
     folder,
     lead,
     label,
+    detail,
     trail,
     'aria-label': ariaLabel,
     tooltip,
@@ -59,6 +62,7 @@ export function ChipTrigger({
             contentClassName={styles.triggerContent}
             data-open={opened || undefined}
             data-missing={missing || undefined}
+            data-detail={detail ? true : undefined}
             aria-label={ariaLabel}
             tooltip={tooltip}
             onPress={onPress}
@@ -75,11 +79,18 @@ export function ChipTrigger({
                     {lead}
                 </Text>
             )}
+<<<<<<< HEAD
             {label && (
                 <Text truncate className={trail ? styles.whole : undefined}>
                     {label}
                 </Text>
             )}
+=======
+            <Text truncate className={trail ? styles.whole : undefined}>
+                {label}
+            </Text>
+            {detail}
+>>>>>>> origin/main
             {trail && (
                 <Text color="secondary" truncate className={styles.trail}>
                     {trail}

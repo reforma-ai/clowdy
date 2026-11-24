@@ -70,7 +70,9 @@ const press = async (target: HTMLElement) =>
 const pill = () => container.querySelector<HTMLButtonElement>('button[aria-label^="Current place:"]');
 // The rows of the menu itself, and those of its `Open in…` submenu (a menu of its own, once that row is pressed).
 const items = () => [
-    ...document.body.querySelectorAll<HTMLElement>('[role="menu"][aria-label="Open folder"] [role="menuitem"]'),
+    ...document.body.querySelectorAll<HTMLElement>(
+        ':is([role="menu"][aria-label="Open folder"], [role="menu"][aria-label="Worktree actions"]) [role="menuitem"]'
+    ),
 ];
 const item = (text: string) => items().find(row => row.textContent === text)!;
 const outsideItems = () => [
@@ -217,6 +219,7 @@ describe('the folder of a chat', () => {
 
         // What the app does itself, and the copy, are in the menu; what leaves the app is in the submenu.
         expect(items().map(row => row.textContent)).toEqual([
+            'New chat',
             'Open in Files',
             'Open in Terminal',
             'Copy path',
@@ -292,6 +295,7 @@ describe('the folder of a chat', () => {
         await openOutside();
 
         expect(items().map(row => row.textContent)).toEqual([
+            'New chat',
             'Open in Files',
             'Open in Terminal',
             'Copy path',
@@ -309,7 +313,7 @@ describe('the folder of a chat', () => {
         expect(pill()?.hasAttribute('data-missing')).toBe(true);
         expect(document.body.textContent).toContain('This folder no longer exists');
         // The built-in ones and the programs need the folder; the copy and the page on GitHub do not.
-        expect(items().map(row => row.getAttribute('aria-disabled'))).toEqual(['true', 'true', null, null]);
+        expect(items().map(row => row.getAttribute('aria-disabled'))).toEqual(['true', 'true', 'true', null, null]);
 
         await openOutside();
 
@@ -336,6 +340,7 @@ describe('the folder of a chat', () => {
 
         expect(items().map(row => row.textContent)).toEqual([
             'Locate…',
+            'New chat',
             'Open in Files',
             'Open in Terminal',
             'Copy path',
@@ -610,7 +615,14 @@ describe('the folder of a chat that works in a worktree', () => {
         await draw({ workspace, bridge: APP });
 
         expect(pill()?.hasAttribute('data-missing')).toBe(true);
+<<<<<<< HEAD
         expect(container.textContent).toBe('webWorktree');
+=======
+        expect(container.textContent).toBe('web · Worktree');
+        await press(pill()!);
+        expect(document.body.textContent).toContain('This worktree no longer exists');
+        expect(item('New chat').getAttribute('aria-disabled')).toBe('true');
+>>>>>>> origin/main
     });
 
     it('opens the menu on the worktree, whose path it copies and opens', async () => {
@@ -631,6 +643,21 @@ describe('the folder of a chat that works in a worktree', () => {
         expect(openPath).toHaveBeenCalledExactlyOnceWith(workspace.path, { kind: 'editor', id: 'cursor' });
     });
 
+    it('opens a new chat in the worktree from the same chip that shows its branch', async () => {
+        await draw({ workspace, bridge: APP });
+
+        expect(container.querySelectorAll('button')).toHaveLength(1);
+        expect(pill()?.textContent).toBe('web · Worktree clowdy/ab12cd34');
+        await press(pill()!);
+        await press(item('New chat'));
+
+        const ui = store.selectedProjectUi!;
+
+        expect(ui.draft).toBe(true);
+        expect(ui.draftFolderId).toBeNull();
+        expect(ui.draftWorkspace).toEqual({ mode: 'existing', path: workspace.path });
+    });
+
     it('offers Files and the Terminal for the worktree while the chat that works in it is open, since the tabs show it', async () => {
         vi.mocked(openInFiles).mockClear();
         vi.mocked(openInTerminal).mockClear();
@@ -639,6 +666,7 @@ describe('the folder of a chat that works in a worktree', () => {
         await press(pill()!);
 
         expect(items().map(row => row.textContent)).toEqual([
+            'New chat',
             'Open in Files',
             'Open in Terminal',
             'Copy path',
@@ -670,7 +698,7 @@ describe('the folder of a chat that works in a worktree', () => {
         await press(pill()!);
 
         // No chat is open: the tabs show the folder's own checkout, not this worktree.
-        expect(items().map(row => row.textContent)).toEqual(['Copy path', 'Open in…']);
+        expect(items().map(row => row.textContent)).toEqual(['New chat', 'Copy path', 'Open in…']);
 
         await press(item('Copy path'));
         store.ui.forProject(FIXTURE_PROJECT_ID).openChat(FIXTURE_WORKSPACE_CHAT_ID);
@@ -680,7 +708,8 @@ describe('the folder of a chat that works in a worktree', () => {
         });
         await press(pill()!);
 
-        expect(items().map(row => row.textContent)).toEqual(['Copy path', 'Open in…']);
+        expect(items().map(row => row.textContent)).toEqual(['New chat', 'Copy path', 'Open in…']);
+        expect(item('New chat').getAttribute('aria-disabled')).toBe('true');
     });
 
     it("is read only outside the desktop app, with the worktree's path on hover", async () => {
