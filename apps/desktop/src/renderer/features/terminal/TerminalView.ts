@@ -8,13 +8,14 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { createElement } from 'react';
+import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
 
 import { hotkeys } from '../../hotkeys/registry';
 import { isAppShortcut, shellSequence } from './shellKeys';
 import styles from './TerminalTab.module.css';
 import { terminalTheme } from './terminalTheme';
-import { selectedBufferRows, type QuotedRows } from './terminalSelection';
+import { quoteButtonPlace, selectedBufferRows, type BufferSelection, type QuotedRows } from './terminalSelection';
 
 import type { TerminalScreen } from '@clowdy/protocol';
 import type { TerminalStream } from '../../daemon/terminalStream';
@@ -147,6 +148,7 @@ export class TerminalView implements TerminalViewHandle {
         if (cols === this.#xterm.cols && rows === this.#xterm.rows) return;
 
         this.#xterm.resize(cols, rows);
+        this.#syncQuote();
         clearTimeout(this.#resizeTimer);
         this.#resizeTimer = setTimeout(() => this.#stream?.resize(cols, rows), RESIZE_DEBOUNCE_MS);
     }
@@ -183,6 +185,7 @@ export class TerminalView implements TerminalViewHandle {
         xterm.loadAddon(new WebLinksAddon((event, uri) => this.#openLink(event, uri)));
         xterm.attachCustomKeyEventHandler(event => this.#handleKey(xterm, event));
         xterm.onSelectionChange(() => this.#syncQuote());
+        xterm.onScroll(() => this.#syncQuote());
         xterm.open(host);
         xterm.element?.addEventListener('mousedown', this.#onMouseDown);
         document.addEventListener('mouseup', this.#onMouseUp);
@@ -331,7 +334,8 @@ export class TerminalView implements TerminalViewHandle {
     }
 
     #syncQuote(): void {
-        const show = Boolean(this.#quote) && !this.#selecting && this.#readSelection() !== undefined;
+        const range = this.#xterm?.getSelectionPosition();
+        const show = Boolean(this.#quote) && !this.#selecting && range !== undefined && this.#readSelection() !== undefined;
 
         if (!show || !this.#host) {
             this.#quoteButton?.host.remove();
@@ -339,13 +343,35 @@ export class TerminalView implements TerminalViewHandle {
             return;
         }
 
-        if (!this.#quoteButton) {
-            const host = document.createElement('div');
-            const root = createRoot(host);
+        const button = this.#quoteButton ?? this.#createQuoteButton(this.#host);
 
-            host.className = styles.quote;
-            // The press would move the focus and clear the selection before the button acts.
-            host.addEventListener('mousedown', event => event.preventDefault());
+        // A detached button has no size, so it is in the host before it is measured. The end of the selection may be scrolled out of the screen.
+        if (button.host.parentElement !== this.#host) this.#host.append(button.host);
+
+        const place = this.#quotePlace(button.host, range);
+
+        if (!place) {
+            button.host.remove();
+
+            return;
+        }
+
+        button.host.style.left = `${place.left}px`;
+        button.host.style.top = `${place.top}px`;
+    }
+
+    #createQuoteButton(parent: HTMLElement): { host: HTMLElement; root: Root } {
+        const host = document.createElement('div');
+        const root = createRoot(host);
+
+        host.className = styles.quote;
+        // Off the screen until the place is known, so it does not flash in the corner.
+        host.style.left = '-9999px';
+        // The press would move the focus and clear the selection before the button acts.
+        host.addEventListener('mousedown', event => event.preventDefault());
+        parent.append(host);
+        // The place needs the button's size, which it has only once it is drawn.
+        flushSync(() => {
             root.render(
                 createElement(
                     Button,
@@ -361,10 +387,65 @@ export class TerminalView implements TerminalViewHandle {
                     createElement(Hotkey, { hotkey: ['mod', 'i'] })
                 )
             );
-            this.#quoteButton = { host, root };
+        });
+        this.#quoteButton = { host, root };
+
+        return this.#quoteButton;
+    }
+
+    /** The button's box inside the host, or nothing when the screen or the selection's end is not on show. */
+    #quotePlace(button: HTMLElement, range: BufferSelection): { left: number; top: number } | undefined {
+        const grid = this.#screenGrid();
+
+        if (!grid) return undefined;
+
+        const place = quoteButtonPlace({
+            startY: range.start.y,
+            endX: range.end.x,
+            endY: range.end.y,
+            viewportY: this.#xterm?.buffer.active.viewportY ?? 0,
+            cols: grid.cols,
+            rows: grid.rows,
+            cellWidth: grid.cellWidth,
+            cellHeight: grid.cellHeight,
+            buttonWidth: button.offsetWidth,
+            buttonHeight: button.offsetHeight,
+        });
+
+        if (!place) return undefined;
+
+        return { left: grid.originX + place.left, top: grid.originY + place.top };
+    }
+
+    /** The painted grid, measured from its canvas, and where that canvas sits inside the host. */
+    #screenGrid():
+        | { originX: number; originY: number; cellWidth: number; cellHeight: number; cols: number; rows: number }
+        | undefined {
+        const host = this.#host;
+        const xterm = this.#xterm;
+        const screen = xterm?.element?.querySelector('.xterm-screen');
+
+        if (!host || !xterm || !screen || xterm.cols < 1 || xterm.rows < 1) return undefined;
+
+        let canvas: HTMLCanvasElement | undefined;
+
+        for (const node of screen.querySelectorAll('canvas')) {
+            if (!canvas || node.clientWidth > canvas.clientWidth) canvas = node;
         }
 
-        if (this.#quoteButton.host.parentElement !== this.#host) this.#host.append(this.#quoteButton.host);
+        if (!canvas || canvas.clientWidth < 1 || canvas.clientHeight < 1) return undefined;
+
+        const hostBox = host.getBoundingClientRect();
+        const box = canvas.getBoundingClientRect();
+
+        return {
+            originX: box.left - hostBox.left,
+            originY: box.top - hostBox.top,
+            cellWidth: box.width / xterm.cols,
+            cellHeight: box.height / xterm.rows,
+            cols: xterm.cols,
+            rows: xterm.rows,
+        };
     }
 
     #dropQuote(): void {

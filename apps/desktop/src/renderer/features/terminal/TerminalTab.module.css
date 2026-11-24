@@ -46,11 +46,20 @@
     scrollbar-width: thin;
 }
 
+/* The same plate the file editor draws around this button. The button itself is transparent, so without the plate it sits on the terminal. */
 .quote {
     position: absolute;
     z-index: 2;
-    top: var(--spacing-sm);
-    right: var(--spacing-sm);
+    padding: var(--spacing-xs);
+    border: 1px solid var(--color-surface-border);
+    border-radius: var(--radius-md);
+    background-color: var(--color-surface-float);
+    box-shadow: 0 var(--spacing-16) var(--spacing-32) 0 var(--color-dark-a10);
+    user-select: none;
+}
+
+:global(.dark) .quote {
+    box-shadow: 0 var(--spacing-16) var(--spacing-32) 0 var(--color-black-a50);
 }
 
 .banner {

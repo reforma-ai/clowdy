@@ -15,7 +15,7 @@ import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { codeQuote } from '../chats/codeQuote';
 import TerminalTab, { TerminalShell } from './TerminalTab';
-import { selectedBufferRows } from './terminalSelection';
+import { quoteButtonPlace, selectedBufferRows } from './terminalSelection';
 import { terminalsStoreOf } from './useTerminalsStore';
 
 import type { Chat } from '@clowdy/protocol';
@@ -421,5 +421,29 @@ describe('a terminal selection quoted into the chat', () => {
         });
         expect(selectedBufferRows(lineAt, { start: { x: 0, y: 2 }, end: { x: 3, y: 2 } })).toBeUndefined();
         expect(selectedBufferRows(lineAt, { start: { x: 1, y: 0 }, end: { x: 1, y: 0 } })).toBeUndefined();
+    });
+
+    const screen = { viewportY: 0, cols: 80, rows: 24, cellWidth: 10, cellHeight: 20, buttonWidth: 100, buttonHeight: 28 };
+
+    it('stands just under the end of the selection', () => {
+        expect(quoteButtonPlace({ ...screen, startY: 0, endX: 4, endY: 2 })).toEqual({ left: 40, top: 60 });
+    });
+
+    it('is pulled back inside the screen when the selection ends past the right edge', () => {
+        // 80 columns of 10, less the button's 100 and a gap of 8.
+        expect(quoteButtonPlace({ ...screen, startY: 0, endX: 80, endY: 2 })).toEqual({ left: 692, top: 60 });
+    });
+
+    it('stands at the right of the row before one, when the selection ends at the start of the next row', () => {
+        expect(quoteButtonPlace({ ...screen, startY: 1, endX: 0, endY: 3 })).toEqual({ left: 692, top: 60 });
+    });
+
+    it('stands above the row when the one under it would leave the screen', () => {
+        expect(quoteButtonPlace({ ...screen, startY: 23, endX: 4, endY: 23 })).toEqual({ left: 40, top: 432 });
+    });
+
+    it('is nowhere while the end of the selection is scrolled out of the screen', () => {
+        expect(quoteButtonPlace({ ...screen, viewportY: 10, startY: 0, endX: 4, endY: 2 })).toBeUndefined();
+        expect(quoteButtonPlace({ ...screen, startY: 0, endX: 4, endY: 30 })).toBeUndefined();
     });
 });
