@@ -8,7 +8,7 @@ import { shownRunStatus } from '@clowdy/protocol';
 import { useMemo, useRef } from 'react';
 
 import { useAgents, useChatStream, useProjectState, useProjectUi, useRootStore } from '../../stores';
-import { type ForkAgent, StreamView } from '../../stream';
+import { type ForkAgent, StreamView, type StreamViewHandle } from '../../stream';
 import { useRefreshGitFactsAtRunEnd } from '../changes/useRefreshGitFactsAtRunEnd';
 import { ProviderIcon } from '../settings/providers/ProviderIcon';
 import { openChat } from './archiveChat';
@@ -35,7 +35,7 @@ import type { Attachment, Chat } from '@clowdy/protocol';
 import type { ReactNode } from 'react';
 
 /**
- * One chat: the orchestrator's stream with the progress card in it, and the composer. When the chat's provider cannot run
+ * One chat: the orchestrator's stream, the composer banners, and the composer. When the chat's provider cannot run
  * (switched off, not installed, signed out) the stream stays as it is and a notice stands in place of the composer. A thread is a chat like
  * any other, with a slim line over its stream that names the chat it belongs to and opens it. `controls` are what the line under the message box holds at its
  * start (where the chat works, read only), the line the new-chat page drew with controls that change; the composer adds the mode at the end of that line, so a chat
@@ -66,6 +66,7 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
     };
     const { fork, forking } = useFork(chat);
     const composer = useRef<ComposerHandle>(null);
+    const streamView = useRef<StreamViewHandle>(null);
     const stream = useChatStream(chat);
     const run = chat.orchestratorRunId ? project.runs.get(chat.orchestratorRunId) : undefined;
     const handOff = useHandoff(chat, run);
@@ -125,6 +126,7 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
 
             {(!stream || stream.status === 'ready') && (
                 <StreamView
+                    ref={streamView}
                     items={items}
                     active={isRunActive(run)}
                     working={isRunActive(run) && liveLine(shownRunStatus(run))}
@@ -198,7 +200,13 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
                 {composerBannerPreferences.showTasks && progress && <TasksBanner key={chat.id} progress={progress} />}
                 {/* The composer draws the line under its box itself, with the mode at the end of it; a chat that is read only has no mode to show. */}
                 {writability.writable ? (
-                    <Composer ref={composer} chat={chat} run={run} controls={controls} />
+                    <Composer
+                        ref={composer}
+                        chat={chat}
+                        run={run}
+                        controls={controls}
+                        onSendMessage={() => streamView.current?.followLatest()}
+                    />
                 ) : (
                     <>
                         <ReadOnlyNotice chat={chat} run={run} message={writability.message} />
