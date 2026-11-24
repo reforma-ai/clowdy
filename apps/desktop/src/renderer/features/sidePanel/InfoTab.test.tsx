@@ -39,7 +39,7 @@ const settle = () =>
 // A row's value is what it shows, not the Manage button beside it.
 const valueOf = (row: Element | null | undefined) =>
     [...(row?.childNodes ?? [])]
-        .filter(node => !(node instanceof HTMLElement && node.getAttribute('aria-label') === 'Manage worktrees'))
+        .filter(node => !(node instanceof HTMLElement && node.getAttribute('aria-label') === 'Folder settings'))
         .map(node => node.textContent)
         .join('');
 const rows = () =>
@@ -59,7 +59,7 @@ const press = (target: HTMLElement) =>
         target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
         target.click();
     });
-const manage = () => container.querySelector<HTMLButtonElement>('button[aria-label="Manage worktrees"]');
+const manage = () => container.querySelector<HTMLButtonElement>('button[aria-label="Folder settings"]');
 
 async function draw() {
     act(() =>

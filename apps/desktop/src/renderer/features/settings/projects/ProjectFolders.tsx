@@ -174,13 +174,13 @@ function WorkspaceButton({ project, view }: { project: Project; view: FolderView
     const root = useRootStore();
 
     return (
-        <Tooltip content="Base branch and setup of new worktrees">
+        <Tooltip content="Folder settings and worktrees">
             <Button
                 variant="filling"
                 color="secondary"
                 size="sm"
                 iconOnly
-                aria-label={`Workspace of ${view.name}`}
+                aria-label={`Folder settings: ${view.name}`}
                 onPress={() =>
                     openFolderWorkspace({ root, projectId: project.id, folderId: view.folder.id, name: view.name })
                 }

@@ -70,8 +70,8 @@ export function InfoTab() {
                         color="secondary"
                         size="xs"
                         className={styles.manage}
-                        tooltip="Manage worktrees"
-                        aria-label="Manage worktrees"
+                        tooltip="Folder settings"
+                        aria-label="Folder settings"
                         onPress={() => openManageWorktrees({ root, projectId: project.id, folderId: folder.id })}
                     >
                         Manage

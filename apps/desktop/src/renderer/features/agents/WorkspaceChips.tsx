@@ -105,7 +105,7 @@ function baseOptions(git: Repository): PickerOption[] {
 /** The key of the row of a worktree in the menu: its path, which no other row's key is. */
 const worktreeKey = (path: string) => `worktree:${path}`;
 
-/** The key of the row that opens the Manage worktrees dialog: it is no place to choose, so it is in a section of its own that selects nothing. */
+/** The key of the row that opens folder settings: it is no place to choose, so it is in a section of its own that selects nothing. */
 const MANAGE_KEY = 'manage';
 
 /**
@@ -146,7 +146,7 @@ interface WorkspaceChipProps {
  * it follows the Changes branch picker and checks the folder's current branch),
  * `New worktree` (pressing the row chooses it; the base at its end is a chip of its own whose press, or the right arrow on the row, opens the searchable list of the folder's branches to start from, in
  * the groups Local and Remote, at the menu's side, with the menu staying open under it). Existing worktrees follow as rows with their branch and chat count. The rows have an icon each and no
- * check: the row that is on is the one the menu highlights. `Manage worktrees…` ends the menu behind a separator: it shuts the menu and opens the dialog of the project's worktrees (`onManage`), and chooses
+ * check: the row that is on is the one the menu highlights. `Folder settings…` ends the menu behind a separator: it shuts the menu and opens the settings of this folder (`onManage`), and chooses
  * nothing. The list of branches is drawn inside the menu's popover, as its child, so that focus moving into it does not shut the menu; picking a branch chooses a new worktree from it and shuts both.
  */
 function WorkspaceChip({ git, choice, chats, main, onChoose, onManage }: WorkspaceChipProps) {
@@ -315,8 +315,13 @@ function WorkspaceChip({ git, choice, chats, main, onChoose, onManage }: Workspa
                                     } else if (String(key).startsWith('worktree:')) {
                                         onChoose({ mode: 'existing', path: String(key).slice('worktree:'.length) });
                                         setIsMenuOpen(false);
-                                    } else if (key === MANAGE_KEY) onManage();
-                                    else if (key === 'new') {
+                                    } else if (key === MANAGE_KEY) {
+                                        setIsMenuOpen(false);
+                                        requestAnimationFrame(() => {
+                                            pill.current?.focus();
+                                            onManage();
+                                        });
+                                    } else if (key === 'new') {
                                         // A press that was the base's has its own answer, and leaves the menu as it is.
                                         if (baseHeld.current) {
                                             baseHeld.current = false;
@@ -391,7 +396,7 @@ function WorkspaceChip({ git, choice, chats, main, onChoose, onManage }: Workspa
                                         id={MANAGE_KEY}
                                         shouldCloseOnSelect
                                         icon={<Settings aria-hidden="true" />}
-                                        text="Manage worktrees…"
+                                        text="Folder settings…"
                                     />
                                 </MenuSection>
                             </Menu>

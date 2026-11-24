@@ -174,8 +174,9 @@ export function WorktreeGroup({
     group,
     folder,
     onCreate,
+    createDisabled = false,
     ...actions
-}: Omit<WorktreeRowProps, 'worktree'> & { onCreate: () => void }) {
+}: Omit<WorktreeRowProps, 'worktree'> & { onCreate: () => void; createDisabled?: boolean }) {
     const headingId = useId();
 
     return (
@@ -184,7 +185,7 @@ export function WorktreeGroup({
                 <Text as="h3" id={headingId} variant="heading-5" truncate title={group.name}>
                     {group.name}
                 </Text>
-                <Button variant="filled" color="secondary" size="xs" onPress={onCreate}>
+                <Button variant="filled" color="secondary" size="xs" isDisabled={createDisabled} onPress={onCreate}>
                     <Plus aria-hidden="true" />
                     New worktree
                 </Button>

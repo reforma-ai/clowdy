@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     createFixtureData,
     FIXTURE_EMPTY_PROJECT_ID,
+    FIXTURE_PERSONAL_PROJECT_ID,
     FIXTURE_PROJECT_ID,
     FIXTURE_WORKSPACE_CHAT_ID,
     FIXTURE_WORKTREE_SECOND_CHAT_ID,
@@ -53,14 +54,21 @@ async function flush() {
     });
 }
 
-async function open(options: { overrides?: Partial<Transport>; data?: FixtureData; folderId?: string } = {}) {
-    const { overrides = {}, data = withFixtureWorktrees(createFixtureData()), folderId } = options;
+async function open(
+    options: { overrides?: Partial<Transport>; data?: FixtureData; folderId?: string; projectId?: string } = {}
+) {
+    const {
+        overrides = {},
+        data = withFixtureWorktrees(createFixtureData()),
+        folderId,
+        projectId = FIXTURE_PROJECT_ID,
+    } = options;
 
     store = new RootStore(overrideTransport(new FixtureTransport({ data }), overrides), { storage: memoryStorage() });
     await store.load();
-    store.selectProject(FIXTURE_PROJECT_ID);
+    store.selectProject(projectId);
     await flush();
-    act(() => openManageWorktrees({ root: store, projectId: FIXTURE_PROJECT_ID, ...(folderId && { folderId }) }));
+    act(() => openManageWorktrees({ root: store, projectId, ...(folderId && { folderId }) }));
     await settle();
 }
 
@@ -157,7 +165,7 @@ describe('Manage worktrees', () => {
             toJSON: () => ({}),
         });
 
-        await open();
+        await open({ folderId: 'fld_api' });
         await click(textButton(group('car-rental-api'), 'New worktree')!);
         await settle();
 
@@ -183,30 +191,45 @@ describe('Manage worktrees', () => {
                 .map(row => row.textContent)
                 .join()
         ).toContain('clowdy/next');
-        expect(group('car-rental').textContent).not.toContain('clowdy/next');
+        expect(groups()).toHaveLength(1);
     });
 
-    it("lists the project's repositories, each with its own checkout first and a row for every worktree git lists, and no group for a folder that is no repository", async () => {
-        await open();
+    it('requires saving edited settings before creating a worktree', async () => {
+        await open({ folderId: 'fld_api' });
+        const name = dialog()!.querySelector<HTMLInputElement>('input[aria-label="Folder name"]')!;
+        const create = textButton(group('car-rental-api'), 'New worktree')!;
+        expect(create.disabled).toBe(false);
+        act(() => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(name, 'Backend');
+            name.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        expect(name.value).toBe('Backend');
+        expect(create.disabled).toBe(true);
+        expect(dialog()!.textContent).toContain('Save folder settings before creating a worktree');
+        act(() => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(name, '');
+            name.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        expect(create.disabled).toBe(false);
+    });
 
-        expect(dialog()!.textContent).toContain('Manage worktrees');
-        expect(groups().map(section => section.querySelector('h3')!.textContent)).toEqual([
-            'car-rental',
-            'car-rental-api',
-        ]);
-        expect(rowsOf(group('car-rental')).map(item => item.dataset.worktreePath)).toEqual([
-            '/Users/dev/car-rental',
-            CLOWDY_WORKTREE,
-            FOUND_WORKTREE,
-            LOCKED_WORKTREE,
-            MISSING_WORKTREE,
-        ]);
+    it('keeps worktrees accessible in the personal space without offering unsupported settings', async () => {
+        await open({ projectId: FIXTURE_PERSONAL_PROJECT_ID });
+        expect(dialog()!.textContent).toContain('Worktrees');
+        expect(dialog()!.textContent).toContain('Folder settings are unavailable in the personal space');
+        expect(dialog()!.querySelector('input[aria-label="Folder name"]')).toBeNull();
+    });
+
+    it('shows only the selected folder, alongside its settings', async () => {
+        await open({ folderId: 'fld_api' });
+        expect(dialog()!.textContent).toContain('Settings of car-rental-api');
+        expect(groups().map(section => section.querySelector('h3')!.textContent)).toEqual(['car-rental-api']);
         expect(rowsOf(group('car-rental-api')).map(item => item.dataset.worktreePath)).toEqual([
             '/Users/dev/car-rental-api',
             '/Users/dev/Clowdy/workspaces/car-rental-api/ab12cd34/car-rental-api',
             DETACHED_WORKTREE,
         ]);
-        expect(document.body.textContent).not.toContain('notes');
+        expect(dialog()!.querySelector('input[aria-label="Folder name"]')).not.toBeNull();
     });
 
     it("marks the folder's own checkout with its branch and whether it has local changes, and gives it no Remove", async () => {
@@ -243,9 +266,6 @@ describe('Manage worktrees', () => {
 
         expect(locked.textContent).toContain('hotfix/invoice');
         expect(locked.textContent).toContain('No local changes');
-
-        // A worktree on a detached HEAD is named by its commit.
-        expect(row(DETACHED_WORKTREE).textContent).toContain('Detached at 3a2b1c0');
     });
 
     it('has the path of a worktree in the tooltip of its name, and in no line of the row', async () => {
@@ -353,7 +373,7 @@ describe('Manage worktrees', () => {
     });
 
     it("opens the new-chat page for another folder of the project, in that folder's worktree", async () => {
-        await open();
+        await open({ folderId: 'fld_api' });
         await click(buttonIn(row(DETACHED_WORKTREE), 'New chat in this worktree: Detached at 3a2b1c0')!);
 
         const ui = store.ui.forProject(FIXTURE_PROJECT_ID);
@@ -363,7 +383,7 @@ describe('Manage worktrees', () => {
     });
 
     it("opens the new-chat page in the folder's own checkout, with no worktree, when New chat in this folder is pressed", async () => {
-        await open();
+        await open({ folderId: 'fld_api' });
 
         // Start from a worktree, as the page may have had one chosen: the checkout is the folder itself.
         store.ui.forProject(FIXTURE_PROJECT_ID).openDraft([], null, { mode: 'existing', path: FOUND_WORKTREE });
@@ -394,23 +414,6 @@ describe('Manage worktrees', () => {
 
         expect(isOpen()).toBe(false);
         expect(document.activeElement).not.toBe(trigger);
-    });
-
-    it('scrolls the group of the folder it was opened for into view, once', async () => {
-        const scrolled: Array<string | undefined> = [];
-
-        vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(function scroll(this: Element) {
-            scrolled.push((this as HTMLElement).dataset.folderId);
-        });
-        await open({ folderId: 'fld_api' });
-
-        expect(scrolled).toEqual(['fld_api']);
-
-        // A read the window's focus makes does not move the person's scroll.
-        await act(async () => void window.dispatchEvent(new Event('focus')));
-        await settle();
-
-        expect(scrolled).toEqual(['fld_api']);
     });
 
     it("draws Remove in the More menu of every worktree but the folder's own checkout, and holds it off for a lock and for a chat that works in the worktree", async () => {
@@ -636,7 +639,7 @@ describe('Manage worktrees', () => {
 
         expect(getProjectWorktrees).toHaveBeenCalledTimes(2);
         // The list stays while the next read runs.
-        expect(groups()).toHaveLength(2);
+        expect(groups()).toHaveLength(1);
     });
 
     it('shows what is changed since the last read when the window gets focus again', async () => {
@@ -748,7 +751,7 @@ describe('Manage worktrees', () => {
         await settle();
 
         expect(dialog()!.textContent).not.toContain("Couldn't load the worktrees");
-        expect(groups()).toHaveLength(2);
+        expect(groups()).toHaveLength(1);
     });
 
     it('keeps the list it has and says so when a later read fails', async () => {
@@ -763,7 +766,7 @@ describe('Manage worktrees', () => {
         await act(async () => void window.dispatchEvent(new Event('focus')));
         await settle();
 
-        expect(groups()).toHaveLength(2);
+        expect(groups()).toHaveLength(1);
         expect(dialog()!.textContent).toContain("Couldn't refresh the list");
         expect(dialog()!.textContent).not.toContain("Couldn't load the worktrees");
     });
@@ -787,7 +790,7 @@ describe('Manage worktrees', () => {
 
         expect(getProjectWorktrees).toHaveBeenCalledTimes(3);
         expect(dialog()!.textContent).not.toContain("Couldn't refresh the list");
-        expect(groups()).toHaveLength(2);
+        expect(groups()).toHaveLength(1);
     });
 
     it("says so when none of the project's folders is a repository", async () => {
@@ -802,7 +805,7 @@ describe('Manage worktrees', () => {
         await open({ overrides: { getProjectWorktrees } });
 
         expect(groups()).toEqual([]);
-        expect(dialog()!.textContent).toContain('No folder of this project is a git repository');
+        expect(dialog()!.textContent).toContain('This folder is not a git repository');
     });
 
     it('stays open when the window shows another project, as it does when it is opened from Settings for a project the window does not show', async () => {
@@ -811,7 +814,7 @@ describe('Manage worktrees', () => {
         await settle();
 
         expect(isOpen()).toBe(true);
-        expect(groups()).toHaveLength(2);
+        expect(groups()).toHaveLength(1);
     });
 
     it('takes the person to the project with Settings shut when a new chat or a chat is chosen, though the window showed another project with Settings open', async () => {
