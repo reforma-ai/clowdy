@@ -11,7 +11,6 @@ import { currentPlace } from '../sidePanel/currentPlace';
 import { openManageWorktrees } from '../worktrees';
 import { draftTarget } from './agentTree';
 import styles from './DraftChat.module.css';
-import { DraftFolderSelect } from './DraftFolderSelect';
 import { useDraftWorkspaceRow } from './useDraftWorkspaceRow';
 import { useFolderRepository } from './useFolderRepository';
 import { useMainBranch } from './useMainBranch';
@@ -105,20 +104,15 @@ export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
                             }}
                             controls={
                                 <>
-                                    {folders.length > 1 && (
-                                        <DraftFolderSelect
-                                            folders={folders}
-                                            selectedId={target.folder.id}
-                                            missing={missing}
-                                            // The main folder is the one a chat that names none works in.
-                                            onPick={folder =>
-                                                ui.setDraftFolder(
-                                                    folder.id === mainFolder(project.project).id ? null : folder.id
-                                                )
-                                            }
-                                        />
-                                    )}
                                     <WorkspaceChips
+                                        folders={folders}
+                                        selectedFolderId={target.folder.id}
+                                        missing={missing}
+                                        onPickFolder={folder =>
+                                            ui.setDraftFolder(
+                                                folder.id === mainFolder(project.project).id ? null : folder.id
+                                            )
+                                        }
                                         repository={repository}
                                         choice={workspace}
                                         workspaceRow={workspaceRow}

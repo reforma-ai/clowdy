@@ -80,18 +80,6 @@ export function canStopAlone(run: Pick<Run, 'canStopAlone'>): boolean {
     return run.canStopAlone === true;
 }
 
-/** How many rows with a Stop of their own the strip needs before it offers Stop all: with one, that row's own Stop does it. */
-const STOP_ALL_FROM = 2;
-
-/**
- * Whether the header over the rows offers Stop all. It stops every agent that can stop alone (`run.stopAgents`) and every thread at work (`run.cancel`
- * of each), the ones hidden behind "N more agents at work" too, and none of the sub-agents that cannot, so only the rows that can stop count, and it
- * takes two of them to be worth a button.
- */
-export function offersStopAll(agents: readonly Pick<Run, 'canStopAlone'>[], threadCount = 0): boolean {
-    return agents.filter(canStopAlone).length + threadCount >= STOP_ALL_FROM;
-}
-
 /** The words of the background row: `Background task running`, `2 background tasks running`. Items of every kind are tasks to the person. */
 export function backgroundRowText(count: number): string {
     return count === 1 ? 'Background task running' : `${count} background tasks running`;
@@ -102,21 +90,6 @@ export function agentRowLabel(run: Pick<Run, 'name'>): string {
     const label = subagentLabel(run.name) ?? 'Sub-agent';
 
     return /agent$/i.test(label) ? label : `${label} agent`;
-}
-
-/** One row's words: `Explore agent · Reading form.tsx · 4 calls`, `Explore agent working` before it has done anything, `… · Waiting for you`. */
-export function agentRowText(
-    run: Pick<Run, 'name' | 'status' | 'awaitingUser'>,
-    activity: string | undefined,
-    calls: number
-): string {
-    const label = agentRowLabel(run);
-
-    if (shownRunStatus(run) === 'waiting_user') return `${label} · Waiting for you`;
-
-    const head = activity ? `${label} · ${activity}` : `${label} working`;
-
-    return calls > 0 ? `${head} · ${calls} ${calls === 1 ? 'call' : 'calls'}` : head;
 }
 
 /** A thread of the open chat that works now: the thread's chat and its orchestrator. */
@@ -149,7 +122,7 @@ export function needsPerson(row: StripRow): boolean {
 
 /**
  * The rows of the strip, those that wait for the person first and then the rest, each group oldest first, sub-agents and threads together: a sub-agent by
- * when its run was made, a thread by when it was made. A question comes to the top, so the cap on the rows never hides it.
+ * when its run was made, a thread by when it was made. A question comes to the top, ahead of other work.
  */
 export function stripRows(agents: readonly Run[], threads: readonly ThreadAtWork[]): StripRow[] {
     const rows: StripRow[] = [
@@ -169,29 +142,4 @@ export function stripRows(agents: readonly Run[], threads: readonly ThreadAtWork
  */
 export function drawnRows(rows: readonly StripRow[], folded: boolean): StripRow[] {
     return folded ? rows.filter(needsPerson) : [...rows];
-}
-
-/**
- * What a thread's row says: its title and what it does. `Fix login · Running bun test` while it works (`Fix login working` before it has done anything
- * of its own), `· Waiting for you` on a question, `· Waiting for background work` while its session keeps work open after its turn, `· Waiting for a
- * free slot` while queued, and why it is blocked.
- */
-export function threadRowText(
-    chat: Pick<Chat, 'title'>,
-    run: Pick<Run, 'status' | 'statusReason' | 'awaitingUser'>,
-    activity: string | undefined
-): string {
-    // A thread that rests for its background work while its agent asks reads as waiting for the person (`shownRunStatus`): the card is in its own chat.
-    switch (shownRunStatus(run)) {
-        case 'waiting_user':
-            return `${chat.title} · Waiting for you`;
-        case 'waiting_background':
-            return `${chat.title} · Waiting for background work`;
-        case 'queued':
-            return `${chat.title} · Waiting for a free slot`;
-        case 'blocked':
-            return `${chat.title} · ${run.statusReason ?? 'Blocked'}`;
-        default:
-            return activity ? `${chat.title} · ${activity}` : `${chat.title} working`;
-    }
 }

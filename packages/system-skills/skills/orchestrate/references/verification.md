@@ -36,7 +36,9 @@ After a fix, verify again from step 1: all gates, not only the failed criterion,
 
 ## Compact steps
 
-For a small change or a foundation task that others wait on: write the 2-4 criteria in the task, run the nearest gates (build, typecheck, the affected tests), run the user-visible flow once, try one probe (the nastiest input), read your own diff. Leave the evidence as a comment on the task (command and result). Write a check report only when the check was significant: a risky area, a long flow, or a result the manager may question. If anything fails, fix it and run steps 3-5 again. The final result of a larger cycle gets the full steps.
+For work done on the spot, check the actual change proportionately: inspect the diff and run the nearest meaningful check or flow. Report what you checked and any limit; do not create a task or report just to record it. If the chat is bound to an existing task, record relevant evidence there and follow its status flow.
+
+For a foundation task that others wait on, put 2-4 criteria in the task, run the nearest gates (build, typecheck, affected tests), exercise the user-visible flow, try one probe and read the diff. Leave the command and result as a task comment. Write a check report only for significant checks. If anything fails, fix it and repeat the relevant checks. The final result of a larger cycle gets the full steps.
 
 ## Example
 

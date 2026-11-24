@@ -67,7 +67,7 @@ const press = async (target: HTMLElement) =>
         target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
         target.click();
     });
-const pill = () => container.querySelector<HTMLButtonElement>('button[aria-label^="Folder:"]');
+const pill = () => container.querySelector<HTMLButtonElement>('button[aria-label^="Current place:"]');
 // The rows of the menu itself, and those of its `Open in…` submenu (a menu of its own, once that row is pressed).
 const items = () => [
     ...document.body.querySelectorAll<HTMLElement>(
@@ -87,19 +87,27 @@ async function draw({
     project = FIXTURE_PROJECT_ID,
     folder = FOLDER,
     workspace,
+    showFolder = true,
 }: {
     bridge?: Partial<NonNullable<Window['desktop']>>;
     missing?: boolean;
     project?: string;
     folder?: typeof FOLDER;
     workspace?: ChatWorkspace;
+    showFolder?: boolean;
 }) {
     window.desktop = bridge as never;
     store.selectProject(project);
     act(() =>
         root.render(
             <RootStoreProvider value={store}>
-                <ChatFolder name="web" folder={folder} missing={missing} workspace={workspace} />
+                <ChatFolder
+                    name="web"
+                    folder={folder}
+                    missing={missing}
+                    workspace={workspace}
+                    showFolder={showFolder}
+                />
             </RootStoreProvider>
         )
     );
@@ -132,12 +140,12 @@ describe('the folder of a chat', () => {
     it('tells the branch that is checked out after its name, as one label with no word for the mode, and nothing for a folder git does not know', async () => {
         await draw({});
 
-        expect(container.textContent).toBe('webmain');
+        expect(container.textContent).toBe('web · main');
 
-        const label = container.querySelector<HTMLElement>('[aria-label="Folder: web, branch main"]');
+        const label = container.querySelector<HTMLElement>('[aria-label="Current place: web, branch main"]');
 
         // The git mark and the branch, in one label that says on hover and to a screen reader where it runs.
-        expect(label?.textContent).toBe('webmain');
+        expect(label?.textContent).toBe('web · main');
         expect(label?.title).toBe('~/car-rental');
         expect(label?.querySelector('svg')).not.toBeNull();
 
@@ -147,7 +155,19 @@ describe('the folder of a chat', () => {
         });
 
         expect(container.textContent).toBe('web');
-        expect(container.querySelector('[aria-label="Folder: web"]')?.textContent).toBe('web');
+        expect(container.querySelector('[aria-label="Current place: web"]')).not.toBeNull();
+    });
+
+    it('omits the folder for one folder and names a non-git folder', async () => {
+        await draw({ showFolder: false });
+        expect(container.textContent).toBe('main');
+        expect(container.querySelector('[aria-label="Current place: branch main"]')).not.toBeNull();
+        await draw({
+            project: FIXTURE_PERSONAL_PROJECT_ID,
+            folder: { id: 'fld_personal', path: '/Users/dev/Clowdy/Personal' },
+            showFolder: false,
+        });
+        expect(container.textContent).toBe('web');
     });
 
     it('says the short hash of a detached HEAD in place of a branch, and so on hover', async () => {
@@ -171,18 +191,18 @@ describe('the folder of a chat', () => {
         ]);
         await draw({});
 
-        expect(container.textContent).toBe('web5c4d3e2');
-        expect(container.querySelector<HTMLElement>('[aria-label="Folder: web, detached at 5c4d3e2"]')?.title).toBe(
-            '~/car-rental\nDetached HEAD'
-        );
+        expect(container.textContent).toBe('web · 5c4d3e2');
+        expect(
+            container.querySelector<HTMLElement>('[aria-label="Current place: web, detached at 5c4d3e2"]')?.title
+        ).toBe('~/car-rental\nDetached HEAD');
     });
 
     it('is read only outside the desktop app: its name, the path on hover, and nothing to press', async () => {
         await draw({});
 
-        const line = container.querySelector<HTMLElement>('[role="group"][aria-label="Folder: web, branch main"]');
+        const line = container.querySelector<HTMLElement>('[role="group"][aria-label^="Current place:"]');
 
-        expect(line?.textContent).toBe('webmain');
+        expect(line?.textContent).toBe('web · main');
         expect(line?.title).toBe('~/car-rental');
         expect(container.querySelector('button')).toBeNull();
     });
@@ -190,7 +210,7 @@ describe('the folder of a chat', () => {
     it('is a pill that opens a menu in the desktop app: the file manager and the editor, the first the computer has until others are picked', async () => {
         await draw({ bridge: { getOpenApps: async () => APPS, openPath: vi.fn(async () => undefined) } });
 
-        expect(pill()?.textContent).toBe('webmain');
+        expect(pill()?.textContent).toBe('web · main');
         expect(pill()?.hasAttribute('data-missing')).toBe(false);
 
         expect(pill()?.hasAttribute('data-open')).toBe(false);
@@ -392,6 +412,13 @@ describe('the folder of a chat', () => {
         expect(toasts.error).toHaveBeenCalledWith({ message: "Couldn't open it in Cursor" });
     });
 
+    it('shows the branch in the desktop app too, beside the pill', async () => {
+        await draw({ bridge: { getOpenApps: async () => APPS, openPath: vi.fn(async () => undefined) } });
+
+        expect(pill()?.textContent).toBe('web · main');
+        expect(container.textContent).toBe('web · main');
+    });
+
     it('opens the folder in the built-in file manager', async () => {
         await draw({ bridge: { getOpenApps: async () => APPS, openPath: vi.fn(async () => undefined) } });
         await press(pill()!);
@@ -490,11 +517,13 @@ describe('the folder of a chat that works in a worktree', () => {
     it('says it is a worktree, with its path on hover, and the branch the tree has checked out now', async () => {
         await draw({ workspace });
 
+        expect(container.textContent).toBe('web · Worktree clowdy/ab12cd34');
+
         const label = container.querySelector<HTMLElement>(
-            '[aria-label="Folder: web, worktree, branch clowdy/ab12cd34"]'
+            '[aria-label="Current place: web, Worktree, branch clowdy/ab12cd34"]'
         );
 
-        expect(label?.textContent).toBe('webWorktree clowdy/ab12cd34');
+        expect(label?.textContent).toBe('web · Worktree clowdy/ab12cd34');
         expect(label?.title).toBe('~/Clowdy/workspaces/car-rental/ab12cd34/car-rental');
         expect(container.querySelector('[data-missing]')).toBeNull();
     });
@@ -504,7 +533,7 @@ describe('the folder of a chat that works in a worktree', () => {
 
         await draw({ workspace });
 
-        expect(container.textContent).toBe('webWorktree feature/other');
+        expect(container.textContent).toBe('web · Worktree feature/other');
 
         info.mockImplementation(async () => [
             {
@@ -519,10 +548,11 @@ describe('the folder of a chat that works in a worktree', () => {
         act(() => void window.dispatchEvent(new Event('focus')));
         await settle();
 
-        expect(container.textContent).toBe('webWorktree 5c4d3e2');
+        expect(container.textContent).toBe('web · Worktree 5c4d3e2');
         // The hash stands in a branch's place, and the label says it is a commit: on hover with the worktree's path, and to a screen reader.
         expect(
-            container.querySelector<HTMLElement>('[aria-label="Folder: web, worktree, detached at 5c4d3e2"]')?.title
+            container.querySelector<HTMLElement>('[aria-label="Current place: web, Worktree, detached at 5c4d3e2"]')
+                ?.title
         ).toMatch(/\nDetached HEAD$/);
     });
 
@@ -532,33 +562,33 @@ describe('the folder of a chat that works in a worktree', () => {
         await draw({ workspace });
 
         // The name the chat was made with may be out of date by now: it is not shown in its place.
-        expect(container.textContent).toBe('webWorktree');
+        expect(container.textContent).toBe('web · Worktree');
 
         never.mockRestore();
         reads([]);
         await draw({ workspace: { ...workspace, id: 'wks_other' } });
 
-        expect(container.textContent).toBe('webWorktree');
+        expect(container.textContent).toBe('web · Worktree');
     });
 
     it('shows the branch it will be made on while the worktree is not made yet, whatever the read says', async () => {
         reads([]);
         await draw({ workspace: { ...workspace, ready: false } });
 
-        expect(container.textContent).toBe('webWorktree clowdy/ab12cd34');
+        expect(container.textContent).toBe('web · Worktree clowdy/ab12cd34');
     });
 
     it('reads the branch again when the worktree gets made', async () => {
         const info = reads([{ workspaceId: workspace.id, exists: true, branch: 'feature/other' }]);
 
         await draw({ workspace: { ...workspace, ready: false } });
-        expect(container.textContent).toBe('webWorktree clowdy/ab12cd34');
+        expect(container.textContent).toBe('web · Worktree clowdy/ab12cd34');
 
         info.mockClear();
         await draw({ workspace });
 
         expect(info).toHaveBeenCalled();
-        expect(container.textContent).toBe('webWorktree feature/other');
+        expect(container.textContent).toBe('web · Worktree feature/other');
     });
 
     it('marks the folder as gone when the worktree is no longer on the disk', async () => {
@@ -566,7 +596,7 @@ describe('the folder of a chat that works in a worktree', () => {
         await draw({ workspace, bridge: APP });
 
         expect(pill()?.hasAttribute('data-missing')).toBe(true);
-        expect(container.textContent).toBe('webWorktree');
+        expect(container.textContent).toBe('web · Worktree');
         await press(pill()!);
         expect(document.body.textContent).toContain('This worktree no longer exists');
         expect(item('New chat').getAttribute('aria-disabled')).toBe('true');
@@ -594,7 +624,7 @@ describe('the folder of a chat that works in a worktree', () => {
         await draw({ workspace, bridge: APP });
 
         expect(container.querySelectorAll('button')).toHaveLength(1);
-        expect(pill()?.textContent).toBe('webWorktree clowdy/ab12cd34');
+        expect(pill()?.textContent).toBe('web · Worktree clowdy/ab12cd34');
         await press(pill()!);
         await press(item('New chat'));
 
@@ -662,7 +692,7 @@ describe('the folder of a chat that works in a worktree', () => {
     it("is read only outside the desktop app, with the worktree's path on hover", async () => {
         await draw({ workspace });
 
-        expect(container.querySelector<HTMLElement>('[role="group"][aria-label^="Folder:"]')?.title).toBe(
+        expect(container.querySelector<HTMLElement>('[role="group"][aria-label^="Current place:"]')?.title).toBe(
             '~/Clowdy/workspaces/car-rental/ab12cd34/car-rental'
         );
         expect(container.querySelector('button')).toBeNull();

@@ -157,7 +157,7 @@ export interface EngineSession extends AsyncIterable<EngineEvent> {
      * waited for. Known once the session has resolved its agent.
      */
     readonly wakesOnBackgroundEnd?: boolean;
-    close(): void | Promise<void>;
+    close(options?: { ensureStopped?: boolean }): void | Promise<void>;
 }
 
 /**

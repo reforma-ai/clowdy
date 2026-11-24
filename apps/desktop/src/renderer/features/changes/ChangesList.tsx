@@ -10,6 +10,9 @@ import { LIST_TEXT, listStateOf } from './listState';
 
 import type { PlaceChanges } from './PlaceChanges';
 
+/** How many cards at the top of the list are built in the first frame, before the scroller has said which are near: more than a screen holds of shut cards. */
+const EAGER_CARDS = 24;
+
 /** What the tab asks of the list from outside: to bring a file's card to the top. */
 export interface ChangesListHandle {
     scrollToFile: (path: string) => void;
@@ -89,7 +92,11 @@ export function ChangesList({ model, ref }: { model: PlaceChanges; ref?: Ref<Cha
         case 'files':
             return (
                 <Scrollable ref={root} className={styles.list} contentClass={styles.cards}>
-                    <For each={[...model.files]}>{file => <DiffCard key={file.path} model={model} file={file} />}</For>
+                    <For each={[...model.files]}>
+                        {(file, index) => (
+                            <DiffCard key={file.path} model={model} file={file} eager={index < EAGER_CARDS} />
+                        )}
+                    </For>
                 </Scrollable>
             );
     }

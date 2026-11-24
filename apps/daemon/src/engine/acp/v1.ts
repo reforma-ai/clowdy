@@ -32,9 +32,10 @@ import type { LayerHost, ProtocolLayer } from './layer';
 import type { ResolvedAgent } from './registry';
 
 /** What the client tells an agent it can do in `initialize`. The probe sends the same, so it shows the options a run gets. */
-export const clientCapabilities = (agent: Pick<ResolvedAgent, 'clientMeta'>): ClientCapabilities => ({
+export const clientCapabilities = (agent: Pick<ResolvedAgent, 'clientMeta' | 'elicitation'>): ClientCapabilities => ({
     fs: { readTextFile: false, writeTextFile: false },
     terminal: false,
+    ...(agent.elicitation && { elicitation: { form: {} } }),
     ...(agent.clientMeta && { _meta: agent.clientMeta }),
 });
 
@@ -168,6 +169,12 @@ export class V1Layer implements ProtocolLayer {
                 return {
                     outcome: optionId === undefined ? { outcome: 'cancelled' } : { outcome: 'selected', optionId },
                 };
+            })
+            .onRequest(methods.client.elicitation.create, async ({ params, signal }) => {
+                const answer = await host.pickQuestion(params, signal);
+                return answer === undefined
+                    ? { action: 'cancel' }
+                    : { action: 'accept', content: { clowdy_answer: answer } };
             });
 
         const input = Readable.toWeb(proc.child.stdout as Readable) as ReadableStream<Uint8Array>;

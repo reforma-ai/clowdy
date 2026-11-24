@@ -130,9 +130,24 @@ async function setup(
     overrides: Parameters<typeof startHarness>[0] = {},
     answers: ScriptEngine['sendAnswer'] | false = () => true,
     mode?: ChatMode,
-    stops?: ScriptEngine['stopAnswer']
+    stops?: ScriptEngine['stopAnswer'],
+    failClose = false
 ) {
     const engine = new ScriptEngine(script);
+
+    if (failClose) {
+        const start = engine.start.bind(engine);
+        engine.start = options => {
+            const session = start(options);
+            return {
+                ...session,
+                close: async () => {
+                    await session.close();
+                    throw new Error('close failed');
+                },
+            };
+        };
+    }
 
     if (answers) {
         engine.sendAnswer = answers;
@@ -617,6 +632,22 @@ describe('a message to a run that waits', () => {
         expect(h.run(runId).result).toBe('Back again');
         // It went through the scheduler once, and the slot it took for the message served the new session.
         expect(history()).toEqual(['queued', 'running', 'waiting_background', 'queued', 'running', 'succeeded']);
+    });
+
+    test('does not start a replacement when the refused session fails to close', async () => {
+        const finished = latch();
+        const { engine, send, waits, status } = await setup(
+            lingering({ finished }),
+            {},
+            () => false,
+            undefined,
+            undefined,
+            true
+        );
+        await waits();
+        send('Are you there');
+        await waitFor(() => status() === 'failed', 'the failed close');
+        expect(engine.turns).toHaveLength(1);
     });
 });
 

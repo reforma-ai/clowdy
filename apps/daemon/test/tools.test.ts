@@ -1238,6 +1238,98 @@ describe('the archive', () => {
 });
 
 describe('ask_user', () => {
+    test('ending a turn with an open question does not require another execution slot', async () => {
+        const finishQuestionTurn = Promise.withResolvers<void>();
+        const finishOtherTurn = Promise.withResolvers<void>();
+        const engine = new ScriptEngine(async function* ({ options }) {
+            yield { type: 'session', sessionId: 's-1' };
+            if (options.prompt.includes('hold the slot')) {
+                await finishOtherTurn.promise;
+            } else {
+                const ask = options.tools.find(tool => tool.name === 'ask_user')!;
+                void ask
+                    .execute({ question: 'First?', options: [{ id: 'a', label: 'A' }] }, options.signal)
+                    .catch(() => {});
+                await finishQuestionTurn.promise;
+            }
+            yield { type: 'done', result: 'done' };
+        });
+        const h = await startHarness({ engineCaps: { fake: 1 } }, { engines: scriptEngines(engine) });
+        harnesses.push(h);
+        const project = h.openRepo();
+        const first = h.ok('chat.create', { projectId: project.id, mode: 'semi' }).chat;
+        const second = h.ok('chat.create', { projectId: project.id, mode: 'semi' }).chat;
+        const firstRun = h.ok('chat.send', { chatId: first.id, text: 'ask' }).runId;
+        await waitFor(() => h.run(firstRun).status === 'waiting_user', 'first question');
+        const secondRun = h.ok('chat.send', { chatId: second.id, text: 'hold the slot' }).runId;
+        await waitFor(() => h.run(secondRun).status === 'running', 'second run');
+        finishQuestionTurn.resolve();
+        await waitFor(() => h.run(firstRun).status === 'succeeded', 'first turn to finish');
+        expect(h.run(secondRun).status).toBe('running');
+        finishOtherTurn.resolve();
+        await waitFor(() => h.run(secondRun).status === 'succeeded', 'second turn to finish');
+    });
+
+    test('withdraws a question when the agent ends its turn without waiting', async () => {
+        const gate = Promise.withResolvers<void>();
+        const engine = new ScriptEngine(async function* ({ options }) {
+            yield { type: 'session', sessionId: 's-1' };
+            const ask = options.tools.find(tool => tool.name === 'ask_user')!;
+            void ask
+                .execute({ question: 'First?', options: [{ id: 'a', label: 'A' }] }, options.signal)
+                .catch(() => {});
+            await gate.promise;
+            yield { type: 'done', result: 'done without an answer' };
+        });
+        const h = await startHarness({}, { engines: scriptEngines(engine) });
+        harnesses.push(h);
+        const project = h.openRepo();
+        const { chat } = h.ok('chat.create', { projectId: project.id, mode: 'semi' });
+        const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'go' });
+        await waitFor(() => h.run(runId).status === 'waiting_user', 'the question');
+        gate.resolve();
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the turn to end');
+        await waitFor(
+            () =>
+                h.store.db
+                    .query('SELECT body FROM stream_items WHERE run_id = ?')
+                    .all(runId)
+                    .map((row: any) => JSON.parse(row.body))
+                    .some((body: any) => body.kind === 'question' && body.state === 'cancelled'),
+            'the question to close'
+        );
+    });
+
+    test('withdrawing a question closes its card and releases the waiting state', async () => {
+        const withdrawal = new AbortController();
+        const gate = Promise.withResolvers<void>();
+        const engine = new ScriptEngine(async function* ({ options }) {
+            yield { type: 'session', sessionId: 's-1' };
+            const ask = options.tools.find(tool => tool.name === 'ask_user')!;
+            const pending = ask.execute({ question: 'First?', options: [{ id: 'a', label: 'A' }] }, withdrawal.signal);
+            await pending.catch(() => undefined);
+            await gate.promise;
+            yield { type: 'done', result: 'ok' };
+        });
+        const h = await startHarness({}, { engines: scriptEngines(engine) });
+        harnesses.push(h);
+        const project = h.openRepo();
+        const { chat } = h.ok('chat.create', { projectId: project.id, mode: 'semi' });
+        const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'go' });
+        await waitFor(() => h.run(runId).status === 'waiting_user', 'the question');
+        withdrawal.abort();
+        await waitFor(() => h.run(runId).status === 'running', 'the agent to resume');
+        const question = h.store.db
+            .query('SELECT body FROM stream_items WHERE run_id = ?')
+            .all(runId)
+            .map((row: any) => JSON.parse(row.body))
+            .find((body: any) => body.kind === 'question');
+        expect(question.state).toBe('cancelled');
+        expect(h.run(runId).awaitingUser).not.toBe(true);
+        gate.resolve();
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the run to finish');
+    });
+
     test('a second question while one is open is refused at once, so the first stays answerable', async () => {
         const outcomes: string[] = [];
         const engine = new ScriptEngine(async function* ({ options }) {

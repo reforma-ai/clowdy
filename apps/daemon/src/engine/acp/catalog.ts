@@ -92,6 +92,8 @@ export interface AgentSpec {
     compact?: string;
     /** The ACP version the engine speaks to the agent: `v1` unless set. */
     protocol?: AgentProtocol;
+    /** This adapter has been verified to forward MCP form elicitation to its ACP client. */
+    elicitation?: boolean;
     /**
      * The agent starts no turn of its own to report background work that ended (a command or a sub-agent): its app-server has nothing that wakes a thread
      * when one ends, so the model would never learn of it and its run would end with the work unreported. Set, the runtime tells the agent: when the last
@@ -128,6 +130,8 @@ export interface CustomAgent {
     env?: Record<string, string>;
     /** The door to the task tools (`AgentSpec.taskTools`), written in `agents.json` by a person whose agent cannot use the shell route; the shell when absent. */
     taskTools?: TaskChannel;
+    /** Set in agents.json after checking that this agent forwards MCP form elicitation. */
+    elicitation?: boolean;
 }
 
 /** What the user changed about an agent, built-in or custom. */

@@ -48,6 +48,12 @@
     --clowdy-listbox-item-padding: var(--spacing-xs) var(--clowdy-listbox-item-padding-inline);
 }
 
+.agentRows {
+    max-height: calc(5 * (var(--spacing-30) + var(--spacing-2) * 2));
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+}
+
 .status {
     position: relative;
     display: flex;
@@ -128,6 +134,29 @@
 .text {
     flex: 1;
     min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.details {
+    display: flex;
+    flex-shrink: 1;
+    align-items: center;
+    gap: var(--spacing-sm);
+    min-width: 0;
+    color: var(--color-secondary-muted-text);
+}
+
+.detail {
+    flex-shrink: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.progress {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

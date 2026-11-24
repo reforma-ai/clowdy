@@ -17,6 +17,7 @@ export const claude: Provider = {
         id: 'claude',
         name: 'Claude Code',
         programs: ['claude'],
+        elicitation: true,
         launch: {
             kind: 'package',
             package: '@agentclientprotocol/claude-agent-acp@0.107.0',

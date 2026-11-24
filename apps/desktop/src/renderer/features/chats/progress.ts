@@ -34,14 +34,10 @@ export function chatProgress(tasks: Task[], statuses: TaskStatus[]): ChatProgres
 
     if (counted.length === 0) return undefined;
 
-    const done = counts.get('done');
-    const summary =
-        done === counted.length && done > 1
-            ? `All ${done} done`
-            : STATUS_LABELS.flatMap(([status, label]) => {
-                  const count = counts.get(status);
-                  return count ? [`${count} ${label}`] : [];
-              }).join(', ');
+    const summary = STATUS_LABELS.flatMap(([status, label]) => {
+        const count = counts.get(status);
+        return count ? [`${count} ${label}`] : [];
+    }).join(', ');
 
     return { summary, tasks: counted };
 }

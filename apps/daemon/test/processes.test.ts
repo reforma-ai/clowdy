@@ -5,7 +5,7 @@ import { join } from 'node:path';
 
 import { getRunWork } from '../src/db/runs';
 import { processesBelow, spawnInOwnGroup } from '../src/engine/process';
-import { isAlive, killSurvivor, startTimeOf } from '../src/runs/processes';
+import { isAlive, killSurvivor, mayBeSameProcess, startTimeOf } from '../src/runs/processes';
 import {
     cleanTempDirs,
     restartHarness,
@@ -24,6 +24,15 @@ afterAll(cleanTempDirs);
 
 const harnesses: Harness[] = [];
 const leftovers: number[] = [];
+
+test('distinguishes a reused pid from a recorded agent and fails closed when the start time is unknown', () => {
+    const started = startTimeOf(process.pid);
+    expect(mayBeSameProcess({ pid: process.pid })).toBe(true);
+    if (started !== undefined) {
+        expect(mayBeSameProcess({ pid: process.pid, startedAt: started })).toBe(true);
+        expect(mayBeSameProcess({ pid: process.pid, startedAt: started - 60_000 })).toBe(false);
+    }
+});
 
 afterEach(async () => {
     await Promise.all(harnesses.splice(0).map(h => h.stop().catch(() => undefined)));

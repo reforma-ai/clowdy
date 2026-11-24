@@ -60,6 +60,8 @@ export interface SessionDeps {
     /** The same when the agent owes the report of work that just ended (`BACKGROUND_REPORT_MS`, twenty seconds by default; `backgroundHandoffMs` when only that is set). */
     backgroundReportMs?: number;
     log?: (line: string) => void;
+    /** Override process creation for lifecycle tests. */
+    spawn?: typeof spawnInOwnGroup;
 }
 
 /** The layer that speaks each protocol. */
@@ -87,6 +89,8 @@ export class AcpSession implements EngineSession {
     private closing = new AbortController();
     private signal: AbortSignal;
     private exited: Promise<void> = Promise.resolve();
+    private launching?: Promise<AgentProcess | undefined>;
+    private stopTitle = new AbortController();
     private layer?: ProtocolLayer;
     /** The agent the session resolved, once it has. */
     private agent?: ResolvedAgent;
@@ -274,17 +278,29 @@ export class AcpSession implements EngineSession {
     }
 
     /** Stops the session and waits until its process is gone, except one that runs on for its title: that leaves by itself, so the run does not wait for it. */
-    async close(): Promise<void> {
+    async close(options?: { ensureStopped?: boolean }): Promise<void> {
+        const launching = this.launching;
         this.closing.abort();
         this.finish();
         // The token is useless once the session is over, even when nobody reads the generator to its end.
         this.access?.dispose();
 
-        if (this.lingering) {
+        if (this.lingering && !options?.ensureStopped) {
             return;
         }
 
-        await Promise.race([this.exited, wait(CLOSE_WAIT_MS)]);
+        if (options?.ensureStopped) this.stopTitle.abort();
+
+        const waitForExit = async () => {
+            const started = await launching?.catch(() => undefined);
+            await (started?.exited ?? this.exited);
+            return true;
+        };
+        const exited = await Promise.race([waitForExit(), wait(CLOSE_WAIT_MS).then(() => false)]);
+
+        if (!exited) {
+            throw new Error('The agent did not exit after it was stopped');
+        }
     }
 
     /** Passes a title the agent gave to the runtime, which says whether it took it; the first one it takes ends the wait for a title. */
@@ -316,8 +332,10 @@ export class AcpSession implements EngineSession {
     /** Keeps the agent running until the runtime took its title, the time is up, the signal of the turn is aborted (a cancel, the daemon stopping) or the agent leaves; then stops it. */
     private async linger(proc: AgentProcess): Promise<void> {
         const { signal } = this.options;
+        const titleSignal = AbortSignal.any([signal, this.stopTitle.signal]);
         const cancelled = new Promise<void>(resolve => {
-            signal.addEventListener('abort', () => resolve(), { once: true });
+            if (titleSignal.aborted) resolve();
+            else titleSignal.addEventListener('abort', () => resolve(), { once: true });
         });
 
         try {
@@ -389,9 +407,11 @@ export class AcpSession implements EngineSession {
 
         this.access?.dispose();
         this.access =
-            this.options.tools.length > 0 ? this.deps.bridge.register(this.options.tools, this.signal) : undefined;
+            this.options.tools.length > 0
+                ? this.deps.bridge.register(this.options.tools, this.signal, agent.elicitation)
+                : undefined;
 
-        return spawnInOwnGroup({
+        return (this.deps.spawn ?? spawnInOwnGroup)({
             command: agent.command,
             args: agent.args,
             cwd: this.options.cwd,
@@ -411,7 +431,10 @@ export class AcpSession implements EngineSession {
         let proc: AgentProcess;
 
         try {
-            const started = await this.launch(agent);
+            const launching = this.launch(agent);
+            this.launching = launching;
+            const started = await launching;
+            this.launching = undefined;
 
             // Looking for the program can take a while (the first time it asks the login shell); a run cancelled meanwhile starts nothing.
             if (!started) {
@@ -513,6 +536,21 @@ export class AcpSession implements EngineSession {
             openBridge: () => this.access,
             offerTitle: title => this.offerTitle(title),
             pickPermission: (request, withdrawn) => this.pickPermission(agent, request, withdrawn),
+            pickQuestion: async (request, withdrawn) => {
+                const form = request as {
+                    mode?: string;
+                    requestedSchema?: { properties?: { clowdy_answer?: { description?: unknown } } };
+                };
+                const description = form.requestedSchema?.properties?.clowdy_answer?.description;
+                const ask = options.tools.find(tool => tool.name === 'ask_user');
+                if (form.mode !== 'form' || typeof description !== 'string' || !ask) return undefined;
+                try {
+                    const result = await ask.execute(JSON.parse(description), AbortSignal.any([signal, withdrawn]));
+                    return (result as { answer?: string }).answer;
+                } catch {
+                    return undefined;
+                }
+            },
             promptIs: state => this.promptIs(state),
             promptRunning: () => this.prompt === 'running',
             record: () => this.record(),

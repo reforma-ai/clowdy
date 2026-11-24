@@ -735,6 +735,7 @@ export type StreamItemBody =
           options: QuestionOption[];
           recommended?: string;
           answer?: string;
+          state?: 'cancelled' | 'expired';
       }
     /**
      * A request of the agent for permission to do something, put to the person (an agent on a preset that asks). The run waits in `waiting_user` while any

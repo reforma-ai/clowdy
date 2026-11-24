@@ -1,78 +1,69 @@
 import { MenuTrigger } from '@clowdy/components/List';
 import { Popover } from '@clowdy/components/Popover';
 import { Text } from '@clowdy/components/Text';
-import { Folder, Version } from '@clowdy/icons/14';
+import { Folder, Split, Version } from '@clowdy/icons/14';
 import { mainFolder } from '@clowdy/protocol';
 
 import { tildePath } from '../../shared/displayPath';
 import { homeFolder } from '../../shared/homeFolder';
 import { useProjectState, useProjectUi } from '../../stores';
-import {
-    canOpenPaths,
-    type FolderGit,
-    type OpenTarget,
-    OpenWithMenu,
-    useFolderGit,
-    useFolderRepair,
-} from '../openWith';
+import { canOpenPaths, type OpenTarget, OpenWithMenu, useFolderGit, useFolderRepair } from '../openWith';
 import styles from './ChatFolder.module.css';
 import { ChipTrigger } from './ChipTrigger';
-import { WorkspaceLabel } from './WorkspaceChips';
 
 import type { ChatWorkspace, ProjectFolder } from '@clowdy/protocol';
 
-interface FolderPillProps {
+export interface ChatFolderProps {
     name: string;
     folder: ProjectFolder;
     /** The folder is gone from the disk. */
     missing: boolean;
-    /** What git says where the pill opens its menu (the link to GitHub names the branch). */
-    git: FolderGit | undefined;
-    /** In a chat that has started, show the checkout and offer to start a chat there. */
-    checkout?: { workspace?: ChatWorkspace; onNewChat: () => void };
+    /** The worktree the chat works in, if it does. */
+    workspace?: ChatWorkspace;
+    /** Whether to show the folder alongside the workspace. */
+    showFolder?: boolean;
 }
 
-/** One label for the chat's place, with actions for its checkout in the desktop app. */
-function FolderPill({ name, folder, missing, git, checkout }: FolderPillProps) {
+/** The current place of an existing chat; its menu opens or copies that place, never changes it. */
+export function ChatFolder({ name, folder, missing, workspace, showFolder = true }: ChatFolderProps) {
     const project = useProjectState();
-    const workspace = checkout?.workspace;
+    const ui = useProjectUi();
+    const git = useFolderGit(project.id, folder.id, workspace);
+    const gone = missing || git?.gone === true;
     const path = workspace?.path ?? folder.path;
-    const branch = checkout ? git?.branch : undefined;
-    // A worktree that is gone is not what Locate and Remove from project put right: they act on the folder, which is there.
-    const repair = useFolderRepair(folder, missing && workspace === undefined);
-    const gone = workspace ? 'This worktree no longer exists' : 'This folder no longer exists';
-    const title = missing
-        ? gone
-        : `${tildePath(path, homeFolder.path)}${branch && git?.detached ? '\nDetached HEAD' : ''}`;
-    const label = [
-        `Folder: ${name}`,
-        workspace && 'worktree',
-        branch && (git?.detached ? `detached at ${branch}` : `branch ${branch}`),
+    const repair = useFolderRepair(folder, gone && workspace === undefined);
+    const branch = git?.branch;
+    const place = [workspace ? 'Worktree' : undefined, branch].filter(Boolean).join(' ');
+    // A non-git folder still needs a name when it is the project's only folder.
+    const label = [showFolder || !place ? name : undefined, place].filter(Boolean).join(' · ');
+    const detail = branch ? (git?.detached ? `detached at ${branch}` : `branch ${branch}`) : undefined;
+    const ariaLabel = `Current place: ${[showFolder || !place ? name : undefined, workspace ? 'Worktree' : undefined, detail].filter(Boolean).join(', ')}`;
+    const title = [
+        tildePath(path, homeFolder.path),
+        gone ? (workspace ? 'This worktree no longer exists' : 'This folder no longer exists') : undefined,
+        git?.detached ? 'Detached HEAD' : undefined,
     ]
         .filter(Boolean)
-        .join(', ');
-    const detail = (workspace || branch) && (
-        <span className={styles.checkout}>
-            <Version aria-hidden="true" />
-            <Text truncate color="secondary">
-                {workspace ? ['Worktree', branch].filter(Boolean).join(' ') : branch}
-            </Text>
-        </span>
+        .join('\n');
+    const icon = workspace ? (
+        <Split aria-hidden="true" />
+    ) : branch ? (
+        <Version aria-hidden="true" />
+    ) : (
+        <Folder aria-hidden="true" />
     );
 
     if (!canOpenPaths()) {
         return (
             <div
                 role="group"
-                aria-label={checkout ? label : 'Folder'}
+                aria-label={ariaLabel}
                 className={styles.folder}
-                data-missing={missing || undefined}
-                data-detail={detail ? true : undefined}
+                data-missing={gone || undefined}
                 title={title}
             >
-                <Folder aria-hidden="true" />
-                <Text truncate>{name}</Text>
-                {detail}
+                {icon}
+                <Text truncate>{label}</Text>
             </div>
         );
     }
@@ -88,68 +79,23 @@ function FolderPill({ name, folder, missing, git, checkout }: FolderPillProps) {
 
     return (
         <MenuTrigger>
-            <ChipTrigger
-                icon={<Folder aria-hidden="true" />}
-                label={name}
-                detail={detail}
-                aria-label={label}
-                tooltip={title}
-                missing={missing}
-            />
+            <ChipTrigger icon={icon} label={label} aria-label={ariaLabel} tooltip={title} missing={gone} />
             <Popover placement="bottom start" spacing="xs">
                 <OpenWithMenu
                     target={target}
-                    missing={missing}
+                    missing={gone}
                     repair={repair}
                     git={git}
-                    onNewChat={checkout?.onNewChat}
+                    onNewChat={() =>
+                        ui.openDraft(
+                            [],
+                            folder.id === mainFolder(project.project).id ? null : folder.id,
+                            workspace ? { mode: 'existing', path: workspace.path } : null
+                        )
+                    }
                     aria-label={workspace ? 'Worktree actions' : 'Open folder'}
                 />
             </Popover>
         </MenuTrigger>
     );
-}
-
-export interface ChatFolderProps {
-    name: string;
-    folder: ProjectFolder;
-    /** The folder is gone from the disk. */
-    missing: boolean;
-    /** The worktree the chat works in, if it does. */
-    workspace?: ChatWorkspace;
-    /** Whether to show the folder alongside the workspace. */
-    showFolder?: boolean;
-}
-
-/** The chat's folder and current branch share the menu of the checkout it uses. */
-export function ChatFolder({ name, folder, missing, workspace, showFolder = true }: ChatFolderProps) {
-    const project = useProjectState();
-    const ui = useProjectUi();
-    const git = useFolderGit(project.id, folder.id, workspace);
-    const onNewChat = () =>
-        ui.openDraft(
-            [],
-            folder.id === mainFolder(project.project).id ? null : folder.id,
-            workspace ? { mode: 'existing', path: workspace.path } : null
-        );
-
-    return showFolder || workspace ? (
-        <FolderPill
-            name={name}
-            folder={folder}
-            missing={missing || git?.gone === true}
-            git={git}
-            checkout={{ workspace, onNewChat }}
-        />
-    ) : (
-        <WorkspaceLabel worktree={undefined} git={git} />
-    );
-}
-
-/** The folder of a new chat in a project of one folder: nothing to pick, so the pill only says where the chat will work, as the chat's own does. */
-export function DraftFolder({ name, folder, missing }: Omit<ChatFolderProps, 'workspace'>) {
-    const project = useProjectState();
-    const git = useFolderGit(project.id, folder.id);
-
-    return <FolderPill name={name} folder={folder} missing={missing} git={git} />;
 }

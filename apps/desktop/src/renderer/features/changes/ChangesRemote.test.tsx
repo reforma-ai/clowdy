@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { Modal } from '@clowdy/components/Modal';
+import { toast } from '@clowdy/components/Toast';
 import { observer } from 'mobx-react-lite';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -634,6 +635,7 @@ describe('merging branches from the sync menu', () => {
 
     it('fetches origin before listing source branches and previews the selected ref before merging', async () => {
         await start({ gitWrites: { clean: true, remote: 'level' } });
+        const success = vi.spyOn(toast, 'success').mockReturnValue('');
         const fetch = vi.spyOn(transport, 'fetchGit');
         const branches = vi.spyOn(transport, 'getGitBranches');
         const merge = vi.spyOn(transport, 'branchMergeGit');
@@ -673,7 +675,8 @@ describe('merging branches from the sync menu', () => {
             sourceCommit: expect.stringMatching(/^[0-9a-f]+$/),
             targetCommit: expect.stringMatching(/^[0-9a-f]+$/),
         });
-        expect(dialog().querySelector('[role="status"]')?.textContent).toBe('Merged into clowdy/ab12cd34');
+        expect(dialog()).toBeNull();
+        expect(success).toHaveBeenCalledWith({ message: 'Merged into clowdy/ab12cd34' });
     });
 
     it('filters the destination branches with text entered while they were loading', async () => {
@@ -753,6 +756,7 @@ describe('merging branches from the sync menu', () => {
 
     it('keeps the source checkout and pushes only the selected destination on a separate press', async () => {
         await start({ gitWrites: { clean: true, remote: 'level' }, branches: ['remote'] });
+        const success = vi.spyOn(toast, 'success').mockReturnValue('');
         const fetch = vi.spyOn(transport, 'fetchGit');
         const merge = vi.spyOn(transport, 'branchMergeGit');
         const push = vi.spyOn(transport, 'pushGit');
@@ -771,6 +775,7 @@ describe('merging branches from the sync menu', () => {
         await settle();
         expect(merge.mock.calls.map(call => call[2].action)).toEqual(['preview', 'merge']);
         expect(push).not.toHaveBeenCalled();
+        expect(success).not.toHaveBeenCalled();
 
         const current = await transport.getGitStatus(FIXTURE_PROJECT_ID, {
             folderId: WORKTREE.folderId,
@@ -781,7 +786,24 @@ describe('merging branches from the sync menu', () => {
         await press(button('Push main'));
         await settle();
         expect(merge.mock.calls[2]?.[2]).toMatchObject({ action: 'push', target: 'main' });
-        expect(dialog().querySelector('[role="status"]')?.textContent).toBe('Pushed main to origin');
+        expect(dialog()).toBeNull();
+        expect(success).toHaveBeenCalledWith({ message: 'Pushed main to origin' });
+    });
+
+    it('closes an outgoing merge that has no push action and shows a toast', async () => {
+        await start({ gitWrites: { clean: true, remote: 'no_origin' } });
+        const success = vi.spyOn(toast, 'success').mockReturnValue('');
+        const merge = vi.spyOn(transport, 'branchMergeGit');
+
+        await open('Merge into branch…');
+        await press(option('main'));
+        await settle();
+        await press(button('Fast-forward'));
+        await settle();
+
+        expect(merge.mock.calls.map(call => call[2].action)).toEqual(['preview', 'merge']);
+        expect(dialog()).toBeNull();
+        expect(success).toHaveBeenCalledWith({ message: 'Merged into main' });
     });
 
     it('explains why an outgoing merge is blocked before the person can start it', async () => {
@@ -859,6 +881,7 @@ describe('merging branches from the sync menu', () => {
         });
         await start({ gitWrites: { clean: true, remote: 'level' }, branches: ['remote'] });
         const merge = vi.spyOn(transport, 'branchMergeGit');
+        const info = vi.spyOn(toast, 'info').mockReturnValue('');
 
         await conflict();
 
@@ -888,7 +911,8 @@ describe('merging branches from the sync menu', () => {
             commit: expect.stringMatching(/^[0-9a-f]+$/),
             sourceCommit: expect.stringMatching(/^[0-9a-f]+$/),
         });
-        expect(dialog().querySelector('[role="status"]')?.textContent).toBe('Merge into clowdy/ab12cd34 aborted');
+        expect(dialog()).toBeNull();
+        expect(info).toHaveBeenCalledWith({ message: 'Merge into clowdy/ab12cd34 aborted' });
     });
 
     it('asks before aborting from the sidebar and leaves conflicts alone on Cancel', async () => {

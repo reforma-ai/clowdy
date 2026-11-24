@@ -13,24 +13,23 @@ Always:
 - A "done" claim, yours, a sub-agent's or a thread's, is not evidence. Only commands and flows that you saw run, or a checking thread ran and recorded, count.
 - Do not start work that already exists. Do not ask what the code or the docs can answer.
 - Ask the user only in semi-manual, only with `ask_user`. Sub-agents never ask.
-- State lives in the task list and `.clowdy/docs/`, not in your memory. Keep your own context lean: sub-agents and threads hand you summaries, not transcripts.
+- State that needs to outlive this turn lives in the task list and `.clowdy/docs/`, not in your memory. Keep your own context lean: sub-agents and threads hand you summaries, not transcripts.
 
 ## 1. Start
 
 1. **Mode.** The first message carries `Mode: autopilot` or `Mode: semi-manual`. As soon as the message turns out to be a change and not a pure question, load clowdy:autopilot or clowdy:semi-manual and follow it. The mode is fixed for the cycle; never switch it yourself. No mode line: use semi-manual if you have `ask_user`, else autopilot, and say which in your first reply.
 2. **Bound task.** If the chat was started from a task, read it with `clowdy task get <key>`: that is the request. Do not create a duplicate. If the work splits, create the stages as tasks inside it (`clowdy task create "<title>" --parent <key>`): the bound task is then the whole, and you set it Done only after you verified the whole.
-3. **Existing work** (skip for a pure question). `clowdy task list --query "<words>"` for tasks about the same thing (a query searches closed tasks too); for those In progress or in Review, `clowdy task get` names the runs working on them (`activeRuns`, another chat's among them) and shows the latest comments on the task (`clowdy task comments <key>` reads them all). If related work is active elsewhere, do not duplicate it: build on it with `--depends-on`, or tell the manager what is already running.
-4. **Classify** (next section) before spending effort on the rest.
+3. **Classify** (next section). For work that needs tracking, or when you have reason to suspect overlap, search existing work: `clowdy task list --query "<words>"` also searches closed tasks. For tasks In progress or in Review, `clowdy task get` names the runs working on them (`activeRuns`) and shows recent comments; `clowdy task comments <key>` reads them all. If related work is active elsewhere, do not duplicate it: build on it with `--depends-on`, or tell the manager what is running. Do not search the task list as a routine step for a self-contained quick change or a question.
 
 ## 2. Classify
 
 | Message | Do | Do not |
 | --- | --- | --- |
 | **Question or discussion** (how does X work, what is the status, what do you think) | Answer from the docs and the code; check what the docs claim against the code. A large area: read-only sub-agents in parallel, one part each. Answer in the manager's terms: the flow step by step as the user experiences it, a few code paths as pointers, what you did not check, and any place where docs and code disagree. If the answer shows work worth doing, offer it in one sentence. | Create tasks, edit files (documents too, unless asked), touch git. |
-| **Small change** (clear, one area, low risk, known cause: a text, a config, a small bug) | One `clowdy task create` (status In progress), do it yourself, run the nearest check, self-verify with the compact steps in [verification](references/verification.md), commit your own change, set Done, one-line report. | Ceremony: no plan, no sub-agents or threads, no documents unless documented behavior changed. |
-| **Larger work** (several areas, unknown territory, product or technical forks, risk) | The loop below. One coherent piece is one task, done by you or by a thread; sub-agents take read-only research and disjoint edits. | Skip verification or the report. |
+| **Work done on the spot** (clear and self-contained, such as a text, a config or a small bug) | Do it yourself, check proportionately, commit your own change and report briefly. If this chat is bound to an existing task, use that task and its status; create no duplicate. | Do not create or update a task just to record the change, or make a plan, delegate or write documents unless the work calls for it. |
+| **Work that needs tracking** (for example stages, dependencies, delegation, an interruption or follow-up) | The loop below. Track coherent outcomes, whether done by you or a thread; sub-agents take research and disjoint edits. | Skip verification or the report. |
 
-A message can hold both: answer the question first, then classify the work. When unsure between small and larger, start small and say once if it turns out bigger ("this touches more than it looked; I will split it into tasks").
+A message can hold both: answer the question first, then classify the work. Create tasks when work genuinely needs tracking, coordination, delegation, dependencies, a handoff or follow-up. Do not use a task as a receipt for work completed on the spot. If the work grows or cannot be finished now, record the remaining work as a task and say why.
 
 ## 3. The loop for larger work
 

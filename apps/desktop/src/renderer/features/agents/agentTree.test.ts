@@ -306,14 +306,14 @@ describe('chatDotTone', () => {
         expect(chatDotTone(run('r', 'waiting_background'))).toBe('success');
     });
 
-    it('is yellow once it has asked the person something, and red when it failed', () => {
-        expect(chatDotTone(run('r', 'waiting_user'))).toBe('warning');
+    it('uses the accent when waiting for the person and red when it failed', () => {
+        expect(chatDotTone(run('r', 'waiting_user'))).toBe('accent');
         expect(chatDotTone(run('r', 'failed'))).toBe('danger');
     });
 
-    it('is yellow for a run with an open card and green again once it is decided', () => {
-        expect(chatDotTone(run('r', 'waiting_background', { awaitingUser: true }))).toBe('warning');
-        expect(chatDotTone(run('r', 'running', { awaitingUser: true }))).toBe('warning');
+    it('uses the accent for an open card and green again once it is decided', () => {
+        expect(chatDotTone(run('r', 'waiting_background', { awaitingUser: true }))).toBe('accent');
+        expect(chatDotTone(run('r', 'running', { awaitingUser: true }))).toBe('accent');
         expect(chatDotTone(run('r', 'waiting_background'))).toBe('success');
         // A run that is over has no mark worth showing, whatever a stale snapshot says.
         expect(chatDotTone(run('r', 'cancelled', { awaitingUser: true }))).toBeUndefined();
@@ -338,15 +338,15 @@ describe('chatDotTone', () => {
             expect(chatDotTone(run('r', status), 'working')).toBe('success');
 
         expect(chatDotTone(run('r', 'failed'), 'working')).toBe('danger');
-        expect(chatDotTone(run('r', 'waiting_user'), 'working')).toBe('warning');
+        expect(chatDotTone(run('r', 'waiting_user'), 'working')).toBe('accent');
         expect(chatDotTone(run('r', 'succeeded'), 'working', false, true)).toBe('success');
     });
 
-    it('is yellow for a chat whose thread waits for the person, and keeps a failure or a block', () => {
+    it('uses the accent for a chat whose thread waits for the person, and keeps a failure or a block', () => {
         for (const status of ['succeeded', 'cancelled', 'interrupted', 'running', 'waiting_background'] as const)
-            expect(chatDotTone(run('r', status), 'asking')).toBe('warning');
+            expect(chatDotTone(run('r', status), 'asking')).toBe('accent');
 
-        expect(chatDotTone(undefined, 'asking')).toBe('warning');
+        expect(chatDotTone(undefined, 'asking')).toBe('accent');
         expect(chatDotTone(run('r', 'failed'), 'asking')).toBe('danger');
         expect(chatDotTone(run('r', 'blocked'), 'asking')).toBe('warning');
     });
@@ -355,9 +355,9 @@ describe('chatDotTone', () => {
         expect(chatDotTone(undefined, undefined, true)).toBe('neutral');
         expect(chatDotTone(run('r', 'succeeded'), undefined, true, true)).toBe('neutral');
         expect(chatDotTone(run('r', 'running'), undefined, true)).toBe('success');
-        expect(chatDotTone(run('r', 'waiting_user'), undefined, true)).toBe('warning');
+        expect(chatDotTone(run('r', 'waiting_user'), undefined, true)).toBe('accent');
         expect(chatDotTone(run('r', 'succeeded'), 'working', true)).toBe('success');
-        expect(chatDotTone(run('r', 'succeeded'), 'asking', true)).toBe('warning');
+        expect(chatDotTone(run('r', 'succeeded'), 'asking', true)).toBe('accent');
     });
 });
 

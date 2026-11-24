@@ -335,12 +335,13 @@ export function chatDotTone(
         case 'failed':
             return 'danger';
         case 'waiting_user':
+            return 'accent';
         case 'blocked':
             return 'warning';
         case 'queued':
             return 'neutral';
     }
-    if (threads === 'asking') return 'warning';
+    if (threads === 'asking') return 'accent';
     if (status === 'running' || status === 'waiting_background' || threads === 'working') return 'success';
     if (draft) return 'neutral';
     return status === 'succeeded' && unread ? 'warning' : undefined;
