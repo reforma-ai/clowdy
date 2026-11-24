@@ -1068,7 +1068,7 @@ describe('FixtureTransport pull request reads', () => {
         });
     });
 
-    it("gives a chat's worktree an open pull request with a failing, a pending and a passing check, counted and listed worst first", async () => {
+    it("gives a chat's worktree an open pull request with counts for every check state", async () => {
         const info = await worktree().getGitPullRequest(FIXTURE_PROJECT_ID, inWorktree);
 
         expect(info).toMatchObject({
@@ -1087,22 +1087,6 @@ describe('FixtureTransport pull request reads', () => {
                 checks: { state: 'failing', passing: 3, failing: 1, pending: 2, skipped: 1 },
             },
         });
-
-        const { items } = (info as { pullRequest: { checks: { items: Array<{ name: string; state: string }> } } })
-            .pullRequest.checks;
-
-        expect(items.map(item => item.state)).toEqual([
-            'failing',
-            'pending',
-            'pending',
-            'passing',
-            'passing',
-            'passing',
-            'skipped',
-        ]);
-        expect(items.every(item => item.state === 'skipped' || (item as { url?: string }).url !== undefined)).toBe(
-            true
-        );
     });
 
     it("scripts the other places: a merged pull request on Clowdy's branch, a draft on the API's, and a closed one on request", async () => {
@@ -1187,18 +1171,14 @@ describe('FixtureTransport pull request reads', () => {
 
     it('does not give the same object twice, so a caller that edits an answer does not change the next', async () => {
         const transport = worktree();
-        const first = (await transport.getGitPullRequest(FIXTURE_PROJECT_ID, inWorktree)) as {
-            pullRequest: { checks: { items: unknown[] } };
-        };
+        const first = await transport.getGitPullRequest(FIXTURE_PROJECT_ID, inWorktree);
 
-        first.pullRequest.checks.items.length = 0;
-        expect(
-            (
-                (await transport.getGitPullRequest(FIXTURE_PROJECT_ID, inWorktree)) as {
-                    pullRequest: { checks: { items: unknown[] } };
-                }
-            ).pullRequest.checks.items
-        ).toHaveLength(7);
+        if (!first.isRepository || !first.pullRequest) throw new Error('Expected the worktree pull request');
+
+        first.pullRequest.checks.passing = 0;
+        expect(await transport.getGitPullRequest(FIXTURE_PROJECT_ID, inWorktree)).toMatchObject({
+            pullRequest: { checks: { passing: 3 } },
+        });
     });
 });
 

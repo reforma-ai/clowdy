@@ -1,13 +1,5 @@
 import type { TextColor } from '@clowdy/components/Text';
-import type {
-    GitBase,
-    GitChangeKind,
-    GitCheck,
-    GitCheckState,
-    GitHubAccess,
-    GitHubRepo,
-    GitPullRequestState,
-} from '@clowdy/protocol';
+import type { GitBase, GitChangeKind, GitHubAccess, GitHubRepo, GitPullRequestState } from '@clowdy/protocol';
 import type { BranchSummary } from './gitFacts';
 
 /** How a pull request's state is worded. */
@@ -17,21 +9,6 @@ export const PULL_REQUEST_STATE_LABEL: Record<GitPullRequestState, string> = {
     merged: 'Merged',
     closed: 'Closed',
 };
-
-/** How each check state is labelled and coloured. */
-export const CHECK_STATE_VIEW: Record<GitCheckState, { label: string; color: TextColor }> = {
-    failing: { label: 'Failing', color: 'danger' },
-    pending: { label: 'Pending', color: 'warning' },
-    passing: { label: 'Passing', color: 'success' },
-    skipped: { label: 'Skipped', color: 'secondary' },
-};
-
-/** The order of a check list: failing, then pending, passing and skipped; within a state the daemon's order (by name) stays. */
-const CHECK_ORDER: readonly GitCheckState[] = ['failing', 'pending', 'passing', 'skipped'];
-
-/** The checks as the list shows them: failing first. The daemon sorts them already; this keeps the rule here too, so the list never depends on it. */
-export const sortedChecks = (items: readonly GitCheck[]): GitCheck[] =>
-    [...items].sort((a, b) => CHECK_ORDER.indexOf(a.state) - CHECK_ORDER.indexOf(b.state));
 
 /** How far the branch is from its base, in words: `3 ahead, 1 behind origin/main`, `2 ahead of origin/main`, `1 behind origin/main`, `Even with origin/main`. Nothing when there is no base to compare with. */
 export function aheadBehindWords(base: GitBase | undefined): string | undefined {

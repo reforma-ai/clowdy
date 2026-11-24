@@ -877,38 +877,47 @@ describe('merging branches from the sync menu', () => {
 });
 
 describe('Create PR in the sidebar', () => {
-    it('is the pull request chip while the branch has one, and no button', async () => {
+    it('shows one standard pull request button with failed and passed check counts', async () => {
         await start();
 
-        expect(container.querySelector('[aria-label="Pull request"]')?.textContent).toContain('PR #128');
-        expect(container.querySelector('button svg[data-state="open"]')).not.toBeNull();
+        const pr = container.querySelector('button[aria-label^="Open pull request 128"]')!;
+        expect(pr.textContent).toBe('PR #12813');
+        expect(pr.getAttribute('data-size')).toBe('sm');
+        expect(pr.querySelector('svg[data-state="open"]')).not.toBeNull();
+        expect(pr.getAttribute('aria-label')).toContain('1 failed, 3 passed');
+        expect(pr.querySelector('[data-check="failed"]')?.textContent).toBe('1');
+        expect(pr.querySelector('[data-check="passed"]')?.textContent).toBe('3');
+        expect(pr.hasAttribute('aria-haspopup')).toBe(false);
         expect(createPRButton()).toBeUndefined();
         expect(buttonOf('Publish first')).toBeUndefined();
-        const summary = container.querySelector('button[aria-label^="Show checks"]')!;
-        expect(summary.getAttribute('aria-label')).toBe('Show checks: 1 failed, 2 pending, 3 passed, 1 skipped');
-        expect(document.querySelector('ul[aria-label="Checks"]')).toBeNull();
-        await press(summary);
-        await settle();
-        const checks = [...document.querySelectorAll<HTMLAnchorElement>('ul[aria-label="Checks"] a')];
-        expect(checks).toHaveLength(7);
-        expect(checks.every(check => check.protocol === 'https:' && check.target === '_blank')).toBe(true);
     });
 
-    it('shows a merged pull request with a state icon and its checks', async () => {
+    it('shows a merged pull request without a failure counter', async () => {
         await start({
             tweak: data => {
                 data.pullRequests[CAR_RENTAL] = { worktree: 'merged' };
             },
         });
 
-        const pr = container.querySelector('[aria-label="Pull request"]')!;
-        const link = pr.querySelector('button[aria-label*="Merged"]')!;
+        const pr = container.querySelector('button[aria-label^="Open pull request 31"]')!;
 
-        expect(link.textContent).toBe('PR #31');
-        expect(link.querySelector('svg[data-state="merged"]')).not.toBeNull();
-        await press(pr.querySelector('button[aria-label^="Show checks"]')!);
-        await settle();
-        expect(document.querySelectorAll('ul[aria-label="Checks"] a')).toHaveLength(3);
+        expect(pr.querySelector('svg[data-state="merged"]')).not.toBeNull();
+        expect(pr.getAttribute('aria-label')).toContain('3 passed');
+        expect(pr.querySelector('[data-check="failed"]')).toBeNull();
+        expect(pr.querySelector('[data-check="passed"]')?.textContent).toBe('3');
+    });
+
+    it('omits CI counts until a check passes or fails', async () => {
+        await start({
+            tweak: data => {
+                data.pullRequests[CAR_RENTAL] = { worktree: 'draft' };
+            },
+        });
+
+        const pr = container.querySelector('button[aria-label^="Open pull request 54"]')!;
+
+        expect(pr.textContent).toBe('PR #54Draft');
+        expect(pr.querySelector('[data-check]')).toBeNull();
     });
 
     it('shows a single Publish action for a clean unpublished branch and offers Create PR after publishing', async () => {

@@ -400,16 +400,7 @@ export type GitPullRequestState = 'open' | 'draft' | 'merged' | 'closed';
 /** How one check ended: `skipped` is a check that was not run on purpose (it does not count against the pull request); an unfinished one, or one that GitHub has not said how it ended, is `pending`. */
 export type GitCheckState = 'passing' | 'failing' | 'pending' | 'skipped';
 
-/** One check of the pull request's head commit: a check run or a commit status. */
-export interface GitCheck {
-    /** The check run's name, or the status's context. */
-    name: string;
-    state: GitCheckState;
-    /** Where the check's own page is. */
-    url?: string;
-}
-
-/** The checks of a pull request's head commit, one for each name (the latest run of it), and what they add up to. */
+/** Summary of the checks at a pull request’s head commit, using the latest run of each name. */
 export interface GitChecks {
     /** `none` when no check ran, `failing` when one failed, else `pending` when one is not finished, else `passing`. */
     state: 'none' | 'passing' | 'failing' | 'pending';
@@ -418,13 +409,11 @@ export interface GitChecks {
     failing: number;
     pending: number;
     skipped: number;
-    /** Failing first, then pending, passing and skipped; by name within a state. At most `MAX_GIT_CHECKS` (the first that GitHub lists). */
-    items: GitCheck[];
-    /** GitHub has more checks than `MAX_GIT_CHECKS`: `items` and the counts cover the first ones, and `state` is the worse of what they say and what GitHub says of all of them. */
+    /** GitHub has more than `MAX_GIT_CHECKS` checks. The counts cover the first page and `state` also reflects GitHub’s total. */
     truncated?: true;
 }
 
-/** The most checks `GitChecks` lists: GitHub's first page of them. */
+/** The maximum number of checks read from GitHub when computing summary counts. */
 export const MAX_GIT_CHECKS = 100;
 
 /** What reviewers have decided, when the repository asks for a review. */
