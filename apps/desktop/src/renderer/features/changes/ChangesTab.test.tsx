@@ -283,9 +283,8 @@ describe('the Changes tab of a chat in a worktree', () => {
         const sidebar = container.querySelector('[aria-label="Changes sidebar"]');
 
         expect(sidebar?.textContent).not.toContain('Base:');
-        expect(
-            sidebar?.querySelector('button[aria-label="Update from main"] [data-commit-count="down"]')?.textContent
-        ).toBe('1');
+        expect(sidebar?.querySelector('button[data-sync]')?.getAttribute('aria-label')).toBe('Publish branch');
+        expect(sidebar?.querySelector('button[aria-label="Update from main"]')).toBeNull();
         expect(container.querySelector('button[aria-label^="Open pull request 128"]')?.textContent).toContain(
             'PR #128'
         );

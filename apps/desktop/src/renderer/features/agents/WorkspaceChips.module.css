@@ -2,7 +2,7 @@
 
 /*
  * A chip with nothing to press: the pills' own height, inset, type and icon gap, in the muted colour, with no plate (a clear border keeps the box the same). The
- * started chat's place (the branch, with `Worktree` before it) is this, and so is the stand-in of a folder git could not be asked about.
+ * stand-in of a folder git could not be asked about uses it.
  */
 .label {
     @ruleset typography-button-sm;
@@ -21,11 +21,6 @@
 }
 
 .label svg {
-    flex-shrink: 0;
-}
-
-/* The word before a branch in the label: it stays whole while a long branch is cut. */
-.lead {
     flex-shrink: 0;
 }
 
@@ -53,45 +48,4 @@
 /* A wrapper that only catches the keys that bubble up from the menu's rows: it has no box of its own. */
 .keys {
     display: contents;
-}
-
-.trigger {
-    flex-shrink: 1;
-    min-width: 0;
-    max-width: min(100%, 24rem);
-}
-
-.trigger[data-open] {
-    --clowdy-button-color: var(--color-secondary-muted-text);
-    --clowdy-button-color--hover: var(--color-secondary-muted-text);
-
-    border-color: var(--clowdy-button-border--hover);
-    background-color: var(--clowdy-button-bg--hover);
-    opacity: var(--clowdy-button-opacity--hover);
-}
-
-.triggerContent {
-    justify-content: flex-start;
-    min-width: 0;
-}
-
-.triggerContent svg {
-    flex-shrink: 0;
-}
-
-.separator {
-    align-self: stretch;
-    width: 1px;
-    margin-block: var(--spacing-4);
-    background: currentColor;
-    opacity: 0.25;
-    flex-shrink: 0;
-}
-
-.chevron {
-    transition: transform var(--transition-duration-fast) var(--ease-in-out);
-}
-
-.trigger[data-open] .chevron {
-    transform: rotate(180deg);
 }

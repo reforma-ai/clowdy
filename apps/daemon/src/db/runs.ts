@@ -33,6 +33,7 @@ interface RunRow {
     background: string | null;
     created_at: number;
     started_at: number | null;
+    active_since: number | null;
     finished_at: number | null;
 }
 
@@ -65,6 +66,7 @@ const toRun = (row: RunRow): Run =>
         background: parseJson<BackgroundItem[]>(row.background),
         createdAt: row.created_at,
         startedAt: row.started_at,
+        activeSince: row.active_since,
         finishedAt: row.finished_at,
     }) as Run;
 
@@ -85,12 +87,12 @@ export function listRuns(db: Database, projectId: string): Run[] {
 export function upsertRun(db: Database, run: Run): void {
     db.query(`
         INSERT INTO runs (id, project_id, parent_run_id, root_run_id, chat_id, role, origin, parent_tool_call_id, can_stop_alone, awaiting_user, name, summary, status,
-            status_reason, engine, model, effort, session_id, worktree, result, error, failure_code, usage, context, background, created_at, started_at, finished_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            status_reason, engine, model, effort, session_id, worktree, result, error, failure_code, usage, context, background, created_at, started_at, active_since, finished_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET summary = excluded.summary, status = excluded.status, status_reason = excluded.status_reason,
             model = excluded.model, effort = excluded.effort, session_id = excluded.session_id, worktree = excluded.worktree, result = excluded.result,
             error = excluded.error, failure_code = excluded.failure_code, usage = excluded.usage, context = excluded.context, background = excluded.background,
-            awaiting_user = excluded.awaiting_user, started_at = excluded.started_at, finished_at = excluded.finished_at
+            awaiting_user = excluded.awaiting_user, started_at = excluded.started_at, active_since = excluded.active_since, finished_at = excluded.finished_at
     `).run(
         run.id,
         run.projectId,
@@ -119,6 +121,7 @@ export function upsertRun(db: Database, run: Run): void {
         toJson(run.background),
         run.createdAt,
         run.startedAt ?? null,
+        run.activeSince ?? null,
         run.finishedAt ?? null
     );
 }

@@ -49,7 +49,7 @@ function scrollerBelow(target: EventTarget | null, message: HTMLElement, pull: n
  * back below it replies to nothing. The message then settles back. A mouse drag is left alone, since it selects text, and so is a swipe to the right, everything
  * that goes mostly up or down, and whatever a code block or table inside the message can still scroll sideways. The decisions are in `swipeReply.ts`; this puts
  * them on the page: native listeners on the returned element (React's wheel listener is passive and cannot cancel the event), the pull as the element's own
- * `translate` (an entry animation owns its `transform`), `--swipe-progress`, `data-swipe` (`left`) and `data-swipe-armed` for the Reply mark. The settle is not
+ * `translate`, `--swipe-progress`, `data-swipe` (`left`) and `data-swipe-armed` for the Reply mark. The settle is not
  * animated for a person who asked for reduced motion.
  */
 export function useSwipeReply<T extends HTMLElement>({ enabled, onReply }: SwipeReplyOptions): RefObject<T | null> {

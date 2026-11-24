@@ -1,10 +1,16 @@
 // @vitest-environment happy-dom
+import { Modal } from '@clowdy/components/Modal';
 import { observer } from 'mobx-react-lite';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createFixtureData, FIXTURE_PROJECT_ID, withFixtureWorkspace } from '../../daemon/fixtureData';
+import {
+    createFixtureData,
+    FIXTURE_BASE_COMMIT,
+    FIXTURE_PROJECT_ID,
+    withFixtureWorkspace,
+} from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { TransportError } from '../../daemon/transport';
 import { RootStore, RootStoreProvider } from '../../stores';
@@ -13,7 +19,7 @@ import { ChangesSidebar } from './ChangesSidebar';
 import { type GitPlaceKey, gitFactsOf } from './gitFacts';
 import { placeChangesOf } from './PlaceChanges';
 
-import type { GitSwitchResult } from '@clowdy/protocol';
+import type { GitBranchDeleteResult, GitSwitchResult } from '@clowdy/protocol';
 import type { FixtureBranchScript } from '../../daemon/fixtureGitBranches';
 import type { Place } from '../sidePanel/currentPlace';
 import type { PlaceChanges } from './PlaceChanges';
@@ -151,13 +157,16 @@ async function open() {
 }
 
 beforeEach(() => {
+    const create = Modal.create.bind(Modal);
+    vi.spyOn(Modal, 'create').mockImplementation(options => create({ ...options, animate: false }));
     vi.spyOn(openEffects, 'openUrl').mockImplementation(() => undefined);
     container = document.createElement('div');
     document.body.append(container);
     root = createRoot(container);
 });
 
-afterEach(() => {
+afterEach(async () => {
+    for (const modal of [...Modal.opened].reverse()) await act(async () => modal.close(false));
     act(() => root.unmount());
     container.remove();
     stop?.();
@@ -165,6 +174,147 @@ afterEach(() => {
     document.body.innerHTML = '';
     vi.restoreAllMocks();
     vi.useRealTimers();
+});
+
+describe('deleting a branch from the branch picker', () => {
+    const ask = async (name: string) => {
+        await act(async () => {
+            row(name).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 }));
+        });
+        await settle();
+        const item = document.querySelector('[role="menuitem"][data-key="delete"]');
+        expect(item?.textContent).toContain('Delete branch…');
+        await press(item!);
+        await settle();
+        await settle();
+    };
+    const confirmation = () =>
+        [...document.querySelectorAll('[data-modal-window]')].find(panel =>
+            panel.textContent?.includes('Delete branch')
+        );
+    const originTick = () => confirmation()?.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    const checkout = { folderId: CHECKOUT.folderId };
+
+    it('cancels without deleting, then deletes a local branch while retaining origin by default', async () => {
+        await start({ branches: ['remote'], clean: true });
+        const remove = vi.spyOn(transport, 'deleteGitBranch');
+        const switchTo = vi.spyOn(transport, 'switchGitBranch');
+        await open();
+        await ask('dev');
+        expect(confirmation()?.textContent).toContain('Delete dev?');
+        expect(confirmation()?.textContent).toContain('not merged');
+        expect(originTick()?.checked).toBe(false);
+        await press(buttonOf('Cancel')!);
+        await settle();
+        expect(remove.mock.calls.map(call => call[2].action)).toEqual(['preview']);
+
+        await open();
+        await ask('dev');
+        await press(buttonOf('Delete branch')!);
+        await settle();
+        expect(remove.mock.calls.at(-1)?.[2]).toEqual({
+            action: 'delete',
+            branch: 'dev',
+            localCommit: FIXTURE_BASE_COMMIT,
+            localUnmerged: true,
+        });
+        expect(switchTo).not.toHaveBeenCalled();
+        const listing = await transport.getGitBranches(FIXTURE_PROJECT_ID, checkout);
+        expect(listing).toMatchObject({
+            isRepository: true,
+            local: [{ name: 'main' }],
+            remote: expect.arrayContaining([{ name: 'dev' }]),
+        });
+    });
+
+    it('switches from the current branch and deletes its origin branch only when the checkbox was ticked', async () => {
+        await start({ branches: ['remote', 'idle'], clean: true });
+        await open();
+        await press(row('dev'));
+        await settle();
+        expect(trigger()?.textContent).toBe('dev');
+        const remove = vi.spyOn(transport, 'deleteGitBranch');
+
+        await open();
+        await ask('dev');
+        expect(confirmation()?.textContent).toContain('Switch to main');
+        expect(originTick()?.checked).toBe(false);
+        await press(originTick()!);
+        expect(originTick()?.checked).toBe(true);
+        await press(buttonOf('Delete branch')!);
+        await settle();
+
+        expect(remove.mock.calls.at(-1)?.[2]).toEqual({
+            action: 'delete',
+            branch: 'dev',
+            localCommit: FIXTURE_BASE_COMMIT,
+            originCommit: FIXTURE_BASE_COMMIT,
+            localUnmerged: true,
+            originUnmerged: true,
+            switchTo: 'main',
+        });
+        expect(trigger()?.textContent).toBe('main');
+        const listing = await transport.getGitBranches(FIXTURE_PROJECT_ID, checkout);
+        if (!listing.isRepository) throw new Error('Expected a repository');
+        expect(listing.local.some(branch => branch.name === 'dev')).toBe(false);
+        expect(listing.origin?.some(branch => branch.name === 'dev')).toBe(false);
+    });
+
+    it('deletes a remote-only branch with explicit confirmation and no local action', async () => {
+        await start({ branches: ['remote'], clean: true });
+        const remove = vi.spyOn(transport, 'deleteGitBranch');
+        await open();
+        await ask('feature/search');
+        expect(confirmation()?.textContent).toContain('Delete origin/feature/search?');
+        expect(originTick()).toBeNull();
+        await press(buttonOf('Delete branch')!);
+        await settle();
+        expect(remove.mock.calls.at(-1)?.[2]).toEqual({
+            action: 'delete',
+            branch: 'feature/search',
+            originCommit: FIXTURE_BASE_COMMIT,
+            originUnmerged: true,
+        });
+    });
+
+    it('does not open a stale confirmation after leaving the sidebar while a deletion preview is pending', async () => {
+        await start({ branches: ['remote'], clean: true });
+        let finish: (result: GitBranchDeleteResult) => void = () => undefined;
+        const remove = vi.spyOn(transport, 'deleteGitBranch').mockImplementationOnce(
+            () =>
+                new Promise(resolve => {
+                    finish = resolve;
+                })
+        );
+
+        await open();
+        await ask('dev');
+        expect(confirmation()).toBeUndefined();
+        await act(async () => root.render(null));
+        await act(async () => finish({ state: 'preview', branch: 'dev', localCommit: FIXTURE_BASE_COMMIT }));
+        await settle();
+        expect(confirmation()).toBeUndefined();
+        expect(remove.mock.calls.map(call => call[2].action)).toEqual(['preview']);
+    });
+
+    it('opens branch actions with the keyboard for the highlighted branch', async () => {
+        await start({ branches: ['remote'], clean: true });
+        await open();
+        await type(search(), 'dev');
+        await settle();
+        await keyOn(search(), 'ArrowDown');
+        await act(async () => {
+            search().dispatchEvent(
+                new KeyboardEvent('keydown', { key: 'F10', shiftKey: true, bubbles: true, cancelable: true })
+            );
+        });
+        await settle();
+        const item = document.querySelector('[role="menuitem"][data-key="delete"]');
+        expect(item?.textContent).toContain('Delete branch…');
+        await press(item!);
+        await settle();
+        expect(confirmation()?.textContent).toContain('Delete dev?');
+    });
 });
 
 describe("the branch of the Changes sidebar, for the folder's own checkout", () => {

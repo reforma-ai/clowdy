@@ -4,6 +4,7 @@ import { BackgroundTask, Robot, Split, Terminal } from '@clowdy/icons/14';
 import { shownRunStatus } from '@clowdy/protocol';
 import { useEffect, useState } from 'react';
 
+import { formatDuration } from '../../shared';
 import { useProjectState, useProjectUi, useRootStore, useRunStream } from '../../stores';
 import { openChat } from './archiveChat';
 import { ComposerBanner, ComposerBannerHeader, ComposerBannerStatus } from './ComposerBanner';
@@ -26,6 +27,12 @@ import {
 
 import type { BackgroundItem, Chat, Run, RunId } from '@clowdy/protocol';
 
+function elapsedSince(startedAt: number | undefined, now: number): string | undefined {
+    if (startedAt === undefined || !Number.isFinite(startedAt) || startedAt > now) return undefined;
+
+    return formatDuration(Math.floor((now - startedAt) / 1000) * 1000);
+}
+
 function AgentRow({ run, now }: { run: Run; now: number }) {
     const root = useRootStore();
     const ui = useProjectUi();
@@ -33,16 +40,9 @@ function AgentRow({ run, now }: { run: Run; now: number }) {
     const waiting = shownRunStatus(run) === 'waiting_user';
     const metrics: string[] = [];
 
-    // Native runs are created for one invocation; a chat orchestrator's timestamps and stream span turns.
-    if (
-        run.origin === 'native' &&
-        run.startedAt !== undefined &&
-        Number.isFinite(run.startedAt) &&
-        run.startedAt <= now
-    ) {
-        const seconds = Math.floor((now - run.startedAt) / 1000);
-        metrics.push(seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`);
-    }
+    // Native runs are created for one invocation, so their first start is also the current start.
+    const elapsed = elapsedSince(run.origin === 'native' ? run.startedAt : run.activeSince, now);
+    if (elapsed) metrics.push(elapsed);
     if (stream?.status === 'ready') {
         const calls = stream.items.filter(item => item.body.kind === 'tool').length;
         if (calls > 0) metrics.push(`${calls} ${calls === 1 ? 'call' : 'calls'}`);
@@ -82,7 +82,7 @@ function threadStatus(run: Run): string | undefined {
     }
 }
 
-function ThreadRow({ chat, run }: ThreadAtWork) {
+function ThreadRow({ chat, run, now }: ThreadAtWork & { now: number }) {
     const root = useRootStore();
     const project = useProjectState();
     const ui = useProjectUi();
@@ -90,7 +90,12 @@ function ThreadRow({ chat, run }: ThreadAtWork) {
     const stream = useRunStream(run.id);
     const calls =
         stream?.status === 'ready' ? stream.items.filter(item => item.body.kind === 'tool').length : undefined;
-    const progress = calls === undefined ? undefined : `${calls} ${calls === 1 ? 'call' : 'calls'} total`;
+    const progress = [
+        elapsedSince(run.activeSince, now),
+        calls === undefined ? undefined : `${calls} ${calls === 1 ? 'call' : 'calls'} total`,
+    ]
+        .filter(Boolean)
+        .join(' · ');
 
     return (
         <ComposerBannerStatus
@@ -167,7 +172,11 @@ function BackgroundRow({ runId, count }: { runId: RunId; count: number }) {
 }
 
 function Row({ row, now }: { row: StripRow; now: number }) {
-    return row.kind === 'agent' ? <AgentRow run={row.run} now={now} /> : <ThreadRow chat={row.chat} run={row.run} />;
+    return row.kind === 'agent' ? (
+        <AgentRow run={row.run} now={now} />
+    ) : (
+        <ThreadRow chat={row.chat} run={row.run} now={now} />
+    );
 }
 
 /**

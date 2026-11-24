@@ -7,7 +7,7 @@ import { Scrollable } from '@clowdy/components/Scrollable';
 import { Spinner } from '@clowdy/components/Spinner';
 import { Text } from '@clowdy/components/Text';
 import { Textarea } from '@clowdy/components/Textarea';
-import { AiStar, ArrowUp, ChevronDown } from '@clowdy/icons/14';
+import { AiStar, ChevronDown, Refresh } from '@clowdy/icons/14';
 import { commitMessageAgent, writesCommitMessages } from '@clowdy/protocol';
 import { useEffect, useState } from 'react';
 
@@ -16,7 +16,7 @@ import { useAgents, useProjectUi, useRootStore } from '../../stores';
 import { quoteIntoComposer } from '../chats/composerBridge';
 import styles from './CommitBox.module.css';
 import { commitDraftOf } from './CommitDraft';
-import { commitLabel, commitTarget, isFetchFirst } from './changesActions';
+import { commitLabel, commitTarget, isFetchFirst, SYNC_WORDS } from './changesActions';
 import { confirmAbortMerge } from './confirmAbortMerge';
 import { gitFactsOf } from './gitFacts';
 import { CHANGE_KIND_VIEW, splitPath } from './gitSummary';
@@ -28,9 +28,7 @@ import type { PlaceChanges } from './PlaceChanges';
 import type { RemoteActions } from './RemoteActions';
 
 /**
- * What git or the daemon said when the box could not do what it was asked: git's own line, selectable, and the hint of the daemon under it when it has one. A push that origin turned
- * down for commits the branch lacks (`Committed 1a2b3c4, push failed: ! [rejected] main -> main (fetch first)`) has a Fetch origin button beside the line, as GitHub Desktop's
- * `Newer Commits on Remote` has Fetch.
+ * Shows Git's error and its hint. If origin moved between fetch and push, Retry Sync starts the whole sync again.
  */
 function FailureLines({
     failure,
@@ -51,18 +49,18 @@ function FailureLines({
                     {failure.hint}
                 </Text>
             )}
-            {failure.what === 'push' && isFetchFirst(failure.message) && (
+            {failure.what === 'sync' && isFetchFirst(failure.message) && (
                 <Button
                     variant="bordered"
                     color="secondary"
                     size="xs"
                     className={styles.fetch}
                     isDisabled={draft.model.facts.switching}
-                    isPending={remote.isPending('fetch')}
+                    isPending={remote.isPending('sync')}
                     spinnerPlacement="start"
-                    onPress={() => void draft.fetchAfterRejection()}
+                    onPress={() => draft.retrySync()}
                 >
-                    Fetch origin
+                    Retry Sync
                 </Button>
             )}
         </div>
@@ -108,14 +106,15 @@ function CommitFileRow({
             textValue={file.path}
             isDisabled={draft.writing}
             icon={
-                <Checkbox
-                    size="sm"
-                    isSelected={mergeGroup === undefined ? draft.isTicked(file.path) : mergeGroup === 'staged'}
-                    isReadOnly={mergeGroup !== undefined}
-                    isDisabled={draft.writing}
-                    aria-label={file.path}
-                    onChange={on => draft.setTicked(file.path, on)}
-                />
+                mergeGroup === undefined ? (
+                    <Checkbox
+                        size="sm"
+                        isSelected={draft.isTicked(file.path)}
+                        isDisabled={draft.writing}
+                        aria-label={file.path}
+                        onChange={on => draft.setTicked(file.path, on)}
+                    />
+                ) : undefined
             }
             endAffix={
                 file.additions !== undefined && file.deletions !== undefined ? (
@@ -195,17 +194,12 @@ function ConflictActions({
 
     return (
         <div className={styles.conflictActions}>
-            <Button
-                variant="filled"
-                color="secondary"
-                size="xs"
-                aria-label="Ask agent to resolve conflicts"
-                onPress={ask}
-            >
+            <Button variant="ghost" color="primary" size="xs" aria-label="Ask agent to resolve conflicts" onPress={ask}>
+                <AiStar aria-hidden="true" />
                 Ask agent
             </Button>
             <Button
-                variant="filling"
+                variant="bordered"
                 color="secondary"
                 size="xs"
                 isDisabled={writing || remote.busy}
@@ -290,17 +284,24 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
         ? mergeStatus.truncated && `Showing merge files from the first ${mergeStatus.entries.length} changed files`
         : draft.truncated && `Showing the first ${files.length} files`;
     const hasChangesToCommit = hasFiles || merging !== undefined;
-    const pushesByDefault = draft.pushesByDefault;
-    const commitAndPush = (merging ? draft.concluding : ticked > 0) && pushesByDefault !== shiftHeld;
+    const syncsByDefault = draft.syncsByDefault;
+    const commitAndSync = (merging ? draft.concluding : ticked > 0) && syncsByDefault !== shiftHeld;
     const target = commitTarget(status);
     const localLabel = merging ? 'Complete merge' : commitLabel(ticked);
-    const pushLabel = merging ? 'Complete merge & Push' : 'Commit & Push';
-    const label = commitAndPush ? pushLabel : localLabel;
-    const alternateBlock = pushesByDefault ? undefined : draft.pushBlock;
+    const syncLabel = merging ? 'Complete merge & Sync' : 'Commit & Sync';
+    const label =
+        draft.busy === 'sync'
+            ? draft.syncPhase
+                ? SYNC_WORDS[draft.syncPhase]
+                : 'Syncing…'
+            : commitAndSync
+              ? syncLabel
+              : localLabel;
+    const alternateBlock = syncsByDefault ? undefined : draft.syncBlock;
     const reason = hasChangesToCommit
-        ? (draft.commitReason ?? (commitAndPush && draft.busy === undefined ? draft.pushBlock : undefined))
+        ? (draft.commitReason ?? (commitAndSync && draft.busy === undefined ? draft.syncBlock : undefined))
         : undefined;
-    const commit = (shift: boolean) => void draft.commit(shift ? !pushesByDefault : undefined);
+    const commit = (shift: boolean) => void draft.commit(shift ? !syncsByDefault : undefined);
 
     return (
         <section className={styles.root} aria-label="Commit">
@@ -310,24 +311,23 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
                 </Text>
             )}
             <div className={styles.header}>
-                <Checkbox
-                    size="sm"
-                    isSelected={mergeFiles ? hasFiles : draft.allTicked}
-                    isIndeterminate={!mergeFiles && !draft.allTicked && !draft.noneTicked}
-                    isReadOnly={mergeFiles !== undefined}
-                    isDisabled={(!hasFiles && conflicts === 0) || draft.writing}
-                    aria-label={mergeFiles ? 'Staged files' : 'Tick every file'}
-                    onChange={on => draft.setAll(on)}
-                />
+                {!mergeFiles && (
+                    <Checkbox
+                        size="sm"
+                        isSelected={draft.allTicked}
+                        isIndeterminate={!draft.allTicked && !draft.noneTicked}
+                        isDisabled={!hasFiles || draft.writing}
+                        aria-label="Tick every file"
+                        onChange={on => draft.setAll(on)}
+                    />
+                )}
                 <Text variant="xs" weight="medium" color="secondary" truncate>
                     {heading}
                 </Text>
                 {hasFiles && (
-                    <Text
-                        variant="xs"
-                        color="secondary"
-                        className={styles.count}
-                    >{`${ticked} of ${commitFiles.length}`}</Text>
+                    <Text variant="xs" color="secondary" className={styles.count}>
+                        {mergeFiles ? commitFiles.length : `${ticked} of ${commitFiles.length}`}
+                    </Text>
                 )}
             </div>
 
@@ -419,10 +419,10 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
                         size="sm"
                         className={styles.commit}
                         contentClassName={styles.commitContent}
-                        isDisabled={!(commitAndPush ? draft.canCommitAndPush : draft.canCommit)}
+                        isDisabled={!(commitAndSync ? draft.canCommitAndSync : draft.canCommit)}
                         isPending={draft.writing}
                         tooltip={
-                            hasChangesToCommit && reason === undefined && !merging && !commitAndPush && target
+                            hasChangesToCommit && reason === undefined && !merging && !commitAndSync && target
                                 ? `Commit to ${target.name}`
                                 : undefined
                         }
@@ -447,16 +447,16 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
                             <ChevronDown aria-hidden="true" />
                         </Button>
                         <Popover placement="top end" spacing="xs" width={220}>
-                            <Menu aria-label="Commit" size="sm" onAction={() => void draft.commit(!pushesByDefault)}>
+                            <Menu aria-label="Commit" size="sm" onAction={() => void draft.commit(!syncsByDefault)}>
                                 <MenuItem
-                                    id={pushesByDefault ? 'local' : 'push'}
-                                    icon={pushesByDefault ? undefined : <ArrowUp />}
+                                    id={syncsByDefault ? 'local' : 'sync'}
+                                    icon={syncsByDefault ? undefined : <Refresh />}
                                     text={
-                                        pushesByDefault
+                                        syncsByDefault
                                             ? merging
                                                 ? 'Complete merge locally'
                                                 : 'Commit locally'
-                                            : pushLabel
+                                            : syncLabel
                                     }
                                     description={alternateBlock}
                                     stacked={alternateBlock !== undefined}

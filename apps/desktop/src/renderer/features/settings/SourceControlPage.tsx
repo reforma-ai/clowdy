@@ -18,7 +18,7 @@ import { SettingsSection } from './ui/SettingsSection';
 import type { CommitMessageProvider } from '@clowdy/protocol';
 
 const COLLAPSE_DIFFS_LABEL = 'Collapse diffs by default';
-const AUTO_PUSH_LABEL = 'Push after commit and merge';
+const AUTO_SYNC_LABEL = 'Sync after commit and merge';
 const PROVIDER_LABEL = 'Commit message provider';
 const PROVIDER_NAMES: Record<CommitMessageProvider, string> = { codex: 'Codex', claude: 'Claude Code' };
 const PROVIDER_OPTIONS = [
@@ -84,14 +84,14 @@ export const SourceControlPage = observer(function SourceControlPage() {
             <SettingsSection title="Sync">
                 <SettingsCard>
                     <SettingsRow
-                        title={AUTO_PUSH_LABEL}
-                        description="Push to origin after committing or merging branches in Source Control"
+                        title={AUTO_SYNC_LABEL}
+                        description="Bring in new commits from origin and send yours after committing or merging branches"
                     >
                         <Switch
                             size="sm"
-                            aria-label={AUTO_PUSH_LABEL}
-                            isSelected={sourceControlPreferences.autoPush}
-                            onChange={enabled => sourceControlPreferences.setAutoPush(enabled)}
+                            aria-label={AUTO_SYNC_LABEL}
+                            isSelected={sourceControlPreferences.autoSync}
+                            onChange={enabled => sourceControlPreferences.setAutoSync(enabled)}
                         />
                     </SettingsRow>
                 </SettingsCard>

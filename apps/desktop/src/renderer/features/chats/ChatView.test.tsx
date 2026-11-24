@@ -18,6 +18,7 @@ import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { SWIPE } from '../../stream/swipeReply';
 import { ChatView } from './ChatView';
+import styles from './ChatView.module.css';
 import { draftOf, editDraftKey, messageOf, saveDraft } from './composerDrafts';
 import { filesOf } from './composerFiles';
 import { dropReplyQuote } from './composerQuotes';
@@ -122,6 +123,79 @@ afterEach(() => {
     act(() => reactRoot.unmount());
     container.remove();
     store.dispose();
+    vi.unstubAllGlobals();
+});
+
+describe('the composer overlay', () => {
+    it('passes the measured border-box height to the stream when it changes, including in read-only mode', async () => {
+        const observers: { callback: ResizeObserverCallback; targets: Element[]; disconnected: boolean }[] = [];
+        vi.stubGlobal(
+            'ResizeObserver',
+            class {
+                entry: (typeof observers)[number];
+                constructor(callback: ResizeObserverCallback) {
+                    this.entry = { callback, targets: [], disconnected: false };
+                    observers.push(this.entry);
+                }
+                observe(target: Element) {
+                    this.entry.targets.push(target);
+                }
+                unobserve() {}
+                disconnect() {
+                    this.entry.disconnected = true;
+                }
+            }
+        );
+        await start();
+        await draw('c-1', <span>Controls</span>);
+
+        const overlay = container.querySelector<HTMLElement>(`.${styles.composer}`)!;
+        const observer = observers.find(candidate => candidate.targets.includes(overlay))!;
+        expect(observer.targets).toContain(overlay.firstElementChild);
+        const inset = () =>
+            container
+                .querySelector<HTMLElement>('[style*="--composer-inset"]')!
+                .style.getPropertyValue('--composer-inset');
+        expect(inset()).toBe('0px');
+        expect(overlay.contains(field())).toBe(true);
+        expect(overlay.textContent).toContain('Controls');
+
+        let height = 143.5;
+        vi.spyOn(overlay, 'getBoundingClientRect').mockImplementation(() => ({ height }) as DOMRect);
+        const resize = () => act(async () => observer.callback([], {} as ResizeObserver));
+        await resize();
+        expect(inset()).toBe('143.5px');
+
+        height = 381.25;
+        await resize();
+        expect(inset()).toBe('381.25px');
+
+        // A tall overlay follows its bottom as it grows, but does not pull a person away from a panel they scrolled up to.
+        Object.defineProperty(overlay, 'scrollHeight', { configurable: true, value: 500 });
+        Object.defineProperty(overlay, 'clientHeight', { configurable: true, value: 200 });
+        await resize();
+        expect(overlay.scrollTop).toBe(500);
+        await act(async () => {
+            overlay.scrollTop = 50;
+            overlay.dispatchEvent(new Event('scroll', { bubbles: true }));
+        });
+        await resize();
+        expect(overlay.scrollTop).toBe(50);
+
+        await act(async () => {
+            const claude = store.agents.find(agent => agent.id === 'claude')!;
+            claude.enabled = false;
+            claude.status = 'disabled';
+        });
+        await render('c-1');
+        expect(overlay.contains(notice())).toBe(true);
+        height = 77.75;
+        await resize();
+        expect(inset()).toBe('77.75px');
+
+        await render('c-2');
+        expect(observer.disconnected).toBe(true);
+    });
 });
 
 describe('the line under the message box', () => {

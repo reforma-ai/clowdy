@@ -1,14 +1,26 @@
+import { randomUUID } from 'node:crypto';
+
 import { gitAnswer, gitRead } from '../domain/git';
 import { exclusive } from '../domain/workspaces';
-import { conflict, invalid, unavailable } from '../errors';
-import { runProgram } from '../providers/exec';
+import { CommandError, conflict, invalid, unavailable } from '../errors';
+import { LEFTOVER_GRACE_MS, runProgram } from '../providers/exec';
 import { printedLines, shownLine, writeLine } from './commit';
 import { rememberFetch } from './lastFetch';
-import { workingTreeRoot } from './state';
+import { checkoutOf, workingTreeRoot } from './state';
 import { mergeBaseOf, parseStatus } from './status';
+import { operationUnderWay, switchRepositoryKey } from './switch';
 import { namesSigningKey, SIGNING_HINT, WriteEnvironment } from './writeEnv';
 
-import type { GitErrorDetails, GitPushRequest, GitRemoteAction, GitRemoteResult, GitUpstream } from '@clowdy/protocol';
+import type {
+    GitErrorDetails,
+    GitPushRequest,
+    GitRemoteAction,
+    GitRemoteResult,
+    GitSyncProgress,
+    GitSyncResult,
+    GitSyncTarget,
+    GitUpstream,
+} from '@clowdy/protocol';
 import type { Place } from '../domain/places';
 import type { RunResult } from '../providers/exec';
 import type { Store } from '../store';
@@ -87,6 +99,7 @@ export function runGitWrite(
         maxChars: MAX_PRINTED_CHARS,
         signal,
         stopSignal: 'SIGTERM',
+        leftoverGraceMs: LEFTOVER_GRACE_MS,
     });
 }
 
@@ -214,14 +227,17 @@ export class GitRemote {
     /** `POST .../git/update`: fetches `origin` and merges the place's base into the branch. Already being that branch is `invalid`. */
     update(place: Place): Promise<GitRemoteResult> {
         return this.#alone(place, async () => {
-            const head = await this.#inspect(place);
+            const { branch, born } = await this.#inspect(place);
 
-            if (head.branch === undefined) throw invalid('HEAD is detached, switch to a branch to update');
+            if (branch === undefined) throw invalid('HEAD is detached, switch to a branch to update');
 
-            if (!head.born) throw invalid(`${head.branch} has no commits yet`);
+            if (!born) throw invalid(`${branch} has no commits yet`);
 
+            const repo = await switchRepositoryKey(place.path);
+            const before = await this.#syncHead(place, repo, branch);
             await this.#run(place, 'update', ['fetch', ...NO_SUBMODULES, ORIGIN]);
             await rememberFetch(place.path);
+            await this.#syncHead(place, repo, branch, before);
 
             const underway = await this.#conflictCount(place);
 
@@ -231,19 +247,19 @@ export class GitRemote {
 
             if (base.state === 'no_base') throw invalid('There is no branch to update from');
 
-            if (base.state === 'no_merge_base') throw invalid(`${head.branch} shares no history with ${base.name}`);
+            if (base.state === 'no_merge_base') throw invalid(`${branch} shares no history with ${base.name}`);
 
-            if (base.state !== 'ready') throw invalid(`${head.branch} has no commits yet`);
+            if (base.state !== 'ready') throw invalid(`${branch} has no commits yet`);
 
             const baseBranch = base.name.startsWith(`${ORIGIN}/`) ? base.name.slice(ORIGIN.length + 1) : base.name;
 
-            if (head.branch === baseBranch || head.branch === base.name) throw invalid(`Already on ${head.branch}`);
+            if (branch === baseBranch || branch === base.name) throw invalid(`Already on ${branch}`);
 
             const counts = await gitAnswer(place.path, [
                 'rev-list',
                 '--left-right',
                 '--count',
-                `${base.commit}...HEAD`,
+                `${base.commit}...${before}`,
             ]);
             const [behind, ahead] = (counts ?? '').split(/\s+/).map(Number);
 
@@ -256,12 +272,23 @@ export class GitRemote {
             )
                 throw unavailable('git did not answer');
 
+            let updatedHead: { branch: string; commit: string } | undefined;
             if (behind > 0) {
-                // A short hash is a commit, not a ref a person would read in the merge message: merge the commit itself.
-                const ref = /^[0-9a-f]{7,40}$/i.test(base.name) ? base.commit : base.name;
-                const stopped = await this.#merge(place, 'update', ref);
+                const env = await this.environment.of(place.path);
+                await this.#syncHead(place, repo, branch, before);
+                const stopped = await this.#merge(place, 'update', base.commit, ['-m', `Merge ${base.name}`], env);
 
                 if (stopped) return { state: 'conflicts', action: 'update', conflicts: stopped.conflicts };
+
+                // A repository can leave a clean merge unfinished with --no-commit.
+                const unfinished = await this.#conflictCount(place);
+                if (unfinished !== undefined) return { state: 'conflicts', action: 'update', conflicts: unfinished };
+
+                const commit = await this.#syncHead(place, repo, branch);
+                if (commit !== before) {
+                    await this.#checkMergedTip(place, branch, commit, [before, base.commit]);
+                    updatedHead = { branch, commit };
+                }
             }
 
             const upstream = await this.#upstream(place);
@@ -269,8 +296,9 @@ export class GitRemote {
             return {
                 state: 'done',
                 action: 'update',
-                pulled: behind,
-                ...(behind > 0 && ahead > 0 && { merged: true as const }),
+                pulled: updatedHead ? behind : 0,
+                ...(updatedHead && ahead > 0 && { merged: true as const }),
+                ...(updatedHead && { updatedHead }),
                 ...(upstream && { upstream }),
             };
         });
@@ -333,6 +361,216 @@ export class GitRemote {
         });
     }
 
+    /** Sync holds the same checkout's write lock from the first read through the final push. */
+    async sync(
+        source: Place,
+        target: GitSyncTarget,
+        progress: (step: GitSyncProgress) => void,
+        finished: (place: Place) => Promise<void>
+    ): Promise<GitSyncResult> {
+        if (!(await workingTreeRoot(source.path))) throw invalid('The folder is not the root of a git repository');
+
+        const { branch, destination } = target;
+        const repo = await switchRepositoryKey(source.path);
+        const path = destination ? await checkoutOf(source.path, branch) : source.path;
+
+        if (path === undefined) throw conflict(`Check out ${branch} before syncing it`);
+
+        const place = path === source.path ? source : { folder: source.folder, path };
+
+        try {
+            return await this.#alone(place, async () => {
+                if (destination && (await checkoutOf(source.path, branch)) !== path)
+                    throw conflict(`The checkout of ${branch} changed. Try again`);
+
+                return this.#syncBranch(place, repo, target, progress);
+            });
+        } finally {
+            await finished(place);
+        }
+    }
+
+    async #syncBranch(
+        place: Place,
+        repo: string,
+        { branch, commit }: GitSyncTarget,
+        progress: (step: GitSyncProgress) => void
+    ): Promise<GitSyncResult> {
+        const before = await this.#syncHead(place, repo, branch, commit);
+        const { tracking } = await this.#branchOf(place, 'push');
+        const paused = await this.#syncConflict(place, branch);
+        if (paused) return paused;
+
+        // A private ref keeps the fetched commit available through the merge and is never used by another fetch.
+        const snapshot = `refs/clowdy/sync/${randomUUID()}`;
+        try {
+            progress({ phase: 'fetch' });
+            const incoming = await this.#fetchSyncBranch(place, branch, snapshot);
+            await this.#syncHead(place, repo, branch, before);
+            let tip = before;
+            let pulled = 0;
+
+            if (incoming) {
+                const apart = await this.#apart(place, `${before}...${incoming}`);
+                if (!apart) throw unavailable("Couldn't compare the branch with origin");
+
+                pulled = apart.behind;
+                if (pulled > 0) {
+                    // Prepare the Git environment before the final checks so it cannot delay the merge after they pass.
+                    const env = await this.environment.of(place.path);
+                    await this.#checkSyncIndex(place, branch);
+                    const paused = await this.#syncConflict(place, branch);
+                    if (paused) return paused;
+                    await this.#syncHead(place, repo, branch, before);
+
+                    progress({ phase: 'merge' });
+                    const merged = await this.#merge(
+                        place,
+                        'pull',
+                        incoming,
+                        [
+                            '--no-autostash',
+                            '--no-overwrite-ignore',
+                            '--no-squash',
+                            '--commit',
+                            apart.ahead > 0 ? '--ff' : '--ff-only',
+                            '-m',
+                            `Merge origin/${branch}`,
+                        ],
+                        env
+                    );
+                    if (merged) return { state: 'conflicts', branch, path: place.path, conflicts: merged.conflicts };
+
+                    tip = await this.#syncHead(place, repo, branch);
+                    await this.#checkMergedTip(place, branch, tip, [before, incoming]);
+                }
+            }
+
+            const pauseBeforePush = await this.#syncConflict(place, branch);
+            if (pauseBeforePush) return pauseBeforePush;
+            await this.#syncHead(place, repo, branch, tip);
+
+            const setUpstream = tracking === undefined || !ownName(branch, tracking);
+            const pushed = setUpstream || tip !== incoming;
+
+            if (pushed) {
+                const ref = `${HEADS}${branch}`;
+                progress({ phase: 'push', commit: tip });
+                // Use the checked commit even on first publish. A local ref can advance before Git starts.
+                await this.#run(place, 'push', [
+                    'push',
+                    '--no-follow-tags',
+                    '--no-recurse-submodules',
+                    ORIGIN,
+                    `${tip}:${ref}`,
+                ]);
+                if (setUpstream) await this.#setSyncUpstream(place, branch, ref);
+            }
+
+            return { state: 'done', branch, pulled, pushed };
+        } finally {
+            // Best effort even when shutdown stopped the fetch after it installed the ref.
+            await gitRead(place.path, ['update-ref', '-d', snapshot]);
+        }
+    }
+
+    /** Git only applies push -u when the refspec names a local branch. Configure tracking after pushing the pinned commit. */
+    async #setSyncUpstream(place: Place, branch: string, ref: string): Promise<void> {
+        const write = async (key: string, value: string) => {
+            const run = await this.#git(place, ['config', '--local', '--replace-all', '--', key, value]);
+            checkGitWrite(run, this.environment, 'upstream setup', 'set the upstream');
+        };
+
+        try {
+            await write(`branch.${branch}.remote`, ORIGIN);
+            await write(`branch.${branch}.merge`, ref);
+        } catch (error) {
+            if (!(error instanceof CommandError)) throw error;
+
+            throw new CommandError(error.code, `Pushed ${branch} to origin. Couldn't set its upstream`, {
+                hint: error.message,
+            } satisfies GitErrorDetails);
+        }
+    }
+
+    /** A sync can leave unstaged edits in place, but a merge must never commit the user's existing index. */
+    async #checkSyncIndex(place: Place, branch: string): Promise<void> {
+        const staged = await gitRead(
+            place.path,
+            ['diff', '--cached', '--name-only', '-z', '--no-ext-diff', '--ignore-submodules=none', '--'],
+            { parsed: true }
+        );
+
+        if (!staged.ok) throw unavailable("Couldn't read the staging area");
+        if (staged.stdout.length > 0)
+            throw conflict(`Commit or stash the staged changes in ${branch} before merging from origin`);
+    }
+
+    /** Verify both inputs to a merge are included before using its result for a push. */
+    async #checkMergedTip(place: Place, branch: string, tip: string, inputs: readonly string[]): Promise<void> {
+        const ancestors = await Promise.all(
+            inputs.map(commit => gitRead(place.path, ['merge-base', '--is-ancestor', commit, tip]))
+        );
+        if (ancestors.some(result => !result.ok)) throw conflict(`The merge into ${branch} did not finish`);
+    }
+
+    async #syncHead(place: Place, repo: string, branch: string, expected?: string): Promise<string> {
+        if (!(await workingTreeRoot(place.path)) || (await switchRepositoryKey(place.path)) !== repo)
+            throw conflict(`The checkout of ${branch} moved`);
+
+        const [checkedOut, tip] = await Promise.all([
+            gitAnswer(place.path, ['symbolic-ref', '--quiet', 'HEAD']),
+            gitAnswer(place.path, ['rev-parse', '--verify', '--quiet', 'HEAD']),
+        ]);
+
+        if (checkedOut !== `${HEADS}${branch}`) throw conflict(`The checkout is no longer on ${branch}`);
+        if (!tip) throw invalid(`${branch} has no commits yet`);
+        if (expected !== undefined && expected !== tip) throw conflict(`${branch} changed before it could sync`);
+
+        return tip;
+    }
+
+    async #syncConflict(
+        place: Place,
+        branch: string
+    ): Promise<Extract<GitSyncResult, { state: 'conflicts' }> | undefined> {
+        const operation = await operationUnderWay(place.path);
+        if (operation === undefined) return undefined;
+        if (operation !== 'A merge') throw conflict(`${operation} is in progress in ${branch}`);
+
+        return { state: 'conflicts', branch, path: place.path, conflicts: (await this.#conflictCount(place)) ?? 0 };
+    }
+
+    /** Use a private ref for the fetched tip. Neither a stale tracking ref nor another fetch can supply it. */
+    async #fetchSyncBranch(place: Place, branch: string, snapshot: string): Promise<string | undefined> {
+        const ref = `${HEADS}${branch}`;
+        const run = await this.#git(place, [
+            'fetch',
+            ...NO_SUBMODULES,
+            '--no-tags',
+            '--no-prune',
+            '--no-prune-tags',
+            ORIGIN,
+            `${ref}:${snapshot}`,
+        ]);
+        // An explicit refspec has a distinct error when the remote was reachable and does not have the branch.
+        if (
+            run.code === 128 &&
+            !run.timedOut &&
+            run.error === undefined &&
+            printedLines(run.stderr).includes(`fatal: couldn't find remote ref ${ref}`)
+        ) {
+            await rememberFetch(place.path);
+            return undefined;
+        }
+
+        this.#check(run, 'fetch');
+        const tip = await gitAnswer(place.path, ['rev-parse', '--verify', `${snapshot}^{commit}`]);
+        if (!tip) throw unavailable("Couldn't read the fetched branch");
+        await rememberFetch(place.path);
+        return tip;
+    }
+
     /** Runs `work` once the place's earlier writes have ended, and not while another starts. */
     #alone<T>(place: Place, work: () => Promise<T>): Promise<T> {
         return exclusive(this.#store, writeLine(place), this.#stopper.signal, work);
@@ -347,7 +585,8 @@ export class GitRemote {
         if ((await gitAnswer(cwd, ['remote', 'get-url', ORIGIN])) === undefined)
             throw invalid('The repository has no origin');
 
-        const branch = await gitAnswer(cwd, ['symbolic-ref', '--quiet', '--short', 'HEAD']);
+        const ref = await gitAnswer(cwd, ['symbolic-ref', '--quiet', 'HEAD']);
+        const branch = ref?.startsWith(HEADS) ? ref.slice(HEADS.length) : undefined;
 
         if (branch === undefined)
             return { born: (await gitAnswer(cwd, ['rev-parse', '--verify', '--quiet', 'HEAD'])) !== undefined };
@@ -393,8 +632,8 @@ export class GitRemote {
     }
 
     /** How many commits the branch has that its upstream lacks and the other way round, as last fetched; nothing when the upstream is not there. */
-    async #apart(place: Place): Promise<{ ahead: number; behind: number } | undefined> {
-        const counts = await gitAnswer(place.path, ['rev-list', '--left-right', '--count', 'HEAD...@{upstream}']);
+    async #apart(place: Place, range = 'HEAD...@{upstream}'): Promise<{ ahead: number; behind: number } | undefined> {
+        const counts = await gitAnswer(place.path, ['rev-list', '--left-right', '--count', range]);
         const [ahead, behind] = (counts ?? '').split(/\s+/).map(Number);
 
         return counts === undefined ||
@@ -431,8 +670,14 @@ export class GitRemote {
      * `git merge --no-edit <ref>` in the place. A clean merge (a fast-forward or a merge commit) is nothing; a merge that stops on conflicts is how many paths are unmerged, and the merge is
      * left in progress. A refusal before a merge starts (a local change in the way) is thrown, and nothing was started.
      */
-    async #merge(place: Place, action: 'pull' | 'update', ref: string): Promise<{ conflicts: number } | undefined> {
-        const run = await this.#git(place, ['merge', '--no-edit', ref]);
+    async #merge(
+        place: Place,
+        action: 'pull' | 'update',
+        ref: string,
+        options: string[] = [],
+        env?: Record<string, string>
+    ): Promise<{ conflicts: number } | undefined> {
+        const run = await this.#git(place, ['merge', '--no-edit', ...options, ref], env);
 
         if (run.code === 0) return undefined;
 
@@ -446,8 +691,8 @@ export class GitRemote {
     }
 
     /** `git <args>` in the place with the write environment, asked to stop with `SIGTERM` so it removes its lock files when the time is up. */
-    async #git(place: Place, args: string[]): Promise<RunResult> {
-        const env = await this.environment.of(place.path);
+    async #git(place: Place, args: string[], prepared?: Record<string, string>): Promise<RunResult> {
+        const env = prepared ?? (await this.environment.of(place.path));
 
         return runGitWrite(place.path, args, env, this.#stopper.signal, this.#timeoutMs);
     }

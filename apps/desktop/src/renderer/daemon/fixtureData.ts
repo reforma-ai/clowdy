@@ -2285,6 +2285,7 @@ export function createFixtureData(now = Date.now()): FixtureData {
             summary: 'Fix the price rounding',
             createdAt: ago(48),
             startedAt: ago(48),
+            activeSince: ago(48),
         }),
         run('r-orch-6a1', 'Orchestrator 08', 'orchestrator', 'succeeded', {
             chatId: 'c-6a1',
@@ -2317,6 +2318,7 @@ export function createFixtureData(now = Date.now()): FixtureData {
             background: [{ id: 'bg-k6', kind: 'command', title: 'k6 run checkout-long.js' }],
             createdAt: ago(46.5),
             startedAt: ago(46.5),
+            activeSince: ago(46.5),
         }),
     ];
 

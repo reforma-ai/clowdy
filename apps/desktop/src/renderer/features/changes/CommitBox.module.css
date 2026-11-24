@@ -62,6 +62,7 @@
 
 .conflictActions {
     flex-wrap: wrap;
+    margin-block-end: var(--spacing-xs);
 }
 
 /* The row's label: the letter, the name, strong, and the folder after it, dimmed; the folder is cut before the name is. */

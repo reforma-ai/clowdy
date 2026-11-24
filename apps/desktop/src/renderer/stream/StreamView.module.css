@@ -22,6 +22,35 @@
     padding-block-end: var(--spacing-192);
 }
 
+/* Keep the scrollbar unmasked: the narrow opaque strip is outside the message column. */
+.root[data-composer-overlay] .scroll {
+    mask-image:
+        linear-gradient(
+            to bottom,
+            #000 0,
+            #000 max(0px, calc(100% - var(--composer-inset) - 48px)),
+            transparent max(0px, calc(100% - var(--composer-inset)))
+        ),
+        linear-gradient(#000, #000);
+    mask-size:
+        100% 100%,
+        16px 100%;
+    mask-position:
+        left top,
+        right top;
+    mask-repeat: no-repeat;
+}
+
+.root[data-composer-overlay] .content {
+    padding-block-end: 0;
+}
+
+/* The child changes the observed content box when the composer grows or shrinks. */
+.clearance {
+    flex: none;
+    height: calc(var(--composer-inset) + 48px + var(--spacing-xxl));
+}
+
 /* Scroll to the latest message: there while the stream is not at its end. */
 .toLatest {
     position: absolute;
@@ -34,6 +63,10 @@
     transition-property: opacity, translate, visibility;
     transition-duration: 0.2s;
     transition-timing-function: ease;
+}
+
+.root[data-composer-overlay] .toLatest {
+    bottom: calc(var(--composer-inset) + var(--spacing-10));
 }
 
 /* `visibility` also takes the hidden button out of the tab order and the reading order. */

@@ -1975,6 +1975,59 @@ describe('HttpTransport git remote actions', () => {
         expect(await transportFor(conflicts).transport.pullGit('prj_a', { folderId: 'fld_b' })).toEqual(conflicts);
     });
 
+    it('reports Sync phases before completion and sends the pinned destination', async () => {
+        const firstPhase = Promise.withResolvers<void>();
+        const progress = vi.fn(() => firstPhase.resolve());
+        const encoder = new TextEncoder();
+        let stream!: ReadableStreamDefaultController<Uint8Array>;
+        const fetch = vi.fn(
+            async () =>
+                new Response(
+                    new ReadableStream({
+                        start(controller) {
+                            stream = controller;
+                            stream.enqueue(encoder.encode('data: {"type":"phase","phase":"fet'));
+                            stream.enqueue(encoder.encode('ch"}\n\n'));
+                        },
+                    })
+                )
+        );
+        const transport = new HttpTransport({ url: 'http://127.0.0.1:4310', token: 't', fetch });
+        const target = { branch: 'main', commit: 'a'.repeat(40), destination: true } as const;
+        const result = transport.syncGit('prj_a', { folderId: 'fld_b' }, target, progress);
+
+        await firstPhase.promise;
+        expect(progress).toHaveBeenCalledWith({ phase: 'fetch' });
+        expect(fetch).toHaveBeenCalledWith(
+            'http://127.0.0.1:4310/v1/projects/prj_a/git/sync',
+            expect.objectContaining({
+                method: 'POST',
+                body: JSON.stringify({ folderId: 'fld_b', ...target }),
+            })
+        );
+
+        const done = { state: 'done', branch: 'main', pulled: 1, pushed: true };
+        stream.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'result', result: done })}\n\n`));
+        stream.close();
+        await expect(result).resolves.toEqual(done);
+    });
+
+    it('distinguishes a streamed Sync failure from a stream that never confirmed a result', async () => {
+        const connect = (body: string) =>
+            new HttpTransport({ url: 'http://127.0.0.1:4310', token: 't', fetch: async () => new Response(body) });
+        const place = { folderId: 'fld_b' };
+        const target = { branch: 'feature' };
+
+        await expect(
+            connect(
+                'data: {"type":"error","status":409,"message":"Push rejected","hint":"Check branch protection"}\n\n'
+            ).syncGit('prj_a', place, target)
+        ).rejects.toMatchObject({ status: 409, message: 'Push rejected', hint: 'Check branch protection' });
+        await expect(
+            connect('data: {"type":"phase","phase":"merge"}\n\n').syncGit('prj_a', place, target)
+        ).rejects.toMatchObject({ status: 503, message: "Couldn't confirm that sync finished" });
+    });
+
     it("rejects with git's own line, the status and the hint, and sends a push only once", async () => {
         const body = {
             ok: false,

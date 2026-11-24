@@ -1,4 +1,11 @@
-import type { GitBase, GitRemoteAction, GitRemoteResult, GitStatus, GitUpstream } from '@clowdy/protocol';
+import type {
+    GitBase,
+    GitRemoteResult,
+    GitStatus,
+    GitSyncProgress,
+    GitSyncResult,
+    GitUpstream,
+} from '@clowdy/protocol';
 
 /** A status of a place that is a repository. */
 type RepositoryStatus = Extract<GitStatus, { isRepository: true }>;
@@ -6,20 +13,13 @@ type RepositoryStatus = Extract<GitStatus, { isRepository: true }>;
 /** The only remote the app moves commits to and from. */
 const ORIGIN = 'origin';
 
-/**
- * What the sidebar can run. Publishing pushes a branch that has no upstream yet, `update` merges the base into the branch,
- * and `abort` undoes a merge that stopped.
- */
-export type RemoteActionId = 'fetch' | 'pull' | 'push' | 'publish' | 'update' | 'abort';
+export type RemoteActionId = 'fetch' | 'pull' | 'sync' | 'update' | 'abort';
 
-/** The transport call an action makes. */
-export const remoteCall = (id: RemoteActionId): GitRemoteAction => (id === 'publish' ? 'push' : id);
-
-/** One entry of the menu: what it is called, how many commits it moves and whether it is available. */
+/** One direct remote action in the Sync menu. */
 export interface RemoteActionView {
-    id: Exclude<RemoteActionId, 'update' | 'abort'>;
+    id: 'fetch' | 'pull';
     label: string;
-    /** `Pull`: the commits the upstream has that the branch lacks; `Push`: the commits the branch has that the upstream lacks. */
+    /** How many commits the upstream had when it was last fetched. */
     count?: number;
     disabled: boolean;
 }
@@ -57,46 +57,26 @@ function trackingOf(status: RepositoryStatus): Tracking {
 
 const foreignWords = (upstream: GitUpstream): string => `Tracks ${upstream.name}, not ${ORIGIN}`;
 
-/** Whether the branch and its upstream each have commits the other lacks, so a pull merges and a push waits for it. */
-export const isDiverged = (upstream: GitUpstream | undefined): boolean =>
-    upstream !== undefined && !upstream.gone && upstream.ahead > 0 && upstream.behind > 0;
-
-/** Fetch, Pull and either Push or Publish. A diverged branch can be pulled to merge. */
-export function remoteActions(status: GitStatus | undefined, busy: boolean): RemoteActionView[] {
+/** Fetch and Pull are still available independently of Sync. */
+export function remoteActions(status: GitStatus | undefined, switching: boolean): RemoteActionView[] {
     if (status?.isRepository !== true) return [];
 
-    const blocked = !status.origin || busy;
+    const blocked = !status.origin || switching;
     const tracking = trackingOf(status);
-    const movesBlocked = blocked || status.head.kind !== 'branch' || tracking.kind === 'foreign';
-    const fetch: RemoteActionView = { id: 'fetch', label: 'Fetch origin', disabled: blocked };
-    const upstream =
-        tracking.kind === 'published' || (tracking.kind === 'foreign' && !tracking.upstream.gone)
-            ? tracking.upstream
-            : undefined;
-
-    if (!upstream) {
-        return [
-            fetch,
-            { id: 'pull', label: 'Pull origin', disabled: true },
-            { id: 'publish', label: 'Publish branch', disabled: movesBlocked },
-        ];
-    }
-
-    const { ahead, behind } = upstream;
+    const behind = tracking.kind === 'published' ? tracking.upstream.behind : 0;
 
     return [
-        fetch,
+        { id: 'fetch', label: 'Fetch origin', disabled: blocked },
         {
             id: 'pull',
             label: 'Pull origin',
             ...(behind > 0 && { count: behind }),
-            disabled: movesBlocked || behind === 0,
-        },
-        {
-            id: 'push',
-            label: 'Push origin',
-            ...(ahead > 0 && { count: ahead }),
-            disabled: movesBlocked || ahead === 0 || behind > 0,
+            disabled:
+                blocked ||
+                status.head.kind !== 'branch' ||
+                tracking.kind !== 'published' ||
+                !!status.merging ||
+                !!status.rebasing,
         },
     ];
 }
@@ -131,67 +111,34 @@ export function lastFetchedWords(at: number | undefined, now: number): string {
     return days < 365 ? ago(Math.floor(days / 30), 'month') : ago(Math.floor(days / 365), 'year');
 }
 
-/** The state of the sync button, which is the next thing to do with the branch. */
-export type SyncKind =
-    /** An action is running: its progress is the label. */
-    | 'running'
-    /** The repository has no `origin`: nothing to sync with. */
-    | 'no_origin'
-    /** HEAD is on no branch, or the branch has no commit yet: there is nothing to publish. */
-    | 'blocked'
-    /** The branch is not on origin (or its upstream is gone): publish it. */
-    | 'publish'
-    /** Origin has commits the branch lacks. */
-    | 'pull'
-    /** The branch has commits origin lacks. */
-    | 'push'
-    /** The branch is behind its base and there is no upstream action to take first. */
-    | 'update'
-    /** Nothing to move: look for what is new. */
-    | 'fetch';
+export type SyncKind = 'running' | 'no_origin' | 'blocked' | 'publish' | 'sync' | 'pull' | 'push' | 'update' | 'fetch';
 
-/** What the sync button says and does for a place. */
+/** The sync button's copy, progress and counts. */
 export interface SyncView {
     kind: SyncKind;
-    /** The next action in GitHub Desktop's words (`Publish branch`, `Pull origin`, `Push origin`, `Fetch origin`), or what is running (`Pulling origin`). */
     label: string;
-    /** The line under the label: when the last fetch was, or the one thing to know about the state. */
     line?: string;
-    /** Commits the branch has that its upstream lacks, drawn as an up arrow with the count; for Push and for a branch that diverged. */
     ahead?: number;
-    /** Commits the upstream has that the branch lacks, drawn as a down arrow with the count; for Pull and for a branch that diverged. */
     behind?: number;
-    /** The action a press runs; absent for a button that cannot be pressed. */
-    action?: RemoteActionId;
-    /** Why it cannot be pressed, shown as a tooltip on it; absent when it can. */
+    action?: 'sync' | 'update' | 'fetch';
     reason?: string;
-    /** `warning` for what needs the person (a branch that diverged, an upstream that is gone). */
     tone?: 'warning';
-    /** The whole of it, for a tooltip, with the upstream's name. */
     title: string;
 }
 
-/** The first letter in lower case, to carry a line on in a sentence: `Last fetched 3 minutes ago` is `last fetched 3 minutes ago` after a comma. */
-const lowered = (text: string): string => text.charAt(0).toLowerCase() + text.slice(1);
-
-/**
- * Show progress while an action runs and explain when sync is unavailable. Offer Publish for an unpublished branch, then Pull or Push
- * for changes against its upstream on origin. When none of those actions applies, offer Update if the base is ahead, or Fetch otherwise.
- */
+/** Show progress, then prefer the branch's origin over its base. Fetch is the fallback. */
 export function syncButton(
     status: GitStatus | undefined,
     running: RemoteActionId | undefined,
-    now: number
+    now: number,
+    phase?: GitSyncProgress['phase']
 ): SyncView | undefined {
     if (status?.isRepository !== true) return undefined;
 
-    if (running !== undefined)
-        return {
-            kind: 'running',
-            label: RUNNING_WORDS[running],
-            reason: 'An action is running',
-            title: RUNNING_WORDS[running],
-        };
+    if (running !== undefined) {
+        const label = phase ? SYNC_WORDS[phase] : RUNNING_WORDS[running];
+        return { kind: 'running', label, reason: 'An action is running', title: label };
+    }
 
     if (!status.origin)
         return {
@@ -202,115 +149,93 @@ export function syncButton(
             title: `The repository has no remote called ${ORIGIN}, so there is nothing to sync with`,
         };
 
-    const { head } = status;
+    const { head, merging, rebasing } = status;
+    const blocked =
+        head.kind === 'detached'
+            ? 'HEAD is detached'
+            : head.kind === 'unborn'
+              ? 'No commits yet'
+              : rebasing
+                ? 'Continue or abort the rebase first'
+                : merging && 'Complete or abort the merge first';
 
-    if (head.kind === 'detached')
-        return {
-            kind: 'blocked',
-            label: 'Publish branch',
-            line: 'HEAD is detached',
-            reason: 'HEAD is detached',
-            title: 'HEAD is detached, so there is no branch to publish',
-        };
-
-    if (head.kind === 'unborn')
-        return {
-            kind: 'blocked',
-            label: 'Publish branch',
-            line: 'No commits yet',
-            reason: 'No commits yet',
-            title: 'The branch has no commits yet, so there is nothing to publish',
-        };
+    if (blocked) return { kind: 'blocked', label: 'Sync', line: blocked, reason: blocked, title: blocked };
 
     const tracking = trackingOf(status);
     const fetched = lastFetchedWords(status.lastFetchedAt, now);
+    const update = updateFromBase(status);
+    const updateView: SyncView | undefined = update && {
+        kind: 'update',
+        label: update.label,
+        line: fetched,
+        behind: update.behind,
+        action: 'update',
+        title: `${update.label} · ${commitsWords(update.behind)} to merge from the base`,
+    };
+
+    if (tracking.kind === 'foreign') {
+        const line = foreignWords(tracking.upstream);
+        return updateView ?? { kind: 'fetch', label: 'Fetch origin', line, action: 'fetch', title: line };
+    }
+
+    const publish = `Publish as ${ORIGIN}/${branchOf(status)}`;
+    const label = 'Publish branch';
 
     if (tracking.kind === 'none')
-        return {
-            kind: 'publish',
-            label: 'Publish branch',
-            line: `Publish this branch to ${ORIGIN}`,
-            action: 'publish',
-            title: `The branch is not on ${ORIGIN} yet: publish it`,
-        };
+        return { kind: 'publish', label, line: 'Publish this branch to origin', action: 'sync', title: publish };
 
     if (tracking.kind === 'gone')
         return {
             kind: 'publish',
-            label: 'Publish branch',
+            label,
             line: `Upstream gone from ${ORIGIN}`,
-            action: 'publish',
+            action: 'sync',
             tone: 'warning',
-            title: `${tracking.upstream.name} is gone from ${ORIGIN}: publish the branch again`,
+            title: publish,
         };
 
-    // A branch made from another one tracks that one (`git switch -c feat origin/main`), and a push would send it there: it counts as not published until it is, under its own name.
     if (tracking.kind === 'renamed')
         return {
             kind: 'publish',
-            label: 'Publish branch',
+            label,
             line: `Tracks ${tracking.upstream.name}`,
-            action: 'publish',
-            title: `${head.name} tracks ${tracking.upstream.name}, which a push would send it to: publish it as ${ORIGIN}/${head.name} instead`,
+            action: 'sync',
+            title: publish,
         };
 
-    const { upstream } = tracking;
-
-    if (tracking.kind === 'published' && upstream.behind > 0)
+    const { ahead, behind, name } = tracking.upstream;
+    if (ahead > 0 || behind > 0) {
+        const kind = ahead > 0 ? (behind > 0 ? 'sync' : 'push') : 'pull';
+        const label = kind === 'sync' ? 'Sync' : kind === 'push' ? 'Push origin' : 'Pull origin';
+        const details = [
+            behind > 0 && `${commitsWords(behind)} to pull`,
+            ahead > 0 && `${commitsWords(ahead)} to push`,
+            fetched,
+        ].filter(Boolean);
         return {
-            kind: 'pull',
-            label: 'Pull origin',
+            kind,
+            label,
             line: fetched,
-            behind: upstream.behind,
-            ...(upstream.ahead > 0 && { ahead: upstream.ahead }),
-            action: 'pull',
-            title:
-                upstream.ahead > 0
-                    ? `Pull origin merges what ${upstream.name} has. This branch keeps its own, ${lowered(fetched)}.`
-                    : `Pull origin: ${commitsWords(upstream.behind)} to take from ${upstream.name}, ${lowered(fetched)}`,
+            action: 'sync',
+            ...(ahead > 0 && { ahead }),
+            ...(behind > 0 && { behind }),
+            title: [`${label} · ${name}`, ...details].join(' · '),
         };
+    }
 
-    if (tracking.kind === 'published' && upstream.ahead > 0)
-        return {
-            kind: 'push',
-            label: 'Push origin',
-            line: fetched,
-            ahead: upstream.ahead,
-            action: 'push',
-            title: `Push origin: ${commitsWords(upstream.ahead)} to send to ${upstream.name}, ${lowered(fetched)}`,
-        };
-
-    const update = updateFromBase(status);
-
-    if (update)
-        return {
-            kind: 'update',
-            label: update.label,
-            line: tracking.kind === 'foreign' ? foreignWords(upstream) : fetched,
-            action: 'update',
-            title: update.label,
-        };
-
-    if (tracking.kind === 'foreign')
-        return {
+    return (
+        updateView ?? {
             kind: 'fetch',
             label: 'Fetch origin',
-            line: foreignWords(upstream),
+            line: fetched,
             action: 'fetch',
-            title: `${foreignWords(upstream)}: pull, push and publish are off, ${lowered(fetched)}`,
-        };
-
-    return {
-        kind: 'fetch',
-        label: 'Fetch origin',
-        line: fetched,
-        action: 'fetch',
-        title: `Fetch origin to look for new commits: ${upstream.name} is up to date, ${lowered(fetched)}`,
-    };
+            title: `Fetch origin · ${fetched}`,
+        }
+    );
 }
 
 /** A conflict can be reported before the refreshed status reaches the commit section. Successful actions need no separate line. */
-export function remoteNotice(result: GitRemoteResult): { words: string; tone: 'warning' } | undefined {
+export function remoteNotice(result: GitRemoteResult | GitSyncResult): { words: string; tone: 'warning' } | undefined {
     if (result.state !== 'conflicts' || result.conflicts === 0) return undefined;
 
     const { conflicts } = result;
@@ -321,45 +246,28 @@ export function remoteNotice(result: GitRemoteResult): { words: string; tone: 'w
     };
 }
 
-/**
- * Why Commit & Push is not offered, as a few words; nothing when it is: there is no `origin`, HEAD is on no branch, a merge has unresolved conflicts, the branch tracks something that is not on `origin`,
- * or its upstream has commits that it lacks (the push after the commit would be rejected, so it is pulled first). A branch with no commit yet is fine: the commit is its first, and publishing
- * it comes after.
- */
-export function commitAndPushBlock(status: GitStatus | undefined): string | undefined {
+/** Sync can follow a first commit or a completed merge. Origin and a named branch are required. */
+export function syncBlock(status: GitStatus | undefined): string | undefined {
     if (status?.isRepository !== true) return 'Not a repository';
-
     if (!status.origin) return 'No origin';
-
     if (status.head.kind === 'detached') return 'HEAD is detached';
-
+    if (status.rebasing) return 'Continue or abort the rebase first';
     if ((status.merging?.conflicts ?? 0) > 0) return 'A merge is in progress';
 
     const tracking = trackingOf(status);
-
-    if (tracking.kind === 'foreign') return foreignWords(tracking.upstream);
-
-    // A branch that is not published is published by the push after the commit.
-    // Finishing a merge can bring in the upstream commits missing from the current HEAD.
-    if (tracking.kind !== 'published' || status.merging) return undefined;
-
-    const { upstream: published } = tracking;
-
-    if (isDiverged(published)) return 'Pull first';
-
-    return published.behind > 0 ? `${commitsWords(published.behind)} to pull first` : undefined;
+    return tracking.kind === 'foreign' ? foreignWords(tracking.upstream) : undefined;
 }
 
-/** The action that sends the branch of a status after a commit: a push when it is published, else its publishing. */
-export const pushOrPublish = (status: GitStatus | undefined): 'push' | 'publish' =>
-    status?.isRepository === true && trackingOf(status).kind === 'published' ? 'push' : 'publish';
+export const SYNC_WORDS: Record<GitSyncProgress['phase'], string> = {
+    fetch: 'Fetching origin',
+    merge: 'Merging from origin',
+    push: 'Pushing origin',
+};
 
-/** What a running action says, in GitHub Desktop's words: the label of the sync button that is doing it, and what the menu's entry of it becomes. */
 export const RUNNING_WORDS: Record<RemoteActionId, string> = {
     fetch: 'Fetching origin',
     pull: 'Pulling origin',
-    push: 'Pushing origin',
-    publish: 'Publishing branch',
+    sync: 'Syncing…',
     update: 'Updating',
     abort: 'Aborting merge',
 };
@@ -381,7 +289,8 @@ export function githubBaseName(base: GitBase | undefined): string | undefined {
  * and when the base is not behind.
  */
 export function updateFromBase(status: GitStatus | undefined): { label: string; behind: number } | undefined {
-    if (status?.isRepository !== true || status.merging || status.head.kind !== 'branch') return undefined;
+    if (status?.isRepository !== true || status.merging || status.rebasing || status.head.kind !== 'branch')
+        return undefined;
 
     const { base, head } = status;
     const name = githubBaseName(base);

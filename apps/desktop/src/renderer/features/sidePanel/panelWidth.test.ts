@@ -1,6 +1,7 @@
-import { FILE_MANAGER_MIN_WIDTH } from '@clowdy/file-manager/layout';
+import { FILE_MANAGER_MIN_WIDTH, SIDEBAR_MIN_WIDTH as FILE_TREE_MIN_WIDTH } from '@clowdy/file-manager/layout';
 import { describe, expect, it } from 'vitest';
 
+import { SIDEBAR_MIN_WIDTH } from '../../shared/sidebarWidth';
 import { CHANGES_MIN_WIDTH, CHANGES_READING_MIN_WIDTH, CHANGES_SIDEBAR_MIN_WIDTH } from '../changes/layout';
 import {
     HALF_MIN_WINDOW_WIDTH,
@@ -51,14 +52,15 @@ describe('the least widths of the window', () => {
         expect(WINDOW_MIN_WIDTH).toBe(580);
     });
 
-    it("asks a tree beside a view for its two least, 150 and 350, and the panel's plate around them", () => {
-        expect(TREE_PANEL_MIN_WIDTH).toBe(504);
+    it("holds a 220px sidebar and a 350px view, with the panel's plate around them", () => {
+        expect(TREE_PANEL_MIN_WIDTH).toBe(574);
         expect(TREE_PANEL_MIN_WIDTH).toBeGreaterThan(SIDE_PANEL_MIN_WIDTH);
     });
 
-    it('holds the widest of the views that are a list beside a view: the file manager and the Changes tab, whose diffs and sidebar are 350 and 150 at the least', () => {
+    it('gives the file tree and Source Control the same minimum width as the chat list', () => {
         expect(CHANGES_READING_MIN_WIDTH).toBe(350);
-        expect(CHANGES_SIDEBAR_MIN_WIDTH).toBe(150);
+        expect(CHANGES_SIDEBAR_MIN_WIDTH).toBe(SIDEBAR_MIN_WIDTH);
+        expect(FILE_TREE_MIN_WIDTH).toBe(SIDEBAR_MIN_WIDTH);
         expect(CHANGES_MIN_WIDTH).toBe(CHANGES_READING_MIN_WIDTH + CHANGES_SIDEBAR_MIN_WIDTH);
         expect(TREE_PANEL_MIN_WIDTH).toBeGreaterThanOrEqual(CHANGES_MIN_WIDTH);
         expect(TREE_PANEL_MIN_WIDTH).toBeGreaterThanOrEqual(FILE_MANAGER_MIN_WIDTH);
@@ -66,6 +68,6 @@ describe('the least widths of the window', () => {
 
     it("gives the window's width from which a tree fits beside the chat: the rail, the left part and the panel, each at its least", () => {
         expect(HALF_MIN_WINDOW_WIDTH).toBe(SIDE_RAIL_WIDTH + WINDOW_MIN_WIDTH + TREE_PANEL_MIN_WIDTH);
-        expect(HALF_MIN_WINDOW_WIDTH).toBe(1140);
+        expect(HALF_MIN_WINDOW_WIDTH).toBe(1210);
     });
 });

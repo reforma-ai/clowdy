@@ -21,6 +21,20 @@ export function killProcessGroup(pgid: number, signal: NodeJS.Signals): void {
     }
 }
 
+/** Whether any process is still in the group `pgid`; one that has exited and not been reaped counts. Always false on Windows, which has no groups. */
+export function processGroupAlive(pgid: number): boolean {
+    if (process.platform === 'win32') return false;
+
+    try {
+        process.kill(-pgid, 0);
+
+        return true;
+    } catch (error) {
+        // `EPERM` is a group that is there and is not ours to signal; `ESRCH` is one that is gone.
+        return (error as NodeJS.ErrnoException).code === 'EPERM';
+    }
+}
+
 /** A process below an agent's own, and the group it is in. */
 export interface Below {
     pid: number;

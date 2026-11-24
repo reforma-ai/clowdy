@@ -12,6 +12,8 @@ import type {
     FolderGit,
     FolderId,
     FolderWorktrees,
+    GitBranchDeleteRequest,
+    GitBranchDeleteResult,
     GitBranches,
     GitBranchMergeRequest,
     GitBranchMergeResult,
@@ -27,6 +29,9 @@ import type {
     GitStatus,
     GitSwitchRequest,
     GitSwitchResult,
+    GitSyncProgress,
+    GitSyncResult,
+    GitSyncTarget,
     GitViewedMark,
     Health,
     ProjectFileMatch,
@@ -178,6 +183,13 @@ export interface Transport {
      * has no `origin`, 503 for one that did not end in about two minutes (a fingerprint that was waited for). Not retried.
      */
     fetchGit: (projectId: ProjectId, place: PlaceRef) => Promise<GitRemoteResult>;
+    /** Fetches, integrates and publishes the chosen branch as one operation. Reports its phases while it runs. */
+    syncGit: (
+        projectId: ProjectId,
+        place: PlaceRef,
+        target: GitSyncTarget,
+        onProgress?: (progress: GitSyncProgress) => void
+    ) => Promise<GitSyncResult>;
     /**
      * Fetches origin and merges the place's branch with its upstream (`POST git/pull`): a fast-forward when the branch has nothing of its own, a merge commit when it does (`merged`). A merge that
      * stops on conflicts answers `{ state: 'conflicts' }`, which is not an error: the merge has started. Rejects as `fetchGit` does, and with 400 for a detached HEAD, a branch with no upstream or
@@ -208,6 +220,12 @@ export interface Transport {
      * terminal or by an agent. Rejects as `getGitStatus` does.
      */
     getGitBranches: (projectId: ProjectId, place: PlaceRef) => Promise<GitBranches>;
+
+    deleteGitBranch: (
+        projectId: ProjectId,
+        place: PlaceRef,
+        request: GitBranchDeleteRequest
+    ) => Promise<GitBranchDeleteResult>;
     /**
      * Changes the branch of the folder's own checkout (`POST git/switch`): to an existing local branch, to one only `origin` has (a local branch that tracks it), or with `create` to a new branch
      * cut from the current branch or the default one. Never for a chat's worktree. Nothing is stashed or carried along: a change in the tree, a merge or rebase under way, a run working in the

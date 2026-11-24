@@ -1,7 +1,7 @@
 import { FIXTURE_SIGNING_HINT, FIXTURE_SIGNING_LINE } from './fixtureGitWrites';
 import { TransportError } from './transport';
 
-import type { GitRemoteAction, GitRemoteResult, GitUpstream } from '@clowdy/protocol';
+import type { GitRemoteAction, GitRemoteResult, GitSyncProgress, GitSyncResult, GitUpstream } from '@clowdy/protocol';
 
 /**
  * How the fixture's fetch, pull and push end, beyond going through: each starts the place in the state its name says, or fails the way git does.
@@ -80,6 +80,7 @@ interface RemoteState {
     behind: number;
     /** The branch of origin the branch tracks when it is not the one of its own name (`main`): until it is published under its own name. */
     tracks?: string;
+    updatedBase?: { branch: string; commit: string };
 }
 
 /**
@@ -127,11 +128,43 @@ export class FixtureGitRemote {
             : undefined;
     }
 
+    updatedHeadOf(place: FixtureRemotePlace): RemoteState['updatedBase'] {
+        const updated = this.#stateOf(place).updatedBase;
+        return updated?.branch === place.branch ? updated : undefined;
+    }
+
     /** A commit was made in the place: a published branch is one ahead further. */
     committed(place: FixtureRemotePlace): void {
         const state = this.#stateOf(place);
 
         if (state.published) state.ahead++;
+    }
+
+    async sync(
+        place: FixtureRemotePlace,
+        branch: string,
+        commit: string,
+        onProgress?: (progress: GitSyncProgress) => void
+    ): Promise<GitSyncResult> {
+        onProgress?.({ phase: 'fetch' });
+        await this.run('fetch', place);
+
+        const state = this.#stateOf(place);
+        let pulled = 0;
+
+        if (state.published && state.tracks === undefined && state.behind > 0) {
+            onProgress?.({ phase: 'merge' });
+            const result = await this.run('pull', place);
+            if (result.state === 'done') pulled = result.pulled ?? 0;
+        }
+
+        const pushed = !state.published || state.tracks !== undefined || state.ahead > 0;
+        if (pushed) {
+            onProgress?.({ phase: 'push', commit });
+            await this.run('push', place);
+        }
+
+        return { state: 'done', branch, pulled, pushed };
     }
 
     async run(action: GitRemoteAction, place: FixtureRemotePlace): Promise<GitRemoteResult> {
@@ -161,8 +194,12 @@ export class FixtureGitRemote {
 
         if (action === 'update') {
             this.#fetchedAt = this.#now();
+            if (!place.worktree || this.updatedHeadOf(place)) return { state: 'done', action, pulled: 0 };
 
-            return { state: 'done', action, pulled: place.worktree ? 1 : 0, ...this.#upstream(place) };
+            const updatedHead = { branch, commit: 'b'.repeat(40) };
+            state.updatedBase = updatedHead;
+            this.committed(place);
+            return { state: 'done', action, pulled: 1, updatedHead, ...this.#upstream(place) };
         }
 
         if (action === 'pull') {

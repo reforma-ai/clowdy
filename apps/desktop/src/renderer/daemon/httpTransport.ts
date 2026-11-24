@@ -26,6 +26,8 @@ import type {
     FolderGit,
     FolderId,
     FolderWorktrees,
+    GitBranchDeleteRequest,
+    GitBranchDeleteResult,
     GitBranches,
     GitBranchMergeRequest,
     GitBranchMergeResult,
@@ -44,6 +46,11 @@ import type {
     GitStatus,
     GitSwitchRequest,
     GitSwitchResult,
+    GitSyncEvent,
+    GitSyncProgress,
+    GitSyncRequest,
+    GitSyncResult,
+    GitSyncTarget,
     GitViewedMark,
     GitViewedSet,
     Health,
@@ -251,6 +258,47 @@ export class HttpTransport implements Transport {
         return this.#write(ROUTES.projectGitRemote(projectId, 'fetch'), { ...place } satisfies GitRemoteRequest);
     }
 
+    async syncGit(
+        projectId: ProjectId,
+        place: PlaceRef,
+        target: GitSyncTarget,
+        onProgress?: (progress: GitSyncProgress) => void
+    ): Promise<GitSyncResult> {
+        const route = ROUTES.projectGitSync(projectId);
+        const response = await this.#fetch(this.#base + route, {
+            method: 'POST',
+            headers: { ...this.#headers, 'content-type': 'application/json', accept: 'text/event-stream' },
+            body: JSON.stringify({ ...place, ...target } satisfies GitSyncRequest),
+        });
+
+        if (!response.ok) throw await refusal(response, route);
+
+        const reader = response.body?.getReader();
+        const parser = new SseParser();
+        const decoder = new TextDecoder();
+
+        if (reader) {
+            try {
+                for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
+                    for (const frame of parser.push(decoder.decode(chunk.value, { stream: true }))) {
+                        const event = JSON.parse(frame.data) as GitSyncEvent;
+
+                        if (event.type === 'phase') {
+                            const { type: _, ...progress } = event;
+                            onProgress?.(progress);
+                        }
+                        if (event.type === 'result') return event.result;
+                        if (event.type === 'error') throw new TransportError(event.message, event.status, event.hint);
+                    }
+                }
+            } finally {
+                await reader.cancel().catch(() => undefined);
+            }
+        }
+
+        throw new TransportError("Couldn't confirm that sync finished", 503);
+    }
+
     pullGit(projectId: ProjectId, place: PlaceRef): Promise<GitRemoteResult> {
         return this.#write(ROUTES.projectGitRemote(projectId, 'pull'), { ...place } satisfies GitRemoteRequest);
     }
@@ -276,6 +324,14 @@ export class HttpTransport implements Transport {
 
     getGitBranches(projectId: ProjectId, place: PlaceRef): Promise<GitBranches> {
         return this.#read(`${ROUTES.projectGitBranches(projectId)}?${placeQuery(place)}`);
+    }
+
+    deleteGitBranch(
+        projectId: ProjectId,
+        place: PlaceRef,
+        request: GitBranchDeleteRequest
+    ): Promise<GitBranchDeleteResult> {
+        return this.#write(ROUTES.projectGitBranchDelete(projectId), { ...place, ...request });
     }
 
     switchGitBranch(

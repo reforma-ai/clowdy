@@ -2,13 +2,15 @@ import { errorMessage } from '@clowdy/lib';
 import { makeAutoObservable, observable, runInAction } from 'mobx';
 
 import { type Transport, TransportError } from '../../daemon/transport';
-import { type RemoteActionId, remoteCall, remoteNotice } from './changesActions';
+import { type RemoteActionId, remoteNotice, syncBlock } from './changesActions';
 import { type PlaceFacts, placeRef } from './gitFacts';
+import { sourceControlPreferences } from './sourceControlPreferences';
 
-import type { GitPushRequest, GitRemoteResult } from '@clowdy/protocol';
+import type { GitRemoteResult, GitSyncProgress, GitSyncResult, GitSyncTarget } from '@clowdy/protocol';
+import type { IObservableValue } from 'mobx';
 
 /** What the actions ask of the transport. */
-export type RemoteTransport = Pick<Transport, 'fetchGit' | 'pullGit' | 'pushGit' | 'updateGit' | 'abortGit'>;
+export type RemoteTransport = Pick<Transport, 'fetchGit' | 'pullGit' | 'syncGit' | 'updateGit' | 'abortGit'>;
 
 /** How long a conflict notice stays under the button. A failure stays until the person acts again. */
 export const NOTICE_MS = 6000;
@@ -20,12 +22,21 @@ export interface RemoteFailure {
     hint?: string;
 }
 
-/** How an action ended, for a caller that tells it in its own words. */
-export type RemoteOutcome = { ok: true; result: GitRemoteResult } | { ok: false; failure: RemoteFailure };
+type Outcome<T> = { ok: true; result: T } | { ok: false; failure: RemoteFailure };
 
-interface RemoteRequestOptions {
+/** How an action ended, for a caller that tells it in its own words. */
+export type RemoteOutcome = Outcome<GitRemoteResult>;
+export type SyncOutcome = Outcome<GitSyncResult>;
+
+type DirectAction = Exclude<RemoteActionId, 'sync'>;
+type SyncPhase = IObservableValue<GitSyncProgress['phase'] | undefined>;
+type PendingRequest =
+    | { id: Exclude<DirectAction, 'update'>; fetching?: Promise<RemoteOutcome> }
+    | { id: 'sync' | 'update'; phase: SyncPhase };
+
+interface SyncOptions {
     report?: boolean;
-    expectedHead?: GitPushRequest['expectedHead'];
+    onProgress?: (progress: GitSyncProgress) => void;
 }
 
 /**
@@ -38,9 +49,7 @@ export class RemoteActions {
     /** Why the last action failed, until the person acts again. */
     failure: RemoteFailure | undefined;
     #timer: ReturnType<typeof setTimeout> | undefined;
-    readonly #requests = observable.array<{ id: RemoteActionId; outcome: Promise<RemoteOutcome> }>([], {
-        deep: false,
-    });
+    readonly #requests = observable.array<PendingRequest>([], { deep: false });
 
     constructor(
         readonly facts: PlaceFacts,
@@ -60,8 +69,13 @@ export class RemoteActions {
         return this.#requests[0]?.id;
     }
 
+    get syncPhase(): GitSyncProgress['phase'] | undefined {
+        const first = this.#requests[0];
+        return first && 'phase' in first ? first.phase.get() : undefined;
+    }
+
     isPending(id: RemoteActionId): boolean {
-        return this.#requests.some(request => remoteCall(request.id) === remoteCall(id));
+        return this.#requests.some(request => request.id === id);
     }
 
     /** A write is pending or the checkout is switching branches. */
@@ -69,47 +83,125 @@ export class RemoteActions {
         return this.running !== undefined || this.facts.switching;
     }
 
-    /**
-     * Sends the action to the daemon's write queue. A merge picker can reuse a fetch already in that queue.
-     * `report: false` leaves the notice and failure to the caller.
-     */
-    run(id: RemoteActionId, options: RemoteRequestOptions = {}): Promise<RemoteOutcome> {
-        if (this.facts.switching)
-            return Promise.resolve({ ok: false, failure: { action: id, message: 'The branch is being changed' } });
+    /** Sends a direct action to the daemon's write queue. */
+    run(id: DirectAction, { report = true }: { report?: boolean } = {}): Promise<RemoteOutcome> {
+        if (this.facts.switching) return Promise.resolve(this.#switching(id));
 
-        if (id === 'fetch') {
-            const fetch = this.#requests.find(request => request.id === 'fetch');
-            if (fetch) return fetch.outcome;
+        if (id === 'update') {
+            const phase = observable.box<GitSyncProgress['phase'] | undefined>(undefined);
+            return this.#track({ id, phase }, this.#update(phase, report));
         }
 
-        this.#forget();
-        const outcome = this.#perform(id, options).finally(() => {
-            runInAction(() => this.#requests.remove(request));
-            this.refresh();
-        });
-        const request = { id, outcome };
-        this.#requests.push(request);
+        if (id === 'fetch') {
+            const pending = this.#requests.find(request => request.id === 'fetch');
+            if (pending?.id === 'fetch' && pending.fetching) return pending.fetching;
+        }
+
+        const { key } = this.facts;
+        const place = placeRef(key);
+        const request: PendingRequest = { id };
+        const outcome = this.#track(
+            request,
+            this.#perform(
+                id,
+                () => {
+                    switch (id) {
+                        case 'fetch':
+                            return this.transport.fetchGit(key.projectId, place);
+                        case 'pull':
+                            return this.transport.pullGit(key.projectId, place);
+                        case 'abort':
+                            return this.transport.abortGit(key.projectId, place);
+                    }
+                },
+                report
+            )
+        );
+        if (id === 'fetch') request.fetching = outcome;
         return outcome;
     }
 
-    async #perform(id: RemoteActionId, { report = true, expectedHead }: RemoteRequestOptions): Promise<RemoteOutcome> {
-        const { key } = this.facts;
+    /** An update that changed the local branch can sync exactly that result. Keep both steps under one UI pending state. */
+    async #update(phase: SyncPhase, report: boolean): Promise<RemoteOutcome> {
+        const { key, status } = this.facts;
         const place = placeRef(key);
-        const call = remoteCall(id);
+        const autoSync = sourceControlPreferences.autoSync && syncBlock(status.value) === undefined;
+        const outcome = await this.#perform('update', () => this.transport.updateGit(key.projectId, place), report);
+
+        if (!autoSync || !outcome.ok || outcome.result.state !== 'done' || !outcome.result.pulled) return outcome;
+
+        const target = outcome.result.updatedHead;
+        if (!target) {
+            if (report) {
+                runInAction(() => {
+                    this.failure = { action: 'sync', message: "Updated locally. Couldn't verify the branch for sync" };
+                });
+            }
+            return outcome;
+        }
+
+        const synced = await this.#perform(
+            'sync',
+            () =>
+                this.transport.syncGit(key.projectId, place, target, progress =>
+                    runInAction(() => phase.set(progress.phase))
+                ),
+            report
+        );
+        if (report && !synced.ok) {
+            runInAction(() => {
+                this.failure = {
+                    ...synced.failure,
+                    message: `Updated locally, sync failed: ${synced.failure.message}`,
+                };
+            });
+        }
+        return outcome;
+    }
+
+    sync(target: GitSyncTarget, { report = true, onProgress }: SyncOptions = {}): Promise<SyncOutcome> {
+        if (this.facts.switching) return Promise.resolve(this.#switching('sync'));
+
+        const { key } = this.facts;
+        const request = {
+            id: 'sync' as const,
+            phase: observable.box<GitSyncProgress['phase'] | undefined>(undefined),
+        };
+        return this.#track(
+            request,
+            this.#perform(
+                'sync',
+                () =>
+                    this.transport.syncGit(key.projectId, placeRef(key), target, progress => {
+                        runInAction(() => request.phase.set(progress.phase));
+                        onProgress?.(progress);
+                    }),
+                report
+            )
+        );
+    }
+
+    #switching(action: RemoteActionId): Extract<RemoteOutcome, { ok: false }> {
+        return { ok: false, failure: { action, message: 'The branch is being changed' } };
+    }
+
+    #track<T>(request: PendingRequest, outcome: Promise<Outcome<T>>): Promise<Outcome<T>> {
+        this.#requests.push(request);
+        return outcome.finally(() => {
+            runInAction(() => this.#requests.remove(request));
+            this.refresh();
+        });
+    }
+
+    async #perform<T extends GitRemoteResult | GitSyncResult>(
+        id: RemoteActionId,
+        perform: () => Promise<T>,
+        report: boolean
+    ): Promise<Outcome<T>> {
+        this.#forget();
 
         try {
-            const result = await (call === 'fetch'
-                ? this.transport.fetchGit(key.projectId, place)
-                : call === 'pull'
-                  ? this.transport.pullGit(key.projectId, place)
-                  : call === 'update'
-                    ? this.transport.updateGit(key.projectId, place)
-                    : call === 'abort'
-                      ? this.transport.abortGit(key.projectId, place)
-                      : expectedHead === undefined
-                        ? this.transport.pushGit(key.projectId, place)
-                        : this.transport.pushGit(key.projectId, place, expectedHead));
-
+            const result = await perform();
             const notice = report ? remoteNotice(result) : undefined;
 
             if (notice) runInAction(() => this.#say(notice));

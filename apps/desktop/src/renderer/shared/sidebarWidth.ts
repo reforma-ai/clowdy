@@ -1,7 +1,10 @@
+import { SIDEBAR_MIN_WIDTH } from '@clowdy/components/Resizable';
+
 import { type KeyValueStorage, readStored, writeStored } from '../stores/storage';
 
-/** How narrow and how wide the left column of a screen can be dragged, in pixels. */
-export const SIDEBAR_MIN_WIDTH = 220;
+export { SIDEBAR_MIN_WIDTH };
+
+/** How wide the left column of a screen can be dragged, in pixels. */
 export const SIDEBAR_MAX_WIDTH = 480;
 
 /** What the page beside the column keeps (the chat), so a wide column cannot squeeze it out. */

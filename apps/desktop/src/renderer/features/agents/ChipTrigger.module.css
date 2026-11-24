@@ -3,7 +3,7 @@
 .trigger {
     flex-shrink: 1;
     min-width: 0;
-    max-width: min(100%, 16rem);
+    max-width: min(100%, 24rem);
 }
 
 .trigger[data-detail] {
@@ -34,6 +34,15 @@
 
 .triggerContent svg {
     flex-shrink: 0;
+}
+
+.separator {
+    align-self: stretch;
+    flex-shrink: 0;
+    width: 1px;
+    margin-block: var(--spacing-4);
+    background: currentColor;
+    opacity: 0.25;
 }
 
 /* The dim words around the label: the lead stays whole, and the trail is what gives way, since a label with a trail after it is read whole (`.whole`), and it may also be cut at a length of its own. */

@@ -206,13 +206,22 @@
 
 @media (hover: hover) {
     .status[data-has-action] .action {
+        position: absolute;
+        inset-inline-end: var(--spacing-xs);
         opacity: 0;
-        transition: opacity var(--transition-duration-fast);
+        pointer-events: none;
     }
 
-    .status[data-has-action]:hover .action,
-    .status[data-has-action]:focus-within .action {
+    .status[data-has-action]:is(:hover, :focus-within) .action {
+        position: relative;
+        inset-inline-end: auto;
         opacity: 1;
+        pointer-events: auto;
+    }
+
+    .status[data-has-action]:is(:hover, :focus-within) .progress,
+    .status[data-has-action]:is(:hover, :focus-within) .details:not(:has(.detail)) {
+        display: none;
     }
 }
 

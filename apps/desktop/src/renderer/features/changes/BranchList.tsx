@@ -1,9 +1,11 @@
 import { Button } from '@clowdy/components/Button';
+import { Menu, MenuItem } from '@clowdy/components/List';
+import { Popover, useContextMenu } from '@clowdy/components/Popover';
 import { Separator } from '@clowdy/components/Separator';
 import { Spinner } from '@clowdy/components/Spinner';
 import { Text } from '@clowdy/components/Text';
-import { Plus } from '@clowdy/icons/14';
-import { useMemo } from 'react';
+import { Plus, Trash } from '@clowdy/icons/14';
+import { type KeyboardEvent, type MouseEvent, useEffect, useMemo, useState } from 'react';
 
 import { homeFolder } from '../../shared/homeFolder';
 import { PickerList } from '../../shared/PickerPopover';
@@ -19,14 +21,59 @@ export function BranchList({
     current,
     onSwitched,
     onCreate,
+    onDelete,
 }: {
     model: BranchSwitch;
     current: string | undefined;
     onSwitched: () => void;
     onCreate: () => void;
+    onDelete: (branch: string, remote: boolean) => void;
 }) {
     const { listing } = model;
     const options = useMemo(() => (listing ? branchOptions(listing, homeFolder.path) : []), [listing]);
+    const contextMenu = useContextMenu();
+    const [menuBranch, setMenuBranch] = useState<string>();
+    const local = listing?.local.find(branch => branch.name === menuBranch);
+    const remote = !local && listing?.remote.find(branch => branch.name === menuBranch);
+    const { close } = contextMenu;
+    useEffect(() => () => close(), [close, model]);
+
+    const selectMenuBranch = (row: Element | null) => {
+        const name = row?.getAttribute('data-key');
+        if (!name || !options.some(option => option.id === name)) return false;
+
+        setMenuBranch(name);
+        return true;
+    };
+
+    const openMenu = (event: MouseEvent) => {
+        if (selectMenuBranch((event.target as Element).closest('[role="option"][data-key]')))
+            contextMenu.areaProps.onContextMenu(event);
+    };
+
+    const openMenuFromKey = (event: KeyboardEvent) => {
+        if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return;
+
+        const target = event.target as Element;
+        const activeId = target.getAttribute('aria-activedescendant');
+        const active = activeId ? document.getElementById(activeId) : target;
+        const row = active?.closest('[role="option"][data-key]') ?? null;
+
+        if (!row || !event.currentTarget.contains(row) || !selectMenuBranch(row)) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+        const rect = row.getBoundingClientRect();
+        contextMenu.openAt(rect.left, rect.bottom);
+    };
+
+    const deleteDisabled = model.busy || menuBranch === listing?.defaultBranch || local?.heldBy !== undefined;
+
+    const deleteBranch = () => {
+        if (!menuBranch || (!local && !remote) || deleteDisabled) return;
+        close();
+        onDelete(menuBranch, Boolean(remote));
+    };
 
     const pick = async (name: string) => {
         const outcome = await model.switchTo(name);
@@ -37,7 +84,7 @@ export function BranchList({
     };
 
     return (
-        <div className={styles.body}>
+        <div className={styles.body} onContextMenu={openMenu} onKeyDown={openMenuFromKey}>
             {listing ? (
                 <PickerList
                     options={options}
@@ -71,6 +118,24 @@ export function BranchList({
                     New branch…
                 </Button>
             </div>
+            {contextMenu.isOpen && (local || remote) && (
+                <Popover
+                    {...contextMenu.popoverProps}
+                    placement="bottom start"
+                    spacing="xs"
+                    data-branch-context-menu=""
+                >
+                    <Menu aria-label="Branch actions" size="sm" onAction={deleteBranch}>
+                        <MenuItem
+                            id="delete"
+                            icon={<Trash aria-hidden="true" />}
+                            text="Delete branch…"
+                            isDanger
+                            isDisabled={deleteDisabled}
+                        />
+                    </Menu>
+                </Popover>
+            )}
         </div>
     );
 }

@@ -3,7 +3,7 @@ import { join, resolve } from 'node:path';
 import { MAX_GIT_BRANCHES } from '@clowdy/protocol';
 
 import { gitLine, gitOutput, gitRead } from '../domain/git';
-import { CommandError, invalid, notFound, unavailable } from '../errors';
+import { CommandError, conflict, invalid, notFound, unavailable } from '../errors';
 
 import type { FolderGit, GitBranch, GitWorktree, Project, ProjectFolder, ProjectFolderInfo } from '@clowdy/protocol';
 
@@ -23,6 +23,28 @@ export interface ListedWorktree {
     prunable: boolean;
     /** Git has it locked, with the reason it was locked for (empty when none was given): `initializing` while `git worktree add` makes it, which a crash leaves behind. */
     locked?: string;
+}
+
+/** Find the existing checkout of a branch, including worktree paths with spaces or line breaks. */
+export async function checkoutOf(cwd: string, branch: string): Promise<string | undefined> {
+    const read = await gitRead(cwd, ['worktree', 'list', '--porcelain', '-z']);
+
+    if (!read.ok) throw unavailable('git did not list the worktrees');
+
+    const holders = parseWorktrees(read.stdout).filter(entry => entry.branch === branch && !entry.bare);
+
+    if (holders.length > 1) throw conflict(`${branch} is checked out in more than one worktree`);
+
+    const holder = holders[0];
+
+    if (!holder) return undefined;
+    if (holder.prunable || holder.locked !== undefined) throw conflict(`The checkout of ${branch} is unavailable`);
+
+    const path = await placeOf(holder.path);
+
+    if (!path) throw conflict(`The checkout of ${branch} is missing`);
+
+    return path;
 }
 
 /** `git worktree list --porcelain`: one block per worktree, with either newline or NUL field delimiters. */

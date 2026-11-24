@@ -1,12 +1,12 @@
 # Select the branch operation in the merge button
 
-- Status: accepted
+- Status: superseded
 - Date: 2026-11-24
 - Decided by: user (semi-manual)
 - Scope: the mode selector in Merge from branch and Merge into branch
 - Related tasks: CLO-114
 - Supersedes: none
-- Superseded by: none
+- Superseded by: [Match GitHub Desktop's branch merge choices](2026-11-24-branch-merge-choices.md)
 
 ## Context
 
