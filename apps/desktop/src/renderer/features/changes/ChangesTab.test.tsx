@@ -117,7 +117,14 @@ const moveCards = (isIntersecting: boolean, select: (card: Element) => boolean) 
 
             if (moved.length > 0)
                 callback(
-                    moved.map(target => ({ isIntersecting, target }) as IntersectionObserverEntry),
+                    moved.map(
+                        target =>
+                            ({
+                                isIntersecting,
+                                target,
+                                boundingClientRect: target.getBoundingClientRect(),
+                            }) as IntersectionObserverEntry
+                    ),
                     {} as IntersectionObserver
                 );
         }
@@ -309,6 +316,42 @@ describe('the Changes tab of a chat in a worktree', () => {
         );
         expect(card('src/booking/price.ts').querySelector('[data-diff]')?.textContent).toContain('=>');
         expect(card('notes.md').querySelector('[data-diff]')).toBeNull();
+    });
+
+    it('keeps a card that went far from the edge as an empty box in its place, and builds it again when it comes near', async () => {
+        await start();
+        await draw();
+        await bringNear();
+        await settle();
+
+        expect(card('notes.md').querySelector('button')).not.toBeNull();
+
+        await sendAway(element => element === card('notes.md'));
+
+        // The box keeps its place in the list, its path and whether it is open, so a press on the last run plate still finds it.
+        expect(cardPaths()).toContain('notes.md');
+        expect(card('notes.md').querySelector('button')).toBeNull();
+        expect(card('notes.md').hasAttribute('data-open')).toBe(true);
+        expect(card('src/limits.ts').querySelector('button')).not.toBeNull();
+
+        await bringNear(element => element === card('notes.md'));
+        expect(button('Fold notes.md')).not.toBeNull();
+    });
+
+    it('keeps a card that holds the focus built while it is far, and empties it once the focus leaves', async () => {
+        await start();
+        await draw();
+        await bringNear();
+        await settle();
+
+        await act(async () => button('Fold notes.md').focus());
+        await sendAway(element => element === card('notes.md'));
+
+        expect(document.activeElement).toBe(button('Fold notes.md'));
+
+        await act(async () => button('Fold src/limits.ts').focus());
+
+        expect(card('notes.md').querySelector('button')).toBeNull();
     });
 
     it("draws a file's diff with the two texts the daemon read, and a box of the lines its list counted before they come", async () => {
