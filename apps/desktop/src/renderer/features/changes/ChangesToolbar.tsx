@@ -1,10 +1,11 @@
 import { SearchInput } from '@clowdy/components/Input';
-import { ListBoxItem } from '@clowdy/components/List';
+import { ListBoxHeader, ListBoxItem, ListBoxSection } from '@clowdy/components/List';
 import { PanelHeader } from '@clowdy/components/Panel';
 import { Select } from '@clowdy/components/Select';
 import { Text } from '@clowdy/components/Text';
 import { CollapseAll, ExpandAll, EyeOff } from '@clowdy/icons/14';
 import { observer } from 'mobx-react-lite';
+import { Collection } from 'react-aria-components';
 
 import styles from './ChangesToolbar.module.css';
 import viewStyles from './ChangesView.module.css';
@@ -63,7 +64,11 @@ const Summary = observer(function Summary({ model }: { model: PlaceChanges }) {
  * while there is a base, what is not committed, the open chat's last run while it has one, and one entry for each commit of the branch, newest first.
  */
 export function ChangesToolbar({ model, end }: { model: PlaceChanges; end?: ReactNode }) {
-    const options = scopeOptions(model.base, model.runScope).map(option => ({ ...option, id: option.scope }));
+    const options = scopeOptions(model.base, model.runScope);
+    const sections = [
+        { id: 'filters', title: 'Filters', options: options.filter(option => !option.commit) },
+        { id: 'commits', title: 'Commits', options: options.filter(option => option.commit) },
+    ].filter(section => section.options.length > 0);
     const allFolded = model.allFolded;
     const foldAction = allFolded ? 'Expand all' : 'Collapse all';
 
@@ -80,17 +85,25 @@ export function ChangesToolbar({ model, end }: { model: PlaceChanges; end?: Reac
                         className={styles.scope}
                         triggerClassName={styles.scopeTrigger}
                         popoverClassName={styles.scopeList}
-                        items={options}
+                        placement="bottom start"
+                        items={sections}
                         selectedKey={model.effectiveScope}
                         onSelectionChange={(key: unknown) => typeof key === 'string' && model.setScope(key as GitScope)}
                     >
-                        {item => (
-                            <ListBoxItem
-                                id={item.id}
-                                text={item.label}
-                                description={item.note}
-                                stacked={item.note !== undefined}
-                            />
+                        {section => (
+                            <ListBoxSection id={section.id} aria-label={section.title}>
+                                {section.id === 'commits' && <ListBoxHeader>{section.title}</ListBoxHeader>}
+                                <Collection items={section.options}>
+                                    {item => (
+                                        <ListBoxItem
+                                            id={item.scope}
+                                            text={item.label}
+                                            description={item.note}
+                                            stacked
+                                        />
+                                    )}
+                                </Collection>
+                            </ListBoxSection>
                         )}
                     </Select>
                 </span>

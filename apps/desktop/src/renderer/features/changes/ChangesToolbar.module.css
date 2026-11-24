@@ -19,9 +19,9 @@
     max-width: 100%;
 }
 
-/* A commit is a short hash and a line of its message: the list opens wider than its button, as far as the view allows. */
+/* The list leaves room for descriptions and commit subjects. */
 .scopeList {
-    min-width: min(24rem, 90vw);
+    min-width: min(20rem, 90vw);
 }
 
 .filter {

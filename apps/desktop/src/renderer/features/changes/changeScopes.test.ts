@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 
 import {
     ALL_CHANGES_LABEL,
-    commitLabel,
     commitOfScope,
     isCommitScope,
     isRunScope,
@@ -20,7 +19,7 @@ const commit = (sha: string, subject: string): GitCommit => ({
     shortSha: sha.repeat(7).slice(0, 7),
     subject,
     author: 'Dana',
-    committedAt: 1,
+    committedAt: new Date(2026, 10, 20, 12).getTime(),
 });
 const NEWEST = commit('b', 'Charge a weekend surcharge');
 const OLDEST = commit('a', 'Price a booking by the day');
@@ -36,15 +35,15 @@ const ready: GitBase = {
 };
 
 describe('the scope menu', () => {
-    it("has all changes, the branch, what is not committed, and a commit for each of the branch's, newest first with its short hash and message", () => {
+    it("has all changes, the branch, what is not committed, and a commit for each of the branch's, newest first with a subject, short hash and date", () => {
         const options = scopeOptions(ready);
 
         expect(options.map(option => option.label)).toEqual([
             ALL_CHANGES_LABEL,
             'Branch',
             'Uncommitted',
-            'bbbbbbb Charge a weekend surcharge',
-            'aaaaaaa Price a booking by the day',
+            'Charge a weekend surcharge',
+            'Price a booking by the day',
         ]);
         expect(options.map(option => option.scope)).toEqual([
             'all',
@@ -54,7 +53,8 @@ describe('the scope menu', () => {
             commitScope(OLDEST.sha),
         ]);
         expect(options[3]?.commit).toBe(NEWEST);
-        expect(commitLabel(OLDEST)).toBe('aaaaaaa Price a booking by the day');
+        expect(options[3]?.note).toBe('bbbbbbb · 20 Nov 2026');
+        expect(options[4]?.note).toBe('aaaaaaa · 20 Nov 2026');
     });
 
     it('leaves the branch and its commits out while the base is not there, whatever the reason', () => {
@@ -64,7 +64,10 @@ describe('the scope menu', () => {
             { state: 'no_base' },
             { state: 'no_merge_base', name: 'origin/main', commit: 'c'.repeat(40) },
         ] as const) {
-            expect(scopeOptions(base).map(option => option.label)).toEqual([ALL_CHANGES_LABEL, 'Uncommitted']);
+            const options = scopeOptions(base);
+
+            expect(options.map(option => option.label)).toEqual([ALL_CHANGES_LABEL, 'Uncommitted']);
+            expect(options[0]?.note).toBe('Local changes until a comparison base is available');
         }
     });
 
@@ -76,8 +79,8 @@ describe('the scope menu', () => {
             'Branch',
             'Uncommitted',
             LAST_RUN_LABEL,
-            'bbbbbbb Charge a weekend surcharge',
-            'aaaaaaa Price a booking by the day',
+            'Charge a weekend surcharge',
+            'Price a booking by the day',
         ]);
         expect(scopeOptions(ready, run)[3]).toEqual({ scope: run, label: 'Last run', note: LAST_RUN_NOTE });
         expect(scopeOptions(undefined, run).map(option => option.label)).toEqual([
@@ -87,7 +90,7 @@ describe('the scope menu', () => {
         ]);
         // None for a chat that has no run that changed files.
         expect(scopeOptions(ready).map(option => option.label)).not.toContain(LAST_RUN_LABEL);
-        expect(scopeOptions(ready).every(option => option.note === undefined)).toBe(true);
+        expect(scopeOptions(ready).every(option => option.note.length > 0)).toBe(true);
         expect(LAST_RUN_NOTE).not.toMatch(/\.$/);
     });
 

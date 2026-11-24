@@ -523,6 +523,16 @@ describe('the Changes tab of a chat in a worktree', () => {
     });
 });
 
+const filterRows = [
+    'All changesBranch commits and uncommitted changes',
+    'BranchCommitted changes against the base',
+    'UncommittedStaged, unstaged and untracked changes',
+];
+const commitRows = [
+    expect.stringMatching(/^Charge a weekend surchargeb744444 · \d{1,2} Nov 2026$/),
+    expect.stringMatching(/^Price a booking by the daya155555 · \d{1,2} Nov 2026$/),
+];
+
 describe('the scope', () => {
     it('has the entries of the scope menu: all changes, the branch, what is not committed and each commit of the branch, newest first', async () => {
         await start();
@@ -530,13 +540,10 @@ describe('the scope', () => {
         await press(scopeTrigger());
         await vi.waitFor(() => expect(options().length).toBeGreaterThan(0));
 
-        expect(options().map(option => option.textContent)).toEqual([
-            'All changes',
-            'Branch',
-            'Uncommitted',
-            'b744444 Charge a weekend surcharge',
-            'a155555 Price a booking by the day',
-        ]);
+        expect(options().map(option => option.textContent)).toEqual([...filterRows, ...commitRows]);
+        const group = document.querySelector('[role="group"][aria-label="Commits"]');
+        expect(group?.textContent?.startsWith('Commits')).toBe(true);
+        expect(group?.querySelectorAll('[role="option"]')).toHaveLength(2);
     });
 
     it('changes the list with the scope chosen from the menu', async () => {
@@ -544,7 +551,7 @@ describe('the scope', () => {
         await draw();
         await press(scopeTrigger());
         await vi.waitFor(() => expect(options().length).toBeGreaterThan(0));
-        await press(options().find(option => option.textContent === 'Uncommitted')!);
+        await press(options().find(option => option.textContent?.startsWith('Uncommitted'))!);
         await settle();
 
         expect(scopeTrigger().textContent).toContain('Uncommitted');
@@ -559,13 +566,13 @@ describe('the scope', () => {
         const selectScope = async (label: string) => {
             await press(scopeTrigger());
             await vi.waitFor(() => expect(options().length).toBeGreaterThan(0));
-            await press(options().find(option => option.textContent === label)!);
+            await press(options().find(option => option.textContent?.startsWith(label))!);
             await settle();
         };
 
-        await selectScope('a155555 Price a booking by the day');
+        await selectScope('Price a booking by the day');
 
-        expect(scopeTrigger().textContent).toContain('a155555 Price a booking by the day');
+        expect(scopeTrigger().textContent).toBe('Price a booking by the day');
         expect(cardPaths()).toEqual(['assets/logo.png', 'src/booking/price.test.ts', 'src/booking/price.ts']);
 
         await selectScope('All changes');
@@ -599,7 +606,7 @@ describe('the scope', () => {
         });
         await act(async () => {
             options()
-                .find(option => option.textContent === 'Branch')!
+                .find(option => option.textContent?.startsWith('Branch'))!
                 .dispatchEvent(new MouseEvent('click', { bubbles: true }));
         });
         await settle();
@@ -1480,12 +1487,9 @@ describe('the last run of the open chat', () => {
         await openMenu();
 
         expect(optionLabels()).toEqual([
-            'All changes',
-            'Branch',
-            'Uncommitted',
+            ...filterRows,
             'Last runEdits of others in the place are in it too',
-            'b744444 Charge a weekend surcharge',
-            'a155555 Price a booking by the day',
+            ...commitRows,
         ]);
     });
 
@@ -1493,13 +1497,7 @@ describe('the last run of the open chat', () => {
         await start({ ...run, chat: FIXTURE_QUIET_CHAT_ID });
         await draw();
         await openMenu();
-        expect(optionLabels()).toEqual([
-            'All changes',
-            'Branch',
-            'Uncommitted',
-            'b744444 Charge a weekend surcharge',
-            'a155555 Price a booking by the day',
-        ]);
+        expect(optionLabels()).toEqual([...filterRows, ...commitRows]);
     });
 
     it("is not offered while the new-chat page is shown, whose place is not a chat's", async () => {
@@ -1526,7 +1524,7 @@ describe('the last run of the open chat', () => {
         // The two ends of a run are trees: no commit, no base.
 
         await openMenu();
-        await press(options().find(option => option.textContent === 'All changes')!);
+        await press(options().find(option => option.textContent?.startsWith('All changes'))!);
         await settle();
         expect(scopeTrigger().textContent).toContain('All changes');
         expect(scopeTrigger().closest('[title]')).toBeNull();
@@ -1639,7 +1637,7 @@ describe('the last run of the open chat', () => {
         expect(cards()).toHaveLength(0);
 
         await openMenu();
-        await press(options().find(option => option.textContent === 'Uncommitted')!);
+        await press(options().find(option => option.textContent?.startsWith('Uncommitted'))!);
         await settle();
         expect(cards()).toHaveLength(3);
     });
