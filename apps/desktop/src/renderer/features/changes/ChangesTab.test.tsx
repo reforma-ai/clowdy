@@ -117,7 +117,14 @@ const moveCards = (isIntersecting: boolean, select: (card: Element) => boolean) 
 
             if (moved.length > 0)
                 callback(
-                    moved.map(target => ({ isIntersecting, target }) as IntersectionObserverEntry),
+                    moved.map(
+                        target =>
+                            ({
+                                isIntersecting,
+                                target,
+                                boundingClientRect: target.getBoundingClientRect(),
+                            }) as IntersectionObserverEntry
+                    ),
                     {} as IntersectionObserver
                 );
         }
@@ -273,11 +280,15 @@ describe('the Changes tab of a chat in a worktree', () => {
             'Commits on branch'
         );
         expect(container.querySelector('[aria-label="Changes sidebar"]')?.textContent).toContain('clowdy/ab12cd34');
-        const base = container.querySelector('[title="origin/main, 2 ahead, 1 behind"]');
+        const sidebar = container.querySelector('[aria-label="Changes sidebar"]');
 
-        expect(base?.textContent).toContain('→ origin/main');
-        expect(base?.querySelector('[role="img"][aria-label="2 ahead, 1 behind"]')?.textContent).toBe('21');
-        expect(container.querySelector('[aria-label="Pull request"]')?.textContent).toContain('PR #128');
+        expect(sidebar?.textContent).not.toContain('Base:');
+        expect(
+            sidebar?.querySelector('button[aria-label="Update from main"] [data-commit-count="down"]')?.textContent
+        ).toBe('1');
+        expect(container.querySelector('button[aria-label^="Open pull request 128"]')?.textContent).toContain(
+            'PR #128'
+        );
     });
 
     it("opens every card, and reads a file's texts only once its card is near the scroller's edge", async () => {
@@ -305,6 +316,63 @@ describe('the Changes tab of a chat in a worktree', () => {
         );
         expect(card('src/booking/price.ts').querySelector('[data-diff]')?.textContent).toContain('=>');
         expect(card('notes.md').querySelector('[data-diff]')).toBeNull();
+    });
+
+    it("opens and brings up a file's card on a press on its row in the commit box, through a filter that left it out, and leaves its tick as it was", async () => {
+        sourceControlPreferences.setCollapseDiffs(true);
+        await start();
+        await draw();
+        await bringNear();
+        await type('*.md');
+
+        expect(cardPaths()).not.toContain('src/limits.ts');
+
+        const tick = container.querySelector<HTMLInputElement>(
+            '[aria-label="Commit"] input[aria-label="src/limits.ts"]'
+        )!;
+
+        await press(tick.closest('[role="row"]')!);
+        await vi.waitFor(() => expect(scrolled).toEqual([card('src/limits.ts')]));
+
+        expect(filter().value).toBe('');
+        expect(card('src/limits.ts').hasAttribute('data-open')).toBe(true);
+        expect(tick.checked).toBe(true);
+    });
+
+    it('keeps a card that went far from the edge as an empty box in its place, and builds it again when it comes near', async () => {
+        await start();
+        await draw();
+        await bringNear();
+        await settle();
+
+        expect(card('notes.md').querySelector('button')).not.toBeNull();
+
+        await sendAway(element => element === card('notes.md'));
+
+        // The box keeps its place in the list, its path and whether it is open, so a press on the last run plate still finds it.
+        expect(cardPaths()).toContain('notes.md');
+        expect(card('notes.md').querySelector('button')).toBeNull();
+        expect(card('notes.md').hasAttribute('data-open')).toBe(true);
+        expect(card('src/limits.ts').querySelector('button')).not.toBeNull();
+
+        await bringNear(element => element === card('notes.md'));
+        expect(button('Fold notes.md')).not.toBeNull();
+    });
+
+    it('keeps a card that holds the focus built while it is far, and empties it once the focus leaves', async () => {
+        await start();
+        await draw();
+        await bringNear();
+        await settle();
+
+        await act(async () => button('Fold notes.md').focus());
+        await sendAway(element => element === card('notes.md'));
+
+        expect(document.activeElement).toBe(button('Fold notes.md'));
+
+        await act(async () => button('Fold src/limits.ts').focus());
+
+        expect(card('notes.md').querySelector('button')).toBeNull();
     });
 
     it("draws a file's diff with the two texts the daemon read, and a box of the lines its list counted before they come", async () => {
@@ -521,6 +589,16 @@ describe('the Changes tab of a chat in a worktree', () => {
     });
 });
 
+const filterRows = [
+    'All changesBranch commits and uncommitted changes',
+    'BranchCommitted changes against the base',
+    'UncommittedStaged, unstaged and untracked changes',
+];
+const commitRows = [
+    expect.stringMatching(/^Charge a weekend surcharge(?:\d{1,2} Nov(?: 2026)?, )?\d{2}:\d{2} · b744444$/),
+    expect.stringMatching(/^Price a booking by the day(?:\d{1,2} Nov(?: 2026)?, )?\d{2}:\d{2} · a155555$/),
+];
+
 describe('the scope', () => {
     it('has the entries of the scope menu: all changes, the branch, what is not committed and each commit of the branch, newest first', async () => {
         await start();
@@ -528,13 +606,10 @@ describe('the scope', () => {
         await press(scopeTrigger());
         await vi.waitFor(() => expect(options().length).toBeGreaterThan(0));
 
-        expect(options().map(option => option.textContent)).toEqual([
-            'All changes',
-            'Branch',
-            'Uncommitted',
-            'b744444 Charge a weekend surcharge',
-            'a155555 Price a booking by the day',
-        ]);
+        expect(options().map(option => option.textContent)).toEqual([...filterRows, ...commitRows]);
+        const group = document.querySelector('[role="group"][aria-label="Commits"]');
+        expect(group?.textContent?.startsWith('Commits')).toBe(true);
+        expect(group?.querySelectorAll('[role="option"]')).toHaveLength(2);
     });
 
     it('changes the list with the scope chosen from the menu', async () => {
@@ -542,7 +617,7 @@ describe('the scope', () => {
         await draw();
         await press(scopeTrigger());
         await vi.waitFor(() => expect(options().length).toBeGreaterThan(0));
-        await press(options().find(option => option.textContent === 'Uncommitted')!);
+        await press(options().find(option => option.textContent?.startsWith('Uncommitted'))!);
         await settle();
 
         expect(scopeTrigger().textContent).toContain('Uncommitted');
@@ -557,13 +632,13 @@ describe('the scope', () => {
         const selectScope = async (label: string) => {
             await press(scopeTrigger());
             await vi.waitFor(() => expect(options().length).toBeGreaterThan(0));
-            await press(options().find(option => option.textContent === label)!);
+            await press(options().find(option => option.textContent?.startsWith(label))!);
             await settle();
         };
 
-        await selectScope('a155555 Price a booking by the day');
+        await selectScope('Price a booking by the day');
 
-        expect(scopeTrigger().textContent).toContain('a155555 Price a booking by the day');
+        expect(scopeTrigger().textContent).toBe('Price a booking by the day');
         expect(cardPaths()).toEqual(['assets/logo.png', 'src/booking/price.test.ts', 'src/booking/price.ts']);
 
         await selectScope('All changes');
@@ -597,7 +672,7 @@ describe('the scope', () => {
         });
         await act(async () => {
             options()
-                .find(option => option.textContent === 'Branch')!
+                .find(option => option.textContent?.startsWith('Branch'))!
                 .dispatchEvent(new MouseEvent('click', { bubbles: true }));
         });
         await settle();
@@ -762,7 +837,7 @@ describe('the sidebar', () => {
         expect(branch.getAttribute('aria-expanded')).toBe('false');
     });
 
-    it('has the base, how far the branch is from it and the pull request with its checks, and opens the repository on GitHub', async () => {
+    it('offers a base update and the pull request, and opens the repository on GitHub', async () => {
         const open = vi.spyOn(window, 'open').mockReturnValue(null);
 
         await start();
@@ -770,11 +845,20 @@ describe('the sidebar', () => {
 
         const sidebar = container.querySelector('[aria-label="Changes sidebar"]')!;
 
-        expect(sidebar.querySelector('[aria-label^="Checks"]')).not.toBeNull();
-
         await press(sidebar.querySelector('button[aria-label="Open the repository on GitHub"]')!);
-
         expect(open).toHaveBeenCalledExactlyOnceWith('https://github.com/acme/car-rental', '_blank', 'noopener');
+
+        const pullRequest = sidebar.querySelector('button[aria-label^="Open pull request 128"]')!;
+        const checks = pullRequest.querySelector('[data-check="failed"]')!;
+
+        open.mockClear();
+        await press(checks);
+        expect(open).toHaveBeenCalledExactlyOnceWith(
+            'https://github.com/acme/car-rental/pull/128',
+            '_blank',
+            'noopener'
+        );
+        expect(document.querySelector('ul[aria-label="Checks"]')).toBeNull();
     });
 
     it('is hidden by a press on its button, which is then in the toolbar of the diffs, and comes back on a second press', async () => {
@@ -1453,12 +1537,9 @@ describe('the last run of the open chat', () => {
         await openMenu();
 
         expect(optionLabels()).toEqual([
-            'All changes',
-            'Branch',
-            'Uncommitted',
+            ...filterRows,
             'Last runEdits of others in the place are in it too',
-            'b744444 Charge a weekend surcharge',
-            'a155555 Price a booking by the day',
+            ...commitRows,
         ]);
     });
 
@@ -1466,13 +1547,7 @@ describe('the last run of the open chat', () => {
         await start({ ...run, chat: FIXTURE_QUIET_CHAT_ID });
         await draw();
         await openMenu();
-        expect(optionLabels()).toEqual([
-            'All changes',
-            'Branch',
-            'Uncommitted',
-            'b744444 Charge a weekend surcharge',
-            'a155555 Price a booking by the day',
-        ]);
+        expect(optionLabels()).toEqual([...filterRows, ...commitRows]);
     });
 
     it("is not offered while the new-chat page is shown, whose place is not a chat's", async () => {
@@ -1499,7 +1574,7 @@ describe('the last run of the open chat', () => {
         // The two ends of a run are trees: no commit, no base.
 
         await openMenu();
-        await press(options().find(option => option.textContent === 'All changes')!);
+        await press(options().find(option => option.textContent?.startsWith('All changes'))!);
         await settle();
         expect(scopeTrigger().textContent).toContain('All changes');
         expect(scopeTrigger().closest('[title]')).toBeNull();
@@ -1612,7 +1687,7 @@ describe('the last run of the open chat', () => {
         expect(cards()).toHaveLength(0);
 
         await openMenu();
-        await press(options().find(option => option.textContent === 'Uncommitted')!);
+        await press(options().find(option => option.textContent?.startsWith('Uncommitted'))!);
         await settle();
         expect(cards()).toHaveLength(3);
     });

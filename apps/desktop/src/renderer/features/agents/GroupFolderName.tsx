@@ -13,8 +13,8 @@ import styles from './AgentList.module.css';
 import type { ProjectFolder } from '@clowdy/protocol';
 
 /**
- * The menu of a group's folder: New chat, the folder actions shared with `ChatFolder`, and `Manage worktrees…` last, under a separator. That item is always there, from
- * the first frame: it opens the dialog of the whole project, which has a group for each of its repositories and says so when none of its folders is one, so it needs no word from
+ * The menu of a group's folder: New chat, the folder actions shared with `ChatFolder`, and `Folder settings…` last, under a separator. That item is always there, from
+ * the first frame: it opens the settings and worktrees of that folder, so it needs no word from
  * the folder's git (which the menu reads as it opens, for the GitHub link, and which would have the item come in late and shift the menu). It is for a folder that is gone too.
  */
 function GroupFolderMenu({

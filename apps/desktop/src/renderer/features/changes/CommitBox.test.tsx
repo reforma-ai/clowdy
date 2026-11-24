@@ -20,6 +20,7 @@ import { CommitDraft, commitDraftOf } from './CommitDraft';
 import { type GitPlaceKey, gitFactsOf } from './gitFacts';
 import { placeChangesOf } from './PlaceChanges';
 import { type RemoteOutcome, remoteActionsOf } from './RemoteActions';
+import { sourceControlPreferences } from './sourceControlPreferences';
 
 import type { GitChangedFile, GitStatus } from '@clowdy/protocol';
 import type { FixtureGitWritesOptions } from '../../daemon/fixtureGitWrites';
@@ -71,6 +72,10 @@ const tickOf = (path: string) =>
 const everyTick = () =>
     container.querySelector<HTMLInputElement>('input[type="checkbox"][aria-label="Tick every file"]')!;
 const message = () => container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Commit message"]')!;
+const generateButton = () =>
+    message().parentElement?.querySelector<HTMLButtonElement>('button[aria-label="Generate commit message"]');
+const stopButton = () =>
+    message().parentElement?.querySelector<HTMLButtonElement>('button[aria-label="Stop generating commit message"]');
 const buttonOf = (label: string) =>
     [...container.querySelectorAll<HTMLButtonElement>('button')].find(
         candidate => candidate.textContent?.trim() === label
@@ -138,6 +143,7 @@ afterEach(() => {
     container.remove();
     stop?.();
     store.dispose();
+    sourceControlPreferences.setAutoPush(true);
 });
 
 describe('the commit box', () => {
@@ -153,21 +159,22 @@ describe('the commit box', () => {
         expect(message().placeholder).toBe('Message');
         expect(commitButton()?.disabled).toBe(true);
         // Offered because the fixtures' Codex is signed in with Commit messages on.
-        expect(buttonOf('Generate')?.disabled).toBe(false);
+        expect(generateButton()?.disabled).toBe(false);
     });
 
-    it('ticks and unticks a file on a press anywhere on its row, as on its tick', async () => {
+    it('asks the diff list to bring a file up on a press on its row, and ticks it only on its tick', async () => {
         await start();
 
         const row = tickOf('src/limits.ts').closest('[role="row"]')!;
 
         await press(row);
-        expect(tickOf('src/limits.ts').checked).toBe(false);
-        expect(box()?.textContent).toContain('2 of 3');
-
-        await press(row);
+        expect(model.revealRequest).toBe('src/limits.ts');
         expect(tickOf('src/limits.ts').checked).toBe(true);
         expect(box()?.textContent).toContain('3 of 3');
+
+        await press(tickOf('src/limits.ts'));
+        expect(tickOf('src/limits.ts').checked).toBe(false);
+        expect(box()?.textContent).toContain('2 of 3');
     });
 
     it('commits only the files that are ticked, with the message as typed, clears the box, and reads the place again', async () => {
@@ -209,27 +216,32 @@ describe('the commit box', () => {
         const generate = vi.spyOn(transport, 'generateGitMessage');
 
         await press(tickOf('notes.md'));
-        await press(buttonOf('Generate')!);
+        await press(generateButton()!);
         await settle();
 
-        expect(generate).toHaveBeenCalledWith(FIXTURE_PROJECT_ID, PLACE, ['src/booking/price.ts', 'src/limits.ts']);
+        expect(generate).toHaveBeenCalledWith(
+            FIXTURE_PROJECT_ID,
+            PLACE,
+            ['src/booking/price.ts', 'src/limits.ts'],
+            expect.any(AbortSignal)
+        );
         expect(message().value).toBe('feat(booking): add the weekend surcharge');
         // What Generate wrote may be written again.
-        expect(buttonOf('Generate')?.disabled).toBe(false);
+        expect(generateButton()?.disabled).toBe(false);
 
         // What the person typed is theirs: the button waits, and says why.
         await type('feat(booking): my own words');
-        expect(buttonOf('Generate')?.disabled).toBe(true);
+        expect(generateButton()?.disabled).toBe(true);
 
-        await press(buttonOf('Generate')!);
+        await press(generateButton()!);
         expect(generate).toHaveBeenCalledTimes(1);
         expect(message().value).toBe('feat(booking): my own words');
 
         await type('');
-        expect(buttonOf('Generate')?.disabled).toBe(false);
+        expect(generateButton()?.disabled).toBe(false);
     });
 
-    it('keeps what is put in the box while a message is being written, and holds the buttons meanwhile', async () => {
+    it('keeps what is put in the box while a message is being written, and holds Commit meanwhile', async () => {
         let release: () => void = () => undefined;
 
         await start();
@@ -240,8 +252,8 @@ describe('the commit box', () => {
                 })
         );
 
-        await press(buttonOf('Generate')!);
-        expect(buttonOf('Generate')?.disabled).toBe(true);
+        await press(generateButton()!);
+        expect(stopButton()?.disabled).toBe(false);
         expect(commitButton()?.disabled).toBe(true);
         expect(message().placeholder).toBe('Writing the message');
 
@@ -262,14 +274,41 @@ describe('the commit box', () => {
         expect(commitButton()?.disabled).toBe(false);
     });
 
+    it('aborts generation and ignores its late answer while the next request is running', async () => {
+        const first = Promise.withResolvers<{ message: string }>();
+        const second = Promise.withResolvers<{ message: string }>();
+
+        await start();
+        const generate = vi
+            .spyOn(transport, 'generateGitMessage')
+            .mockReturnValueOnce(first.promise)
+            .mockReturnValueOnce(second.promise);
+
+        await press(generateButton()!);
+        await press(stopButton()!);
+
+        expect(generate.mock.calls[0]?.[3]?.aborted).toBe(true);
+        expect(message().readOnly).toBe(false);
+        expect(message().value).toBe('');
+        expect(alert()).toBeNull();
+
+        await press(generateButton()!);
+        await act(async () => first.resolve({ message: 'feat: stale result' }));
+
+        expect(stopButton()?.disabled).toBe(false);
+        expect(message().value).toBe('');
+        await act(async () => second.resolve({ message: 'feat: new result' }));
+        expect(message().value).toBe('feat: new result');
+    });
+
     it('leaves the box as it was and says so when the message could not be written', async () => {
         await start({ gitWrites: { message: 'failed' } });
-        await press(buttonOf('Generate')!);
+        await press(generateButton()!);
         await settle();
 
         expect(message().value).toBe('');
         expect(alert()?.textContent).toBe("Couldn't write the message");
-        expect(buttonOf('Generate')?.disabled).toBe(false);
+        expect(generateButton()?.disabled).toBe(false);
 
         // The line goes when the person acts again.
         await type('x');
@@ -291,7 +330,7 @@ describe('the commit box', () => {
     });
 
     it.each(['metaKey', 'ctrlKey'] as const)(
-        'commits with Enter and the %s held in the message box',
+        'commits and pushes with Enter and the %s held in the message box',
         async modifier => {
             await start();
 
@@ -312,8 +351,10 @@ describe('the commit box', () => {
                 ['notes.md', 'src/booking/price.ts', 'src/limits.ts'],
                 'chore: notes'
             );
-            // The shortcut is Commit and no more: the branch is sent only from the menu's entry.
-            expect(push).not.toHaveBeenCalled();
+            expect(push).toHaveBeenCalledWith(FIXTURE_PROJECT_ID, PLACE, {
+                branch: 'clowdy/ab12cd34',
+                commit: expect.stringMatching(/^[0-9a-f]{40}$/),
+            });
         }
     );
 
@@ -347,7 +388,7 @@ describe('the commit box', () => {
 
         expect(box()?.textContent).toContain('0 of 3');
         expect(commitButton()?.disabled).toBe(true);
-        expect(buttonOf('Generate')?.disabled).toBe(true);
+        expect(generateButton()?.disabled).toBe(true);
 
         await press(tickOf('notes.md'));
         expect(everyTick().indeterminate).toBe(true);
@@ -357,7 +398,7 @@ describe('the commit box', () => {
         expect(checkboxes().every(tick => tick.checked)).toBe(true);
     });
 
-    it('has no Generate button while no agent has Commit messages on and is signed in', async () => {
+    it('opens Source Control from Generate when the provider is off', async () => {
         await start({
             tweak: data => {
                 const codex = data.agents.find(agent => agent.id === 'codex')!;
@@ -366,11 +407,16 @@ describe('the commit box', () => {
             },
         });
 
-        expect(buttonOf('Generate')).toBeUndefined();
+        const generate = vi.spyOn(transport, 'generateGitMessage');
+
+        await press(generateButton()!);
+
+        expect([store.ui.settingsOpen, store.ui.settingsPage]).toEqual([true, 'source-control']);
+        expect(generate).not.toHaveBeenCalled();
         expect(commitButton()).toBeDefined();
     });
 
-    it('has the Generate button while Claude Code alone has Commit messages on and is signed in, and not once it is off too', async () => {
+    it('generates a message when Claude Code is the only provider with Commit messages on', async () => {
         const setting = (data: FixtureData, id: string, value: boolean) => {
             const agent = data.agents.find(candidate => candidate.id === id)!;
 
@@ -383,30 +429,26 @@ describe('the commit box', () => {
                 setting(data, 'claude', true);
             },
         });
-        expect(buttonOf('Generate')).toBeDefined();
+        await press(generateButton()!);
+        await settle();
 
-        act(() => root.unmount());
-        stop();
-        store.dispose();
-        root = createRoot(container);
-        await start({
-            tweak: data => {
-                setting(data, 'codex', false);
-                setting(data, 'claude', true);
-                data.agents.find(agent => agent.id === 'claude')!.signIn = { status: 'signed-out', checkedAt: 1 };
-            },
-        });
-        expect(buttonOf('Generate')).toBeUndefined();
+        expect(message().value).not.toBe('');
+        expect(store.ui.settingsOpen).toBe(false);
     });
 
-    it('has no Generate button for an agent that is signed out', async () => {
+    it('opens Source Control from Generate when the selected provider is signed out', async () => {
         await start({
             tweak: data => {
                 data.agents.find(agent => agent.id === 'codex')!.signIn = { status: 'signed-out', checkedAt: 1 };
             },
         });
 
-        expect(buttonOf('Generate')).toBeUndefined();
+        const generate = vi.spyOn(transport, 'generateGitMessage');
+
+        await press(generateButton()!);
+
+        expect([store.ui.settingsOpen, store.ui.settingsPage]).toEqual([true, 'source-control']);
+        expect(generate).not.toHaveBeenCalled();
     });
 
     it('says that the list holds only the first files when the daemon cut it, since the rest cannot be ticked', async () => {
@@ -439,7 +481,7 @@ describe('the commit box', () => {
 
     it('keeps an editable message and a disabled commit button after committing every file', async () => {
         await start();
-        await press(buttonOf('Generate')!);
+        await press(generateButton()!);
         await settle();
         await press(commitButton()!);
         await settle();
@@ -464,7 +506,7 @@ describe('the commit box', () => {
         expect(message().value).toBe('Draft for the next change');
         expect(commitButton()?.textContent).toBe('Commit 0 files');
         expect(commitButton()?.disabled).toBe(true);
-        expect(buttonOf('Generate')?.disabled).toBe(true);
+        expect(generateButton()?.disabled).toBe(true);
 
         act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', shiftKey: true })));
         expect(commitButton()?.textContent).toBe('Commit 0 files');
@@ -489,10 +531,110 @@ describe('the commit box', () => {
         try {
             await start({ key: { projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental' } });
 
-            expect(box()?.textContent).toContain('0 changed files');
+            expect(box()?.textContent).toContain('No staged files');
             expect(message().value).toBe('Merge main');
-            expect(commitButton()?.textContent).toBe('Commit merge');
-            expect(commitButton()?.disabled).toBe(false);
+            expect(buttonOf('Complete merge & Push')?.disabled).toBe(false);
+        } finally {
+            status.mockRestore();
+        }
+    });
+
+    it('separates unmerged files from the index and prevents completing the merge until resolved', async () => {
+        const read = FixtureTransport.prototype.getGitStatus;
+        let resolved = false;
+        let truncated = false;
+        const status = vi.spyOn(FixtureTransport.prototype, 'getGitStatus').mockImplementation(async function (
+            this: FixtureTransport,
+            ...args: Parameters<typeof read>
+        ) {
+            const result = await read.apply(this, args);
+
+            if (!result.isRepository) return result;
+
+            if (truncated) {
+                return {
+                    ...result,
+                    merging: { conflicts: 2, subject: 'Merge main' },
+                    truncated: true,
+                    entries: [{ path: 'src/limits.ts', unstaged: 'conflicted' }],
+                };
+            }
+
+            return {
+                ...result,
+                merging: { conflicts: resolved ? 0 : 1, subject: 'Merge main' },
+                entries: [
+                    { path: 'notes.md', untracked: true },
+                    { path: 'src/booking/price.ts', staged: 'modified' },
+                    resolved
+                        ? { path: 'src/limits.ts', staged: 'modified' }
+                        : { path: 'src/limits.ts', unstaged: 'conflicted' },
+                ],
+            };
+        });
+
+        try {
+            await start();
+            const commit = vi.spyOn(transport, 'commitGit');
+            const list = (label: string) => box()?.querySelector(`[role="grid"][aria-label="${label}"]`);
+            const conflictTick = tickOf('src/limits.ts');
+            const stagedTick = tickOf('src/booking/price.ts');
+            const conflictRow = conflictTick.closest('[role="row"]')!;
+            const stagedRow = stagedTick.closest('[role="row"]')!;
+
+            expect(list('Conflicting files')?.contains(conflictRow)).toBe(true);
+            expect(list('Files to commit')?.contains(stagedRow)).toBe(true);
+            expect(list('Files to commit')?.textContent).not.toMatch(/limits\.ts|notes\.md/);
+            expect(conflictRow.textContent).toContain('limits.ts');
+            expect(box()?.querySelector('details')).toBeNull();
+            expect(buttonOf('Abort merge')).toBeDefined();
+            expect(checkboxes()).toHaveLength(3);
+            expect(conflictTick.checked).toBe(false);
+            expect(stagedTick.checked).toBe(true);
+            await press(conflictTick);
+            await press(stagedTick);
+            expect(conflictTick.checked).toBe(false);
+            expect(stagedTick.checked).toBe(true);
+            await press(stagedRow);
+            expect(model.revealRequest).toBe('src/booking/price.ts');
+            await press(conflictRow);
+            expect(model.effectiveScope).toBe('uncommitted');
+            expect(model.revealRequest).toBe('src/limits.ts');
+            await type('Merge both changes');
+            expect(buttonOf('Complete merge')?.disabled).toBe(true);
+            await act(async () => {
+                message().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true }));
+            });
+            expect(commit).not.toHaveBeenCalled();
+
+            truncated = true;
+            act(() => gitFactsOf(transport).refresh(KEY));
+            await settle();
+            expect(box()?.textContent).toContain('1 of 2');
+            expect(box()?.textContent).toContain('Showing merge files from the first 1 changed files');
+            expect(box()?.textContent).not.toContain('No staged files');
+            expect(buttonOf('Complete merge')?.disabled).toBe(true);
+
+            truncated = false;
+            resolved = true;
+            act(() => gitFactsOf(transport).refresh(KEY));
+            await settle();
+            expect(list('Conflicting files')).toBeNull();
+            expect(list('Files to commit')?.textContent).toContain('limits.ts');
+            expect(tickOf('src/limits.ts').checked).toBe(true);
+            expect(box()?.textContent).not.toContain('Conflicts resolved');
+            expect(buttonOf('Abort merge')).toBeUndefined();
+            expect(buttonOf('Complete merge & Push')?.disabled).toBe(false);
+            const push = vi.spyOn(transport, 'pushGit');
+            await press(buttonOf('Complete merge & Push')!);
+            await settle();
+            expect(commit).toHaveBeenCalledWith(FIXTURE_PROJECT_ID, PLACE, expect.any(Array), 'Merge both changes', {
+                conclude: true,
+            });
+            expect(push).toHaveBeenCalledWith(FIXTURE_PROJECT_ID, PLACE, {
+                branch: 'clowdy/ab12cd34',
+                commit: expect.stringMatching(/^[0-9a-f]{40}$/),
+            });
         } finally {
             status.mockRestore();
         }
@@ -530,6 +672,7 @@ describe('Commit & Push', () => {
 
     /** Opens the menu beside Commit. */
     async function openMenu() {
+        act(() => sourceControlPreferences.setAutoPush(false));
         await press(more());
         await settle();
     }
@@ -557,7 +700,10 @@ describe('Commit & Push', () => {
             'feat: surcharge'
         );
         expect(push).toHaveBeenCalledTimes(1);
-        expect(push).toHaveBeenCalledWith(FIXTURE_PROJECT_ID, PLACE);
+        expect(push).toHaveBeenCalledWith(FIXTURE_PROJECT_ID, PLACE, {
+            branch: 'clowdy/ab12cd34',
+            commit: expect.stringMatching(/^[0-9a-f]{40}$/),
+        });
         expect(message().value).toBe('');
         expect(commitButton()?.textContent).toBe('Commit 0 files');
         expect(alert()).toBeNull();
@@ -628,7 +774,34 @@ describe('Commit & Push', () => {
         expect(commit).not.toHaveBeenCalled();
     });
 
-    it('commits as Commit does when it is the Commit button that is pressed', async () => {
+    it.each(['Shift', 'menu'])('allows a one-time local commit through %s with automatic push on', async control => {
+        await start();
+        await type('feat: surcharge');
+
+        const push = vi.spyOn(transport, 'pushGit');
+
+        if (control === 'Shift') {
+            act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', shiftKey: true })));
+            expect(commitButton()?.textContent).toBe('Commit 3 files');
+            await press(commitButton()!, true);
+            act(() => window.dispatchEvent(new KeyboardEvent('keyup', { key: 'Shift' })));
+        } else {
+            await press(more());
+            const local = [...document.querySelectorAll('[role="menuitem"]')].find(
+                item => item.textContent?.trim() === 'Commit locally'
+            );
+            expect(local).toBeDefined();
+            await press(local!);
+        }
+        await settle();
+
+        expect(push).not.toHaveBeenCalled();
+        expect(message().value).toBe('');
+        expect(sourceControlPreferences.autoPush).toBe(true);
+    });
+
+    it('commits locally when automatic push is off', async () => {
+        sourceControlPreferences.setAutoPush(false);
         await start();
         await type('feat: surcharge');
 
@@ -645,7 +818,8 @@ describe('Commit & Push', () => {
 describe('the commit button and the line under the box', () => {
     const reasonStop = () => container.querySelector<HTMLElement>('[role="button"][aria-disabled="true"]');
 
-    it('counts the selected files', async () => {
+    it('counts the selected files for a local commit', async () => {
+        sourceControlPreferences.setAutoPush(false);
         await start();
 
         expect(commitButton()?.textContent).toBe('Commit 3 files');
@@ -657,7 +831,8 @@ describe('the commit button and the line under the box', () => {
         expect(commitButton()?.textContent).toBe('Commit 0 files');
     });
 
-    it('switches the contrast button to Commit & Push while Shift is held', async () => {
+    it('switches the contrast button to Commit & Push while Shift is held and automatic push is off', async () => {
+        sourceControlPreferences.setAutoPush(false);
         await start();
         await type('feat: surcharge');
         const commit = vi.spyOn(transport, 'commitGit');
@@ -707,7 +882,7 @@ describe('the commit button and the line under the box', () => {
         expect(reasonStop()?.contains(commitButton()!)).toBe(true);
         // One tab stop that reads out what the button is, and the reason is its description.
         expect(reasonStop()?.getAttribute('tabindex')).toBe('0');
-        expect(reasonStop()?.getAttribute('aria-label')).toBe('Commit 3 files');
+        expect(reasonStop()?.getAttribute('aria-label')).toBe('Commit & Push');
 
         await type('feat: surcharge');
         expect(draft.commitReason).toBeUndefined();
@@ -734,7 +909,6 @@ describe('the commit button and the line under the box', () => {
             },
         });
 
-        expect(commitButton()?.textContent).toBe('Commit 3 files');
         expect(container.querySelector('[role="note"]')?.textContent).toBe('Committing to main, the base branch');
     });
 });
@@ -743,13 +917,7 @@ describe('a push that origin turned down for newer commits, after a commit', () 
     it("has a Fetch origin button beside git's line, which fetches and takes the line away; the sidebar's button then says what to do", async () => {
         await start({ gitWrites: { remote: 'rejected' } });
         await type('feat: surcharge');
-        await press(container.querySelector<HTMLButtonElement>('button[aria-label="More ways to commit"]')!);
-        await settle();
-        await press(
-            [...document.querySelectorAll<HTMLElement>('[role="menu"] [role="menuitem"]')].find(item =>
-                item.textContent?.includes('Commit & Push')
-            )!
-        );
+        await press(commitButton()!);
         await settle();
         await settle();
 
@@ -777,13 +945,7 @@ describe('a push that origin turned down for newer commits, after a commit', () 
     it('has no Fetch origin button beside a push that failed for another cause', async () => {
         await start({ gitWrites: { remote: 'signing' } });
         await type('feat: surcharge');
-        await press(container.querySelector<HTMLButtonElement>('button[aria-label="More ways to commit"]')!);
-        await settle();
-        await press(
-            [...document.querySelectorAll<HTMLElement>('[role="menu"] [role="menuitem"]')].find(item =>
-                item.textContent?.includes('Commit & Push')
-            )!
-        );
+        await press(commitButton()!);
         await settle();
         await settle();
 
@@ -831,7 +993,6 @@ describe('the draft of a commit', () => {
         const generateGitMessage = vi.fn(async () => ({ message: 'feat: written' }));
         const refresh = vi.fn();
         const remote = {
-            busy: false,
             run: vi.fn(
                 async (action: RemoteActionId, _options?: { report?: boolean }): Promise<RemoteOutcome> => ({
                     ok: true,
@@ -890,7 +1051,10 @@ describe('the draft of a commit', () => {
         pushed.draft.setMessage('feat: add');
         await pushed.draft.commit(true);
 
-        expect(pushed.remote.run).toHaveBeenCalledWith('push', { report: false });
+        expect(pushed.remote.run).toHaveBeenCalledWith('push', {
+            report: false,
+            expectedHead: { branch: 'feature', commit: 'a'.repeat(40) },
+        });
         expect(pushed.draft.failure).toBeUndefined();
         expect(pushed.draft.message).toBe('');
         expect(pushed.refresh).toHaveBeenCalledTimes(1);
@@ -899,7 +1063,10 @@ describe('the draft of a commit', () => {
 
         published.draft.setMessage('feat: add');
         await published.draft.commit(true);
-        expect(published.remote.run).toHaveBeenCalledWith('publish', { report: false });
+        expect(published.remote.run).toHaveBeenCalledWith('publish', {
+            report: false,
+            expectedHead: { branch: 'feature', commit: 'a'.repeat(40) },
+        });
         expect(published.draft.failure).toBeUndefined();
     });
 
@@ -955,7 +1122,7 @@ describe('the draft of a commit', () => {
         expect(slow.draft.busy).toBeUndefined();
     });
 
-    it('does not commit and push where the push would not be taken, and while another action of the place runs', async () => {
+    it('offers a local commit when the branch must pull before pushing', async () => {
         const behind = draftOver(['a.ts'], { upstream: { name: 'origin/feature', ahead: 0, behind: 2 } });
 
         behind.draft.setMessage('feat: add');
@@ -966,15 +1133,6 @@ describe('the draft of a commit', () => {
         // A plain commit is still there.
         await behind.draft.commit();
         expect(behind.commitGit).toHaveBeenCalledTimes(1);
-
-        const busy = draftOver(['a.ts']);
-
-        busy.draft.setMessage('feat: add');
-        expect(busy.draft.canCommitAndPush).toBe(true);
-        busy.remote.busy = true;
-        expect(busy.draft.pushBlock).toBe('An action is running');
-        await busy.draft.commit(true);
-        expect(busy.commitGit).not.toHaveBeenCalled();
     });
 
     it('does nothing when it may not: no message, nothing ticked, or while something is going on', async () => {

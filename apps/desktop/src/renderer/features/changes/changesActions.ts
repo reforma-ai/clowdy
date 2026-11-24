@@ -7,8 +7,8 @@ type RepositoryStatus = Extract<GitStatus, { isRepository: true }>;
 const ORIGIN = 'origin';
 
 /**
- * What the sidebar can run. The menu offers the first four (publishing is pushing a branch that has no upstream yet, so it is one call of the transport, `remoteCall`). `update` merges the base
- * into the branch, and `abort` undoes a merge that stopped.
+ * What the sidebar can run. Publishing pushes a branch that has no upstream yet, `update` merges the base into the branch,
+ * and `abort` undoes a merge that stopped.
  */
 export type RemoteActionId = 'fetch' | 'pull' | 'push' | 'publish' | 'update' | 'abort';
 
@@ -145,6 +145,8 @@ export type SyncKind =
     | 'pull'
     /** The branch has commits origin lacks. */
     | 'push'
+    /** The branch is behind its base and there is no upstream action to take first. */
+    | 'update'
     /** Nothing to move: look for what is new. */
     | 'fetch';
 
@@ -173,12 +175,8 @@ export interface SyncView {
 const lowered = (text: string): string => text.charAt(0).toLowerCase() + text.slice(1);
 
 /**
- * The one button of the sidebar that moves the branch, in GitHub Desktop's order: **running** (the action's progress, and it cannot be pressed), **no origin** (nothing to sync with),
- * **detached HEAD** or a **branch with no commit** (`Publish branch`, off with the reason), **no upstream**, one that is gone or one **under another name than the branch's** (`Publish branch`;
- * the last says `Tracks origin/main`, since a push would go there), **an upstream that is not on origin** (`Fetch origin` is all that works), **behind** (`Pull origin` with the count, which
- * merges when the branch also has commits of its own), **ahead** (`Push origin` with the count) and last, level, **`Fetch origin`**. The line under the label says when the last fetch was
- * where the counts are as old as it, and what else there is to know where they are not. The dropdown beside it keeps every action with its reason (`remoteActions`). Nothing for a place
- * that is not a repository.
+ * Show progress while an action runs and explain when sync is unavailable. Offer Publish for an unpublished branch, then Pull or Push
+ * for changes against its upstream on origin. When none of those actions applies, offer Update if the base is ahead, or Fetch otherwise.
  */
 export function syncButton(
     status: GitStatus | undefined,
@@ -227,16 +225,6 @@ export function syncButton(
     const tracking = trackingOf(status);
     const fetched = lastFetchedWords(status.lastFetchedAt, now);
 
-    // What the branch tracks is not on origin: the daemon refuses to pull, push or publish it, so Fetch origin is all that works.
-    if (tracking.kind === 'foreign')
-        return {
-            kind: 'fetch',
-            label: 'Fetch origin',
-            line: foreignWords(tracking.upstream),
-            action: 'fetch',
-            title: `${foreignWords(tracking.upstream)}: pull, push and publish are off, ${lowered(fetched)}`,
-        };
-
     if (tracking.kind === 'none')
         return {
             kind: 'publish',
@@ -266,30 +254,50 @@ export function syncButton(
             title: `${head.name} tracks ${tracking.upstream.name}, which a push would send it to: publish it as ${ORIGIN}/${head.name} instead`,
         };
 
-    const { upstream: published } = tracking;
+    const { upstream } = tracking;
 
-    if (published.behind > 0)
+    if (tracking.kind === 'published' && upstream.behind > 0)
         return {
             kind: 'pull',
             label: 'Pull origin',
             line: fetched,
-            behind: published.behind,
-            ...(published.ahead > 0 && { ahead: published.ahead }),
+            behind: upstream.behind,
+            ...(upstream.ahead > 0 && { ahead: upstream.ahead }),
             action: 'pull',
             title:
-                published.ahead > 0
-                    ? `Pull origin merges what ${published.name} has. This branch keeps its own, ${lowered(fetched)}.`
-                    : `Pull origin: ${commitsWords(published.behind)} to take from ${published.name}, ${lowered(fetched)}`,
+                upstream.ahead > 0
+                    ? `Pull origin merges what ${upstream.name} has. This branch keeps its own, ${lowered(fetched)}.`
+                    : `Pull origin: ${commitsWords(upstream.behind)} to take from ${upstream.name}, ${lowered(fetched)}`,
         };
 
-    if (published.ahead > 0)
+    if (tracking.kind === 'published' && upstream.ahead > 0)
         return {
             kind: 'push',
             label: 'Push origin',
             line: fetched,
-            ahead: published.ahead,
+            ahead: upstream.ahead,
             action: 'push',
-            title: `Push origin: ${commitsWords(published.ahead)} to send to ${published.name}, ${lowered(fetched)}`,
+            title: `Push origin: ${commitsWords(upstream.ahead)} to send to ${upstream.name}, ${lowered(fetched)}`,
+        };
+
+    const update = updateFromBase(status);
+
+    if (update)
+        return {
+            kind: 'update',
+            label: update.label,
+            line: tracking.kind === 'foreign' ? foreignWords(upstream) : fetched,
+            action: 'update',
+            title: update.label,
+        };
+
+    if (tracking.kind === 'foreign')
+        return {
+            kind: 'fetch',
+            label: 'Fetch origin',
+            line: foreignWords(upstream),
+            action: 'fetch',
+            title: `${foreignWords(upstream)}: pull, push and publish are off, ${lowered(fetched)}`,
         };
 
     return {
@@ -297,50 +305,24 @@ export function syncButton(
         label: 'Fetch origin',
         line: fetched,
         action: 'fetch',
-        title: `Fetch origin to look for new commits: ${published.name} is up to date, ${lowered(fetched)}`,
+        title: `Fetch origin to look for new commits: ${upstream.name} is up to date, ${lowered(fetched)}`,
     };
 }
 
-/** The result line after a branch action. A successful fetch is shown by the timestamp in the button. */
-export function remoteNotice(result: GitRemoteResult): { words: string; tone?: 'warning' } | undefined {
-    if (result.state === 'conflicts') {
-        const { conflicts } = result;
+/** A conflict can be reported before the refreshed status reaches the commit section. Successful actions need no separate line. */
+export function remoteNotice(result: GitRemoteResult): { words: string; tone: 'warning' } | undefined {
+    if (result.state !== 'conflicts' || result.conflicts === 0) return undefined;
 
-        return {
-            words:
-                conflicts === 0
-                    ? 'Conflicts resolved, commit the merge'
-                    : conflicts === 1
-                      ? '1 conflict'
-                      : `${conflicts} conflicts`,
-            tone: 'warning',
-        };
-    }
+    const { conflicts } = result;
 
-    switch (result.action) {
-        case 'fetch':
-            return undefined;
-        case 'pull':
-            return {
-                words: result.merged
-                    ? `Merged ${commitsWords(result.pulled ?? 0)}`
-                    : result.pulled
-                      ? `Pulled ${commitsWords(result.pulled)}`
-                      : 'Already up to date',
-            };
-        case 'update':
-            return {
-                words: result.pulled ? `Updated with ${commitsWords(result.pulled)}` : 'Already up to date',
-            };
-        case 'abort':
-            return { words: 'Aborted the merge' };
-        default:
-            return { words: result.published ? 'Published to origin' : 'Pushed to origin' };
-    }
+    return {
+        words: conflicts === 1 ? '1 conflict' : `${conflicts} conflicts`,
+        tone: 'warning',
+    };
 }
 
 /**
- * Why Commit & Push is not offered, as a few words; nothing when it is: there is no `origin`, HEAD is on no branch, a merge is in progress, the branch tracks something that is not on `origin`,
+ * Why Commit & Push is not offered, as a few words; nothing when it is: there is no `origin`, HEAD is on no branch, a merge has unresolved conflicts, the branch tracks something that is not on `origin`,
  * or its upstream has commits that it lacks (the push after the commit would be rejected, so it is pulled first). A branch with no commit yet is fine: the commit is its first, and publishing
  * it comes after.
  */
@@ -351,14 +333,15 @@ export function commitAndPushBlock(status: GitStatus | undefined): string | unde
 
     if (status.head.kind === 'detached') return 'HEAD is detached';
 
-    if (status.merging) return 'A merge is in progress';
+    if ((status.merging?.conflicts ?? 0) > 0) return 'A merge is in progress';
 
     const tracking = trackingOf(status);
 
     if (tracking.kind === 'foreign') return foreignWords(tracking.upstream);
 
     // A branch that is not published is published by the push after the commit.
-    if (tracking.kind !== 'published') return undefined;
+    // Finishing a merge can bring in the upstream commits missing from the current HEAD.
+    if (tracking.kind !== 'published' || status.merging) return undefined;
 
     const { upstream: published } = tracking;
 
@@ -397,32 +380,22 @@ export function githubBaseName(base: GitBase | undefined): string | undefined {
  * Update from the base, when the branch is behind the branch it is compared with and is not that branch. Nothing while a merge is in progress (the banner owns that), on a detached HEAD,
  * and when the base is not behind.
  */
-export function updateFromBase(status: GitStatus | undefined): { label: string } | undefined {
+export function updateFromBase(status: GitStatus | undefined): { label: string; behind: number } | undefined {
     if (status?.isRepository !== true || status.merging || status.head.kind !== 'branch') return undefined;
 
-    const name = githubBaseName(status.base);
+    const { base, head } = status;
+    const name = githubBaseName(base);
 
-    if (status.base.state !== 'ready' || status.base.behind === 0 || name === undefined || name === status.head.name)
+    if (
+        base.state !== 'ready' ||
+        base.behind === 0 ||
+        name === undefined ||
+        name === head.name ||
+        base.name === head.name
+    )
         return undefined;
 
-    return { label: `Update from ${name}` };
-}
-
-/** What the banner says while a merge is in progress. `ask` is offered while paths are still conflicted. Nothing when no merge is. */
-export function mergeBanner(status: GitStatus | undefined): { words: string; ask: boolean } | undefined {
-    if (status?.isRepository !== true || !status.merging) return undefined;
-
-    const { conflicts } = status.merging;
-
-    return {
-        ask: conflicts > 0,
-        words:
-            conflicts === 0
-                ? 'Conflicts resolved, commit the merge'
-                : conflicts === 1
-                  ? '1 conflict'
-                  : `${conflicts} conflicts`,
-    };
+    return { label: `Update from ${name}`, behind: base.behind };
 }
 
 /** Whether the published branch can be proposed against the base shown in Changes. */

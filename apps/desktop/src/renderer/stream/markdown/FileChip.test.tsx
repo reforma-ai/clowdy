@@ -81,6 +81,7 @@ beforeEach(async () => {
     vi.mocked(kindOnDisk).mockReset();
     vi.mocked(kindOnDisk).mockResolvedValue('file');
     toasts.success.mockClear();
+    toasts.error.mockClear();
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
     store = new RootStore(new FixtureTransport());
     await store.load();
@@ -138,6 +139,7 @@ describe('FileChip', () => {
         await settle();
 
         expect(items()).toEqual(MENU);
+        expect(toasts.error).toHaveBeenCalledWith({ message: 'Couldn’t open this path' });
     });
 
     it('says the file does not exist, with the copies of its path and nothing else, when the disk has nothing there', async () => {

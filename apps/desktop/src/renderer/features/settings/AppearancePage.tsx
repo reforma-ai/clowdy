@@ -6,6 +6,7 @@ import { useState } from 'react';
 
 import { getTheme, setTheme } from '../../theme';
 import styles from './AppearancePage.module.css';
+import { PanelOrderSettings } from './PanelOrderSettings';
 import { ThemePreview } from './ThemePreview';
 import { SettingsCard } from './ui/SettingsCard';
 import { SettingsPage } from './ui/SettingsPage';
@@ -63,6 +64,7 @@ export function AppearancePage() {
                     </SettingsRow>
                 </SettingsCard>
             </SettingsSection>
+            <PanelOrderSettings />
         </SettingsPage>
     );
 }

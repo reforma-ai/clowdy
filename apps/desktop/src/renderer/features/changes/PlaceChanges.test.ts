@@ -1,5 +1,5 @@
 import { commitScope, turnScope } from '@clowdy/protocol';
-import { runInAction } from 'mobx';
+import { reaction, runInAction } from 'mobx';
 import { describe, expect, it, vi } from 'vitest';
 
 import { FIXTURE_GIT_COMMITS } from '../../daemon/fixtureData';
@@ -188,6 +188,28 @@ describe('the list of the scope', () => {
         // A retry reads whatever the round is.
         model.reload();
         expect(transport.getGitChanges).toHaveBeenCalledTimes(4);
+    });
+
+    it('keeps the objects of the files that a new round finds the same, so their cards are not drawn again', async () => {
+        let files = [file('a.ts'), file('b.ts')];
+        const transport = transportOf({ all: () => list('all', structuredClone(files)) });
+        const { model } = await modelOf(transport);
+
+        model.sync(1);
+        await tick();
+
+        const first = model.changes;
+
+        model.sync(2);
+        await tick();
+        expect(model.changes).toBe(first);
+
+        files = [file('a.ts'), file('b.ts', 'r2')];
+        model.sync(3);
+        await tick();
+        expect(model.changes).not.toBe(first);
+        expect(model.files[0]).toBe(first?.files[0]);
+        expect(model.files[1]?.revision).toBe('r2');
     });
 
     it("follows the facts' rounds: a refresh of the store reaches it through the generation, with no timer of its own", async () => {
@@ -624,6 +646,34 @@ describe('the viewed files', () => {
         expect(model.isFolded('src/b.ts')).toBe(false);
     });
 
+    it("are read by a card for its own file alone: a tick or a fold of another file does not reach it, and the card's file is told as the list has it", async () => {
+        const { model } = await viewedModel([{ path: 'src/a.ts', revision: 'r1' }]);
+        const [, a, b] = model.files;
+        const seen: string[] = [];
+        let reads = 0;
+        // The reads are counted, not only the answers: a card is drawn again whenever what it read changes, even when it comes to the same.
+        const stop = reaction(
+            () => {
+                reads++;
+
+                return `viewed ${model.isViewed(b!)}, folded ${model.isFolded(b!)}`;
+            },
+            value => seen.push(value)
+        );
+
+        expect([model.isViewed(a!), model.isFolded(a!)]).toEqual([true, true]);
+
+        await model.setViewed(a!, false);
+        model.toggleFolded(a!);
+        model.toggleFolded(a!);
+        expect(seen).toEqual([]);
+        expect(reads).toBe(1);
+
+        await model.setViewed(b!, true);
+        expect(seen).toEqual(['viewed true, folded true']);
+        stop();
+    });
+
     it('put the tick and the card back as they were when the daemon refuses, and say so', async () => {
         const { model, transport } = await viewedModel([{ path: 'src/b.ts', revision: 'r1' }]);
 
@@ -673,6 +723,25 @@ describe('the viewed files', () => {
 
         model.setHideViewed(false);
         expect(model.files.map(entry => entry.path)).toEqual(['src/a.ts', 'src/b.ts']);
+    });
+
+    it('let a file asked for from the commit box through: the hidden viewed files and the filter give way, and a scope without it gives way to the uncommitted one', async () => {
+        const { model } = await viewedModel([{ path: 'src/a.ts', revision: 'r1' }]);
+
+        model.setHideViewed(true);
+        model.setFilter('*.md');
+        model.showFile('src/a.ts');
+        expect([model.effectiveScope, model.filter, model.hideViewed, model.revealRequest]).toEqual([
+            'all',
+            '',
+            false,
+            'src/a.ts',
+        ]);
+
+        model.setFilter('src/**');
+        model.pickCommit(NEWEST.sha);
+        model.showFile('src/a.ts');
+        expect([model.effectiveScope, model.filter]).toEqual(['uncommitted', 'src/**']);
     });
 
     it('drop a card from the list as soon as its file is ticked while they are hidden, and show it again when the tick is taken back', async () => {

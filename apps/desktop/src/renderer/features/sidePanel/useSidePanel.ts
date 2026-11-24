@@ -32,7 +32,7 @@ export function useSidePanel(): SidePanelControl {
         available: ui !== undefined,
         railShown: root.phase === 'ready',
         open: ui?.sidePanelOpen === true,
-        tab: ui?.sidePanelTab ?? 'info',
+        tab: ui?.sidePanelTab ?? 'files',
         expanded: ui?.sidePanelCoversChat === true,
         noHalf: ui?.sidePanelNoHalf ?? null,
         tabHasTree: ui?.sidePanelTabHasTree === true,

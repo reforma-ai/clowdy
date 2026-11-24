@@ -56,6 +56,42 @@ function pipe(access: ReturnType<ToolBridge['register']>) {
 }
 
 describe('the MCP server an agent starts', () => {
+    test('forwards a question as an elicitation and returns the answer', async () => {
+        const access = bridge.register([tool('ask_user', async () => 'unused')], new AbortController().signal, true);
+        const mcp = pipe(access);
+        mcp.send({ id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {} } });
+        mcp.send({
+            id: 2,
+            method: 'tools/call',
+            params: { name: 'ask_user', arguments: { question: 'Choose?', options: [{ id: 'a', label: 'A' }] } },
+        });
+        await until(() => mcp.received().length === 2, 'elicitation request');
+        const request = mcp.received()[1] as any;
+        expect(request.method).toBe('elicitation/create');
+        expect(JSON.parse(request.params.requestedSchema.properties.clowdy_answer.description).question).toBe(
+            'Choose?'
+        );
+        mcp.send({ id: request.id, result: { action: 'accept', content: { clowdy_answer: 'A' } } });
+        await until(() => mcp.received().length === 3, 'tool answer');
+        expect(mcp.received()[2].result.content[0].text).toBe('{"answer":"A"}');
+        await mcp.finish();
+        access.dispose();
+    });
+
+    test('ends a pending elicitation when the agent disconnects', async () => {
+        const access = bridge.register([tool('ask_user', async () => 'unused')], new AbortController().signal, true);
+        const mcp = pipe(access);
+        mcp.send({
+            id: 1,
+            method: 'tools/call',
+            params: { name: 'ask_user', arguments: { question: 'Choose?', options: [{ id: 'a', label: 'A' }] } },
+        });
+        await until(() => mcp.received().length === 1, 'elicitation request');
+        await mcp.finish();
+        expect(mcp.received()).toHaveLength(2);
+        access.dispose();
+    });
+
     test("answers initialize, ping and tools/list with the session's tools", async () => {
         const access = bridge.register(
             [tool('task_list', async () => 'ok'), tool('task_get', async () => 'ok')],

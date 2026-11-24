@@ -1,12 +1,13 @@
+import { openNewChat } from '../features/agents/openNewChat';
 import { SETTINGS_COMMAND, SETTINGS_KEYS } from '../features/settings/commands';
 import {
     SIDE_PANEL_COMMAND,
     SIDE_PANEL_EXPAND_COMMAND,
     SIDE_PANEL_EXPAND_KEYS,
     SIDE_PANEL_KEYS,
-    SIDE_PANEL_TAB_KEYS,
     SIDE_PANEL_TAB_LABELS,
     sidePanelTabCommand,
+    sidePanelTabKeys,
     TERMINAL_COMMAND,
     TERMINAL_KEYS,
 } from '../features/sidePanel';
@@ -24,13 +25,16 @@ const FORWARD_KEYS = '$mod+BracketRight';
 
 /** What the shell's commands need of the root store. */
 export interface ShellCommandsRoot
-    extends Pick<RootStore, 'phase' | 'selectedProjectId' | 'selectedProjectUi' | 'showsProjectScreen' | 'ui'> {
+    extends Pick<
+        RootStore,
+        'phase' | 'selectedProject' | 'selectedProjectId' | 'selectedProjectUi' | 'showsProjectScreen' | 'ui'
+    > {
     history: Pick<NavHistory, 'back' | 'forward' | 'canGoBack' | 'canGoForward'>;
 }
 
 /**
  * The commands that work in the whole window, for `useCommands('app', …)`: the shortcuts page of Settings, `Cmd+,` for the Settings window, `Cmd+N` for a new chat, `Cmd+Esc` (`Ctrl+Shift+B` off a Mac) for
- * the side panel, `Cmd+Shift+Enter` (`Ctrl+Shift+Enter`) for its expanded view, `Ctrl+`` for its terminal, `Cmd+0` to `Cmd+5` for its tabs, and back and forward.
+ * the side panel, `Cmd+Shift+Enter` (`Ctrl+Shift+Enter`) for its expanded view, `Ctrl+`` for its terminal, `Cmd+1` to `Cmd+5` for its tabs in their current order, and back and forward.
  * `?` opens Settings on its Shortcuts page, once the window shows anything to open it over: while the app loads or cannot reach its daemon, the key reaches the page.
  * A new chat needs a selected project, and also leaves Settings.
  * `Cmd+N` shows the new-chat page, and works from a text field too: the message box is the place it is most wanted.
@@ -67,7 +71,7 @@ export function shellCommands(root: ShellCommandsRoot): ScopedCommand[] {
                 if (!root.selectedProjectId) return;
 
                 root.ui.closeSettings();
-                root.ui.forProject(root.selectedProjectId).openDraft();
+                openNewChat(root.selectedProject, root.ui.forProject(root.selectedProjectId));
             },
         },
         {
@@ -113,7 +117,7 @@ export function shellCommands(root: ShellCommandsRoot): ScopedCommand[] {
             id: sidePanelTabCommand(tab),
             title: `Toggle ${SIDE_PANEL_TAB_LABELS[tab]} in the side panel`,
             group: 'General',
-            keys: SIDE_PANEL_TAB_KEYS[tab],
+            keys: sidePanelTabKeys(tab),
             inInputs: true,
             when: () => root.showsProjectScreen,
             handler: () => {

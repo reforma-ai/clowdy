@@ -7,7 +7,16 @@ import {
 } from '@clowdy/protocol';
 
 import { getChat } from '../db/chats';
-import { findApproval, findQuestion, listOpenApprovals, listOpenThoughts, listRunningTools } from '../db/items';
+import {
+    findApproval,
+    findQuestion,
+    listOpenApprovals,
+    listOpenAssistantMessages,
+    listOpenQuestions,
+    listOpenThoughts,
+    listPendingQuestionAnswers,
+    listRunningTools,
+} from '../db/items';
 import { getProject } from '../db/projects';
 import {
     activeSubtree,
@@ -31,7 +40,7 @@ import { categoryOf, linkRunTask, moveTask, requireTask } from '../domain/tasks'
 import { conflict, errorMessage, invalid, notFound, unavailable } from '../errors';
 import { newId } from '../ids';
 import { EngineLimits } from './limits';
-import { killSurvivor, signalProcess } from './processes';
+import { killSurvivor, mayBeSameProcess, signalProcess } from './processes';
 import { QUEUE_REASON, Scheduler } from './scheduler';
 import { canTransition, NEEDS_REASON, STOPPED_TO_SEND_REASON } from './transitions';
 
@@ -91,6 +100,8 @@ export class RunService {
     readonly limits: EngineLimits;
     /** Called after the commit in which a chat's orchestrator changed status, with the run as it is now. */
     onOrchestratorStatus: (run: Run) => void = () => undefined;
+    /** Starts a new turn after a durable question is answered. */
+    onDurableAnswer: (runId: string) => void = () => undefined;
     /**
      * Prepares the request that asks the live session which owns the native sub-agent `run` to end it alone (the driver sets it), with the reason its run
      * will show. Answers the function that sends it, or `undefined` when the request cannot be made: the session is not live, cannot end that sub-agent, or
@@ -109,6 +120,7 @@ export class RunService {
     private answers = new Map<string, (answer: string) => void>();
     /** Runs with a question card open: a run asks one question at a time, because a reply wakes the run and a second open card could no longer be answered. */
     private asking = new Set<string>();
+    private questionCalls = new Map<string, { controller: AbortController; turnEnded: boolean }>();
     /**
      * What each run waits on the person for: how many questions and approvals are open, and whether the run is parked (`waiting_user`, which frees its
      * slot) on their account. The run goes back to work, taking a slot again, when the last one ends.
@@ -458,6 +470,65 @@ export class RunService {
 
     /* -------------------------------- Questions -------------------------------- */
 
+    prepareDurableQuestion(
+        runId: string,
+        question: { text: string; options: QuestionOption[]; recommended?: string }
+    ): string {
+        return this.store.tx(() => {
+            for (const item of listOpenQuestions(this.store.db, runId)) {
+                if (item.body.kind === 'question' && !item.body.durable && !this.answers.has(item.body.questionId)) {
+                    updateItem(this.store, runId, item.seq, { ...item.body, state: 'expired' });
+                } else {
+                    throw conflict('Another question is already open');
+                }
+            }
+            const questionId = newId('qst');
+            appendItem(this.store, runId, {
+                kind: 'question',
+                questionId,
+                ...question,
+                durable: true,
+                state: 'preparing',
+            });
+            return questionId;
+        });
+    }
+
+    activateDurableQuestion(runId: string, questionId: string): void {
+        this.store.tx(() => {
+            const item = findQuestion(this.store.db, runId, questionId);
+            if (!item || item.body.kind !== 'question' || item.body.state !== 'preparing')
+                throw conflict('Question is no longer pending');
+            const { state: _state, ...body } = item.body;
+            updateItem(this.store, runId, item.seq, body);
+            if (this.require(runId).status !== 'waiting_user') {
+                this.setStatus(runId, 'waiting_user', { reason: 'Waiting for your answer' });
+            }
+            this.setAwaitingUser(runId, true);
+        });
+    }
+
+    cancelPreparedQuestion(runId: string, questionId: string): void {
+        const item = findQuestion(this.store.db, runId, questionId);
+        if (item?.body.kind === 'question' && item.body.state === 'preparing') {
+            updateItem(this.store, runId, item.seq, { ...item.body, state: 'cancelled' });
+        }
+    }
+
+    /** Transfers an unanswered live call to a durable question when its agent moves on. */
+    prepareLiveQuestion(runId: string): string | undefined {
+        const call = this.questionCalls.get(runId);
+        if (!call) return undefined;
+        const item = listOpenQuestions(this.store.db, runId).find(
+            candidate => candidate.body.kind === 'question' && this.answers.has(candidate.body.questionId)
+        );
+        if (!item || item.body.kind !== 'question' || item.body.durable) return undefined;
+        updateItem(this.store, runId, item.seq, { ...item.body, durable: true, state: 'preparing' });
+        call.turnEnded = true;
+        call.controller.abort();
+        return item.body.questionId;
+    }
+
     /**
      * Puts a question card into the run's stream, parks the run in `waiting_user` until `answerQuestion` delivers
      * the user's reply, then takes a slot again. Returns the reply.
@@ -479,12 +550,17 @@ export class RunService {
         }
 
         const questionId = newId('qst');
+        const withdrawn = new AbortController();
+        const call = { controller: withdrawn, turnEnded: false };
+        const questionSignal = AbortSignal.any([signal, withdrawn.signal]);
         let counted = false;
         let parked = false;
-        let answer: string;
+        let answer = '';
 
         this.asking.add(runId);
+        this.questionCalls.set(runId, call);
 
+        let failure: unknown;
         try {
             // A question parks the run for certain: a run that cannot be parked has no business asking, so the change of status is not skipped as an approval's is.
             this.waitForPerson(
@@ -497,22 +573,46 @@ export class RunService {
 
             answer = await new Promise<string>((resolve, reject) => {
                 this.answers.set(questionId, resolve);
-                signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+                if (questionSignal.aborted) reject(questionSignal.reason);
+                else questionSignal.addEventListener('abort', () => reject(questionSignal.reason), { once: true });
             });
+        } catch (error) {
+            failure = error;
+            const item = findQuestion(this.store.db, runId, questionId);
+            if (
+                item?.body.kind === 'question' &&
+                item.body.answer === undefined &&
+                !(item.body.durable && item.body.state === 'preparing')
+            ) {
+                updateItem(this.store, runId, item.seq, { ...item.body, state: 'cancelled' });
+            }
         } finally {
             this.answers.delete(questionId);
             this.asking.delete(runId);
+            this.questionCalls.delete(runId);
 
             if (counted) {
                 parked = this.endWait(runId);
             }
         }
 
-        if (parked) {
-            await this.acquireSlot(runId, signal);
+        if (parked && !call.turnEnded) {
+            const liveSignal = failure === undefined ? signal : this.controllers.get(runId)?.signal;
+            if (liveSignal && !liveSignal.aborted) await this.acquireSlot(runId, liveSignal);
         }
 
+        if (failure !== undefined) throw failure;
+
         return answer;
+    }
+
+    /** The agent ended its turn without waiting for its question. */
+    withdrawQuestion(runId: string): void {
+        const call = this.questionCalls.get(runId);
+        if (call) {
+            call.turnEnded = true;
+            call.controller.abort();
+        }
     }
 
     /**
@@ -528,6 +628,15 @@ export class RunService {
         signal: AbortSignal
     ): Promise<ApprovalDecision | undefined> {
         if (signal.aborted || request.decisions.length === 0) {
+            return undefined;
+        }
+
+        // A durable question is being opened only after the agent has stopped; no new approval may outlive that stop.
+        if (
+            listOpenQuestions(this.store.db, runId).some(
+                item => item.body.kind === 'question' && item.body.durable && item.body.state === 'preparing'
+            )
+        ) {
             return undefined;
         }
 
@@ -593,8 +702,21 @@ export class RunService {
                 throw notFound('Question', questionId);
             }
 
+            if (item.body.state !== undefined) {
+                throw conflict('This question is no longer open');
+            }
+
             if (item.body.answer !== undefined) {
                 throw conflict('This question has already been answered');
+            }
+
+            if (item.body.durable) {
+                if (run.status !== 'waiting_user') throw conflict('The run is not waiting for an answer');
+                updateItem(this.store, runId, item.seq, { ...item.body, answer });
+                this.setAwaitingUser(runId, false);
+                this.resume(runId);
+                this.store.afterCommit(() => this.onDurableAnswer(runId));
+                return;
             }
 
             const resolve = this.answers.get(questionId);
@@ -671,6 +793,11 @@ export class RunService {
      */
     private waitForPerson(runId: string, reason: string, write: () => void, strict = false): void {
         const parked = this.store.tx(() => {
+            for (const item of listOpenQuestions(this.store.db, runId)) {
+                if (item.body.kind === 'question' && !this.answers.has(item.body.questionId)) {
+                    updateItem(this.store, runId, item.seq, { ...item.body, state: 'expired' });
+                }
+            }
             write();
 
             const { status } = this.require(runId);
@@ -788,6 +915,14 @@ export class RunService {
             const ids = activeSubtree(this.store.db, runId);
 
             for (const id of ids) {
+                for (const item of listOpenQuestions(this.store.db, id)) {
+                    if (item.body.kind === 'question' && item.body.durable)
+                        updateItem(this.store, id, item.seq, { ...item.body, state: 'cancelled' });
+                }
+                for (const item of listPendingQuestionAnswers(this.store.db, id)) {
+                    if (item.body.kind === 'question')
+                        updateItem(this.store, id, item.seq, { ...item.body, abandoned: true });
+                }
                 this.setStatus(id, 'cancelled', { reason });
             }
 
@@ -917,14 +1052,81 @@ export class RunService {
             clearAwaitingUser(this.store.db);
 
             const withProcess = new Set(listRunsWithProcess(this.store.db).map(entry => entry.runId));
+            const durableWaiting = new Set(
+                listActiveRuns(this.store.db)
+                    .filter(
+                        run =>
+                            run.status === 'waiting_user' &&
+                            !withProcess.has(run.id) &&
+                            listOpenQuestions(this.store.db, run.id).some(
+                                item =>
+                                    item.body.kind === 'question' &&
+                                    item.body.durable === true &&
+                                    item.body.state === undefined
+                            )
+                    )
+                    .map(run => run.id)
+            );
+            // A crash may land between preparing the card and confirming the session stopped. Open it only once recovery can prove the recorded process is gone.
+            for (const run of listActiveRuns(this.store.db)) {
+                if (!['running', 'waiting_user'].includes(run.status)) continue;
+                const process = getRunWork(this.store.db, run.id).process;
+                if (process && mayBeSameProcess(process)) continue;
+                const pending = listOpenQuestions(this.store.db, run.id).find(
+                    item =>
+                        item.body.kind === 'question' && item.body.durable === true && item.body.state === 'preparing'
+                );
+                if (!pending || pending.body.kind !== 'question') continue;
+                const previous = getRunWork(this.store.db, run.id).lostBackground ?? [];
+                const seen = new Set<string>();
+                const lostBackground = [...previous, ...(run.background ?? [])].filter(item => {
+                    const key = JSON.stringify([item.kind, item.id, item.title]);
+                    if (seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                });
+                setRunWork(this.store.db, run.id, { process: null, ...(lostBackground.length && { lostBackground }) });
+                if (run.background?.length) {
+                    this.note(run.id, 'Background work stopped while waiting for your answer');
+                    this.setBackground(run.id, []);
+                }
+                const { state: _state, ...body } = pending.body;
+                updateItem(this.store, run.id, pending.seq, body);
+                for (const item of listRunningTools(this.store.db, run.id)) {
+                    if (item.body.kind === 'tool')
+                        updateItem(this.store, run.id, item.seq, { ...item.body, state: 'error', error: STOPPED_TOOL });
+                }
+                for (const item of listOpenThoughts(this.store.db, run.id)) {
+                    if (item.body.kind === 'reasoning')
+                        updateItem(this.store, run.id, item.seq, { ...item.body, done: true });
+                }
+                for (const item of listOpenAssistantMessages(this.store.db, run.id)) {
+                    if (item.body.kind === 'assistant')
+                        updateItem(this.store, run.id, item.seq, { ...item.body, done: true });
+                }
+                for (const item of listOpenApprovals(this.store.db, run.id)) {
+                    if (item.body.kind === 'approval')
+                        updateItem(this.store, run.id, item.seq, { ...item.body, state: 'expired' });
+                }
+                if (run.status === 'running')
+                    this.setStatus(run.id, 'waiting_user', { reason: 'Waiting for your answer' });
+                durableWaiting.add(run.id);
+            }
+            for (const runId of durableWaiting) this.setAwaitingUser(runId, true);
             const dead = listActiveRuns(this.store.db).filter(
-                run => ['running', 'waiting_user', 'waiting_background'].includes(run.status) || withProcess.has(run.id)
+                run =>
+                    !durableWaiting.has(run.id) &&
+                    (['running', 'waiting_user', 'waiting_background'].includes(run.status) || withProcess.has(run.id))
             );
 
             for (const run of dead) {
                 // `setStatus` clears what a run had open in the background, since a run that ended has nothing open; what the restart cost it is kept first,
                 // for the next turn's message (`lostBackgroundMessage`).
-                setRunWork(this.store.db, run.id, { process: null, lostBackground: run.background });
+                const process = getRunWork(this.store.db, run.id).process;
+                setRunWork(this.store.db, run.id, {
+                    ...(process && mayBeSameProcess(process) ? {} : { process: null }),
+                    lostBackground: run.background,
+                });
                 this.setStatus(run.id, 'interrupted', { reason: 'Daemon restarted' });
 
                 for (const { seq, body } of listRunningTools(this.store.db, run.id)) {
@@ -940,11 +1142,19 @@ export class RunService {
                     }
                 }
 
+                for (const { seq, body } of listOpenAssistantMessages(this.store.db, run.id)) {
+                    if (body.kind === 'assistant') updateItem(this.store, run.id, seq, { ...body, done: true });
+                }
+
                 // An approval the agent was waiting on is lost with its process: the card says so instead of offering buttons that do nothing.
                 for (const { seq, body } of listOpenApprovals(this.store.db, run.id)) {
                     if (body.kind === 'approval') {
                         updateItem(this.store, run.id, seq, { ...body, state: 'expired' });
                     }
+                }
+
+                for (const { seq, body } of listOpenQuestions(this.store.db, run.id)) {
+                    if (body.kind === 'question') updateItem(this.store, run.id, seq, { ...body, state: 'expired' });
                 }
             }
 

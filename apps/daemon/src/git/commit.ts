@@ -7,6 +7,7 @@ import { exclusive, pathKey, placeOf } from '../domain/workspaces';
 import { conflict, invalid, unavailable } from '../errors';
 import { runProgram } from '../providers/exec';
 import { selectChanged } from './selection';
+import { rebaseUnderWay } from './state';
 import { namesSigningKey, SIGNING_HINT, WriteEnvironment } from './writeEnv';
 
 import type { GitCommitRequest, GitCommitResult, GitErrorDetails } from '@clowdy/protocol';
@@ -103,7 +104,10 @@ export class GitWrites {
      * cherry-pick or a revert in progress and a file with merge conflicts are refused (a partial commit would settle what the person has not looked at), and git's own refusal is the
      * error, as one line (`failureLine`). A commit that was refused takes back what the add staged: a path that was staged before the add stays staged as the person left it.
      */
-    async commit(place: Place, request: Pick<GitCommitRequest, 'paths' | 'message' | 'conclude'>): Promise<GitCommitResult> {
+    async commit(
+        place: Place,
+        request: Pick<GitCommitRequest, 'paths' | 'message' | 'conclude'>
+    ): Promise<GitCommitResult> {
         const { message } = request;
 
         if (typeof message !== 'string' || message.trim() === '') throw invalid('Write a message for the commit');
@@ -206,8 +210,7 @@ export class GitWrites {
                 gitRead(cwd, ['diff', '--name-only', '--diff-filter=U', '-z'], { parsed: true }),
             ]);
 
-            if (cherry.ok || revert.ok)
-                throw conflict('A cherry-pick or revert is in progress here, finish it first');
+            if (cherry.ok || revert.ok) throw conflict('A cherry-pick or revert is in progress here, finish it first');
 
             if (!merging.ok) throw invalid('No merge to commit');
 
@@ -230,17 +233,19 @@ export class GitWrites {
     /** A commit of some paths cannot be made in the middle of a merge (git says `cannot do a partial commit during a merge`), and a file with conflicts is not the person's to commit as it is. */
     async #refuseUnsettled(place: Place, paths: string[]): Promise<void> {
         const cwd = place.path;
-        const [merging, unmerged] = await Promise.all([
+        const [merging, unmerged, rebasing] = await Promise.all([
             Promise.all(
                 ['MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD'].map(ref =>
                     gitRead(cwd, ['rev-parse', '-q', '--verify', ref])
                 )
             ),
             gitRead(cwd, ['diff', '--name-only', '--diff-filter=U', '-z'], { parsed: true }),
+            rebaseUnderWay(cwd),
         ]);
 
         if (merging.some(read => read.ok))
             throw conflict('A merge, cherry-pick or revert is in progress here, finish it first');
+        if (rebasing) throw conflict('A rebase is in progress here, finish it first');
 
         const conflicted = unmerged.ok
             ? unmerged.stdout.split('\0').filter(path => path !== '' && paths.includes(path))

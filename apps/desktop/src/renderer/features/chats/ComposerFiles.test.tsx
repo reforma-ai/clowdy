@@ -273,11 +273,12 @@ describe('Composer files', () => {
             });
             await act(async () => void field().dispatchEvent(paste));
 
+            // A text node has no attrs, so a mention is read only where the node can carry them.
             const chips = (editor().getJSON().content ?? [])
                 .flatMap(block => block.content ?? [])
-                .filter(node => node.type === 'composerMention');
+                .flatMap(node => ('attrs' in node && node.type === 'composerMention' ? [node.attrs?.data] : []));
 
-            expect(chips.map(chip => chip.attrs?.data)).toEqual([{ path: 'src/a.ts' }]);
+            expect(chips).toEqual([{ path: 'src/a.ts' }]);
             expect(uploads.mock.calls.map(call => (call[1] as File).name)).toEqual(['report.pdf']);
             expect(tiles()).toHaveLength(1);
         } finally {

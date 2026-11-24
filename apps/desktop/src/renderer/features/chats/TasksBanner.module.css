@@ -1,0 +1,18 @@
+.header {
+    height: auto;
+    min-height: var(--spacing-30);
+}
+
+.headerContent {
+    display: grid;
+    grid-template-columns: max-content minmax(0, auto);
+}
+
+.summary {
+    text-align: end;
+    white-space: normal;
+}
+
+.key {
+    margin-inline-end: var(--spacing-sm);
+}

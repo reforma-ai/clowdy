@@ -1,4 +1,7 @@
 import { Button } from '@clowdy/components/Button';
+import { CollapsibleContent } from '@clowdy/components/Collapsible';
+import { GridList } from '@clowdy/components/List';
+import { Scrollable } from '@clowdy/components/Scrollable';
 import { Text } from '@clowdy/components/Text';
 import { ChevronDown } from '@clowdy/icons/14';
 import { cn } from '@clowdy/lib';
@@ -17,11 +20,41 @@ export function ComposerBanner({ className, children, ...props }: HTMLAttributes
     );
 }
 
+/** The scroll area and list shared by the file and task disclosures. */
+export function ComposerBannerList({
+    label,
+    onAction,
+    children,
+}: {
+    label: string;
+    onAction: (id: string) => void;
+    children: ReactNode;
+}) {
+    return (
+        <CollapsibleContent asChild>
+            <Scrollable
+                className={styles.listViewport}
+                containerClass={styles.listScroll}
+                contentClass={styles.listRows}
+            >
+                <GridList aria-label={label} size="sm" className={styles.list} onAction={key => onAction(String(key))}>
+                    {children}
+                </GridList>
+            </Scrollable>
+        </CollapsibleContent>
+    );
+}
+
 export interface ComposerBannerStatusProps {
     children: ReactNode;
     icon?: ReactNode;
+    /** Optional trailing status or progress, kept visible beside a truncated name. */
+    detail?: ReactNode;
+    progress?: ReactNode;
     /** The words of the row's button, such as `Stop`. No button without it. */
     action?: string;
+    /** Accessible name when the visible action needs context. */
+    actionLabel?: string;
     onAction?: () => void;
     /** A press anywhere on the row but the button. The button then shows on hover or focus. */
     onPress?: () => void;
@@ -33,7 +66,10 @@ export interface ComposerBannerStatusProps {
 export function ComposerBannerStatus({
     children,
     icon,
+    detail,
+    progress,
     action,
+    actionLabel,
     onAction,
     onPress,
     pressLabel,
@@ -48,11 +84,29 @@ export function ComposerBannerStatus({
             <Text variant="xs" className={styles.text}>
                 {children}
             </Text>
+            {(detail || progress) && (
+                <span className={styles.details}>
+                    {detail && (
+                        <Text variant="xs" className={styles.detail}>
+                            {detail}
+                        </Text>
+                    )}
+                    {progress && (
+                        <Text variant="xs" className={styles.progress}>
+                            {progress}
+                        </Text>
+                    )}
+                </span>
+            )}
         </>
     );
 
     return (
-        <div className={styles.status} data-pressable={onPress ? true : undefined}>
+        <div
+            className={styles.status}
+            data-pressable={onPress ? true : undefined}
+            data-has-action={action ? true : undefined}
+        >
             {onPress ? (
                 <button type="button" className={styles.press} aria-label={pressLabel} onClick={onPress}>
                     {message}
@@ -66,6 +120,7 @@ export function ComposerBannerStatus({
                     variant="ghost"
                     color="secondary"
                     className={styles.action}
+                    aria-label={actionLabel}
                     isDisabled={!onAction}
                     onPress={onAction}
                 >
@@ -87,6 +142,7 @@ interface ComposerBannerHeaderProps extends ButtonProps {
 export function ComposerBannerHeader({
     children,
     className,
+    contentClassName,
     summary,
     expanded,
     action,
@@ -100,7 +156,7 @@ export function ComposerBannerHeader({
                 color="secondary"
                 size="sm"
                 className={cn(styles.disclosure, className)}
-                contentClassName={styles.headerContent}
+                contentClassName={cn(styles.headerContent, contentClassName)}
                 aria-expanded={expanded}
             >
                 <Text variant="xs" weight="medium" className={styles.headerTitle}>

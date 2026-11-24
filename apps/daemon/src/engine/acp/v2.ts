@@ -13,7 +13,7 @@ import {
 } from '@agentclientprotocol/sdk/experimental/v2/unstable';
 
 import { EngineFailure, errorMessage } from '../../errors';
-import { answeredInTime, Channel, ProcessEnded, watchEnd } from './connection';
+import { answeredInTime, Channel, ProcessEnded, toWebReadable, watchEnd } from './connection';
 import {
     advertisesSteering,
     applyChoices,
@@ -50,7 +50,8 @@ import type { ResolvedAgent } from './registry';
  * What the client tells an agent it can do in `initialize`: nothing. Clowdy offers no file access and no terminal (ACP v2 has neither; an agent's tools
  * are its own, and the runtime's reach it through an MCP server).
  */
-const clientCapabilities = (agent: Pick<ResolvedAgent, 'clientMeta'>): ClientCapabilities => ({
+const clientCapabilities = (agent: Pick<ResolvedAgent, 'clientMeta' | 'elicitation'>): ClientCapabilities => ({
+    ...(agent.elicitation && { elicitation: { form: {} } }),
     ...(agent.clientMeta && { _meta: agent.clientMeta }),
 });
 
@@ -535,7 +536,7 @@ export class V2Layer implements ProtocolLayer {
         const connection = app.connect(
             ndJsonStream(
                 Writable.toWeb(proc.child.stdin as Writable) as WritableStream<Uint8Array>,
-                Readable.toWeb(proc.child.stdout as Readable) as ReadableStream<Uint8Array>
+                toWebReadable(proc.child.stdout as Readable)
             )
         );
 
@@ -693,9 +694,15 @@ export class V2Layer implements ProtocolLayer {
                 return {
                     outcome: optionId === undefined ? { outcome: 'cancelled' } : { outcome: 'selected', optionId },
                 };
+            })
+            .onRequest(methods.client.elicitation.create, async ({ params, signal }) => {
+                const answer = await host.pickQuestion(params, signal);
+                return answer === undefined
+                    ? { action: 'cancel' }
+                    : { action: 'accept', content: { clowdy_answer: answer } };
             });
 
-        const input = Readable.toWeb(proc.child.stdout as Readable) as ReadableStream<Uint8Array>;
+        const input = toWebReadable(proc.child.stdout as Readable);
         const output = Writable.toWeb(proc.child.stdin as Writable) as WritableStream<Uint8Array>;
         const connection = app.connect(ndJsonStream(output, input));
 

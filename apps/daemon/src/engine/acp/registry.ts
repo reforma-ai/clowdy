@@ -1,6 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
-import { PERMISSION_PRESET_NAMES, PERMISSION_PRESETS } from '@clowdy/protocol';
+import {
+    COMMIT_MESSAGE_PROVIDERS,
+    COMMIT_MESSAGE_SETTING_ID,
+    PERMISSION_PRESET_NAMES,
+    PERMISSION_PRESETS,
+} from '@clowdy/protocol';
 
 import { errorMessage } from '../../errors';
 import { PROVIDERS } from '../../providers/builtin';
@@ -9,7 +14,13 @@ import { AGENT_ID } from './catalog';
 import { Discovery } from './discovery';
 import { buildAgentEnv } from './env';
 
-import type { AgentInfo, AgentPermissions, AgentSetting, PermissionPresetId } from '@clowdy/protocol';
+import type {
+    AgentInfo,
+    AgentPermissions,
+    AgentSetting,
+    CommitMessageProvider,
+    PermissionPresetId,
+} from '@clowdy/protocol';
 import type { PermissionSupport, Provider } from '../../providers/types';
 import type {
     AgentOverride,
@@ -43,6 +54,7 @@ export interface ResolvedAgent {
     login?: string;
     /** The ACP version the engine speaks to it: `AgentSpec.protocol`, and `v1` for a custom agent. */
     protocol: AgentProtocol;
+    elicitation?: boolean;
     /** `AgentSpec.wakesOnBackgroundEnd`: the agent starts no report turn for background work that ended, so the runtime tells it. */
     wakesOnBackgroundEnd?: boolean;
     /** The `_meta` of `session/new`, for the options its adapter reads. */
@@ -145,6 +157,12 @@ export class AgentRegistry {
     /** The door the agent uses for the task tools (`AgentSpec.taskTools`, or `CustomAgent.taskTools` for an agent the person added); the shell for every agent that does not say otherwise. */
     taskChannel(id: string): TaskChannel {
         return this.spec(id)?.taskTools ?? this.stored.agents.find(agent => agent.id === id)?.taskTools ?? 'cli';
+    }
+
+    /** Whether a known ACP agent has been verified to forward form elicitation. */
+    questionElicitation(id: string): boolean | undefined {
+        const agent = this.spec(id) ?? this.stored.agents.find(candidate => candidate.id === id);
+        return agent === undefined ? undefined : agent.elicitation === true;
     }
 
     /** Whether Fork and Edit may be offered for chats of the agent (`AgentSpec.fork`); a custom agent has neither. */
@@ -292,6 +310,21 @@ export class AgentRegistry {
         });
     }
 
+    /** Writes one choice using the existing settings file, so a failed save cannot leave two choices active. */
+    setCommitMessageProvider(provider: CommitMessageProvider | null): void {
+        this.change(() => {
+            for (const id of COMMIT_MESSAGE_PROVIDERS) {
+                if (this.setting(id, COMMIT_MESSAGE_SETTING_ID) === undefined) continue;
+
+                const override = this.stored.overrides[id];
+                this.stored.overrides[id] = {
+                    ...override,
+                    settings: { ...override?.settings, [COMMIT_MESSAGE_SETTING_ID]: id === provider },
+                };
+            }
+        });
+    }
+
     remove(id: string): void {
         if (!this.stored.agents.some(agent => agent.id === id)) {
             throw new AgentRegistryError(
@@ -433,6 +466,7 @@ export class AgentRegistry {
                     env: { ...entry.agent.env, ...override.env },
                     scrub: [],
                     protocol: 'v1',
+                    ...(entry.agent.elicitation && { elicitation: true }),
                     permission: permit.permission,
                 },
             };
@@ -452,6 +486,7 @@ export class AgentRegistry {
             scrub: spec.scrub ?? [],
             login: spec.login,
             protocol: spec.protocol ?? 'v1',
+            ...(spec.elicitation && { elicitation: true }),
             ...(spec.wakesOnBackgroundEnd && { wakesOnBackgroundEnd: true }),
             sessionMeta: withToolRules(spec.sessionMeta, applied),
             ...(spec.clientMeta && { clientMeta: spec.clientMeta }),
@@ -633,6 +668,7 @@ function parseStored(data: unknown, specs: readonly AgentSpec[]): Stored {
             args: Array.isArray(entry.args) ? entry.args.map(String) : [],
             ...(isStrings(entry.env) && { env: entry.env }),
             ...((entry.taskTools === 'cli' || entry.taskTools === 'mcp') && { taskTools: entry.taskTools }),
+            ...(entry.elicitation === true && { elicitation: true }),
         });
     }
 

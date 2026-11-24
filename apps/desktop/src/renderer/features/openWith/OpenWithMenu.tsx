@@ -3,7 +3,7 @@ import { Menu, MenuHeader, MenuItem, MenuSection, MenuSeparator, SubmenuTrigger 
 import { Popover, PopoverScroll } from '@clowdy/components/Popover';
 import { toast } from '@clowdy/components/Toast';
 import { ChevronRight } from '@clowdy/icons/8';
-import { Close, Copy, Folder, Follow, NewChat, Search, Terminal, Version } from '@clowdy/icons/14';
+import { Close, Copy, Folder, Follow, NewChat, Search, Settings, Terminal } from '@clowdy/icons/14';
 import { Github } from '@clowdy/icons/logo';
 
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
@@ -24,9 +24,9 @@ export interface OpenWithMenuProps {
     /** For a folder that is gone: Locate… and Remove from project, under the note (`useFolderRepair`). */
     repair?: FolderRepair;
     git: FolderGit | undefined;
-    /** The sidebar folder menu offers a new chat in this folder. */
+    /** Offers a new chat in the target's checkout. */
     onNewChat?: () => void;
-    /** A last item, under a separator, `Manage worktrees…`, runs this (it opens the dialog of the project's worktrees). Without it there is no such item. */
+    /** A last item, under a separator, `Folder settings…`, runs this (it opens the folder's settings and worktrees). Without it there is no such item. */
     onManageWorktrees?: () => void;
     /** Called when an item is pressed, before it runs: a menu that is not in a `MenuTrigger` shuts itself here. */
     onClose?: () => void;
@@ -52,7 +52,7 @@ export const actionIcon = (action: OpenAction): ReactNode => {
 /**
  * The menu of a file or a folder of the project, to go inside a `Popover`. At the top what the app does itself: Open in Files and Open in Terminal (a folder, when
  * the window shows the target's place: its folder, or the worktree of the open chat), and the copies of the path. After a separator, `Open in…`, a submenu of what leaves the app: the editor, the file manager,
- * the terminal program, GitHub. One list of items for every place the menu comes from (`openActions`). `Manage worktrees…` is the last item, under a separator
+ * the terminal program, GitHub. One list of items for every place the menu comes from (`openActions`). `Folder settings…` is the last item, under a separator
  * (`onManageWorktrees`), which is not an action on a path and so is not in `openActions`.
  */
 export function OpenWithMenu({
@@ -82,7 +82,7 @@ export function OpenWithMenu({
         inFiles: isHere
             ? () =>
                   void openInFiles(root, target.projectId, place, target.relative).then(
-                      opened => !opened && toast.error({ message: 'That path is not on the disk' })
+                      opened => !opened && toast.error({ message: 'Couldn’t open this path' })
                   )
             : undefined,
         inTerminal: isHere ? () => void openInTerminal(root, target.projectId, place, target.relative) : undefined,
@@ -114,7 +114,11 @@ export function OpenWithMenu({
         <PopoverScroll>
             <Menu aria-label={label} size="sm" onAction={key => run(String(key))}>
                 <MenuSection aria-label="Open">
-                    {missing && <MenuHeader>This folder no longer exists</MenuHeader>}
+                    {missing && (
+                        <MenuHeader>
+                            {target.workspace ? 'This worktree no longer exists' : 'This folder no longer exists'}
+                        </MenuHeader>
+                    )}
                     {repair && (
                         <MenuItem id="locate" icon={<Search aria-hidden="true" />} textValue="Locate…">
                             Locate…
@@ -130,7 +134,7 @@ export function OpenWithMenu({
                             id="new-chat"
                             icon={<NewChat aria-hidden="true" />}
                             textValue="New chat"
-                            isDisabled={missing}
+                            isDisabled={missing || !isPlaceReady(place)}
                         >
                             New chat
                         </MenuItem>
@@ -164,8 +168,8 @@ export function OpenWithMenu({
                     <>
                         <MenuSeparator />
                         <MenuSection aria-label="Worktrees">
-                            <MenuItem id="manage" icon={<Version aria-hidden="true" />} textValue="Manage worktrees…">
-                                Manage worktrees…
+                            <MenuItem id="manage" icon={<Settings aria-hidden="true" />} textValue="Folder settings…">
+                                Folder settings…
                             </MenuItem>
                         </MenuSection>
                     </>

@@ -66,6 +66,8 @@ export interface LayerHost {
      * agent took the request back with `$/cancel_request`, and ACP has the client answer it `cancelled`.
      */
     pickPermission(request: PermissionParams, withdrawn: AbortSignal): Promise<string | undefined>;
+    /** Handles the form emitted by our question tool, with the request's cancellation signal. */
+    pickQuestion(request: unknown, withdrawn: AbortSignal): Promise<string | undefined>;
     /** Moves the prompt along and wakes the steers that wait for it. A turn that begins after the last one ended moves it to `running` again. */
     promptIs(state: Exclude<PromptState, 'before'>): void;
     /** Whether the prompt is with the agent. */

@@ -28,7 +28,7 @@ The repo link comes from the repo name baked into the build (`CLOWDY_RELEASE_REP
 - [settings-pages.md](settings-pages.md): declaring and routing a page, order, groups, icons, building blocks, link rows, the tests that assert the list, docs to update.
 - [agent-list-and-card-trigger.md](agent-list-and-card-trigger.md): the list structure and where its bottom is, persistence of per-install flags, signals for "used a while", dismissible-pattern precedent.
 
-Earlier work on the update system, for context: `.briefback/releases-updates/plan.md` and `research/` (repo `kachurun/clowdy`, public later; updates start the day it opens).
+Earlier work on the update system, for context: `.briefback/releases-updates/plan.md` and `research/` (repo `reforma-ai/clowdy`, public later; updates start the day it opens).
 
 ## Important files
 

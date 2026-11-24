@@ -320,39 +320,29 @@ export function resolveSelection(
     return { chat, run: undefined, draft: chat === undefined };
 }
 
-/** Working is green, completion and requests for attention are yellow, and an unsent draft is gray. */
-export function chatDotTone(run: Run | undefined, threads?: ThreadsActivity, draft = false): StatusTone | undefined {
-    const own = ownDotTone(run, threads === 'working');
-
-    if (
-        threads === 'asking' &&
-        (own === undefined || own === 'success' || (run && shownRunStatus(run) === 'succeeded'))
-    )
-        return 'warning';
-    if (draft && (own === undefined || (run && shownRunStatus(run) === 'succeeded' && threads !== 'working')))
-        return 'neutral';
-    return own;
-}
-
 /** What the threads below a chat are doing that its dot tells: some work, or some wait for the person (which wins). */
 export type ThreadsActivity = 'working' | 'asking';
 
-function ownDotTone(run: Run | undefined, threadsWorking: boolean): StatusTone | undefined {
-    switch (run && shownRunStatus(run)) {
-        case 'running':
-        case 'waiting_background':
-            return 'success';
-        case 'waiting_user':
-            return 'warning';
-        case 'succeeded':
-            return threadsWorking ? 'success' : 'warning';
+/** The row's status tone. An unsent draft uses a neutral Edit icon. */
+export function chatDotTone(
+    run: Run | undefined,
+    threads?: ThreadsActivity,
+    draft = false,
+    unread = false
+): StatusTone | undefined {
+    const status = run && shownRunStatus(run);
+    switch (status) {
         case 'failed':
             return 'danger';
+        case 'waiting_user':
+            return 'accent';
         case 'blocked':
             return 'warning';
         case 'queued':
             return 'neutral';
-        default:
-            return threadsWorking ? 'success' : undefined;
     }
+    if (threads === 'asking') return 'accent';
+    if (status === 'running' || status === 'waiting_background' || threads === 'working') return 'success';
+    if (draft) return 'neutral';
+    return status === 'succeeded' && unread ? 'warning' : undefined;
 }

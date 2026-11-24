@@ -2,7 +2,7 @@
 
 Read this when an answer is short, vague, non-technical, free text, or a question.
 
-The user manages the work and may not read code. Their answers are brief and in business terms. Turning them into precise decisions is your job, and so is checking that you turned them correctly.
+The manager may not read code and may answer briefly in business terms. Translate answers into precise decisions and check your interpretation.
 
 ## The translation loop
 
@@ -39,7 +39,7 @@ The user manages the work and may not read code. Their answers are brief and in 
 
 ## Delegation
 
-A manager who delegates is making a decision: to trust you. Honour it, and make it visible.
+Make delegated decisions visible.
 
 - Record the choice as `user (delegated)` so later readers can tell it was your pick.
 - If the delegated choice is costly or hard to undo, say so before starting work, in one line, and let the confirmation card carry it.

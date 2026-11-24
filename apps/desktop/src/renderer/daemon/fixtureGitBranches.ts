@@ -22,10 +22,20 @@ import type {
  * - `slow`: a switch takes a while, for a look at the running state;
  * - `warned`: a switch is made and the person's `post-checkout` hook failed after it, which the answer's `warning` says;
  * - `merged`: the worktree's current branch is merged into `origin/main`; use `&clean` to clear uncommitted files;
+ * - `merge-conflict`: preview an outgoing merge that would conflict;
  * - `idle`: every chat of the fixtures is at rest, so the chats working in the checkout (which the new chat's pill counts from the runs it has) are not in the way of a switch: without it five
  *   of them are, and that is what the pill says.
  */
-export type FixtureBranchScript = 'remote' | 'held' | 'dirty' | 'refused' | 'slow' | 'warned' | 'merged' | 'idle';
+export type FixtureBranchScript =
+    | 'remote'
+    | 'held'
+    | 'dirty'
+    | 'refused'
+    | 'slow'
+    | 'warned'
+    | 'merged'
+    | 'idle'
+    | 'merge-conflict';
 
 /** The words the page's `&branches=` switch knows. */
 export const FIXTURE_BRANCH_SCRIPTS: readonly FixtureBranchScript[] = [
@@ -37,6 +47,7 @@ export const FIXTURE_BRANCH_SCRIPTS: readonly FixtureBranchScript[] = [
     'warned',
     'merged',
     'idle',
+    'merge-conflict',
 ];
 
 /** What a `warned` switch says its hook printed. */
@@ -106,6 +117,10 @@ export class FixtureGitBranches {
 
     get merged(): boolean {
         return this.#scripts.has('merged');
+    }
+
+    get mergeConflict(): boolean {
+        return this.#scripts.has('merge-conflict');
     }
 
     /** The checkout's status as the fixture says it, with the changed files a `dirty` checkout has. */

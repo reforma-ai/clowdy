@@ -39,7 +39,7 @@ function QuestionText({ text }: { text: string }) {
  * preselected, a field for another answer, and "Next". Once answered it shows the answer instead.
  */
 export function QuestionCard({ question, onAnswer }: QuestionCardProps) {
-    const { text, options, recommended, answer } = question;
+    const { text, options, recommended, answer, state } = question;
     const [selected, setSelected] = useState<string | null>(recommended ?? options[0]?.id ?? null);
     const [custom, setCustom] = useState('');
     const [isPending, setIsPending] = useState(false);
@@ -54,6 +54,21 @@ export function QuestionCard({ question, onAnswer }: QuestionCardProps) {
                     <Check aria-hidden />
                     <Text color="secondary">{answer}</Text>
                 </div>
+            </div>
+        );
+    }
+
+    if (state) {
+        return (
+            <div className={styles.card}>
+                <QuestionText text={text} />
+                <Text color="secondary">
+                    {state === 'preparing'
+                        ? 'Stopping the agent…'
+                        : state === 'expired'
+                          ? 'Question expired'
+                          : 'Question withdrawn'}
+                </Text>
             </div>
         );
     }

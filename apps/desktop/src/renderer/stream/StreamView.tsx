@@ -4,7 +4,7 @@ import { useStickToBottom } from '@clowdy/components/hooks';
 import { Show } from '@clowdy/components/Show';
 import { ArrowDown } from '@clowdy/icons/14';
 import { mergeRefs } from '@clowdy/lib';
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 
 import { ApprovalCard } from './ApprovalCard';
 import { AssistantMessage } from './AssistantMessage';
@@ -39,7 +39,7 @@ import { Worked } from './Worked';
 import { WorkingLine } from './WorkingLine';
 
 import type { ApprovalDecision, StreamItem } from '@clowdy/protocol';
-import type { ReactNode } from 'react';
+import type { ReactNode, Ref } from 'react';
 import type { MessageActionsConfig, ReplyMessage } from './MessageActions';
 
 /**
@@ -79,7 +79,13 @@ export interface StreamEditing {
     onCancel: () => void;
 }
 
+/** An explicit request to follow new messages, for example when the person sends one. */
+export interface StreamViewHandle {
+    followLatest: () => void;
+}
+
 export interface StreamViewProps {
+    ref?: Ref<StreamViewHandle>;
     items: StreamItem[];
     /** The run is going, or waits for the person: its latest turn stays open. Once it is over, that turn folds its work too. */
     active?: boolean;
@@ -94,7 +100,7 @@ export interface StreamViewProps {
     onDecide?: (approvalId: string, decision: ApprovalDecision) => void | Promise<void>;
     /** Shown while there are no items. */
     emptyState?: ReactNode;
-    /** Rendered right after an item, in the stream's own flow: the progress card of a chat sits after a message. */
+    /** Rendered right after an item, in the stream's own flow. */
     decorate?: (item: StreamItem) => ReactNode;
     /** What the text may point at in the app: a task key becomes a chip that opens the task. */
     links?: StreamLinks;
@@ -133,9 +139,13 @@ export function StreamView({
     messageActions,
     editing,
     forkedFrom,
+    ref,
 }: StreamViewProps) {
     const scroller = useRef<HTMLDivElement>(null);
     const { scrollRef: stickScrollRef, contentRef, isAtBottom, scrollToBottom } = useStickToBottom();
+    useImperativeHandle(ref, () => ({ followLatest: () => scrollToBottom({ animation: 'instant' }) }), [
+        scrollToBottom,
+    ]);
     const scrollRef = useMemo(
         () => mergeRefs<HTMLDivElement>(scroller, node => stickScrollRef(node)),
         [stickScrollRef]

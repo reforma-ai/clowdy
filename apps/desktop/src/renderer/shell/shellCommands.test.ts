@@ -3,7 +3,7 @@ import { observable, runInAction } from 'mobx';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SETTINGS_COMMAND, SETTINGS_KEYS } from '../features/settings/commands';
-import { SIDE_PANEL_EXPAND_KEYS, SIDE_PANEL_KEYS, SIDE_PANEL_TAB_KEYS } from '../features/sidePanel';
+import { SIDE_PANEL_EXPAND_KEYS, SIDE_PANEL_KEYS, sidePanelTabKeys } from '../features/sidePanel';
 import { installDispatcher } from '../hotkeys/dispatcher';
 import { commandHint } from '../hotkeys/react';
 import { commandPresses, createRegistry, type HotkeyRegistry } from '../hotkeys/registry';
@@ -45,6 +45,7 @@ beforeEach(() => {
             get phase() {
                 return loading.phase;
             },
+            selectedProject: undefined,
             selectedProjectId: 'p' as string | null,
             get selectedProjectUi() {
                 return this.selectedProjectId ? ui.forProject(this.selectedProjectId) : undefined;
@@ -306,12 +307,11 @@ describe('the keymap', () => {
             'sidePanel.toggle',
             'sidePanel.expand',
             'sidePanel.terminal',
-            'sidePanel.tab.info',
             'sidePanel.tab.files',
+            'sidePanel.tab.changes',
             'sidePanel.tab.docs',
             'sidePanel.tab.terminal',
             'sidePanel.tab.tasks',
-            'sidePanel.tab.changes',
             'nav.back',
             'nav.forward',
             'find.open',
@@ -572,32 +572,32 @@ describe('the tabs of the side panel', () => {
     const digit = (value: string, extra: KeyboardEventInit = {}, target?: EventTarget) =>
         press({ key: value, code: `Digit${value}`, metaKey: true, ...extra }, target);
 
-    it('shows Info on Cmd+0, Files on Cmd+1, Terminal on Cmd+2, Docs on Cmd+3, Tasks on Cmd+4 and Changes on Cmd+5, opening the panel when it is shut', () => {
+    it('opens the panel tabs in rail order with Cmd+1 through Cmd+5', () => {
         const first = digit('1');
 
         expect(state()).toEqual({ open: true, tab: 'files' });
         expect(first.defaultPrevented).toBe(true);
 
         digit('2');
-        expect(state()).toEqual({ open: true, tab: 'terminal' });
+        expect(state()).toEqual({ open: true, tab: 'changes' });
 
         digit('0');
-        expect(state()).toEqual({ open: true, tab: 'info' });
+        expect(state()).toEqual({ open: true, tab: 'changes' });
 
         digit('3');
         expect(state()).toEqual({ open: true, tab: 'docs' });
 
         digit('4');
-        expect(state()).toEqual({ open: true, tab: 'tasks' });
+        expect(state()).toEqual({ open: true, tab: 'terminal' });
 
         digit('5');
-        expect(state()).toEqual({ open: true, tab: 'changes' });
+        expect(state()).toEqual({ open: true, tab: 'tasks' });
 
         runInAction(() => ui.forProject('p').toggleSidePanel());
-        expect(state()).toEqual({ open: false, tab: 'changes' });
+        expect(state()).toEqual({ open: false, tab: 'tasks' });
 
         digit('2');
-        expect(state()).toEqual({ open: true, tab: 'terminal' });
+        expect(state()).toEqual({ open: true, tab: 'changes' });
         expect(ui.forProject('other').sidePanelOpen).toBe(false);
     });
 
@@ -613,7 +613,7 @@ describe('the tabs of the side panel', () => {
 
         // Another tab's key only changes the tab.
         digit('2');
-        expect(state()).toEqual({ open: true, tab: 'terminal' });
+        expect(state()).toEqual({ open: true, tab: 'changes' });
     });
 
     it('works from a text field', () => {
@@ -626,7 +626,7 @@ describe('the tabs of the side panel', () => {
             expect(state()).toEqual({ open: true, tab: 'files' });
 
             digit('2', {}, input);
-            expect(state().tab).toBe('terminal');
+            expect(state().tab).toBe('changes');
         } finally {
             input.remove();
         }
@@ -654,10 +654,9 @@ describe('the tabs of the side panel', () => {
     });
 
     it('has Cmd on a Mac and Ctrl elsewhere, and shows the key as the hint of the tab', () => {
-        expect(commandPresses({ keys: SIDE_PANEL_TAB_KEYS.info }, 'darwin')).toEqual([['meta', '0']]);
-        expect(commandPresses({ keys: SIDE_PANEL_TAB_KEYS.terminal }, 'win32')).toEqual([['ctrl', '2']]);
-        expect(commandPresses({ keys: SIDE_PANEL_TAB_KEYS.tasks }, 'win32')).toEqual([['ctrl', '4']]);
-        expect(commandPresses({ keys: SIDE_PANEL_TAB_KEYS.changes }, 'win32')).toEqual([['ctrl', '5']]);
+        expect(commandPresses({ keys: sidePanelTabKeys('terminal') }, 'win32')).toEqual([['ctrl', '4']]);
+        expect(commandPresses({ keys: sidePanelTabKeys('tasks') }, 'win32')).toEqual([['ctrl', '5']]);
+        expect(commandPresses({ keys: sidePanelTabKeys('changes') }, 'win32')).toEqual([['ctrl', '2']]);
         expect(commandHint('sidePanel.tab.files', registry)).toEqual([['meta', '1']]);
 
         runInAction(() => {

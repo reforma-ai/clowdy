@@ -103,6 +103,29 @@ afterEach(() => {
     container.remove();
 });
 
+it('turns a typed quote marker after Shift+Enter into a quote and sends the next paragraph separately', async () => {
+    await mount();
+    const nextLine = () =>
+        act(() => {
+            field().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true }));
+        });
+
+    type('Before');
+    nextLine();
+    type('>');
+    act(() => {
+        const { view } = editor();
+        const { from, to } = view.state.selection;
+        view.someProp('handleTextInput', handler => handler(view, from, to, ' ', () => view.state.tr.insertText(' ')));
+    });
+    type('Use the blue one');
+    nextLine();
+    type('Why?');
+
+    expect(field().querySelector('blockquote')?.textContent).toBe('Use the blue one');
+    expect(sent()).toBe('Before\n\n> Use the blue one\n\nWhy?');
+});
+
 describe('ComposerHandle.quote', () => {
     it('puts the quote in the field and in the draft of the chat', async () => {
         await mount();

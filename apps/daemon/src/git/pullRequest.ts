@@ -59,7 +59,7 @@ function queryOf(omitted: ReadonlySet<string>): string {
         `pullRequests(headRefName: $head, first: ${PULL_REQUESTS_READ}, orderBy: { field: CREATED_AT, direction: DESC }) { nodes {`,
         `number title state url isDraft baseRefName headRefName headRefOid updatedAt isCrossRepository headRepositoryOwner { login } ${optional}`,
         `commits(last: 1) { nodes { commit { statusCheckRollup { state contexts(first: ${MAX_GIT_CHECKS}) {`,
-        'nodes { __typename ... on CheckRun { name status conclusion detailsUrl startedAt } ... on StatusContext { context state targetUrl createdAt } }',
+        'nodes { __typename ... on CheckRun { name status conclusion startedAt } ... on StatusContext { context state createdAt } }',
         'pageInfo { hasNextPage } } } } } } } } } }',
     ].join(' ');
 }

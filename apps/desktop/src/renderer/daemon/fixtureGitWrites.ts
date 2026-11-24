@@ -49,7 +49,22 @@ export const FIXTURE_DISCARD_HOOK_LINE = 'post-checkout: git-lfs was not found o
 /** Where the fixture's daemon keeps the copies of what a discard removes. */
 const FIXTURE_COPIES = '/Users/dev/Library/Application Support/Clowdy/daemon/discarded';
 
-const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+    return new Promise((resolve, reject) => {
+        signal?.throwIfAborted();
+
+        const abort = () => {
+            clearTimeout(timer);
+            reject(signal?.reason);
+        };
+        const timer = setTimeout(() => {
+            signal?.removeEventListener('abort', abort);
+            resolve();
+        }, ms);
+
+        signal?.addEventListener('abort', abort, { once: true });
+    });
+}
 
 /**
  * What `POST git/commit` and `POST git/message` do in the fixtures, judged as the daemon judges them: no paths, no message and a path that is not an uncommitted file of the place are 400, and the scripts say
@@ -159,13 +174,19 @@ export class FixtureGitWrites {
     }
 
     /** The message of the files, or why it could not be written. */
-    async message(place: string, uncommitted: readonly string[], paths: readonly string[]): Promise<GitMessage> {
+    async message(
+        place: string,
+        uncommitted: readonly string[],
+        paths: readonly string[],
+        signal?: AbortSignal
+    ): Promise<GitMessage> {
+        signal?.throwIfAborted();
         const open = uncommitted.filter(path => !this.settledOf(place).has(path));
 
         if (paths.length === 0 || paths.some(path => !open.includes(path)))
             throw new TransportError('Pick at least one changed file', 400);
 
-        if (this.#script.message === 'slow') await sleep(SLOW_MS);
+        if (this.#script.message === 'slow') await sleep(SLOW_MS, signal);
 
         if (this.#script.message === 'failed') throw new TransportError("Couldn't write the message", 503);
 

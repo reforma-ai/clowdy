@@ -14,7 +14,6 @@ import { SettingsSection } from '../ui/SettingsSection';
 import { ProjectDefaults } from './ProjectDefaults';
 import styles from './ProjectDetail.module.css';
 import { ProjectFolders } from './ProjectFolders';
-import { ProjectWorktrees } from './ProjectWorktrees';
 import {
     removeProject,
     removeProjectIcon,
@@ -34,7 +33,7 @@ export interface ProjectDetailProps {
 
 /**
  * The blocks of the page of one project in Settings, which opens over the Projects page (its title and the line under it are the layer's,
- * in `ProjectsPage`): its name and icon, its folders with their git remotes, the button of its worktrees, what new chats start with, and removing it. The personal space has its
+ * in `ProjectsPage`): its name and icon, its folders with their git remotes, what new chats start with, and removing it. The personal space has its
  * folder and the new-chat settings only.
  */
 export function ProjectDetail({ project, info, infoFailed }: ProjectDetailProps) {
@@ -49,8 +48,6 @@ export function ProjectDetail({ project, info, infoFailed }: ProjectDetailProps)
             )}
 
             <ProjectFolders project={project} info={info} infoFailed={infoFailed} />
-
-            <ProjectWorktrees project={project} />
 
             <ProjectDefaults project={project} />
 

@@ -8,7 +8,7 @@ import { shownRunStatus } from '@clowdy/protocol';
 import { useMemo, useRef } from 'react';
 
 import { useAgents, useChatStream, useProjectState, useProjectUi, useRootStore } from '../../stores';
-import { type ForkAgent, StreamView } from '../../stream';
+import { type ForkAgent, StreamView, type StreamViewHandle } from '../../stream';
 import { useRefreshGitFactsAtRunEnd } from '../changes/useRefreshGitFactsAtRunEnd';
 import { ProviderIcon } from '../settings/providers/ProviderIcon';
 import { openChat } from './archiveChat';
@@ -19,12 +19,13 @@ import { Composer, type ComposerHandle } from './Composer';
 import { canCompactChat, chatProvider, chatWritability, handoffAgents } from './chatProvider';
 import { isRunActive, liveLine, overflowed } from './chatRun';
 import { perform } from './commands';
+import { composerBannerPreferences } from './composerBannerPreferences';
 import { LastRunPlate } from './LastRunPlate';
-import { ProgressCard } from './ProgressCard';
 import { chatProgress } from './progress';
 import { ReadOnlyNotice } from './ReadOnlyNotice';
 import { RunningAgents } from './RunningAgents';
 import { swipeToReply } from './swipeReplyPreference';
+import { TasksBanner } from './TasksBanner';
 import { useCompact } from './useCompact';
 import { useEditMessage } from './useEditMessage';
 import { useFork } from './useFork';
@@ -34,7 +35,7 @@ import type { Attachment, Chat } from '@clowdy/protocol';
 import type { ReactNode } from 'react';
 
 /**
- * One chat: the orchestrator's stream with the progress card in it, and the composer. When the chat's provider cannot run
+ * One chat: the orchestrator's stream, the composer banners, and the composer. When the chat's provider cannot run
  * (switched off, not installed, signed out) the stream stays as it is and a notice stands in place of the composer. A thread is a chat like
  * any other, with a slim line over its stream that names the chat it belongs to and opens it. `controls` are what the line under the message box holds at its
  * start (where the chat works, read only), the line the new-chat page drew with controls that change; the composer adds the mode at the end of that line, so a chat
@@ -65,6 +66,7 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
     };
     const { fork, forking } = useFork(chat);
     const composer = useRef<ComposerHandle>(null);
+    const streamView = useRef<StreamViewHandle>(null);
     const stream = useChatStream(chat);
     const run = chat.orchestratorRunId ? project.runs.get(chat.orchestratorRunId) : undefined;
     const handOff = useHandoff(chat, run);
@@ -85,8 +87,6 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
         writable: writability.writable,
         attachmentBlob: links.attachmentBlob,
     });
-    // The card follows the orchestrator's latest message, where the person is looking.
-    const cardAfter = items.findLast(item => item.body.kind === 'assistant')?.id;
     // The conversation outgrew the model's window: the failure offers Compact, when the chat can still be written to and its agent can compact.
     const overflowAt =
         overflowed(run) && writability.writable && canCompactChat(chat, run, agents)
@@ -126,6 +126,7 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
 
             {(!stream || stream.status === 'ready') && (
                 <StreamView
+                    ref={streamView}
                     items={items}
                     active={isRunActive(run)}
                     working={isRunActive(run) && liveLine(shownRunStatus(run))}
@@ -170,7 +171,6 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
                     }
                     forkedFrom={origin}
                     emptyState={<EmptyChat />}
-                    decorate={item => (progress && item.id === cardAfter ? <ProgressCard progress={progress} /> : null)}
                     errorAction={item => (item.id === overflowAt ? <CompactAction chatId={chat.id} /> : null)}
                     // A question the orchestrator no longer waits on (stopped, interrupted) is shown but cannot be answered.
                     onAnswer={
@@ -194,10 +194,19 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
             <ContentColumn className={styles.composer}>
                 <RunningAgents chat={chat} />
                 {/* What the chat's latest run changed, once it is at rest and the person has not written since; for a read only chat too. */}
-                <LastRunPlate chat={chat} run={run} items={stream?.status === 'ready' ? items : undefined} />
+                {composerBannerPreferences.showChanges && (
+                    <LastRunPlate chat={chat} run={run} items={stream?.status === 'ready' ? items : undefined} />
+                )}
+                {composerBannerPreferences.showTasks && progress && <TasksBanner key={chat.id} progress={progress} />}
                 {/* The composer draws the line under its box itself, with the mode at the end of it; a chat that is read only has no mode to show. */}
                 {writability.writable ? (
-                    <Composer ref={composer} chat={chat} run={run} controls={controls} />
+                    <Composer
+                        ref={composer}
+                        chat={chat}
+                        run={run}
+                        controls={controls}
+                        onSendMessage={() => streamView.current?.followLatest()}
+                    />
                 ) : (
                     <>
                         <ReadOnlyNotice chat={chat} run={run} message={writability.message} />

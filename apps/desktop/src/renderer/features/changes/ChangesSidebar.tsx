@@ -1,7 +1,7 @@
 import { CopyButton } from '@clowdy/components/CopyButton';
 import { Panel, PanelHeader } from '@clowdy/components/Panel';
 import { Text } from '@clowdy/components/Text';
-import { ArrowDown, ArrowUp, Version } from '@clowdy/icons/14';
+import { Version } from '@clowdy/icons/14';
 import { Github } from '@clowdy/icons/logo';
 
 import { openEffects, useFolderGit } from '../openWith';
@@ -11,8 +11,7 @@ import styles from './ChangesSidebar.module.css';
 import viewStyles from './ChangesView.module.css';
 import { CommitBox } from './CommitBox';
 import { CreatePullRequest } from './CreatePullRequest';
-import { accessHint, accessHintTitle, aheadBehindCounts } from './gitSummary';
-import { MergeBanner, UpdateFromBase } from './MergeBanner';
+import { accessHint, accessHintTitle } from './gitSummary';
 import { PullRequestChip } from './PullRequestChip';
 import { RemoteMenu } from './RemoteMenu';
 
@@ -31,7 +30,7 @@ export function headName(status: GitStatus | undefined): string | undefined {
 }
 
 /**
- * The sidebar of the tab, at the right of the diffs: the branch the place is on with its base and how far it is from it, the pull request, and the commit box. The facts at the top show how far the branch is from its base and upstream and open the menu
+ * The sidebar of the tab, at the right of the diffs: the checked-out branch, sync and comparison actions, the pull request, and the commit box. The facts at the top open the menu
  * of Fetch, Pull and Push or Publish (`RemoteMenu`), and the pull request as the shared chip, or, while there is none, Create PR (`CreatePullRequest`), which opens GitHub's compare page
  * once the branch is on origin. `toggle` is the button that hides the sidebar, at the end of its header.
  */
@@ -52,8 +51,6 @@ export function ChangesSidebar({
     const branch = headName(status);
     const branchName = status?.isRepository === true && status.head.kind !== 'detached' ? status.head.name : undefined;
     const canPickBranch = branch !== undefined && status?.isRepository === true && status.head.kind !== 'unborn';
-    const base = facts.base?.state === 'ready' ? facts.base : undefined;
-    const counts = aheadBehindCounts(base);
     const { pr } = facts;
     const hint = pr ? undefined : accessHint(facts.access, facts.repo);
     const repositoryLink = githubLink(git, { relative: '', kind: 'directory' });
@@ -99,39 +96,8 @@ export function ChangesSidebar({
             </PanelHeader>
 
             <div className={styles.body}>
-                {(base || pr || hint || status?.isRepository === true) && (
+                {(pr || hint || status?.isRepository === true) && (
                     <div className={styles.facts}>
-                        {base && (
-                            <div className={styles.baseRow} title={`${base.name}, ${counts}`}>
-                                <Text variant="xs" color="secondary" truncate>
-                                    {`→ ${base.name}`}
-                                </Text>
-                                {(base.ahead > 0 || base.behind > 0) && (
-                                    <Text
-                                        variant="xs"
-                                        color="secondary"
-                                        role="img"
-                                        aria-label={counts}
-                                        className={styles.baseCounts}
-                                    >
-                                        {base.ahead > 0 && (
-                                            <span className={styles.baseCount}>
-                                                <ArrowUp size={8} aria-hidden="true" />
-                                                {base.ahead}
-                                            </span>
-                                        )}
-                                        {base.behind > 0 && (
-                                            <span className={styles.baseCount}>
-                                                <ArrowDown size={8} aria-hidden="true" />
-                                                {base.behind}
-                                            </span>
-                                        )}
-                                    </Text>
-                                )}
-                            </div>
-                        )}
-                        <UpdateFromBase facts={facts} />
-                        <MergeBanner facts={facts} />
                         <RemoteMenu facts={facts} />
                         {pr ? (
                             <PullRequestChip pr={pr} stale={facts.pullRequest.stale} />

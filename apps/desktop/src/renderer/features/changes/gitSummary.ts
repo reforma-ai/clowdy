@@ -1,15 +1,5 @@
 import type { TextColor } from '@clowdy/components/Text';
-import type {
-    GitBase,
-    GitChangeKind,
-    GitCheck,
-    GitCheckState,
-    GitChecks,
-    GitHubAccess,
-    GitHubRepo,
-    GitPullRequestState,
-} from '@clowdy/protocol';
-import type { StatusTone } from '../../shared/runStatus';
+import type { GitBase, GitChangeKind, GitHubAccess, GitHubRepo, GitPullRequestState } from '@clowdy/protocol';
 import type { BranchSummary } from './gitFacts';
 
 /** How a pull request's state is worded. */
@@ -19,50 +9,6 @@ export const PULL_REQUEST_STATE_LABEL: Record<GitPullRequestState, string> = {
     merged: 'Merged',
     closed: 'Closed',
 };
-
-/** How a check's state is worded, and the tone of its dot. A check that was left out on purpose has no colour. */
-export const CHECK_STATE_VIEW: Record<GitCheckState, { label: string; tone: StatusTone }> = {
-    failing: { label: 'Failing', tone: 'danger' },
-    pending: { label: 'Pending', tone: 'warning' },
-    passing: { label: 'Passing', tone: 'success' },
-    skipped: { label: 'Skipped', tone: 'neutral' },
-};
-
-/** The order of a check list: failing, then pending, passing and skipped; within a state the daemon's order (by name) stays. */
-const CHECK_ORDER: readonly GitCheckState[] = ['failing', 'pending', 'passing', 'skipped'];
-
-/** The checks as the list shows them: failing first. The daemon sorts them already; this keeps the rule here too, so the list never depends on it. */
-export const sortedChecks = (items: readonly GitCheck[]): GitCheck[] =>
-    [...items].sort((a, b) => CHECK_ORDER.indexOf(a.state) - CHECK_ORDER.indexOf(b.state));
-
-/** What the dot of the checks says: `none` has no dot. The `skipped` checks do not count. */
-export const checksTone = (checks: GitChecks): StatusTone | undefined => {
-    switch (checks.state) {
-        case 'failing':
-            return 'danger';
-        case 'pending':
-            return 'warning';
-        case 'passing':
-            return 'success';
-        default:
-            return undefined;
-    }
-};
-
-/** The checks in words, the ones that are not zero: `1 failing, 2 pending, 3 passing`. */
-export function checksWords(checks: GitChecks): string {
-    const parts = [
-        [checks.failing, 'failing'],
-        [checks.pending, 'pending'],
-        [checks.passing, 'passing'],
-        [checks.skipped, 'skipped'],
-    ] as const;
-
-    return parts
-        .filter(([count]) => count > 0)
-        .map(([count, word]) => `${count} ${word}`)
-        .join(', ');
-}
 
 /** How far the branch is from its base, in words: `3 ahead, 1 behind origin/main`, `2 ahead of origin/main`, `1 behind origin/main`, `Even with origin/main`. Nothing when there is no base to compare with. */
 export function aheadBehindWords(base: GitBase | undefined): string | undefined {
@@ -77,21 +23,6 @@ export function aheadBehindWords(base: GitBase | undefined): string | undefined 
     if (behind > 0) return `${behind} behind ${name}`;
 
     return `Even with ${name}`;
-}
-
-/** How far the branch is from its base without naming it: `3 ahead, 1 behind`, `2 ahead`, `1 behind`, `Even`. Nothing when there is no base to compare with. */
-export function aheadBehindCounts(base: GitBase | undefined): string | undefined {
-    if (base?.state !== 'ready') return undefined;
-
-    const { ahead, behind } = base;
-
-    if (ahead > 0 && behind > 0) return `${ahead} ahead, ${behind} behind`;
-
-    if (ahead > 0) return `${ahead} ahead`;
-
-    if (behind > 0) return `${behind} behind`;
-
-    return 'Even';
 }
 
 /** What a changed file is called and drawn as: the letter of its status in the colour that status has in the lists of a tool such as this, and its name for a tooltip and a screen reader. */

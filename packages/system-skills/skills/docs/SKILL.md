@@ -5,7 +5,7 @@ description: "The contract for a project's documents in .clowdy/docs/: layout, f
 
 # Project documents
 
-Project memory is plain Markdown in `<project>/.clowdy/docs/`. The user reads and edits it in the Docs tab of the app's side panel, and every chat and agent shares it. Chat history does not carry over: if a decision, finding or result is not in the docs, the next chat does not know it.
+Project memory is plain Markdown in `<project>/.clowdy/docs/`, shared by every chat and agent and editable in the app's Docs tab. Chat history does not carry over: decisions, findings and results absent from the docs are lost to the next chat.
 
 Always use the docs folder of the project's main checkout (a folder at a path the system prompt gives, not a copy of it; give agents its absolute path in prompts), even when your code work happens in another copy. That is one of the folders the Docs tab shows (it also shows `.briefback` and the folders of Spec Kit, OpenSpec and Kiro), unless the person works in another folder of the project, so what you write there is visible at once. Committing documents is ordinary git practice: commit them with the change they describe if the project tracks them.
 
@@ -13,7 +13,7 @@ A project can have several folders. The system prompt then lists them by path an
 
 ## Layout
 
-Create files only when there is something to say. No empty placeholders.
+Create files only when there is something to say; no empty placeholders.
 
 | Path | Holds | Write it when |
 | --- | --- | --- |
@@ -52,7 +52,7 @@ Give each kind its own heading in `product.md` and `architecture.md` (`## Implem
 
 Record every significant decision when you make it, not at the end of the task: a product fork, the stack, the data model, auth, hosting, a trade-off, a reversal. Routine choices (names, small refactors) get no record. clowdy:autopilot and clowdy:semi-manual say who decides; the [decision template](references/decision-template.md) says how it is written down.
 
-To supersede:
+To supersede a decision:
 
 1. Write the new record with `Supersedes:` pointing at the old file, and say in its Context why the old one no longer fits.
 2. In the old file change only two lines: `Status: superseded` and `Superseded by:` pointing at the new file. Leave the rest unchanged.
@@ -75,7 +75,7 @@ A claim with no source is a Hypothesis.
 - Raw logs, full command output, stack dumps over 20 lines, whole files copied from the code, chat transcripts.
 - Binaries, builds, databases, video.
 
-Summarize instead: the excerpt that proves the point, the command to reproduce, the task key. A screenshot may sit next to the document as a small image file (under about 500 KB, relative link) when a user flow needs visual proof. Never embed it as base64.
+Instead, summarize with the proving excerpt, reproduction command and task key. A screenshot may sit next to the document as a small image file (under about 500 KB, relative link) when a user flow needs visual proof. Never embed it as base64.
 
 ## Start a chat from the docs
 

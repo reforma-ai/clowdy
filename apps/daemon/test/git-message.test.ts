@@ -3,6 +3,9 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync
 import { dirname, join } from 'node:path';
 
 import { startDaemon } from '../src/daemon';
+import { resolvePlace } from '../src/domain/places';
+import { exclusive, pathKey, placeOf } from '../src/domain/workspaces';
+import { AgentRegistry } from '../src/engine/acp/registry';
 import {
     buildPrompt,
     cleanSubject,
@@ -17,7 +20,7 @@ import { claude } from '../src/providers/claude';
 import { codex } from '../src/providers/codex';
 import { GenerateFailure, TextGeneration } from '../src/providers/generate';
 import { ProvidersService } from '../src/providers/service';
-import { cleanTempDirs, git, Harness, makeRepo, tempDir, testAgents, testConfig } from './helpers';
+import { cleanTempDirs, git, Harness, makeRepo, tempDir, testAgents, testConfig, waitFor } from './helpers';
 
 import type { SignInStatus } from '@clowdy/protocol';
 import type { Config } from '../src/config';
@@ -165,8 +168,6 @@ withStandIn('TextGeneration', () => {
         const dataDir = tempDir('git-message');
         const missing = new TextGeneration({ target: async () => undefined, dataDir });
 
-        // Codex first, then Claude Code: the order the first that is on and signed in is asked in.
-        expect(missing.agents).toEqual(['codex', 'claude']);
         await expect(missing.run('codex', 'prompt')).rejects.toBeInstanceOf(GenerateFailure);
         await expect(missing.run('claude', 'prompt')).rejects.toMatchObject({ reason: 'failed' });
         await expect(
@@ -195,6 +196,7 @@ function agentStandIn(name: 'codex' | 'claude' = 'codex') {
             `dir='${dir}'`,
             `if [ "$1" = "--version" ]; then echo "${name === 'codex' ? 'codex-cli 0.171.0' : '2.1.312 (Claude Code)'}"; exit 0; fi`,
             'echo run >> "$dir/count"',
+            'echo "$$" > "$dir/pid"',
             ': > "$dir/argv"',
             'for arg in "$@"; do printf \'%s\\n\' "$arg" >> "$dir/argv"; done',
             'cat > "$dir/stdin"',
@@ -330,10 +332,11 @@ async function start(options: AgentState & { timeoutMs?: number; config?: Partia
 
     const { project } = h.ok('project.add', { folders: [path] });
     const folderId = project.folders[0].id as string;
-    const generate = (paths: unknown) =>
+    const generate = (paths: unknown, signal?: AbortSignal) =>
         h.fetch(`/v1/projects/${project.id}/git/message`, {
             method: 'POST',
             body: JSON.stringify({ folderId, paths }),
+            signal,
         });
 
     return { h, config, standIn, claudeStandIn, state, providers, path, project, folderId, generate };
@@ -523,10 +526,9 @@ withStandIn('POST /v1/projects/:id/git/message', () => {
         });
         expect(off.standIn.runs).toBe(0);
 
-        // The switch is the person's: turning it on is what lets the daemon run it, and turning it off stops it again.
-        off.h.ok('agent.update', { id: 'codex', settings: { commitMessage: true } });
+        off.h.ok('agents.setCommitMessageProvider', { provider: 'codex' });
         expect((await off.generate(['b.txt'])).status).toBe(200);
-        off.h.ok('agent.update', { id: 'codex', settings: { commitMessage: false } });
+        off.h.ok('agents.setCommitMessageProvider', { provider: null });
         expect((await off.generate(['b.txt'])).status).toBe(400);
         expect(off.standIn.runs).toBe(1);
 
@@ -592,6 +594,53 @@ withStandIn('POST /v1/projects/:id/git/message', () => {
         expect(await json<{ message: string }>(one)).toEqual(await json<{ message: string }>(two));
         // The two identical requests were one run; the different one had its own, after it.
         expect(standIn.runs).toBe(2);
+    });
+
+    test('stops the provider when its last HTTP client cancels, and starts a fresh run on retry', async () => {
+        const { standIn, path, generate } = await start();
+        writeFileSync(join(path, 'b.txt'), 'changed\n');
+        standIn.sleep(20);
+
+        const controller = new AbortController();
+        const request = generate(['b.txt'], controller.signal);
+        const pid = await waitFor(
+            () => existsSync(join(standIn.dir, 'pid')) && Number(standIn.read('pid')),
+            'provider process'
+        );
+
+        controller.abort();
+        await expect(request).rejects.toMatchObject({ name: 'AbortError' });
+
+        await waitFor(() => {
+            try {
+                process.kill(pid, 0);
+                return false;
+            } catch (error) {
+                if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error;
+                return true;
+            }
+        }, 'provider process to exit');
+
+        standIn.sleep(0);
+        standIn.answer('fix: retry');
+        expect(await json<{ message: string }>(await generate(['b.txt']))).toEqual({ message: 'fix: retry' });
+        expect(standIn.runs).toBe(2);
+    });
+
+    test('keeps the shared run when a second client is still waiting', async () => {
+        const { h, standIn, path, project, folderId } = await start();
+        writeFileSync(join(path, 'b.txt'), 'changed\n');
+
+        const place = resolvePlace(h.store, project, folderId);
+        const controller = new AbortController();
+        const service = h.daemon.services.commitMessages;
+        const first = service.generate(place, ['b.txt'], controller.signal);
+        const second = service.generate(place, ['b.txt']);
+
+        controller.abort();
+        await expect(first).rejects.toMatchObject({ name: 'AbortError' });
+        expect(await second).toEqual({ message: 'feat(files): add fresh' });
+        expect(standIn.runs).toBe(1);
     });
 
     test('names a file it cannot show, and keeps its excerpt to a budget shared among the files', async () => {
@@ -661,7 +710,7 @@ withStandIn('POST /v1/projects/:id/git/message', () => {
     });
 });
 
-withStandIn('Claude Code as the second agent for the message', () => {
+withStandIn('Claude Code as the commit message provider', () => {
     /** What the person's own shell, or the Claude Code session that started the daemon, leaves in its environment. */
     const LEAKED = {
         CLAUDECODE: '1',
@@ -738,74 +787,69 @@ withStandIn('Claude Code as the second agent for the message', () => {
         expect(existsSync(cwd)).toBe(false);
     });
 
-    test('is asked when Codex has the switch off, or is signed out, and is not asked while Codex answers', async () => {
-        const first = await start({ claude: { on: true } });
+    test('keeps Codex for older profiles with both switches on and saves an explicit selection', async () => {
+        const { h, config, path, generate, standIn, claudeStandIn } = await start({ claude: { on: true } });
+        writeFileSync(join(path, 'b.txt'), 'changed\n');
 
-        writeFileSync(join(first.path, 'b.txt'), 'changed\n');
-        expect(await json<{ message: string }>(await first.generate(['b.txt']))).toEqual({
+        expect(await json<{ message: string }>(await generate(['b.txt']))).toEqual({
             message: 'feat(files): add fresh',
         });
-        expect(first.standIn.runs).toBe(1);
-        expect(first.claudeStandIn.runs).toBe(0);
+        expect([standIn.runs, claudeStandIn.runs]).toEqual([1, 0]);
 
-        const off = await start({ on: false, claude: { on: true } });
+        h.ok('agents.setCommitMessageProvider', { provider: 'claude' });
+        const saved = new AgentRegistry({ dataDir: config.dataDir });
+        expect(saved.setting('codex', 'commitMessage')).toBe(false);
+        expect(saved.setting('claude', 'commitMessage')).toBe(true);
 
-        writeFileSync(join(off.path, 'b.txt'), 'changed\n');
-        expect(await json<{ message: string }>(await off.generate(['b.txt']))).toEqual({
+        expect(await json<{ message: string }>(await generate(['b.txt']))).toEqual({
             message: 'fix(files): add fresh',
         });
-        expect(off.standIn.runs).toBe(0);
-
-        const out = await start({ signedIn: 'signed-out', claude: { on: true } });
-
-        writeFileSync(join(out.path, 'b.txt'), 'changed\n');
-        expect(await json<{ message: string }>(await out.generate(['b.txt']))).toEqual({
-            message: 'fix(files): add fresh',
-        });
-        expect(out.standIn.runs).toBe(0);
-        expect(out.claudeStandIn.runs).toBe(1);
+        expect([standIn.runs, claudeStandIn.runs]).toEqual([1, 1]);
     });
 
-    test('is asked once when the run of Codex fails, says nothing, or does not end in time, and its answer is the one that comes back', async () => {
-        const failing = await start({ claude: { on: true } });
+    test('does not send a queued request after the provider changes', async () => {
+        const { h, path, project, folderId, standIn, claudeStandIn } = await start();
+        writeFileSync(join(path, 'b.txt'), 'changed\n');
+        const place = resolvePlace(h.store, project, folderId);
+        const gate = Promise.withResolvers<void>();
+        const ahead = exclusive(h.store, `message:${pathKey(placeOf(path))}`, undefined, () => gate.promise);
+        const queued = h.daemon.services.commitMessages.generate(place, ['b.txt']);
 
-        writeFileSync(join(failing.path, 'b.txt'), 'changed\n');
-        failing.standIn.exit(1);
-        expect(await json<{ message: string }>(await failing.generate(['b.txt']))).toEqual({
-            message: 'fix(files): add fresh',
-        });
-        expect(failing.standIn.runs).toBe(1);
-        expect(failing.claudeStandIn.runs).toBe(1);
+        h.ok('agents.setCommitMessageProvider', { provider: 'claude' });
+        gate.resolve();
 
-        const silent = await start({ claude: { on: true } });
-
-        writeFileSync(join(silent.path, 'b.txt'), 'changed\n');
-        silent.standIn.answer('   ');
-        expect(await json<{ message: string }>(await silent.generate(['b.txt']))).toEqual({
-            message: 'fix(files): add fresh',
-        });
-        expect(silent.claudeStandIn.runs).toBe(1);
-
-        const slow = await start({ claude: { on: true }, timeoutMs: 500 });
-
-        writeFileSync(join(slow.path, 'b.txt'), 'changed\n');
-        slow.standIn.sleep(20);
-
-        const started = Date.now();
-
-        expect(await json<{ message: string }>(await slow.generate(['b.txt']))).toEqual({
-            message: 'fix(files): add fresh',
-        });
-        expect(Date.now() - started).toBeLessThan(10_000);
-        expect(slow.claudeStandIn.runs).toBe(1);
+        await ahead;
+        await expect(queued).rejects.toMatchObject({ code: 'conflict' });
+        expect([standIn.runs, claudeStandIn.runs]).toEqual([0, 0]);
     });
 
-    test("is an error with the daemon's own words when both fail, each asked once, and when the only agent that is on fails there is no other to ask", async () => {
-        const both = await start({ claude: { on: true } });
+    test('does not try Claude Code when the selected Codex is signed out or its run fails', async () => {
+        const { state, providers, path, generate, standIn, claudeStandIn } = await start({
+            signedIn: 'signed-out',
+            claude: { on: true },
+        });
+        writeFileSync(join(path, 'b.txt'), 'changed\n');
 
-        writeFileSync(join(both.path, 'b.txt'), 'changed\n');
-        both.standIn.exit(1);
-        both.claudeStandIn.say(
+        const signedOut = await generate(['b.txt']);
+        expect(signedOut.status).toBe(503);
+        expect((await json<Failure>(signedOut)).error.details).toEqual({ reason: 'signed_out' });
+        expect([standIn.runs, claudeStandIn.runs]).toEqual([0, 0]);
+
+        state.signIn = 'signed-in';
+        providers.forget('codex');
+        standIn.exit(1);
+
+        const failed = await generate(['b.txt']);
+        expect(failed.status).toBe(503);
+        expect((await json<Failure>(failed)).error.details).toEqual({ reason: 'failed' });
+        expect([standIn.runs, claudeStandIn.runs]).toEqual([1, 0]);
+    });
+
+    test("reports Claude Code failures without exposing the provider's raw error", async () => {
+        const selected = await start({ on: false, claude: { on: true } });
+
+        writeFileSync(join(selected.path, 'b.txt'), 'changed\n');
+        selected.claudeStandIn.say(
             JSON.stringify({
                 type: 'result',
                 is_error: true,
@@ -813,7 +857,7 @@ withStandIn('Claude Code as the second agent for the message', () => {
             })
         );
 
-        const response = await both.generate(['b.txt']);
+        const response = await selected.generate(['b.txt']);
         const body = await json<Failure>(response);
 
         expect(response.status).toBe(503);
@@ -823,7 +867,7 @@ withStandIn('Claude Code as the second agent for the message', () => {
             details: { reason: 'failed' },
         });
         expect(JSON.stringify(body)).not.toContain('sk-secret');
-        expect([both.standIn.runs, both.claudeStandIn.runs]).toEqual([1, 1]);
+        expect([selected.standIn.runs, selected.claudeStandIn.runs]).toEqual([0, 1]);
 
         // A claude that prints something that is not its result, or fails with a code, or an empty answer, is one that failed.
         for (const printed of [
@@ -831,13 +875,13 @@ withStandIn('Claude Code as the second agent for the message', () => {
             JSON.stringify([{ type: 'system' }]),
             JSON.stringify({ type: 'result', is_error: false, result: ' ' }),
         ]) {
-            both.claudeStandIn.say(printed);
-            expect((await both.generate(['b.txt'])).status).toBe(503);
+            selected.claudeStandIn.say(printed);
+            expect((await selected.generate(['b.txt'])).status).toBe(503);
         }
 
-        both.claudeStandIn.exit(1);
-        both.claudeStandIn.answer('fix: fine, but the exit code says no');
-        expect((await both.generate(['b.txt'])).status).toBe(503);
+        selected.claudeStandIn.exit(1);
+        selected.claudeStandIn.answer('fix: fine, but the exit code says no');
+        expect((await selected.generate(['b.txt'])).status).toBe(503);
 
         const alone = await start({ on: false, claude: { on: true }, timeoutMs: 500 });
 

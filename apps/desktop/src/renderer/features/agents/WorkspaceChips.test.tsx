@@ -17,7 +17,7 @@ import { currentPlace } from '../sidePanel/currentPlace';
 import { openManageWorktrees } from '../worktrees';
 import { DraftChat } from './DraftChat';
 
-import type { Chat, CommandResult, FolderGit } from '@clowdy/protocol';
+import type { Chat, CommandResult, CreatedWorktree, FolderGit } from '@clowdy/protocol';
 import type { Editor } from '@tiptap/core';
 import type { KeyValueStorage } from '../../stores/storage';
 
@@ -46,13 +46,14 @@ const memoryStorage = (): KeyValueStorage => {
 let container: HTMLDivElement;
 let root: Root;
 let store: RootStore;
+let missingFolders = new Set<string>();
 
 const ui = (projectId = FIXTURE_PROJECT_ID) => store.ui.forProject(projectId);
 // The test build has no MobX observer plugin, so the page is drawn again by hand after a change, as the observer does in the app.
 const render = () =>
     root.render(
         <RootStoreProvider value={store}>
-            <DraftChat missing={new Set()} />
+            <DraftChat missing={missingFolders} />
         </RootStoreProvider>
     );
 const settle = () =>
@@ -79,7 +80,6 @@ const chip = () => container.querySelector<HTMLButtonElement>('button[aria-label
 /** The base of the row of a new worktree, in the open menu: a press target of its own at the row's end. */
 const baseButton = () =>
     document.body.querySelector<HTMLButtonElement>('[role="menu"] button[aria-label^="Start from"]');
-const folderSelect = () => container.querySelector<HTMLButtonElement>('button[aria-label^="Folder:"]');
 const menuItems = () => [...document.body.querySelectorAll<HTMLElement>('[role="menu"] [role^="menuitem"]')];
 const menuItem = (text: string) => menuItems().find(row => row.textContent?.startsWith(text))!;
 /** Existing worktree rows in the main menu. */
@@ -168,6 +168,7 @@ const made = (before: ReadonlySet<string>): Chat[] =>
     [...store.selectedProject!.chats.values()].filter(chat => !before.has(chat.id));
 
 beforeEach(async () => {
+    missingFolders = new Set();
     container = document.createElement('div');
     document.body.append(container);
     root = createRoot(container);
@@ -201,14 +202,27 @@ describe('the control', () => {
         expect(dimParts()).toEqual([]);
     });
 
-    it('lists main, new and existing worktrees, followed by Manage worktrees…', async () => {
+    it.each([
+        ['main checkout', undefined, '~/car-rental'],
+        ['existing worktree', 'clowdy/ab12cd34', '~/Clowdy/workspaces/car-rental/ab12cd34/car-rental'],
+    ])('shows the selected path on the %s control', async (_name, worktree, path) => {
+        if (worktree) await chooseWorktree(worktree);
+        await act(async () => {
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+            chip()!.focus();
+        });
+        await act(async () => new Promise(resolve => setTimeout(resolve, 0)));
+        expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(path);
+    });
+
+    it('lists main, new and existing worktrees, followed by Folder settings…', async () => {
         await press(chip()!);
 
         expect(textsOf(menuItems())).toEqual([
-            'Main worktreeWork in the folder as it ismain',
-            'New worktreeA separate checkout on a branch of its ownorigin/main',
-            'clowdy/ab12cd34Used in 0 chats',
-            'Manage worktrees…',
+            'Main worktreeUse the project foldermain',
+            'New worktreeUse a new folder and branchFrom origin/main',
+            'clowdy/ab12cd34Worktree',
+            'Folder settings…',
         ]);
         // Manage opens a dialog and does not select a place.
         expect(menuItems().map(row => row.getAttribute('aria-checked'))).toEqual(['true', 'false', 'false', null]);
@@ -219,7 +233,7 @@ describe('the control', () => {
             'menuitem',
         ]);
         expect(menuItems().every(row => row.getAttribute('aria-disabled') !== 'true')).toBe(true);
-        // One separator stands between the three places to work in and Manage worktrees….
+        // One separator stands between the three places to work in and Folder settings….
         expect(document.body.querySelectorAll('[role="menu"] [role="separator"]')).toHaveLength(1);
 
         const rows = [...document.body.querySelectorAll<HTMLElement>('[role="menu"] > *')];
@@ -351,9 +365,9 @@ describe('the control', () => {
         await press(chip()!);
 
         expect(textsOf(menuItems())).toEqual([
-            'Main worktreeWork in the folder as it ismain',
-            'New worktreeA separate checkout on a branch of its ownorigin/main',
-            'Manage worktrees…',
+            'Main worktreeUse the project foldermain',
+            'New worktreeUse a new folder and branchFrom origin/main',
+            'Folder settings…',
         ]);
         expect(
             [...document.body.querySelectorAll<HTMLElement>('[role="menu"] > *')].map(row => row.getAttribute('role'))
@@ -383,11 +397,11 @@ describe('the control', () => {
         });
         await act(async () => new Promise(resolve => setTimeout(resolve, 0)));
 
-        expect(document.querySelector('[role="tooltip"]')?.textContent).toBe('Detached HEAD');
+        expect(document.querySelector('[role="tooltip"]')?.textContent).toContain('Detached HEAD');
 
         await press(chip()!);
 
-        expect(menuItem('Main worktree').textContent).toBe('Main worktreeWork in the folder as it is5c4d3e2');
+        expect(menuItem('Main worktree').textContent).toBe('Main worktreeUse the project folder5c4d3e2');
     });
 });
 
@@ -395,7 +409,7 @@ describe('the branch a new worktree starts from', () => {
     it('is the base at the end of the row of a new worktree, a press target of its own that opens the list of branches and leaves the row alone', async () => {
         await press(chip()!);
 
-        expect(baseButton()?.textContent).toBe('origin/main');
+        expect(baseButton()?.textContent).toBe('From origin/main');
         expect(baseButton()?.closest('[role="menuitemradio"]')?.textContent).toContain('New worktree');
 
         await press(baseButton()!);
@@ -424,7 +438,7 @@ describe('the branch a new worktree starts from', () => {
         expect(baseButton()?.getAttribute('tabindex')).toBe('-1');
     });
 
-    it('opens the list of the base for the right arrow on the row of a new worktree, and on no row of Manage worktrees', async () => {
+    it('opens the list of the base for the right arrow on the row of a new worktree, and on no row of Folder settings', async () => {
         const key = async (target: HTMLElement) =>
             act(async () => {
                 target.focus();
@@ -440,7 +454,7 @@ describe('the branch a new worktree starts from', () => {
             });
 
         await press(chip()!);
-        await key(menuItem('Manage worktrees'));
+        await key(menuItem('Folder settings'));
         await settle();
 
         expect(options()).toEqual([]);
@@ -572,7 +586,7 @@ describe('the branch a new worktree starts from', () => {
 
         await press(chip()!);
 
-        expect(baseButton()?.textContent).toBe('dev');
+        expect(baseButton()?.textContent).toBe('From dev');
     });
 
     it('ticks the base the new worktree starts from when the list is open again', async () => {
@@ -591,15 +605,15 @@ describe('Existing worktrees', () => {
         await start({ data: withFixtureWorkspace(createFixtureData()) });
         await openWorktrees();
 
-        expect(worktreeRows().map(row => row.textContent)).toEqual(['clowdy/ab12cd34Used in 1 chat']);
+        expect(worktreeRows().map(row => row.textContent)).toEqual(['clowdy/ab12cd34Worktree used in 1 chat']);
         expect(worktreeRows().map(iconsOf)).toEqual([1]);
         expect(document.body.textContent).not.toContain('Changes');
     });
 
-    it('show zero chats for an unused worktree', async () => {
+    it('labels an unused worktree without a chat count', async () => {
         await openWorktrees();
 
-        expect(worktreeRows().map(row => row.textContent)).toEqual(['clowdy/ab12cd34Used in 0 chats']);
+        expect(worktreeRows().map(row => row.textContent)).toEqual(['clowdy/ab12cd34Worktree']);
     });
 
     describe('the ones a chat works in and the ones none does', () => {
@@ -642,9 +656,9 @@ describe('Existing worktrees', () => {
             await openWorktrees();
 
             expect(worktreeRows().map(row => row.textContent)).toEqual([
-                'clowdy/ab12cd34Used in 1 chat',
-                'worktree-agent-a1Used in 0 chats',
-                'worktree-agent-a2Used in 0 chats',
+                'clowdy/ab12cd34Worktree used in 1 chat',
+                'worktree-agent-a1Worktree',
+                'worktree-agent-a2Worktree',
             ]);
         });
 
@@ -671,7 +685,7 @@ describe('Existing worktrees', () => {
         await start({ data });
         await openWorktrees();
 
-        expect(worktreeRow('clowdy/ab12cd34').textContent).toContain('Used in 4 chats');
+        expect(worktreeRow('clowdy/ab12cd34').textContent).toContain('Worktree used in 4 chats');
     });
 
     it('scroll when there are many, in a box that keeps the popover to a height', async () => {
@@ -708,7 +722,7 @@ describe('Existing worktrees', () => {
     });
 });
 
-describe('Manage worktrees…', () => {
+describe('Folder settings…', () => {
     const opener = vi.mocked(openManageWorktrees);
     const twoFolders = () => {
         const data = createFixtureData();
@@ -730,9 +744,9 @@ describe('Manage worktrees…', () => {
     it('is the last row, behind a separator, and says what it is as a plain menu item', async () => {
         await press(chip()!);
 
-        const manage = menuItem('Manage worktrees');
+        const manage = menuItem('Folder settings');
 
-        expect(manage.textContent).toBe('Manage worktrees…');
+        expect(manage.textContent).toBe('Folder settings…');
         expect(menuItems().at(-1)).toBe(manage);
         expect(manage.getAttribute('role')).toBe('menuitem');
         expect(manage.getAttribute('aria-disabled')).not.toBe('true');
@@ -742,7 +756,7 @@ describe('Manage worktrees…', () => {
 
     it('opens the dialog of the project for the folder of the page, and shuts the menu', async () => {
         await press(chip()!);
-        await press(menuItem('Manage worktrees'));
+        await press(menuItem('Folder settings'));
         await settle();
 
         expect(opener).toHaveBeenCalledExactlyOnceWith({
@@ -756,7 +770,7 @@ describe('Manage worktrees…', () => {
     it('chooses no place: the choice that was made and what the pill says stay', async () => {
         await pickBase('dev');
         await press(chip()!);
-        await press(menuItem('Manage worktrees'));
+        await press(menuItem('Folder settings'));
         await settle();
 
         expect(opener).toHaveBeenCalledOnce();
@@ -772,7 +786,7 @@ describe('Manage worktrees…', () => {
 
     it('opens it for the other folder when that is the folder of the page', async () => {
         await start({ transport: new FixtureTransport({ data: twoFolders() }) });
-        await press(folderSelect()!);
+        await press(chip()!);
         await press(
             [...document.body.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find(
                 row => row.textContent === 'car-rental-api'
@@ -780,7 +794,7 @@ describe('Manage worktrees…', () => {
         );
         await settle();
         await press(chip()!);
-        await press(menuItem('Manage worktrees'));
+        await press(menuItem('Folder settings'));
         await settle();
 
         expect(opener).toHaveBeenCalledExactlyOnceWith({
@@ -792,14 +806,14 @@ describe('Manage worktrees…', () => {
 
     it('opens for Enter and for Space, and shuts the menu for both', async () => {
         await press(chip()!);
-        await key(menuItem('Manage worktrees'), 'Enter', 'Enter');
+        await key(menuItem('Folder settings'), 'Enter', 'Enter');
         await settle();
 
         expect(opener).toHaveBeenCalledTimes(1);
         expect(menuItems()).toEqual([]);
 
         await press(chip()!);
-        await key(menuItem('Manage worktrees'), ' ', 'Space');
+        await key(menuItem('Folder settings'), ' ', 'Space');
         await settle();
 
         expect(opener).toHaveBeenCalledTimes(2);
@@ -810,15 +824,15 @@ describe('Manage worktrees…', () => {
         await press(chip()!);
         await key(worktreeRow('clowdy/ab12cd34'), 'ArrowDown', 'ArrowDown');
 
-        expect(document.activeElement).toBe(menuItem('Manage worktrees'));
+        expect(document.activeElement).toBe(menuItem('Folder settings'));
 
-        await key(menuItem('Manage worktrees'), 'ArrowDown', 'ArrowDown');
+        await key(menuItem('Folder settings'), 'ArrowDown', 'ArrowDown');
 
         expect(document.activeElement).toBe(menuItem('Main worktree'));
 
         await key(menuItem('Main worktree'), 'ArrowUp', 'ArrowUp');
 
-        expect(document.activeElement).toBe(menuItem('Manage worktrees'));
+        expect(document.activeElement).toBe(menuItem('Folder settings'));
     });
 
     it('gives focus back to the pill when the dialog is dismissed with Escape, though the row that opened it went with the menu', async () => {
@@ -828,18 +842,18 @@ describe('Manage worktrees…', () => {
 
         opener.mockImplementationOnce(openDialog);
         await press(chip()!);
-        await key(menuItem('Manage worktrees'), 'Enter', 'Enter');
+        await key(menuItem('Folder settings'), 'Enter', 'Enter');
         // The dialog notes the element to go back to once it has opened.
         await act(async () => {
             await new Promise(resolve => setTimeout(resolve, 400));
         });
 
-        expect(document.body.textContent).toContain("Each folder's worktrees");
+        expect(document.body.textContent).toContain('Name, worktree setup and worktrees of this folder');
         expect(document.activeElement).not.toBe(chip());
 
         await key(document.activeElement as HTMLElement, 'Escape', 'Escape');
         await vi.waitFor(() => expect(document.activeElement).toBe(chip()));
-        expect(document.body.textContent).not.toContain("Each folder's worktrees");
+        expect(document.body.textContent).not.toContain('Name, worktree setup and worktrees of this folder');
     });
 
     it('is in the menu of a repository with no commit too, where a new worktree is off', async () => {
@@ -854,9 +868,9 @@ describe('Manage worktrees…', () => {
         await start({ transport });
         await press(chip()!);
 
-        expect(menuItem('Manage worktrees').getAttribute('aria-disabled')).not.toBe('true');
+        expect(menuItem('Folder settings').getAttribute('aria-disabled')).not.toBe('true');
 
-        await press(menuItem('Manage worktrees'));
+        await press(menuItem('Folder settings'));
 
         expect(opener).toHaveBeenCalledOnce();
     });
@@ -868,7 +882,7 @@ describe('Manage worktrees…', () => {
         await start({ transport });
 
         expect(chip()).toBeNull();
-        expect(document.body.textContent).not.toContain('Manage worktrees');
+        expect(document.body.textContent).not.toContain('Folder settings');
         expect(opener).not.toHaveBeenCalled();
     });
 });
@@ -879,7 +893,7 @@ describe('a folder that offers no worktree', () => {
             document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
             container
                 .querySelector<HTMLElement>(
-                    '[role="button"][aria-disabled][aria-label="Where it runs: Main worktree"]'
+                    '[role="button"][aria-disabled][aria-label="Where it runs: Git unavailable"]'
                 )!
                 .focus();
         });
@@ -903,8 +917,8 @@ describe('a folder that offers no worktree', () => {
         await start({ transport });
 
         expect(chip()).toBeNull();
-        expect(container.querySelector('[aria-label="Where it runs: Main worktree"]')?.textContent).toBe(
-            'Main worktree'
+        expect(container.querySelector('[aria-label="Where it runs: Git unavailable"]')?.textContent).toBe(
+            'Git unavailable'
         );
         expect(await hint()).toBe('Git did not answer');
     });
@@ -1003,6 +1017,37 @@ describe('a folder that offers no worktree', () => {
 });
 
 describe('the first message', () => {
+    it('selects and uses a newly created worktree while the draft still has an older Git listing', async () => {
+        const transport = new FixtureTransport();
+        const command = vi.spyOn(transport, 'command');
+        await start({ transport });
+
+        const folderId = 'fld_car_rental';
+        const oldListing = await transport.getFolderGit(FIXTURE_PROJECT_ID, folderId);
+        vi.spyOn(transport, 'getFolderGit').mockResolvedValue(oldListing);
+        const created = await store.command({
+            type: 'workspace.create',
+            projectId: FIXTURE_PROJECT_ID,
+            folderId,
+            branchName: 'fresh',
+        });
+        if (!created.ok) throw new Error(created.error.message);
+        const { path } = created.data as CreatedWorktree;
+        const known = new Set(store.selectedProject!.chats.keys());
+
+        await draw(() => ui().openDraft([], null, { mode: 'existing', path }));
+        await settle();
+
+        expect(chip()?.getAttribute('aria-label')).toBe('Where it runs: Worktree, branch clowdy/fresh');
+        expect(currentPlace(store.selectedProject!, ui()).workspace?.path).toBe(path);
+        await send('Work here');
+
+        expect(command).toHaveBeenCalledWith(
+            expect.objectContaining({ type: 'chat.create', workspace: { mode: 'existing', path } })
+        );
+        expect(made(known)[0]?.workspace?.path).toBe(path);
+    });
+
     it('makes a chat in the folder itself when Project checkout is on', async () => {
         const before = new Set(store.selectedProject!.chats.keys());
 
@@ -1117,6 +1162,22 @@ describe('the folder of the page', () => {
         return data;
     };
 
+    it('exposes the selected folder and workspace independently', async () => {
+        await start({ data: twoFolders() });
+        await press(chip()!);
+
+        expect(menuItem('car-rental').getAttribute('aria-checked')).toBe('true');
+        expect(menuItem('car-rental-api').getAttribute('aria-checked')).toBe('false');
+        expect(menuItem('Main worktree').getAttribute('aria-checked')).toBe('true');
+        expect(menuItem('New worktree').getAttribute('aria-checked')).toBe('false');
+
+        await press(menuItem('New worktree'));
+        await press(chip()!);
+        expect(menuItem('car-rental').getAttribute('aria-checked')).toBe('true');
+        expect(menuItem('Main worktree').getAttribute('aria-checked')).toBe('false');
+        expect(menuItem('New worktree').getAttribute('aria-checked')).toBe('true');
+    });
+
     it('takes the chips along: the lists are read for the folder that is picked, and the choice goes back to Project checkout', async () => {
         const transport = new FixtureTransport({ data: twoFolders() });
         const read = vi.spyOn(transport, 'getFolderGit');
@@ -1127,7 +1188,7 @@ describe('the folder of the page', () => {
         expect(ui().draftWorkspace).toEqual({ mode: 'new', base: 'dev' });
         expect(read).toHaveBeenCalledExactlyOnceWith(FIXTURE_PROJECT_ID, 'fld_car_rental');
 
-        await press(folderSelect()!);
+        await press(chip()!);
         await press(
             [...document.body.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find(
                 row => row.textContent === 'car-rental-api'
@@ -1138,10 +1199,10 @@ describe('the folder of the page', () => {
         expect(read).toHaveBeenLastCalledWith(FIXTURE_PROJECT_ID, API.id);
         expect(ui().draftWorkspace).toBeNull();
         // The branch the pill says is the other folder's.
-        expect(chip()?.textContent).toBe('feature/payments');
+        expect(chip()?.textContent).toBe('car-rental-apifeature/payments');
     });
 
-    it('shows no control of the folder it had while the answer for the new one is on its way, and sends nothing for it', async () => {
+    it('keeps folder selection available while the new folder is loading, without showing the old workspace', async () => {
         const transport = new FixtureTransport({ data: twoFolders() });
 
         await start({ transport });
@@ -1149,8 +1210,69 @@ describe('the folder of the page', () => {
         vi.spyOn(transport, 'getFolderGit').mockReturnValue(new Promise<FolderGit>(() => undefined));
         await draw(() => ui().setDraftFolder(API.id));
 
-        expect(chip()).toBeNull();
-        expect(container.querySelector('[aria-label^="Where it runs"]')).toBeNull();
+        expect(chip()?.textContent).toBe('car-rental-apiReading Git…');
+        await press(chip()!);
+        expect(menuItem('car-rental')).toBeDefined();
+        expect(menuItems().some(row => row.hasAttribute('data-new-worktree'))).toBe(false);
+    });
+
+    it.each([
+        ['a non-repository', false, 'Not a repository'],
+        ['a failed read', true, 'Git unavailable'],
+    ])('keeps folder choices accessible for %s', async (_name, failed, label) => {
+        const transport = new FixtureTransport({ data: twoFolders() });
+
+        await start({ transport });
+        const read = vi.spyOn(transport, 'getFolderGit');
+
+        if (failed) read.mockRejectedValue(new TransportError('git did not answer', 503));
+        else read.mockResolvedValue({ isRepository: false });
+        await draw(() => ui().setDraftFolder(API.id));
+        await settle();
+        expect(chip()?.textContent).toBe(`car-rental-api${label}`);
+        await press(chip()!);
+        expect(menuItem('car-rental-api').getAttribute('aria-checked')).toBe('true');
+        expect(menuItem('car-rental').getAttribute('aria-checked')).toBe('false');
+        expect(menuItems().some(row => row.hasAttribute('data-new-worktree'))).toBe(false);
+    });
+
+    it('shows missing folders but does not allow selecting them', async () => {
+        await start({ data: twoFolders() });
+        missingFolders.add(API.id);
+        await draw();
+        await press(chip()!);
+        const row = menuItem('car-rental-api');
+
+        expect(row.getAttribute('aria-disabled')).toBe('true');
+        expect(row.textContent).toContain('This folder no longer exists');
+        await press(row);
+        expect(ui().draftFolderId).toBeNull();
+    });
+
+    it('returns focus to the control while the selected folder loads and when it answers', async () => {
+        const transport = new FixtureTransport({ data: twoFolders() });
+        let answer: (git: FolderGit) => void = () => undefined;
+
+        await start({ transport });
+        const git = await transport.getFolderGit(FIXTURE_PROJECT_ID, API.id);
+        vi.spyOn(transport, 'getFolderGit').mockReturnValue(
+            new Promise<FolderGit>(resolve => {
+                answer = resolve;
+            })
+        );
+        await press(chip()!);
+        await press(menuItem('car-rental-api'));
+        await settle();
+        await act(async () => {
+            await new Promise(resolve => setTimeout(resolve, 30));
+        });
+        expect(document.activeElement).toBe(chip());
+        await act(async () => answer(git));
+        await settle();
+        await act(async () => {
+            await new Promise(resolve => setTimeout(resolve, 30));
+        });
+        expect(document.activeElement).toBe(chip());
     });
 
     it('keeps the choice with the page through another chat, back and forward', async () => {

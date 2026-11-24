@@ -15,6 +15,11 @@ import type { Transport } from '../../daemon/transport';
 /** What the tab's model of a place reads and writes with: the lists, the files' texts and the viewed marks. */
 export type PlaceChangesTransport = Pick<Transport, 'getGitChanges' | 'getGitFile'> & ViewedTransport;
 
+/** A file of the list, or its path: a card passes its own file, which ties what it reads to that file alone. */
+export type FileRef = string | Pick<GitChangedFile, 'path' | 'revision'>;
+
+const pathOfRef = (file: FileRef): string => (typeof file === 'string' ? file : file.path);
+
 /** A list of a place that is a repository. */
 export type RepositoryChanges = Extract<GitChanges, { isRepository: true }>;
 
@@ -133,7 +138,7 @@ export class PlaceChanges {
 
     /** The files the diff list shows: the ones the filter lets through, without the viewed ones while they are hidden. */
     get files(): readonly GitChangedFile[] {
-        return this.hideViewed ? this.matchingFiles.filter(file => !this.isViewed(file.path)) : this.matchingFiles;
+        return this.hideViewed ? this.matchingFiles.filter(file => !this.isViewed(file)) : this.matchingFiles;
     }
 
     /** The paths of the files of the list that are viewed now: marked, and at the revision the list has for them. A mark made on its way counts. */
@@ -145,9 +150,12 @@ export class PlaceChanges {
         );
     }
 
-    /** Whether the file of the list is viewed. */
-    isViewed(path: string): boolean {
-        return this.viewedPaths.has(path);
+    /**
+     * Whether the file of the list is viewed. Given the file, it reads that file's mark alone, so a mark on another file does not touch the card that asks; given a path, the
+     * revision is the list's.
+     */
+    isViewed(file: FileRef): boolean {
+        return typeof file === 'string' ? this.viewedPaths.has(file) : this.viewed.isViewed(this.effectiveScope, file);
     }
 
     /** How many files of the list are viewed. */
@@ -185,9 +193,14 @@ export class PlaceChanges {
         });
     }
 
+    /** `GitChanges.from` of the list: a value of its own, so a card that reads it is not drawn again for each new list that has the same one. */
+    get from(): string | undefined {
+        return this.changes?.from;
+    }
+
     /** What a card asks the cache for when it wants a file's texts. */
     requestOf(file: GitChangedFile): SidesRequest {
-        const from = this.changes?.from;
+        const { from } = this;
 
         return {
             scope: this.effectiveScope,
@@ -198,20 +211,22 @@ export class PlaceChanges {
         };
     }
 
-    isFolded(path: string): boolean {
-        return this.#folds.get(path) ?? (this.preferences.collapseDiffs || this.isViewed(path));
+    isFolded(file: FileRef): boolean {
+        return this.#folds.get(pathOfRef(file)) ?? (this.preferences.collapseDiffs || this.isViewed(file));
     }
 
-    toggleFolded(path: string): void {
-        if (this.isFolded(path)) {
-            this.reveal(path);
+    toggleFolded(file: FileRef): void {
+        if (this.isFolded(file)) {
+            this.reveal(pathOfRef(file));
         } else {
-            this.#fold(path);
+            this.#fold(file);
         }
     }
 
-    #fold(path: string): void {
-        if (this.isViewed(path)) this.#folds.delete(path);
+    #fold(file: FileRef): void {
+        const path = pathOfRef(file);
+
+        if (this.isViewed(file)) this.#folds.delete(path);
         else this.#folds.set(path, true);
     }
 
@@ -222,7 +237,7 @@ export class PlaceChanges {
 
     /** Shuts the cards the filter shows. */
     foldAll(): void {
-        for (const file of this.files) this.#fold(file.path);
+        for (const file of this.files) this.#fold(file);
     }
 
     /** Opens every card, including the ones the filter hides. */
@@ -241,7 +256,7 @@ export class PlaceChanges {
     get allFolded(): boolean {
         const { files } = this;
 
-        return files.length > 0 && files.every(file => this.isFolded(file.path));
+        return files.length > 0 && files.every(file => this.isFolded(file));
     }
 
     /** The scope the person picked in the menu. The open chat's run (the one entry of the menu that is no choice of `scope`) is followed, so a newer run of the chat replaces it. */
@@ -284,6 +299,27 @@ export class PlaceChanges {
     showRun(chatId: string, scope: GitScope, path?: string): void {
         this.setRun(chatId, scope);
         this.followsRun = true;
+        this.revealRequest = path;
+    }
+
+    /**
+     * Brings an uncommitted file up in the diff list, as a press on its row in the commit box asks: in the scope that is shown when its list has the file, else in the uncommitted
+     * one. A filter or the hidden viewed files that would leave its card out let it through. `ChangesView` opens the card and scrolls to it once the list has it.
+     */
+    showFile(path: string): void {
+        if (!this.changes?.files.some(file => file.path === path)) this.setScope('uncommitted');
+
+        if (!compileChangeFilter(this.filter).matches(path)) this.setFilter('');
+
+        if (this.hideViewed && this.isViewed(path)) this.setHideViewed(false);
+
+        this.revealRequest = path;
+    }
+
+    /** Shows a merge file in the uncommitted diff list. */
+    showUncommittedFile(path: string): void {
+        this.setScope('uncommitted');
+        this.setFilter('');
         this.revealRequest = path;
     }
 

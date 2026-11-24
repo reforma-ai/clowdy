@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { COLLAPSED_TASKS_LIMIT, COMMENT_DRAFTS_LIMIT, initialUiFromSearch, UiStore } from './UiStore';
 
+import type { Run } from '@clowdy/protocol';
 import type { KeyValueStorage } from './storage';
 
 function memoryStorage(initial: Record<string, string> = {}): KeyValueStorage & { data: Record<string, string> } {
@@ -16,6 +17,31 @@ function memoryStorage(initial: Record<string, string> = {}): KeyValueStorage & 
 }
 
 describe('UiStore', () => {
+    it('keeps completion read state after restart and shows another completion in the same chat', () => {
+        const storage = memoryStorage();
+        const ui = new UiStore(storage).forProject('p1');
+        const finishedAt = Date.now() + 1;
+        const run: Run = {
+            id: 'r1',
+            rootRunId: 'r1',
+            chatId: 'c1',
+            projectId: 'p1',
+            role: 'orchestrator',
+            name: 'Orchestrator',
+            summary: '',
+            engine: 'codex',
+            status: 'succeeded',
+            createdAt: 0,
+            finishedAt,
+        };
+
+        expect(new UiStore(storage).forProject('p1').hasUnreadCompletion(run)).toBe(true);
+        ui.markCompletionSeen(run);
+        const restored = new UiStore(storage).forProject('p1');
+        expect(restored.hasUnreadCompletion(run)).toBe(false);
+        expect(restored.hasUnreadCompletion({ ...run, finishedAt: finishedAt + 1 })).toBe(true);
+    });
+
     it('opens a place of a project from elsewhere: a task (in the side panel), a run, a chat', () => {
         const ui = new UiStore().forProject('p1');
 
@@ -692,17 +718,17 @@ describe('UiStore', () => {
         );
     });
 
-    it('starts the side panel on its Info tab, and keeps the tab the person left it on per project', () => {
+    it('starts the side panel on Files and keeps each project’s chosen tab', () => {
         const storage = memoryStorage();
         const store = new UiStore(storage);
         const ui = store.forProject('p1');
 
-        expect(ui.sidePanelTab).toBe('info');
-
-        ui.showSidePanelTab('files');
         expect(ui.sidePanelTab).toBe('files');
-        expect(store.forProject('p2').sidePanelTab).toBe('info');
-        expect(new UiStore(storage).forProject('p1').sidePanelTab).toBe('files');
+
+        ui.showSidePanelTab('docs');
+        expect(ui.sidePanelTab).toBe('docs');
+        expect(store.forProject('p2').sidePanelTab).toBe('files');
+        expect(new UiStore(storage).forProject('p1').sidePanelTab).toBe('docs');
     });
 
     it('shuts the side panel, and does nothing to a shut one', () => {
@@ -853,7 +879,7 @@ describe('UiStore', () => {
         ui.showSidePanelTab('docs');
         expect(ui.sidePanelCoversChat).toBe(true);
 
-        for (const tab of ['terminal', 'info'] as const) {
+        for (const tab of ['terminal'] as const) {
             ui.showSidePanelTab(tab);
             expect([ui.sidePanelTabIsFull, ui.sidePanelCoversChat]).toEqual([false, false]);
         }
@@ -882,12 +908,12 @@ describe('UiStore', () => {
         const ui = new UiStore(memoryStorage()).forProject('p1');
 
         expect(
-            (['files', 'docs', 'terminal', 'info', 'tasks', 'changes'] as const).map(tab => {
+            (['files', 'docs', 'terminal', 'tasks', 'changes'] as const).map(tab => {
                 ui.showSidePanelTab(tab);
 
                 return ui.sidePanelTabHasTree;
             })
-        ).toEqual([true, true, false, false, false, true]);
+        ).toEqual([true, true, false, false, true]);
     });
 
     it("puts Changes beside the chat while the window fits it, and in the chat's place while it does not, as Files is", () => {
@@ -992,10 +1018,13 @@ describe('UiStore', () => {
         expect(
             new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"sidePanelTab":"terminal"}' })).forProject('p1').sidePanelTab
         ).toBe('terminal');
-        // A stored tab that is none (one a later version had, or damage) falls back to Info.
+        expect(
+            new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"sidePanelTab":"info"}' })).forProject('p1').sidePanelTab
+        ).toBe('files');
+        // A stored tab that is none (one a later version had, or damage) falls back to Files.
         expect(
             new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"sidePanelTab":"checks"}' })).forProject('p1').sidePanelTab
-        ).toBe('info');
+        ).toBe('files');
     });
 
     it('reads the fold of the strip from the page URL, and drops what is damaged in storage', () => {
@@ -1336,7 +1365,7 @@ describe('UiStore', () => {
         ui.forgetProject('p1');
 
         expect(ui.settingsProjectId).toBeNull();
-        expect(storage.data['clowdy:ui:p1']).toBeUndefined();
+        expect(storage.data).toEqual({});
         expect(ui.forProject('p1').chatId).toBeNull();
     });
 });

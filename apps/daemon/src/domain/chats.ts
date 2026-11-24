@@ -6,7 +6,7 @@ import { chatsOfWorkspace, deleteWorkspace, getWorkspace, toChatWorkspace } from
 import { conflict, invalid, notFound } from '../errors';
 import { newId } from '../ids';
 import { requireProject } from './projects';
-import { createWorkspace, inheritWorkspace } from './workspaces';
+import { createWorkspace, inheritWorkspace, isStandaloneWorktree } from './workspaces';
 
 import type {
     Chat,
@@ -243,7 +243,8 @@ export function stoppedSubtree(store: Store, chat: Chat): Chat[] {
  * its row, so one at work anywhere in the tree refuses the whole delete. Each chat is announced on its own (`chat.deleted`, the deepest first), so a client
  * drops them all. The files' folders go once the transaction commits. Returns the ids of every run removed.
  *
- * A worktree's row goes with the last chat that points at it; the worktree on the disk and its branch are not touched here
+ * A chat's worktree row goes with the last chat that points at it. A standalone worktree keeps its row and setup state.
+ * The worktree on the disk and its branch are not touched here
  * (a delete that removes them does it first: `removeChatWorkspace`), and a worktree that stays is listed by git as any other.
  */
 export function deleteChat(store: Store, chatId: string, attachments: AttachmentsService): string[] {
@@ -261,7 +262,9 @@ export function deleteChat(store: Store, chatId: string, attachments: Attachment
         });
 
         for (const workspaceId of workspaceIds) {
-            if (chatsOfWorkspace(store.db, workspaceId).length === 0) {
+            const workspace = getWorkspace(store.db, workspaceId);
+
+            if (workspace && !isStandaloneWorktree(workspace) && chatsOfWorkspace(store.db, workspaceId).length === 0) {
                 deleteWorkspace(store.db, workspaceId);
             }
         }

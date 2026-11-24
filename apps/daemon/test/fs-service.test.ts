@@ -657,14 +657,17 @@ describe('write', () => {
         const { fs, project, folderId, dir } = openFolder(h, { 'a.txt': 'start' });
         const version = (await fs.read(project, folderId, 'a.txt')).version;
 
-        // Both want to replace the version they read: the first wins, the second must be told it lost.
-        const results = await Promise.allSettled([
-            fs.write(project, folderId, 'a.txt', body('first'), { create: false, declaredLength: 0, version }),
-            fs.write(project, folderId, 'a.txt', body('second'), { create: false, declaredLength: 0, version }),
-        ]);
+        // Both want to replace the version they read: one wins, the other must be told it lost. Which one reaches the folder's lock first depends on how
+        // fast each body is read, so the winner is the one whose text is in the file.
+        const texts = ['first', 'second'];
+        const results = await Promise.allSettled(
+            texts.map(content =>
+                fs.write(project, folderId, 'a.txt', body(content), { create: false, declaredLength: 0, version })
+            )
+        );
 
-        expect(results.map(result => result.status)).toEqual(['fulfilled', 'rejected']);
-        expect(text(join(dir, 'a.txt'))).toBe('first');
+        expect(results.map(result => result.status).sort()).toEqual(['fulfilled', 'rejected']);
+        expect(text(join(dir, 'a.txt'))).toBe(texts[results.findIndex(result => result.status === 'fulfilled')]!);
     });
 });
 

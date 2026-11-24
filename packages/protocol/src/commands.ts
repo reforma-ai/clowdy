@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { PERMISSION_PRESETS } from './agents';
+import { COMMIT_MESSAGE_PROVIDERS, PERMISSION_PRESETS } from './agents';
 import { MAX_ATTACHMENTS_PER_MESSAGE, MAX_PROJECT_FOLDERS, MAX_PROJECT_ICON_LENGTH } from './api';
 import { LAST_USED, NO_PROJECT_ICON } from './domain';
 
@@ -134,7 +134,7 @@ export const commandSchema = z.discriminatedUnion('type', [
         folderId: z.string().min(1).optional(),
         path: z.string().min(1),
     }),
-    /** Creates a checkout on a new, prefixed branch of the chosen folder and answers `CreatedWorktree` once Git finishes. */
+    /** Creates a checkout on a new, prefixed branch and applies the folder setup before answering `CreatedWorktree`. */
     z.object({
         ...base,
         type: z.literal('workspace.create'),
@@ -414,6 +414,12 @@ export const commandSchema = z.discriminatedUnion('type', [
     z.object({ ...base, type: z.literal('agent.remove'), id: z.string().min(1) }),
     /** Looks for the agents' programs again, for after the user installed one, and reads accounts and usage anew. */
     z.object({ ...base, type: z.literal('agents.refresh') }),
+    /** Chooses the one provider that writes commit messages. `null` turns generation off. */
+    z.object({
+        ...base,
+        type: z.literal('agents.setCommitMessageProvider'),
+        provider: z.enum(COMMIT_MESSAGE_PROVIDERS).nullable(),
+    }),
 
     /* Skills */
     /** Switches a user skill on or off for every run. `name` is the entry's name from `GET /v1/skills` (`user:deploy`). */

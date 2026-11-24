@@ -1,6 +1,6 @@
 # Starting recipes
 
-Short outlines for the common product shapes. They name roles, not libraries, and pin no versions. Pick the concrete tools at scaffold time and add them without a version so the package manager resolves the current release. If a framework has an official starter command, read its current documentation first, run it, then delete what the product does not use and make `check` and `run` green. Every recipe ends in the same place: the skeleton checklist.
+These outlines name roles, not libraries or versions. Pick tools at scaffold time and add them without a version so the package manager resolves the current release. If a framework has an official starter command, read its current documentation first, run it, then delete what the product does not use and make `check` and `run` green. Every recipe ends in the same place: the skeleton checklist.
 
 ## TypeScript web app (screens plus a server)
 
@@ -61,4 +61,4 @@ Same roles, different tools. Pick the ecosystem's standard ones.
 | Tests | the standard test runner plus a runner for parametrized cases | `go test` | `cargo test` |
 | One-command `check` | a `Makefile`, task runner or script that runs checker, linter, tests | `make check` or a script | `cargo fmt --check && cargo clippy && cargo test` as one script |
 
-Whatever the language, `check` and `run` are one command each, from the project root, and the README lists them.
+In every language, `check` and `run` are each one command from the project root, listed in the README.

@@ -97,10 +97,10 @@ afterEach(() => {
 });
 
 describe("the menu of a folder group's title", () => {
-    it('has Manage worktrees last, under a separator, and opens the dialog on that folder', async () => {
+    it('has Folder settings last, under a separator, and opens the dialog on that folder', async () => {
         await draw(API);
 
-        expect(items().map(row => row.textContent)).toEqual(['New chat', 'Copy path', 'Open in…', 'Manage worktrees…']);
+        expect(items().map(row => row.textContent)).toEqual(['New chat', 'Copy path', 'Open in…', 'Folder settings…']);
         // A separator stands right before it: the last one in the menu comes before the item.
         const separators = [
             ...document.body.querySelectorAll('[role="menu"][aria-label="Open folder"] [role="separator"]'),
@@ -121,7 +121,7 @@ describe("the menu of a folder group's title", () => {
 
     it('names the main folder the same way, by its own id', async () => {
         await draw(CAR_RENTAL);
-        await press(items().find(row => row.textContent === 'Manage worktrees…')!);
+        await press(items().find(row => row.textContent === 'Folder settings…')!);
 
         expect(openManageWorktrees).toHaveBeenCalledExactlyOnceWith({
             root: store,
@@ -143,19 +143,19 @@ describe("the menu of a folder group's title", () => {
         // No wait for anything: the press opens the menu, and the item is in it at once.
         act(() => void name().click());
 
-        expect(items().map(row => row.textContent)).toContain('Manage worktrees…');
+        expect(items().map(row => row.textContent)).toContain('Folder settings…');
     });
 
     it("has it for a folder that is no repository too, since the dialog is the project's and says when none of its folders is one", async () => {
         await draw({ ...FIXTURE_NOTES_FOLDER });
 
-        expect(items().map(row => row.textContent)).toEqual(['New chat', 'Copy path', 'Open in…', 'Manage worktrees…']);
+        expect(items().map(row => row.textContent)).toEqual(['New chat', 'Copy path', 'Open in…', 'Folder settings…']);
     });
 
     it('has it for a folder that is gone from the disk, under the note and the repair, and for the personal space', async () => {
         await draw(API, FIXTURE_PROJECT_ID, true);
 
-        expect(items().at(-1)!.textContent).toBe('Manage worktrees…');
+        expect(items().at(-1)!.textContent).toBe('Folder settings…');
         expect(document.body.textContent).toContain('This folder no longer exists');
     });
 });

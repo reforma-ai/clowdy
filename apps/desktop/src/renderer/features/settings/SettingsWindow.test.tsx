@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
+import { commitMessageAgent } from '@clowdy/protocol';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider, SETTINGS_PAGES } from '../../stores';
@@ -123,6 +124,48 @@ describe('Settings', () => {
         } finally {
             act(() => sourceControlPreferences.setCollapseDiffs(true));
         }
+    });
+
+    it('enables automatic push by default and remembers when it is turned off', async () => {
+        store.ui.openSettings('source-control');
+        await draw();
+
+        const toggle = container.querySelector<HTMLInputElement>('input[aria-label="Push after commit and merge"]')!;
+
+        expect(new SourceControlPreferences().autoPush).toBe(true);
+        expect(toggle.checked).toBe(true);
+
+        try {
+            await press(toggle);
+            expect(toggle.checked).toBe(false);
+            expect(new SourceControlPreferences(window.localStorage).autoPush).toBe(false);
+        } finally {
+            act(() => sourceControlPreferences.setAutoPush(true));
+        }
+    });
+
+    it('sets a single commit message provider from Source Control', async () => {
+        store.ui.openSettings('source-control');
+        await draw();
+
+        const select = () => container.querySelector('button[aria-label="Commit message provider"]');
+        const pick = async (name: string) => {
+            await press(select());
+            const item = [...document.body.querySelectorAll('[role="listbox"] [role="option"]')].find(
+                option => option.textContent === name
+            );
+            expect(item).toBeDefined();
+            await press(item);
+            await vi.waitFor(() => expect(select()?.textContent).toBe(name));
+        };
+
+        expect(select()?.textContent).toBe('Codex');
+
+        await pick('Claude Code');
+        expect(commitMessageAgent(await store.transport.getAgents())?.id).toBe('claude');
+
+        await pick('Off');
+        expect(commitMessageAgent(await store.transport.getAgents())).toBeUndefined();
     });
 
     it('has Add project… at the end of the title of Projects, and not on another page', async () => {

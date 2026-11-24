@@ -5,6 +5,8 @@ import { dirname, join } from 'node:path';
 import { STOPPED_TOOL } from '@clowdy/protocol';
 
 import { probeAgent } from '../src/engine/acp/probe';
+import { AcpSession } from '../src/engine/acp/session';
+import { spawnInOwnGroup } from '../src/engine/process';
 import { alive, collect, PROTOCOLS, rig, textOf, tool, types, until } from './acp-helpers';
 
 import type { ApprovalDecision, BackgroundItem } from '@clowdy/protocol';
@@ -40,6 +42,42 @@ function eachProtocol(name: string, body: (protocol: AgentProtocol) => void): vo
 afterEach(() => {
     current?.stop();
     current = undefined;
+});
+
+test('verified close waits for a process whose spawn is still in flight', async () => {
+    const runtime = use();
+    const entered = Promise.withResolvers<number>();
+    const release = Promise.withResolvers<void>();
+    const session = new AcpSession(
+        { cwd: process.cwd(), prompt: 'say hello', tools: [], signal: new AbortController().signal },
+        {
+            agentId: 'fake-acp',
+            registry: runtime.registry,
+            bridge: runtime.bridge,
+            env: process.env,
+            costs: new Map(),
+            downgraded: new Set(),
+            clientVersion: 'test',
+            spawn: async spec => {
+                const process = await spawnInOwnGroup(spec);
+                entered.resolve(process.pid);
+                await release.promise;
+                return process;
+            },
+        }
+    );
+    const events = collect(session);
+    const pid = await entered.promise;
+    let closed = false;
+    const closing = session.close({ ensureStopped: true }).then(() => {
+        closed = true;
+    });
+    await Bun.sleep(30);
+    expect(closed).toBe(false);
+    release.resolve();
+    await closing;
+    await events;
+    expect(alive(pid)).toBe(false);
 });
 
 eachProtocol('a turn on an ACP agent', protocol => {
@@ -1197,6 +1235,16 @@ eachProtocol('the title an agent gives its session', () => {
         expect(alive(pidOf(events))).toBe(true);
         await until(() => !alive(pidOf(events)), 'the agent to stop');
         expect(given).toEqual([]);
+    });
+
+    test('a verified close stops a process still waiting to name its session', async () => {
+        const { title } = wanting();
+        const { session } = use({ agentEnv: named }).start('late 5000 Too late\nsay done', { title });
+        const events = await collect(session);
+        const pid = pidOf(events);
+        expect(alive(pid)).toBe(true);
+        await session.close({ ensureStopped: true });
+        expect(alive(pid)).toBe(false);
     });
 
     test('cancelling the run ends the wait', async () => {

@@ -2,6 +2,7 @@ import { errorMessage } from '@clowdy/lib';
 import { makeAutoObservable, observableRef, runInAction } from 'mobx';
 
 import { type PlaceRef, type Transport, TransportError } from '../../daemon/transport';
+import { keepEqual } from './keepEqual';
 
 import type {
     FolderId,
@@ -97,7 +98,8 @@ export class Fact<T> {
             if (request !== this.#request) return;
 
             runInAction(() => {
-                this.value = value;
+                // An answer that says what the last one said keeps its objects, so what draws them is not drawn again.
+                this.value = keepEqual<T | undefined>(this.value, value);
                 this.stale = false;
                 this.error = undefined;
                 this.errorStatus = undefined;

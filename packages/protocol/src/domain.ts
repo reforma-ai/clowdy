@@ -735,6 +735,13 @@ export type StreamItemBody =
           options: QuestionOption[];
           recommended?: string;
           answer?: string;
+          state?: 'preparing' | 'cancelled' | 'expired';
+          /** The question survives the agent session and starts a new turn when answered. */
+          durable?: boolean;
+          /** A continuation containing this answer completed. */
+          delivered?: boolean;
+          /** The person stopped the continuation before it completed. */
+          abandoned?: boolean;
       }
     /**
      * A request of the agent for permission to do something, put to the person (an agent on a preset that asks). The run waits in `waiting_user` while any

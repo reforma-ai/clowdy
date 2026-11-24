@@ -5,9 +5,9 @@ import { LAST_USED, type QueuedMessageMode } from '@clowdy/protocol';
 import { hotkeys } from '../../hotkeys/registry';
 import { chatListPreferences } from '../agents/chatListPreferences';
 import { busyEnter } from '../chats/busyEnter';
+import { composerBannerPreferences } from '../chats/composerBannerPreferences';
 import { newChatDefaults } from '../chats/newChatDefaults';
 import { swipeToReply } from '../chats/swipeReplyPreference';
-import { BranchPrefixRow } from './BranchPrefixRow';
 import { modeOf, NewChatChoices } from './NewChatChoices';
 import { SettingsCard } from './ui/SettingsCard';
 import { SettingsPage } from './ui/SettingsPage';
@@ -29,7 +29,7 @@ const FINISHED_LABEL = 'Finished threads';
 
 /**
  * Settings > Chat: how the message box sends, whether a swipe over a message replies to it, what a new chat starts with where its project follows the app,
- * what the branch of a new worktree starts with, and how the Agents list looks, on this computer.
+ * and how the Agents list looks, on this computer.
  */
 export function ChatPage() {
     return (
@@ -76,9 +76,30 @@ export function ChatPage() {
                 onModeChange={next => newChatDefaults.setMode(modeOf(next))}
             />
 
-            <SettingsSection title="New worktrees">
+            <SettingsSection title="Above the composer">
                 <SettingsCard>
-                    <BranchPrefixRow />
+                    <SettingsRow
+                        title="Show last run changes"
+                        description="Show changed files above the message box after the agent finishes"
+                    >
+                        <Switch
+                            size="sm"
+                            aria-label="Show last run changes"
+                            isSelected={composerBannerPreferences.showChanges}
+                            onChange={show => composerBannerPreferences.setShowChanges(show)}
+                        />
+                    </SettingsRow>
+                    <SettingsRow
+                        title="Show tasks"
+                        description="Show the chat's tasks and their progress above the message box"
+                    >
+                        <Switch
+                            size="sm"
+                            aria-label="Show tasks"
+                            isSelected={composerBannerPreferences.showTasks}
+                            onChange={show => composerBannerPreferences.setShowTasks(show)}
+                        />
+                    </SettingsRow>
                 </SettingsCard>
             </SettingsSection>
 

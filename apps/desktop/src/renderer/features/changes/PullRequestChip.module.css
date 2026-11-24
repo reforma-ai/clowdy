@@ -1,21 +1,64 @@
 @reference '@clowdy/styles/rulesets';
 
-/* The pull request as a chip in two parts: its number and state, and the dot of its checks. Drawn by the Changes tab's sidebar. */
-.chip {
-    display: flex;
-    align-items: center;
-    min-width: 0;
-}
-
-.chip[data-stale] {
+.button[data-stale] {
     opacity: var(--opacity-inactive);
 }
 
-.pr {
-    gap: var(--spacing-sm);
+.content {
+    justify-content: flex-start;
     min-width: 0;
 }
 
-.checks {
+.prMark {
     flex-shrink: 0;
+    color: var(--color-secondary-muted-text);
+}
+
+.prMark[data-state='open'],
+.passed {
+    color: var(--color-success-text);
+}
+
+.prMark[data-state='merged'] {
+    color: var(--color-accent-text);
+}
+
+.checkCounts,
+.checkCount {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.checkCounts {
+    gap: var(--spacing-6);
+    margin-inline-start: auto;
+}
+
+.checkCount {
+    gap: var(--spacing-2);
+    font-size: var(--text-xs);
+    font-variant-numeric: tabular-nums;
+}
+
+.failed {
+    color: var(--color-danger-text);
+}
+
+@container (max-width: 12rem) {
+    .button[data-size] {
+        padding-inline: var(--spacing-4);
+    }
+
+    .content {
+        gap: var(--spacing-2);
+    }
+
+    .checkCounts {
+        gap: var(--spacing-4);
+    }
+
+    .prState {
+        display: none;
+    }
 }

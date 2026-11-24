@@ -126,7 +126,11 @@ export function quickSearchSource(root: RootStore, project: ProjectState, place:
     let documents: Promise<DocsTree> | undefined;
 
     return {
-        chats: query => foundChats(project, query),
+        chats: query => {
+            const ui = root.ui.forProject(projectId);
+
+            return foundChats(project, query).map(found => ({ ...found, unread: ui.hasUnreadCompletion(found.run) }));
+        },
         files: async query => {
             if (!ready) return [];
 

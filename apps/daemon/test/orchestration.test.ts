@@ -314,7 +314,7 @@ describe('the prompts of a run', () => {
         expect(chat).toContain(
             'if a sandboxed shell refuses it (`EPERM`), run the same command again with escalated permissions, outside the sandbox'
         );
-        expect(chat).toContain('Delegate only when the person asked for it or the work really splits');
+        expect(chat).toContain('Choose delegation when it improves execution or provides a separate review');
         expect(chat).toContain('self-contained brief');
         expect(chat).toContain('Its last message of a turn is its report');
         expect(chat).toContain('never poll');

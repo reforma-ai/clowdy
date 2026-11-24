@@ -378,6 +378,41 @@ describe('runs of tool calls', () => {
         expect(status()).toBeNull();
     });
 
+    it('does not offer an answer on a withdrawn question even while another question waits', async () => {
+        const question = item(3, {
+            kind: 'question',
+            questionId: 'old',
+            text: 'Old question?',
+            options: [{ id: 'a', label: 'A' }],
+            state: 'cancelled',
+        });
+        const next = item(4, {
+            kind: 'question',
+            questionId: 'new',
+            text: 'New question?',
+            options: [{ id: 'b', label: 'B' }],
+        });
+        await act(async () => root.render(<StreamView items={[asked, question, next]} active onAnswer={vi.fn()} />));
+        expect(container.textContent).toContain('Question withdrawn');
+        expect([...container.querySelectorAll('button')].filter(button => button.textContent === 'Next')).toHaveLength(
+            1
+        );
+    });
+
+    it('does not offer an answer while the agent is being stopped', async () => {
+        const question = item(3, {
+            kind: 'question',
+            questionId: 'q',
+            text: 'Which?',
+            options: [{ id: 'a', label: 'A' }],
+            durable: true,
+            state: 'preparing',
+        });
+        await act(async () => root.render(<StreamView items={[asked, question]} active onAnswer={vi.fn()} />));
+        expect(container.textContent).toContain('Stopping the agent…');
+        expect([...container.querySelectorAll('button')].some(button => button.textContent === 'Next')).toBe(false);
+    });
+
     it('replaces the tool preview with the wait status when the agent stops working', async () => {
         const stream = [asked, bash(1, 'pwd'), bash(2, 'bun test', 'running')];
 

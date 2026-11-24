@@ -115,17 +115,19 @@ export async function snapshotTree(cwd: string, timeoutMs = SNAPSHOT_TIMEOUT_MS)
                 .filter(Boolean)
                 .join(delimiter),
         };
-        const added = await gitRead(cwd, [...SNAPSHOT_CONFIG, 'add', '-A'], {
-            env,
-            timeoutMs: Math.max(1, deadline - Date.now()),
-        });
 
-        if (!added.ok) return undefined;
+        // A deadline that is already past (a slow disk, a slow first command) is none, without starting a git that would only be killed, or would finish before the kill.
+        let left = deadline - Date.now();
 
-        const written = await gitRead(cwd, [...SNAPSHOT_CONFIG, 'write-tree'], {
-            env,
-            timeoutMs: Math.max(1, deadline - Date.now()),
-        });
+        if (left <= 0) return undefined;
+
+        const added = await gitRead(cwd, [...SNAPSHOT_CONFIG, 'add', '-A'], { env, timeoutMs: left });
+
+        left = deadline - Date.now();
+
+        if (!added.ok || left <= 0) return undefined;
+
+        const written = await gitRead(cwd, [...SNAPSHOT_CONFIG, 'write-tree'], { env, timeoutMs: left });
         const tree = written.ok ? written.stdout.trim() : '';
 
         return /^([0-9a-f]{40}|[0-9a-f]{64})$/.test(tree) && (await adopt(quarantine, objects)) ? tree : undefined;

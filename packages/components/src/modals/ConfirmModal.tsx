@@ -1,5 +1,7 @@
+import { AttentionCircle } from '@clowdy/icons/14';
 import { useState } from 'react';
 
+import { Alert, AlertDescription, AlertIcon } from '../Alert';
 import { Box } from '../Box';
 import { Button } from '../Button';
 import { Modal, useModalContext } from '../Modal';
@@ -15,6 +17,7 @@ export type OpenConfirmModalOptions = {
     message: ReactNode;
     confirmLabel?: string;
     cancelLabel?: string;
+    cancelVariant?: 'bordered' | 'filled';
     /** Omit Cancel. The confirm button is the only action. */
     showCancel?: boolean;
     destructive?: boolean;
@@ -102,6 +105,7 @@ export function ConfirmModalContent({
     message,
     confirmLabel = 'Confirm',
     cancelLabel = 'Cancel',
+    cancelVariant = 'bordered',
     showCancel = true,
     destructive,
     initialFocus = 'confirm',
@@ -170,9 +174,12 @@ export function ConfirmModalContent({
                 )}
                 <Show when={failure}>
                     {text => (
-                        <Text variant="md" color="danger" role="alert" select="text">
-                            {text}
-                        </Text>
+                        <Alert color="danger">
+                            <AlertIcon>
+                                <AttentionCircle />
+                            </AlertIcon>
+                            <AlertDescription className="select-text">{text}</AlertDescription>
+                        </Alert>
                     )}
                 </Show>
             </Box>
@@ -186,7 +193,7 @@ export function ConfirmModalContent({
             >
                 <Show when={showCancel}>
                     <Button
-                        variant="bordered"
+                        variant={cancelVariant}
                         autoFocus={initialFocus === 'cancel'}
                         isDisabled={isPending}
                         onPress={() => modal.cancel()}

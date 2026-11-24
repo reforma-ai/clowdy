@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
     createFixtureData,
@@ -10,6 +10,7 @@ import {
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore } from '../../stores';
 import { filesManagerOf, kindOnDisk, openInFiles } from './openInFiles';
+import { treeLayout } from './treeLayout';
 import { filesStoreOf } from './useFilesStore';
 
 import type { Place } from '../sidePanel/currentPlace';
@@ -91,6 +92,84 @@ describe('opening a path in the Files tab', () => {
         expect(ui().sidePanelTab).toBe('files');
     });
 
+    it('opens a hidden folder in a closed tree without changing the hidden setting, then replaces the exception', async () => {
+        if (treeLayout.open) treeLayout.toggle();
+        treeLayout.setShowHidden(false);
+        try {
+            expect(await open('.clowdy/docs')).toBe(true);
+            const files = await manager();
+            expect(treeLayout.open).toBe(true);
+            expect(treeLayout.showHidden).toBe(false);
+            expect(files.tree.isVisible('.clowdy/docs')).toBe(true);
+            expect(files.revealed?.path).toBe('.clowdy/docs');
+            expect(await open('src/booking')).toBe(true);
+            expect(files.tree.isVisible('.clowdy/docs')).toBe(false);
+            expect(files.revealed?.path).toBe('src/booking');
+        } finally {
+            if (!treeLayout.open) treeLayout.toggle();
+        }
+    });
+
+    it('keeps the latest folder when an earlier listing finishes late', async () => {
+        const files = await manager();
+        const list = files.provider.list.bind(files.provider);
+        let release!: () => void;
+        const gate = new Promise<void>(resolve => {
+            release = resolve;
+        });
+        const spy = vi.spyOn(files.provider, 'list').mockImplementation(async (path, depth) => {
+            if (path === '.clowdy/docs') await gate;
+            return list(path, depth);
+        });
+        try {
+            const slow = open('.clowdy/docs');
+            await vi.waitFor(() => expect(spy).toHaveBeenCalledWith('.clowdy/docs', 1));
+            expect(await open('src/booking')).toBe(true);
+            release();
+            await slow;
+            expect(files.revealed?.path).toBe('src/booking');
+            expect(files.tree.isVisible('.clowdy/docs')).toBe(false);
+        } finally {
+            release();
+            spy.mockRestore();
+        }
+    });
+
+    it('leaves the panel and hidden setting alone when a folder cannot be read', async () => {
+        const files = await manager();
+        const list = files.provider.list.bind(files.provider);
+        const spy = vi.spyOn(files.provider, 'list').mockImplementation(async (path, depth) => {
+            if (path === '.clowdy/docs') throw new Error('Permission denied');
+            return list(path, depth);
+        });
+        try {
+            expect(await open('.clowdy/docs')).toBe(false);
+            expect(ui().sidePanelOpen).toBe(false);
+            expect(files.tree.isVisible('.clowdy/docs')).toBe(false);
+        } finally {
+            spy.mockRestore();
+        }
+    });
+
+    it('forgets the requested folder when a file is opened later', async () => {
+        expect(await open('.clowdy/docs')).toBe(true);
+        const files = await manager();
+        expect(files.revealed?.path).toBe('.clowdy/docs');
+        expect(await open('README.md')).toBe(true);
+        expect(files.revealed).toBeNull();
+        expect(files.tabs.active?.path).toBe('README.md');
+    });
+
+    it('does not open the tree when opening a file', async () => {
+        if (treeLayout.open) treeLayout.toggle();
+        try {
+            expect(await open('README.md')).toBe(true);
+            expect(treeLayout.open).toBe(false);
+        } finally {
+            if (!treeLayout.open) treeLayout.toggle();
+        }
+    });
+
     it('is false for a path that is not there, with no tab added, the active one kept, and the panel as it was', async () => {
         const files = await manager();
 
@@ -104,7 +183,7 @@ describe('opening a path in the Files tab', () => {
         expect(await tabs()).toEqual(['README.md', 'package.json']);
         expect(files.tabs.active?.path).toBe('README.md');
         expect(ui().sidePanelOpen).toBe(false);
-        expect(ui().sidePanelTab).toBe('info');
+        expect(ui().sidePanelTab).toBe('files');
     });
 
     it('closes none of the tabs that are open, at the most tabs, for a path that is not there', async () => {
@@ -147,6 +226,14 @@ describe('opening a path in a worktree', () => {
             folder: FOLDER,
             workspace: store.selectedProject!.chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!,
         };
+    });
+
+    it('clears the previous place’s temporary hidden path when navigating in another place', async () => {
+        expect(await open('.clowdy/docs')).toBe(true);
+        const original = await manager();
+        expect(original.tree.isVisible('.clowdy/docs')).toBe(true);
+        expect(await openInFiles(store, FIXTURE_PROJECT_ID, worktree, 'src/booking')).toBe(true);
+        expect(original.tree.isVisible('.clowdy/docs')).toBe(false);
     });
 
     it("opens a file that only the worktree has in the worktree's tabs, which the folder's own checkout does not have", async () => {

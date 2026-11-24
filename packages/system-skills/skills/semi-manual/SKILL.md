@@ -5,7 +5,7 @@ description: "How to involve the user in the decisions that matter. Map the sign
 
 # Semi-manual
 
-The user is a manager. They want a say in the decisions that shape the result and no say in the rest. Before you build, interview them about the significant product and technical forks, through `ask_user` cards. Decide everything else yourself.
+Before building, ask the manager about significant product and technical forks through `ask_user` cards. Decide everything else yourself.
 
 The mode is fixed for the cycle (your first message says `Mode: semi-manual`). The user can start the next cycle in another mode. A message like "decide the rest yourself" is an answer, not a mode switch: from then on decide and record as clowdy:autopilot does, mark the record `user (delegated)`, and say so in one line.
 
@@ -22,7 +22,7 @@ Skip the grill when the chat is only a question, or the request is one small cha
 
 ## 2. Map the design tree
 
-Every significant decision is a node. A node's prerequisites are the decisions whose answers change its options. The **frontier** is every node that is unsettled, not answerable from facts, and has all prerequisites settled.
+Every significant decision is a node; its prerequisites are decisions whose answers change its options. The **frontier** contains unsettled nodes not answerable from facts whose prerequisites are all settled.
 
 A node becomes a card only when all four hold:
 
@@ -50,14 +50,14 @@ options: 2 to 4, each { id, label, consequence }. id = a short lowercase slug, u
 recommended: the id of your pick, copied exactly.
 ```
 
-- One decision per card. Options are exclusive and all viable. The card already has a field for the user's own answer, so do not add "Other".
+- One decision per card; options must be exclusive and viable. The card already has a field for the user's answer, so do not add "Other".
 - Write in the language the user writes in.
 - The run waits for the answers.
 
 ## 4. Take the answers
 
 1. Turn each answer into a precise decision in your own words and read it back in one line. Short or vague answers: [manager-answers.md](references/manager-answers.md).
-2. Recompute the tree. New nodes may appear, nodes may vanish, and a node whose prerequisite changed gets rewritten for the new situation.
+2. Recompute the tree. Nodes may appear or vanish; rewrite any whose prerequisite changed.
 3. Never ask a settled question again. Only new facts reopen one: say in one sentence what changed, quote the earlier answer, and ask only that node.
 4. Expect one or two rounds and about eight questions in total. If the tree keeps growing, you are asking routine things. Decide them with your recommendation and put them on the settled list, where the user can veto them.
 
@@ -84,7 +84,7 @@ Final report: the format of clowdy:orchestrate with the `Decided for you` line f
 
 ## 7. Sub-agents and threads
 
-Parallel agents would ask duplicate or contradictory questions, so you talk to the user. Settle the significant forks before you hand work out.
+You talk to the user to avoid duplicate or contradictory questions. Settle significant forks before handing work out.
 
 - Put `Mode: semi-manual` and the paths of the settled records in every sub-agent prompt and thread brief.
 - A sub-agent follows the settled list and decides routine matters alone. For a significant fork the list does not cover, it finishes what does not depend on it and returns the fork written as card fields: title, facts, options with consequences, its pick.

@@ -8,7 +8,7 @@ import { workingTreeRoot } from './state';
 import { mergeBaseOf, parseStatus } from './status';
 import { namesSigningKey, SIGNING_HINT, WriteEnvironment } from './writeEnv';
 
-import type { GitErrorDetails, GitRemoteAction, GitRemoteResult, GitUpstream } from '@clowdy/protocol';
+import type { GitErrorDetails, GitPushRequest, GitRemoteAction, GitRemoteResult, GitUpstream } from '@clowdy/protocol';
 import type { Place } from '../domain/places';
 import type { RunResult } from '../providers/exec';
 import type { Store } from '../store';
@@ -290,9 +290,13 @@ export class GitRemote {
     }
 
     /** `POST .../git/push`: the branch to its upstream, or published to `origin` with an upstream when it has none. */
-    push(place: Place): Promise<GitRemoteResult> {
+    push(place: Place, expectedHead?: GitPushRequest['expectedHead']): Promise<GitRemoteResult> {
         return this.#alone(place, async () => {
             const { branch, tracking } = await this.#branchOf(place, 'push');
+
+            if (expectedHead && branch !== expectedHead.branch)
+                throw conflict(`The checkout switched from ${expectedHead.branch} to ${branch}`);
+
             const own = `${HEADS}${branch}`;
             // A branch is sent only to the branch of its own name. What it tracks is its own only under that name: a branch made from another one (`git switch -c feat origin/main` tracks `origin/main`)
             // would be sent to `main` itself, which git's own `push.default=simple` refuses and a refspec to the upstream's ref would not. Such a branch, and one that tracks nothing or whose
@@ -302,6 +306,12 @@ export class GitRemote {
                 tracking !== undefined &&
                 ownName(branch, tracking) &&
                 (await gitAnswer(place.path, ['rev-parse', '--verify', '--quiet', '@{upstream}'])) !== undefined;
+
+            if (
+                expectedHead &&
+                (await gitAnswer(place.path, ['rev-parse', '--verify', '--quiet', own])) !== expectedHead.commit
+            )
+                throw conflict(`${branch} changed after the commit`);
 
             await this.#run(place, 'push', [
                 'push',

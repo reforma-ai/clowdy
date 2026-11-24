@@ -1,5 +1,4 @@
 // @vitest-environment happy-dom
-import { mainFolder } from '@clowdy/protocol';
 import { observer } from 'mobx-react-lite';
 import { act, useEffect } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -470,41 +469,16 @@ describe('the side panel of the window', () => {
         expect(panel()).toBeNull();
     });
 
-    it('opens on the Info tab, with the project and the folder the window is working in', async () => {
+    it('opens on Files by default and can switch to another tab', async () => {
         act(() => ui().toggleSidePanel());
         await draw(<Frame />);
-
-        const project = store.selectedProject!.project;
-
-        expect(tab('Info')?.getAttribute('aria-current')).toBe('page');
-        expect(tab('Files')?.getAttribute('aria-current')).toBeNull();
-        expect(panel()?.querySelector('[aria-label="Info"][class*="plate"]')).not.toBeNull();
-        expect(panel()?.textContent).toContain('Project');
-        expect(panel()?.textContent).toContain(project.name);
-        expect(panel()?.textContent).toContain('Folder');
-        expect(panel()?.textContent).toContain('car-rental');
-        expect(mainFolder(project).path).toBe('/Users/dev/car-rental');
-        // The branch checked out in the folder, read from the daemon (the fixture's git has Car Rental on main).
-        expect(panel()?.textContent).toContain('Branch');
-        expect(panel()?.textContent).toContain('main');
-    });
-
-    it('shows the Files tab when it is chosen, and goes back to Info', async () => {
-        act(() => ui().toggleSidePanel());
-        await draw(<Frame />);
-
-        await press(tab('Files')!);
         await settle();
-
-        expect(ui().sidePanelTab).toBe('files');
         expect(tab('Files')?.getAttribute('aria-current')).toBe('page');
-        expect(tab('Info')?.getAttribute('aria-current')).toBeNull();
         expect(panel()?.querySelector('[aria-label="Files"][class*="plate"]')?.textContent).toBe('The files');
-
-        await press(tab('Info')!);
-
-        expect(panel()?.querySelector('[aria-label="Info"][class*="plate"]')).not.toBeNull();
-        expect(panel()?.textContent).not.toContain('The files');
+        await press(tab('Changes')!);
+        await settle();
+        expect(ui().sidePanelTab).toBe('changes');
+        expect(panel()?.textContent).toBe('The changes');
     });
 
     it('has a Docs tab, which is the Files view for the documents: the panel keeps the one component built when it moves between the two', async () => {
@@ -512,7 +486,6 @@ describe('the side panel of the window', () => {
         act(() => ui().toggleSidePanel());
         await draw(<Frame />);
 
-        await press(tab('Files')!);
         await settle();
 
         expect(panel()?.querySelector('[aria-label="Files"][class*="plate"]')?.textContent).toBe('The files');
@@ -541,7 +514,7 @@ describe('the side panel of the window', () => {
             button => button.textContent
         );
 
-        expect(names).toEqual(['Files', 'Changes', 'Docs', 'Terminal', 'Tasks', 'Info']);
+        expect(names).toEqual(['Files', 'Changes', 'Docs', 'Terminal', 'Tasks']);
 
         await press(tab('Terminal')!);
         await settle();
@@ -589,7 +562,7 @@ describe('the side panel of the window', () => {
         expect(panel()?.hasAttribute('data-expanded')).toBe(false);
     });
 
-    it('keeps the chosen tab for the project, and starts another project on Info', async () => {
+    it('keeps the chosen tab for the project, and starts another project on Files', async () => {
         act(() => ui().toggleSidePanel());
         act(() => ui().showSidePanelTab('files'));
         await draw(<Frame />);
@@ -603,7 +576,7 @@ describe('the side panel of the window', () => {
         act(() => ui().toggleSidePanel());
         await settle();
 
-        expect(tab('Info')?.getAttribute('aria-current')).toBe('page');
+        expect(tab('Files')?.getAttribute('aria-current')).toBe('page');
     });
 });
 
@@ -618,7 +591,6 @@ describe('the rail of the side panel', () => {
             'Docs',
             'Terminal',
             'Tasks',
-            'Info',
         ]);
         expect(rail()!.querySelector('[aria-current]')).toBeNull();
 
@@ -626,7 +598,7 @@ describe('the rail of the side panel', () => {
         await settle();
 
         expect(rail()!.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
-        expect(tab('Info')?.getAttribute('aria-current')).toBe('page');
+        expect(tab('Files')?.getAttribute('aria-current')).toBe('page');
     });
 
     it('opens a shut panel on the tab that is clicked, changes the tab of an open one, and shuts it when the tab that is shown is clicked', async () => {
@@ -678,7 +650,7 @@ describe('the rail of the side panel', () => {
         expect(ui().sidePanelOpen).toBe(true);
     });
 
-    it("has the panel's button first, then Info at the bottom beside Settings, and Settings under it", async () => {
+    it("has the panel's button first and Settings at the bottom", async () => {
         await draw(<Frame />);
 
         const items = [...container.querySelectorAll<HTMLButtonElement>('button')];
@@ -690,11 +662,9 @@ describe('the rail of the side panel', () => {
             'Docs',
             'Terminal',
             'Tasks',
-            'Info',
             'Settings',
         ]);
-        // Info is the one tab that is pushed to the bottom of the column, so that it sits above Settings.
-        expect(tab('Info')!.className).toMatch(/bottom/);
+        expect(settingsItem()!.className).toMatch(/bottom/);
         expect(tab('Files')!.className).not.toMatch(/bottom/);
     });
 

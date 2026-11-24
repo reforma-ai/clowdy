@@ -169,7 +169,7 @@ describe("the branch of the main worktree's row", () => {
         await press(chip()!);
 
         expect(branchButton()?.textContent).toBe('main');
-        expect(menuItem('Main worktree').textContent).toBe('Main worktreeWork in the folder as it ismain');
+        expect(menuItem('Main worktree').textContent).toBe('Main worktreeUse the project foldermain');
 
         await press(branchButton()!);
         await settle();
@@ -240,7 +240,7 @@ describe("the branch of the main worktree's row", () => {
 
     it('opens for the right arrow on the row, and for no other row', async () => {
         await press(chip()!);
-        await key(menuItem('Manage worktrees'), 'ArrowRight');
+        await key(menuItem('Folder settings'), 'ArrowRight');
         await settle();
 
         expect(options()).toEqual([]);

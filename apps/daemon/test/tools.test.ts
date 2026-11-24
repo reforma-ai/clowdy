@@ -1,12 +1,25 @@
+import { Database } from 'bun:sqlite';
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
+import { join } from 'node:path';
 
 import { getProject } from '../src/db/projects';
 import { upsertRun } from '../src/db/runs';
 import { getTask } from '../src/db/tasks';
+import { appendItem } from '../src/domain/items';
 import { taskCommentsPage } from '../src/domain/taskComments';
 import { ToolBridge } from '../src/engine/acp/bridge';
+import { AgentRegistry } from '../src/engine/acp/registry';
 import { toolsFor } from '../src/runs/tools';
-import { cleanTempDirs, latch, ScriptEngine, scriptEngines, startHarness, waitFor } from './helpers';
+import {
+    cleanTempDirs,
+    latch,
+    restartHarness,
+    ScriptEngine,
+    scriptEngines,
+    startHarness,
+    untilAborted,
+    waitFor,
+} from './helpers';
 
 import type { Run } from '@clowdy/protocol';
 import type { Harness, Script } from './helpers';
@@ -1238,6 +1251,734 @@ describe('the archive', () => {
 });
 
 describe('ask_user', () => {
+    test('a delayed empty message close does not interrupt a live question', async () => {
+        const engine = new ScriptEngine(async function* ({ options }) {
+            yield { type: 'session', sessionId: 's-1' };
+            const pending = options.tools
+                .find(tool => tool.name === 'ask_user')!
+                .execute({ question: 'Which?', options: [{ id: 'a', label: 'A' }] }, options.signal);
+            yield { type: 'text', delta: '', done: true };
+            await pending;
+            yield { type: 'done', result: 'done' };
+        });
+        const h = await startHarness({}, { engines: scriptEngines(engine) });
+        harnesses.push(h);
+        const project = h.openRepo();
+        const { chat } = h.ok('chat.create', { projectId: project.id, mode: 'semi' });
+        const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'go' });
+        await waitFor(() => h.run(runId).status === 'waiting_user', 'the live question');
+        await Bun.sleep(50);
+        expect(engine.closed).toBe(0);
+        const question = h.store.db
+            .query('SELECT body FROM stream_items WHERE run_id = ?')
+            .all(runId)
+            .map((row: any) => JSON.parse(row.body))
+            .find((body: any) => body.kind === 'question');
+        expect(question.durable).toBeUndefined();
+        h.ok('run.answer', { runId, questionId: question.questionId, answer: 'A' });
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the turn to finish');
+    });
+    test('stops an agent that continues while its question call is still pending', async () => {
+        const engine = new ScriptEngine(async function* ({ options, number }) {
+            yield { type: 'session', sessionId: 's-1' };
+            if (number === 1) {
+                void options.tools
+                    .find(tool => tool.name === 'ask_user')!
+                    .execute({ question: 'Which?', options: [{ id: 'a', label: 'A' }] }, options.signal)
+                    .catch(() => undefined);
+                yield { type: 'text', delta: 'continued without an answer', done: true };
+                yield { type: 'done', result: 'wrong' };
+            } else {
+                yield { type: 'done', result: 'done' };
+            }
+        });
+        const h = await startHarness({}, { engines: scriptEngines(engine) });
+        harnesses.push(h);
+        const project = h.openRepo();
+        const { chat } = h.ok('chat.create', { projectId: project.id, mode: 'semi' });
+        const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'go' });
+        const readQuestion = () =>
+            h.store.db
+                .query('SELECT body FROM stream_items WHERE run_id = ?')
+                .all(runId)
+                .map((row: any) => JSON.parse(row.body))
+                .find((body: any) => body.kind === 'question');
+        await waitFor(
+            () =>
+                readQuestion()?.durable === true &&
+                readQuestion()?.state === undefined &&
+                h.run(runId).status === 'waiting_user',
+            'the transferred question'
+        );
+        expect(engine.closed).toBe(1);
+        expect(
+            h.store.db
+                .query('SELECT body FROM stream_items WHERE run_id = ?')
+                .all(runId)
+                .some((row: any) => JSON.parse(row.body).text === 'continued without an answer')
+        ).toBe(false);
+        h.ok('run.answer', { runId, questionId: readQuestion().questionId, answer: 'A' });
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the continued turn');
+        expect(engine.turns[1].prompt).toContain("The user's answer: A");
+    });
+
+    test('a foreground tool event during a live question safely transfers the question', async () => {
+        const engine = new ScriptEngine(async function* ({ options }) {
+            yield { type: 'session', sessionId: 's-1' };
+            void options.tools
+                .find(tool => tool.name === 'ask_user')!
+                .execute({ question: 'Which?', options: [{ id: 'a', label: 'A' }] }, options.signal)
+                .catch(() => undefined);
+            yield { type: 'tool', toolCallId: 'wrapper', name: 'Execute', input: {}, state: 'running' };
+            yield { type: 'done', result: 'wrong' };
+        });
+        const h = await startHarness({}, { engines: scriptEngines(engine) });
+        harnesses.push(h);
+        const project = h.openRepo();
+        const { chat } = h.ok('chat.create', { projectId: project.id, mode: 'semi' });
+        const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'go' });
+        const readQuestion = () =>
+            h.store.db
+                .query('SELECT body FROM stream_items WHERE run_id = ?')
+                .all(runId)
+                .map((row: any) => JSON.parse(row.body))
+                .find((body: any) => body.kind === 'question');
+        await waitFor(
+            () =>
+                readQuestion()?.durable === true &&
+                readQuestion()?.state === undefined &&
+                h.run(runId).status === 'waiting_user',
+            'the transferred question'
+        );
+        expect(engine.closed).toBe(1);
+        expect(h.run(runId).result).toBeUndefined();
+    });
+    test('an agent without elicitation stops before the question opens and continues after the answer', async () => {
+        const engine = new ScriptEngine(async function* ({ options, number }) {
+            yield { type: 'session', sessionId: 's-1' };
+            if (number === 1) {
+                const ask = options.tools.find(tool => tool.name === 'ask_user')!;
+                await ask.execute({ question: 'Which?', options: [{ id: 'a', label: 'A' }] }, options.signal);
+                yield { type: 'text', delta: 'should not happen', done: true };
+            }
+            yield { type: 'done', result: 'done' };
+        });
+        const agents = new AgentRegistry();
+        agents.questionElicitation = () => false;
+        const h = await startHarness({}, { engines: scriptEngines(engine), agents });
+        harnesses.push(h);
+        const project = h.openRepo();
+        const { chat } = h.ok('chat.create', { projectId: project.id, mode: 'semi' });
+        const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'go' });
+        await waitFor(() => h.run(runId).status === 'waiting_user', 'the durable question');
+        expect(engine.closed).toBe(1);
+        const body = h.store.db
+            .query('SELECT body FROM stream_items WHERE run_id = ?')
+            .all(runId)
+            .map((row: any) => JSON.parse(row.body))
+            .find((item: any) => item.kind === 'question');
+        expect(body.durable).toBe(true);
+        expect(typeof body.questionId).toBe('string');
+        expect(body.state).toBeUndefined();
+        h.ok('run.answer', { runId, questionId: body.questionId, answer: 'my own answer' });
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the continued turn');
+        expect(engine.turns).toHaveLength(2);
+        expect(engine.turns[1].prompt).toContain('my own answer');
+        expect(
+            h.store.db
+                .query('SELECT body FROM stream_items WHERE run_id = ?')
+                .all(runId)
+                .some((row: any) => JSON.parse(row.body).text === 'should not happen')
+        ).toBe(false);
+    });
+
+    test('a durable question survives daemon restart and continues after an answer', async () => {
+        const engine = new ScriptEngine(async function* ({ options, number }) {
+            yield { type: 'session', sessionId: 's-1' };
+            if (number === 1) {
+                await options.tools
+                    .find(tool => tool.name === 'ask_user')!
+                    .execute({ question: 'Which?', options: [{ id: 'a', label: 'A' }] }, options.signal);
+            }
+            yield { type: 'done', result: 'done' };
+        });
+        const agents = new AgentRegistry();
+        agents.questionElicitation = () => false;
+        const engines = scriptEngines(engine);
+        const h = await startHarness({}, { engines, agents });
+        harnesses.push(h);
+        const project = h.openRepo();
+        const { chat } = h.ok('chat.create', { projectId: project.id, mode: 'semi' });
+        const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'go' });
+        await waitFor(() => h.run(runId).status === 'waiting_user', 'the question');
+        const question = h.store.db
+            .query('SELECT body FROM stream_items WHERE run_id = ?')
+            .all(runId)
+            .map((row: any) => JSON.parse(row.body))
+            .find((body: any) => body.kind === 'question');
+        await h.stop();
+        const restarted = await restartHarness(h, { engines, agents });
+        harnesses.push(restarted);
+        expect(restarted.run(runId).status).toBe('waiting_user');
+        restarted.ok('run.answer', { runId, questionId: question.questionId, answer: 'A' });
+        await waitFor(() => restarted.run(runId).status === 'succeeded', 'the resumed turn');
+        expect(engine.turns[1].prompt).toContain("The user's answer: A");
+    });
+
+    test('recovery opens a preparing question after the old session is gone', async () => {
+        const engine = new ScriptEngine(async function* ({ options, number }) {
+            yield { type: 'session', sessionId: 's-1' };
+            if (number === 1) await untilAborted(options.signal);
+            yield { type: 'done', result: 'done' };
+        });
+        const agents = new AgentRegistry();
+        agents.questionElicitation = () => false;
+        const engines = scriptEngines(engine);
+        const h = await startHarness({}, { engines, agents });
+        harnesses.push(h);
+        const project = h.openRepo();
+        const { chat } = h.ok('chat.create', { projectId: project.id, mode: 'semi' });
+        const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'go' });
+        await waitFor(() => h.run(runId).status === 'running', 'the agent');
+        appendItem(h.store, runId, { kind: 'assistant', text: 'Partial answer', done: false });
+        appendItem(h.store, runId, {
+            kind: 'question',
+            questionId: 'q-prepared',
+            text: 'Which?',
+            options: [{ id: 'a', label: 'A' }],
+            durable: true,
+            state: 'preparing',
+        });
+        await h.stop();
+        const restarted = await restartHarness(h, { engines, agents });
+        harnesses.push(restarted);
+        expect(restarted.run(runId).status).toBe('waiting_user');
+        const partial = restarted.store.db
+            .query('SELECT body FROM stream_items WHERE run_id = ?')
+            .all(runId)
+            .map((row: any) => JSON.parse(row.body))
+            .find((body: any) => body.kind === 'assistant' && body.text === 'Partial answer');
+        expect(partial.done).toBe(true);
+        const question = restarted.store.db
+            .query('SELECT body FROM stream_items WHERE run_id = ?')
+            .all(runId)
+            .map((row: any) => JSON.parse(row.body))
+            .find((body: any) => body.questionId === 'q-prepared');
+        expect(question.state).toBeUndefined();
+        restarted.ok('run.answer', { runId, questionId: 'q-prepared', answer: 'A' });
+        await waitFor(() => restarted.run(runId).status === 'succeeded', 'the continued turn');
+        expect(engine.turns[1].prompt).toContain("The user's answer: A");
+    });
+
+    test('recovery does not open a preparing question while an unverified process may still be alive', async () => {
+        const engine = new ScriptEngine(async function* ({ options }) {
+            yield { type: 'session', sessionId: 's-1' };
+            await untilAborted(options.signal);
+        });
+        const agents = new AgentRegistry();
+        agents.questionElicitation = () => false;
+        const engines = scriptEngines(engine);
+        const h = await startHarness({}, { engines, agents });
+        harnesses.push(h);
+        const project = h.openRepo();
+        const { chat } = h.ok('chat.create', { projectId: project.id, mode: 'semi' });
+        const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'go' });
+        await waitFor(() => h.run(runId).status === 'running', 'the agent');
+        appendItem(h.store, runId, {
+            kind: 'question',
+            questionId: 'q-prepared',
+            text: 'Which?',
+            options: [{ id: 'a', label: 'A' }],
+            durable: true,
+            state: 'preparing',
+        });
+        await h.stop();
+        const db = new Database(join(h.config.dataDir, 'clowdy.db'));
+        db.query('UPDATE runs SET pid = ?, pgid = NULL, process_started_at = NULL WHERE id = ?').run(
+            process.pid,
+            runId
+        );
+        db.close();
+        const restarted = await restartHarness(h, { engines, agents });
+        harnesses.push(restarted);
+        expect(restarted.run(runId).status).toBe('interrupted');
+        const question = restarted.store.db
+            .query('SELECT body FROM stream_items WHERE run_id = ?')
+            .all(runId)
+            .map((row: any) => JSON.parse(row.body))
+            .find((body: any) => body.questionId === 'q-prepared');
+        expect(question.state).toBe('expired');
+        // The fake reference names this test process without a start time, so recovery never signals it.
+        restarted.daemon.services.runs.setProcess(runId, null);
+    });
+
+    test('replays an answered durable question after the continuation fails to start', async () => {
+        const engine = new ScriptEngine(async function* ({ options, number }) {
+            if (number === 2) {
+                yield { type: 'error', message: 'Cannot start agent', retryable: false };
+                return;
+            }
+            yield { type: 'session', sessionId: 's-1' };
+            if (number === 1)
+                await options.tools
+                    .find(tool => tool.name === 'ask_user')!
+                    .execute({ question: 'Which?', options: [{ id: 'a', label: 'A' }] }, options.signal);
+            yield { type: 'done', result: 'done' };
+        });
+        const agents = new AgentRegistry();
+        agents.questionElicitation = () => false;
+        const h = await startHarness({}, { engines: scriptEngines(engine), agents });
+        harnesses.push(h);
+        const project = h.openRepo();
+        const { chat } = h.ok('chat.create', { projectId: project.id, mode: 'semi' });
+        const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'go' });
+        await waitFor(() => h.run(runId).status === 'waiting_user', 'the question');
+        const readQuestion = () =>
+            h.store.db
+                .query('SELECT body FROM stream_items WHERE run_id = ?')
+                .all(runId)
+                .map((row: any) => JSON.parse(row.body))
+                .find((body: any) => body.kind === 'question');
+        const questionId = readQuestion().questionId;
+        h.ok('run.answer', { runId, questionId, answer: 'A' });
+        await waitFor(() => h.run(runId).status === 'failed', 'the continuation failure');
+        expect(readQuestion().delivered).toBeUndefined();
+        h.ok('chat.send', { chatId: chat.id, text: 'Please retry' });
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the retry');
+        expect(engine.turns[2].prompt).toContain("The user's answer: A");
+        expect(engine.turns[2].prompt).toContain('Please retry');
+        expect(readQuestion().delivered).toBe(true);
+    });
+
+    test('an explicit stop retires an unanswered continuation before a later message', async () => {
+        const engine = new ScriptEngine(async function* ({ options, number }) {
+            yield { type: 'session', sessionId: 's-1' };
+            if (number === 1)
+                await options.tools
+                    .find(tool => tool.name === 'ask_user')!
+                    .execute({ question: 'Which?', options: [{ id: 'a', label: 'A' }] }, options.signal);
+            if (number === 2)
+                await new Promise<void>(resolve => {
+                    if (options.signal.aborted) resolve();
+                    else options.signal.addEventListener('abort', () => resolve(), { once: true });
+                });
+            yield { type: 'done', result: 'done' };
+        });
+        const agents = new AgentRegistry();
+        agents.questionElicitation = () => false;
+        const h = await startHarness({}, { engines: scriptEngines(engine), agents });
+        harnesses.push(h);
+        const project = h.openRepo();
+        const { chat } = h.ok('chat.create', { projectId: project.id, mode: 'semi' });
+        const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'go' });
+        await waitFor(() => h.run(runId).status === 'waiting_user', 'the question');
+        const readQuestion = () =>
+            h.store.db
+                .query('SELECT body FROM stream_items WHERE run_id = ?')
+                .all(runId)
+                .map((row: any) => JSON.parse(row.body))
+                .find((body: any) => body.kind === 'question');
+        h.ok('run.answer', { runId, questionId: readQuestion().questionId, answer: 'A' });
+        await waitFor(() => engine.turns.length === 2 && h.run(runId).status === 'running', 'the continuation');
+        h.ok('run.cancel', { runId });
+        expect(readQuestion().abandoned).toBe(true);
+        h.ok('chat.send', { chatId: chat.id, text: 'A new request' });
+        await waitFor(() => engine.turns.length === 3 && h.run(runId).status === 'succeeded', 'the new turn');
+        expect(engine.turns[2].prompt).not.toContain("The user's answer: A");
+    });
+
+    test('expires an orphaned legacy card before preparing a durable question', async () => {
+        const gate = Promise.withResolvers<void>();
+        const engine = new ScriptEngine(async function* ({ options }) {
+            yield { type: 'session', sessionId: 's-1' };
+            await gate.promise;
+            await options.tools
+                .find(tool => tool.name === 'ask_user')!
+                .execute({ question: 'New?', options: [{ id: 'b', label: 'B' }] }, options.signal);
+        });
+        const agents = new AgentRegistry();
+        agents.questionElicitation = () => false;
+        const h = await startHarness({}, { engines: scriptEngines(engine), agents });
+        harnesses.push(h);
+        const project = h.openRepo();
+        const { chat } = h.ok('chat.create', { projectId: project.id, mode: 'semi' });
+        const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'go' });
+        await waitFor(() => h.run(runId).status === 'running', 'the first turn');
+        appendItem(h.store, runId, {
+            kind: 'question',
+            questionId: 'old',
+            text: 'Old?',
+            options: [{ id: 'a', label: 'A' }],
+        });
+        gate.resolve();
+        await waitFor(() => h.run(runId).status === 'waiting_user', 'the new question');
+        const questions = h.store.db
+            .query('SELECT body FROM stream_items WHERE run_id = ?')
+            .all(runId)
+            .map((row: any) => JSON.parse(row.body))
+            .filter((body: any) => body.kind === 'question');
+        expect(questions[0].state).toBe('expired');
+        expect(questions[1].state).toBeUndefined();
+    });
+
+    test('does not open a durable question when stopping the agent fails', async () => {
+        const engine = new ScriptEngine(async function* ({ options }) {
+            yield { type: 'session', sessionId: 's-1' };
+            await options.tools
+                .find(tool => tool.name === 'ask_user')!
+                .execute({ question: 'Which?', options: [{ id: 'a', label: 'A' }] }, options.signal);
+        });
+        const start = engine.start.bind(engine);
+        engine.start = options => {
+            const session = start(options);
+            return {
+                ...session,
+                close: async () => {
+                    await session.close();
+                    throw new Error('could not stop');
+                },
+            };
+        };
+        const agents = new AgentRegistry();
+        agents.questionElicitation = () => false;
+        const h = await startHarness({}, { engines: scriptEngines(engine), agents });
+        harnesses.push(h);
+        const project = h.openRepo();
+        const { chat } = h.ok('chat.create', { projectId: project.id, mode: 'semi' });
+        const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'go' });
+        await waitFor(() => h.run(runId).status === 'failed', 'the failed stop');
+        const question = h.store.db
+            .query('SELECT body FROM stream_items WHERE run_id = ?')
+            .all(runId)
+            .map((row: any) => JSON.parse(row.body))
+            .find((body: any) => body.kind === 'question');
+        expect(question.state).toBe('cancelled');
+        expect(h.send('run.answer', { runId, questionId: question.questionId, answer: 'A' }).ok).toBe(false);
+    });
+
+    test('stopping a run while a durable question is open withdraws it', async () => {
+        const engine = new ScriptEngine(async function* ({ options }) {
+            yield { type: 'session', sessionId: 's-1' };
+            await options.tools
+                .find(tool => tool.name === 'ask_user')!
+                .execute({ question: 'Which?', options: [{ id: 'a', label: 'A' }] }, options.signal);
+        });
+        const agents = new AgentRegistry();
+        agents.questionElicitation = () => false;
+        const h = await startHarness({}, { engines: scriptEngines(engine), agents });
+        harnesses.push(h);
+        const project = h.openRepo();
+        const { chat } = h.ok('chat.create', { projectId: project.id, mode: 'semi' });
+        const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'go' });
+        await waitFor(() => h.run(runId).status === 'waiting_user', 'the question');
+        h.ok('run.cancel', { runId });
+        const question = h.store.db
+            .query('SELECT body FROM stream_items WHERE run_id = ?')
+            .all(runId)
+            .map((row: any) => JSON.parse(row.body))
+            .find((body: any) => body.kind === 'question');
+        expect(question.state).toBe('cancelled');
+        expect(h.send('run.answer', { runId, questionId: question.questionId, answer: 'A' }).ok).toBe(false);
+    });
+
+    test('stopping while the agent is closing never opens the durable question', async () => {
+        const gate = Promise.withResolvers<void>();
+        const engine = new ScriptEngine(async function* ({ options }) {
+            yield { type: 'session', sessionId: 's-1' };
+            await options.tools
+                .find(tool => tool.name === 'ask_user')!
+                .execute({ question: 'Which?', options: [{ id: 'a', label: 'A' }] }, options.signal);
+        });
+        const start = engine.start.bind(engine);
+        engine.start = options => {
+            const session = start(options);
+            return {
+                ...session,
+                close: async () => {
+                    await session.close();
+                    await gate.promise;
+                },
+            };
+        };
+        const agents = new AgentRegistry();
+        agents.questionElicitation = () => false;
+        const h = await startHarness({}, { engines: scriptEngines(engine), agents });
+        harnesses.push(h);
+        const project = h.openRepo();
+        const { chat } = h.ok('chat.create', { projectId: project.id, mode: 'semi' });
+        const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'go' });
+        const readQuestion = () =>
+            h.store.db
+                .query('SELECT body FROM stream_items WHERE run_id = ?')
+                .all(runId)
+                .map((row: any) => JSON.parse(row.body))
+                .find((body: any) => body.kind === 'question');
+        await waitFor(() => readQuestion()?.state === 'preparing', 'the question to prepare');
+        const approval = h.daemon.services.runs.askApproval(
+            runId,
+            {
+                title: 'Run pwd',
+                subject: { kind: 'command', command: 'pwd' },
+                decisions: ['allow_once'],
+                key: 'command:pwd',
+            },
+            AbortSignal.timeout(500)
+        );
+        expect(await approval).toBeUndefined();
+        expect(readQuestion().state).toBe('preparing');
+        h.ok('run.cancel', { runId });
+        gate.resolve();
+        await waitFor(() => engine.closed === 1, 'the session to close');
+        expect(h.run(runId).status).toBe('cancelled');
+        expect(readQuestion().state).toBe('cancelled');
+    });
+
+    test('an answered durable question waits for a free execution slot before continuing', async () => {
+        const gate = Promise.withResolvers<void>();
+        const engine = new ScriptEngine(async function* ({ options, number }) {
+            yield { type: 'session', sessionId: `s-${number}` };
+            if (options.prompt.includes('hold the slot')) await gate.promise;
+            else if (number === 1)
+                await options.tools
+                    .find(tool => tool.name === 'ask_user')!
+                    .execute({ question: 'Which?', options: [{ id: 'a', label: 'A' }] }, options.signal);
+            yield { type: 'done', result: 'done' };
+        });
+        const agents = new AgentRegistry();
+        agents.questionElicitation = () => false;
+        const h = await startHarness({ engineCaps: { fake: 1 } }, { engines: scriptEngines(engine), agents });
+        harnesses.push(h);
+        const project = h.openRepo();
+        const first = h.ok('chat.create', { projectId: project.id, mode: 'semi' }).chat;
+        const second = h.ok('chat.create', { projectId: project.id, mode: 'semi' }).chat;
+        const firstRun = h.ok('chat.send', { chatId: first.id, text: 'ask' }).runId;
+        await waitFor(() => h.run(firstRun).status === 'waiting_user', 'first question');
+        const question = h.store.db
+            .query('SELECT body FROM stream_items WHERE run_id = ?')
+            .all(firstRun)
+            .map((row: any) => JSON.parse(row.body))
+            .find((body: any) => body.kind === 'question');
+        const secondRun = h.ok('chat.send', { chatId: second.id, text: 'hold the slot' }).runId;
+        await waitFor(() => h.run(secondRun).status === 'running', 'second run');
+        h.ok('run.answer', { runId: firstRun, questionId: question.questionId, answer: 'A' });
+        expect(h.run(firstRun).status).toBe('queued');
+        expect(engine.turns).toHaveLength(2);
+        gate.resolve();
+        await waitFor(() => h.run(firstRun).status === 'succeeded', 'the continued turn');
+        expect(engine.turns).toHaveLength(3);
+    });
+
+    test('an answer queued for a slot is replayed after a daemon restart', async () => {
+        const engine = new ScriptEngine(async function* ({ options, number }) {
+            yield { type: 'session', sessionId: `s-${number}` };
+            if (options.prompt.includes('hold the slot')) await untilAborted(options.signal);
+            else if (number === 1)
+                await options.tools
+                    .find(tool => tool.name === 'ask_user')!
+                    .execute({ question: 'Which?', options: [{ id: 'a', label: 'A' }] }, options.signal);
+            yield { type: 'done', result: 'done' };
+        });
+        const agents = new AgentRegistry();
+        agents.questionElicitation = () => false;
+        const engines = scriptEngines(engine);
+        const h = await startHarness({ engineCaps: { fake: 1 } }, { engines, agents });
+        harnesses.push(h);
+        const project = h.openRepo();
+        const first = h.ok('chat.create', { projectId: project.id, mode: 'semi' }).chat;
+        const second = h.ok('chat.create', { projectId: project.id, mode: 'semi' }).chat;
+        const firstRun = h.ok('chat.send', { chatId: first.id, text: 'ask' }).runId;
+        await waitFor(() => h.run(firstRun).status === 'waiting_user', 'first question');
+        const question = h.store.db
+            .query('SELECT body FROM stream_items WHERE run_id = ?')
+            .all(firstRun)
+            .map((row: any) => JSON.parse(row.body))
+            .find((body: any) => body.kind === 'question');
+        const secondRun = h.ok('chat.send', { chatId: second.id, text: 'hold the slot' }).runId;
+        await waitFor(() => h.run(secondRun).status === 'running', 'second run');
+        h.ok('run.answer', { runId: firstRun, questionId: question.questionId, answer: 'A' });
+        expect(h.run(firstRun).status).toBe('queued');
+        await h.stop();
+        const restarted = await restartHarness(h, { engines, agents });
+        harnesses.push(restarted);
+        await waitFor(() => restarted.run(firstRun).status === 'succeeded', 'continuation after restart');
+        expect(engine.turns.at(-1)!.prompt).toContain("The user's answer: A");
+    });
+
+    test('a durable pause tells the person and the continued agent when background work was stopped', async () => {
+        const engine = new ScriptEngine(async function* ({ options, number }) {
+            yield { type: 'session', sessionId: 's-1' };
+            if (number === 1) {
+                yield { type: 'background', items: [{ id: 'job', kind: 'command', title: 'long test' }] };
+                await options.tools
+                    .find(tool => tool.name === 'ask_user')!
+                    .execute({ question: 'Which?', options: [{ id: 'a', label: 'A' }] }, options.signal);
+            }
+            yield { type: 'done', result: 'done' };
+        });
+        const agents = new AgentRegistry();
+        agents.questionElicitation = () => false;
+        const h = await startHarness({}, { engines: scriptEngines(engine), agents });
+        harnesses.push(h);
+        const project = h.openRepo();
+        const { chat } = h.ok('chat.create', { projectId: project.id, mode: 'semi' });
+        const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'go' });
+        await waitFor(() => h.run(runId).status === 'waiting_user', 'the question');
+        const items = h.store.db
+            .query('SELECT body FROM stream_items WHERE run_id = ?')
+            .all(runId)
+            .map((row: any) => JSON.parse(row.body));
+        expect(
+            items.some(
+                (body: any) =>
+                    body.kind === 'note' && body.text === 'Background work stopped while waiting for your answer'
+            )
+        ).toBe(true);
+        const questionId = items.find((body: any) => body.kind === 'question').questionId;
+        h.ok('run.answer', { runId, questionId, answer: 'A' });
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the continuation');
+        expect(engine.turns[1].prompt).toContain('long test');
+        expect(engine.turns[1].prompt).toContain('lost');
+    });
+
+    test('keeps the stopped background work in context if the continuation fails', async () => {
+        const engine = new ScriptEngine(async function* ({ options, number }) {
+            if (number === 2) {
+                yield { type: 'background', items: [{ id: 'job-2', kind: 'command', title: 'another test' }] };
+                yield { type: 'error', message: 'Cannot start agent', retryable: false };
+                return;
+            }
+            yield { type: 'session', sessionId: 's-1' };
+            if (number === 1) {
+                yield { type: 'background', items: [{ id: 'job', kind: 'command', title: 'long test' }] };
+                await options.tools
+                    .find(tool => tool.name === 'ask_user')!
+                    .execute({ question: 'Which?', options: [{ id: 'a', label: 'A' }] }, options.signal);
+            }
+            yield { type: 'done', result: 'done' };
+        });
+        const agents = new AgentRegistry();
+        agents.questionElicitation = () => false;
+        const h = await startHarness({}, { engines: scriptEngines(engine), agents });
+        harnesses.push(h);
+        const project = h.openRepo();
+        const { chat } = h.ok('chat.create', { projectId: project.id, mode: 'semi' });
+        const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'go' });
+        await waitFor(() => h.run(runId).status === 'waiting_user', 'the question');
+        const question = h.store.db
+            .query('SELECT body FROM stream_items WHERE run_id = ?')
+            .all(runId)
+            .map((row: any) => JSON.parse(row.body))
+            .find((body: any) => body.kind === 'question');
+        h.ok('run.answer', { runId, questionId: question.questionId, answer: 'A' });
+        await waitFor(() => h.run(runId).status === 'failed', 'the failed continuation');
+        h.ok('chat.send', { chatId: chat.id, text: 'Please retry' });
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the retry');
+        expect(engine.turns[2].prompt).toContain('long test');
+        expect(engine.turns[2].prompt).toContain('another test');
+        expect(engine.turns[2].prompt).toContain("The user's answer: A");
+    });
+
+    test('preserving a question when the turn ends does not require another execution slot', async () => {
+        const finishQuestionTurn = Promise.withResolvers<void>();
+        const finishOtherTurn = Promise.withResolvers<void>();
+        const engine = new ScriptEngine(async function* ({ options }) {
+            yield { type: 'session', sessionId: 's-1' };
+            if (options.prompt.includes('hold the slot')) {
+                await finishOtherTurn.promise;
+            } else {
+                const ask = options.tools.find(tool => tool.name === 'ask_user')!;
+                void ask
+                    .execute({ question: 'First?', options: [{ id: 'a', label: 'A' }] }, options.signal)
+                    .catch(() => {});
+                await finishQuestionTurn.promise;
+            }
+            yield { type: 'done', result: 'done' };
+        });
+        const h = await startHarness({ engineCaps: { fake: 1 } }, { engines: scriptEngines(engine) });
+        harnesses.push(h);
+        const project = h.openRepo();
+        const first = h.ok('chat.create', { projectId: project.id, mode: 'semi' }).chat;
+        const second = h.ok('chat.create', { projectId: project.id, mode: 'semi' }).chat;
+        const firstRun = h.ok('chat.send', { chatId: first.id, text: 'ask' }).runId;
+        await waitFor(() => h.run(firstRun).status === 'waiting_user', 'first question');
+        const secondRun = h.ok('chat.send', { chatId: second.id, text: 'hold the slot' }).runId;
+        await waitFor(() => h.run(secondRun).status === 'running', 'second run');
+        finishQuestionTurn.resolve();
+        await waitFor(
+            () =>
+                h.store.db
+                    .query('SELECT body FROM stream_items WHERE run_id = ?')
+                    .all(firstRun)
+                    .map((row: any) => JSON.parse(row.body))
+                    .some((body: any) => body.kind === 'question' && body.durable && body.state === undefined),
+            'the durable question'
+        );
+        expect(h.run(firstRun).status).toBe('waiting_user');
+        expect(h.run(secondRun).status).toBe('running');
+        finishOtherTurn.resolve();
+        await waitFor(() => h.run(secondRun).status === 'succeeded', 'second turn to finish');
+    });
+
+    test('preserves a question when the agent ends its turn without waiting', async () => {
+        const gate = Promise.withResolvers<void>();
+        const engine = new ScriptEngine(async function* ({ options }) {
+            yield { type: 'session', sessionId: 's-1' };
+            const ask = options.tools.find(tool => tool.name === 'ask_user')!;
+            void ask
+                .execute({ question: 'First?', options: [{ id: 'a', label: 'A' }] }, options.signal)
+                .catch(() => {});
+            await gate.promise;
+            yield { type: 'done', result: 'done without an answer' };
+        });
+        const h = await startHarness({}, { engines: scriptEngines(engine) });
+        harnesses.push(h);
+        const project = h.openRepo();
+        const { chat } = h.ok('chat.create', { projectId: project.id, mode: 'semi' });
+        const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'go' });
+        await waitFor(() => h.run(runId).status === 'waiting_user', 'the question');
+        gate.resolve();
+        await waitFor(
+            () =>
+                h.store.db
+                    .query('SELECT body FROM stream_items WHERE run_id = ?')
+                    .all(runId)
+                    .map((row: any) => JSON.parse(row.body))
+                    .some((body: any) => body.kind === 'question' && body.durable && body.state === undefined),
+            'the question to become durable'
+        );
+        expect(h.run(runId).status).toBe('waiting_user');
+    });
+
+    test('withdrawing a question closes its card and releases the waiting state', async () => {
+        const withdrawal = new AbortController();
+        const gate = Promise.withResolvers<void>();
+        const engine = new ScriptEngine(async function* ({ options }) {
+            yield { type: 'session', sessionId: 's-1' };
+            const ask = options.tools.find(tool => tool.name === 'ask_user')!;
+            const pending = ask.execute({ question: 'First?', options: [{ id: 'a', label: 'A' }] }, withdrawal.signal);
+            await pending.catch(() => undefined);
+            await gate.promise;
+            yield { type: 'done', result: 'ok' };
+        });
+        const h = await startHarness({}, { engines: scriptEngines(engine) });
+        harnesses.push(h);
+        const project = h.openRepo();
+        const { chat } = h.ok('chat.create', { projectId: project.id, mode: 'semi' });
+        const { runId } = h.ok('chat.send', { chatId: chat.id, text: 'go' });
+        await waitFor(() => h.run(runId).status === 'waiting_user', 'the question');
+        withdrawal.abort();
+        await waitFor(() => h.run(runId).status === 'running', 'the agent to resume');
+        const question = h.store.db
+            .query('SELECT body FROM stream_items WHERE run_id = ?')
+            .all(runId)
+            .map((row: any) => JSON.parse(row.body))
+            .find((body: any) => body.kind === 'question');
+        expect(question.state).toBe('cancelled');
+        expect(h.run(runId).awaitingUser).not.toBe(true);
+        gate.resolve();
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the run to finish');
+    });
+
     test('a second question while one is open is refused at once, so the first stays answerable', async () => {
         const outcomes: string[] = [];
         const engine = new ScriptEngine(async function* ({ options }) {

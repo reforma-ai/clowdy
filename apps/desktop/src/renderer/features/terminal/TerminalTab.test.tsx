@@ -396,16 +396,15 @@ describe("the Terminal tab in a chat's worktree", () => {
 describe('a terminal selection quoted into the chat', () => {
     const rows = ['abcdefghij', 'KLM', '   '];
     const lineAt = (index: number) => ({
-        translateToString: (_trim?: boolean, start = 0, end?: number) => (rows[index] ?? '').slice(start, end).trimEnd(),
+        translateToString: (_trim?: boolean, start = 0, end?: number) =>
+            (rows[index] ?? '').slice(start, end).trimEnd(),
     });
 
     it('quotes each buffer row on its own line, numbered as the log numbers them', () => {
         const selected = selectedBufferRows(lineAt, { start: { x: 0, y: 0 }, end: { x: 3, y: 1 } });
 
         expect(selected).toEqual({ from: 1, to: 2, text: 'abcdefghij\nKLM' });
-        expect(codeQuote('/logs/trm_1.log', selected!)).toBe(
-            '`/logs/trm_1.log:1-2`\n```log\nabcdefghij\nKLM\n```'
-        );
+        expect(codeQuote('/logs/trm_1.log', selected!)).toBe('`/logs/trm_1.log:1-2`\n```log\nabcdefghij\nKLM\n```');
     });
 
     it('keeps a partial row partial, and offers nothing for a blank selection', () => {
@@ -423,7 +422,15 @@ describe('a terminal selection quoted into the chat', () => {
         expect(selectedBufferRows(lineAt, { start: { x: 1, y: 0 }, end: { x: 1, y: 0 } })).toBeUndefined();
     });
 
-    const screen = { viewportY: 0, cols: 80, rows: 24, cellWidth: 10, cellHeight: 20, buttonWidth: 100, buttonHeight: 28 };
+    const screen = {
+        viewportY: 0,
+        cols: 80,
+        rows: 24,
+        cellWidth: 10,
+        cellHeight: 20,
+        buttonWidth: 100,
+        buttonHeight: 28,
+    };
 
     it('stands just under the end of the selection', () => {
         expect(quoteButtonPlace({ ...screen, startY: 0, endX: 4, endY: 2 })).toEqual({ left: 40, top: 60 });

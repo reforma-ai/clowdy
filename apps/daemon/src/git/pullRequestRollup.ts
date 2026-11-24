@@ -1,7 +1,4 @@
-import { MAX_GIT_CHECKS } from '@clowdy/protocol';
-
 import type {
-    GitCheck,
     GitCheckState,
     GitChecks,
     GitMergeability,
@@ -17,7 +14,7 @@ export const asObject = (value: unknown): Json | undefined =>
     typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Json) : undefined;
 export const asString = (value: unknown): string | undefined =>
     typeof value === 'string' && value !== '' ? value : undefined;
-/** A link of GitHub's answer, kept only when it is a web address: the app opens it in the person's browser, and the link of a check is whatever the service that ran it set. */
+/** Accept only web addresses for the pull request link. */
 const asLink = (value: unknown): string | undefined => {
     const text = asString(value);
 
@@ -33,7 +30,6 @@ const asTime = (value: unknown): number | undefined => {
 interface RawCheck {
     name: string;
     state: GitCheckState;
-    url?: string;
     at?: number;
 }
 
@@ -74,7 +70,6 @@ function checkOf(node: unknown): RawCheck | undefined {
 
     if (object.__typename === 'StatusContext' || asString(object.context) !== undefined) {
         const name = asString(object.context);
-        const url = asLink(object.targetUrl);
         const at = asTime(object.createdAt);
 
         return name === undefined
@@ -82,13 +77,11 @@ function checkOf(node: unknown): RawCheck | undefined {
             : {
                   name,
                   state: statusState(asString(object.state)),
-                  ...(url && { url }),
                   ...(at !== undefined && { at }),
               };
     }
 
     const name = asString(object.name);
-    const url = asLink(object.detailsUrl);
     const at = asTime(object.startedAt);
 
     return name === undefined
@@ -96,19 +89,17 @@ function checkOf(node: unknown): RawCheck | undefined {
         : {
               name,
               state: checkRunState(asString(object.status), asString(object.conclusion)),
-              ...(url && { url }),
               ...(at !== undefined && { at }),
           };
 }
 
-/** Whether `check` is the same check as `current` run at the same time or later, as bb has it: one that never began is the later of two that never did. */
+/** Whether `check` is the same check as `current` run at the same time or later: one that never began is the later of two that never did. */
 function isSameOrLater(check: RawCheck, current: RawCheck): boolean {
     if (check.at === undefined) return current.at === undefined;
 
     return current.at === undefined || check.at >= current.at;
 }
 
-const STATE_ORDER: Record<GitCheckState, number> = { failing: 0, pending: 1, passing: 2, skipped: 3 };
 const ROLLUP_ORDER: Array<GitChecks['state']> = ['none', 'passing', 'pending', 'failing'];
 
 /** What GitHub's own total of a commit's checks (`StatusState`) says, in the terms of `GitChecks.state`. */
@@ -121,8 +112,8 @@ function rollupStateOf(state: string | undefined): GitChecks['state'] {
 }
 
 /**
- * The checks of a head commit as the app shows them: one for each name (the one that began last, a commit status by its context), failing first, with how many there are in
- * each state and what they add up to. When GitHub has more than the first page, the counts are of the page and the total takes the worse of the page's and GitHub's own.
+ * Counts checks by their latest result. When GitHub has more than the first page, the counts cover
+ * that page and the overall state takes the worse of the page's state and GitHub's total.
  */
 export function rollupChecks(
     contexts: readonly unknown[],
@@ -137,30 +128,19 @@ export function rollupChecks(
         if (check && (!current || isSameOrLater(check, current))) latest.set(check.name, check);
     }
 
-    const items: GitCheck[] = [...latest.values()]
-        .map(({ name, state, url }) => ({ name, state, ...(url && { url }) }))
-        .sort((a, b) => STATE_ORDER[a.state] - STATE_ORDER[b.state] || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
-        .slice(0, MAX_GIT_CHECKS);
-    const count = (state: GitCheckState) => items.filter(item => item.state === state).length;
-    const [passing, failing, pending, skipped] = [
-        count('passing'),
-        count('failing'),
-        count('pending'),
-        count('skipped'),
-    ];
+    const counts = { passing: 0, failing: 0, pending: 0, skipped: 0 };
+
+    for (const { state } of latest.values()) counts[state]++;
+
     const own: GitChecks['state'] =
-        items.length === 0 ? 'none' : failing > 0 ? 'failing' : pending > 0 ? 'pending' : 'passing';
+        latest.size === 0 ? 'none' : counts.failing > 0 ? 'failing' : counts.pending > 0 ? 'pending' : 'passing';
     const total = github.more
         ? ROLLUP_ORDER[Math.max(ROLLUP_ORDER.indexOf(own), ROLLUP_ORDER.indexOf(rollupStateOf(github.state)))]!
         : own;
 
     return {
         state: total,
-        passing,
-        failing,
-        pending,
-        skipped,
-        items,
+        ...counts,
         ...(github.more && { truncated: true as const }),
     };
 }

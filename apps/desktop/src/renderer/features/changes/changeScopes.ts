@@ -1,5 +1,7 @@
 import { commitScope, GIT_COMMIT_SCOPE_PREFIX, turnScopeTrees } from '@clowdy/protocol';
 
+import { formatMessageTime } from '../../shared/time';
+
 import type { GitBase, GitCommit, GitScope } from '@clowdy/protocol';
 
 /** One entry of the scope menu: what it is called, and the scope the tab reads when it is chosen. */
@@ -9,8 +11,8 @@ export interface ScopeOption {
     label: string;
     /** A commit of the branch, for the entries that are one. */
     commit?: GitCommit;
-    /** A short line under the label in the menu, for the entries that have more to say than their label. */
-    note?: string;
+    /** A short line under the label in the menu. */
+    note: string;
 }
 
 export const ALL_CHANGES_LABEL = 'All changes';
@@ -24,9 +26,11 @@ export const LAST_RUN_NOTE = 'Edits of others in the place are in it too';
 export const LAST_RUN_TOOLTIP =
     'What the latest run of this chat changed. Edits that others made in the place meanwhile are in it too.';
 
-/** How a commit is named in the menu: its short hash and the first line of its message. */
-export const commitLabel = ({ shortSha, subject }: Pick<GitCommit, 'shortSha' | 'subject'>): string =>
-    `${shortSha} ${subject}`;
+function commitNote({ shortSha, committedAt }: GitCommit, now: number): string {
+    const date = new Date(committedAt);
+
+    return Number.isNaN(date.getTime()) ? shortSha : `${formatMessageTime(committedAt, now)} · ${shortSha}`;
+}
 
 /** The base the branch is compared with is there: the branch's own scope and its commits make sense. */
 const hasBase = (base: GitBase | undefined): base is Extract<GitBase, { state: 'ready' }> => base?.state === 'ready';
@@ -36,14 +40,29 @@ const hasBase = (base: GitBase | undefined): base is Extract<GitBase, { state: '
  * chat has one: the scope of its two snapshots), and one entry for each commit of the branch, newest first. The commits are the status's own list of the branch's work
  * (`GitBase.commits`), which the daemon cuts at `MAX_GIT_COMMITS`.
  */
-export function scopeOptions(base: GitBase | undefined, runScope?: GitScope): ScopeOption[] {
+export function scopeOptions(base: GitBase | undefined, runScope?: GitScope, now = Date.now()): ScopeOption[] {
+    const comparison = hasBase(base) ? base : undefined;
+
     return [
-        { scope: 'all', label: ALL_CHANGES_LABEL },
-        ...(hasBase(base) ? [{ scope: 'branch' as const, label: 'Branch' }] : []),
-        { scope: 'uncommitted', label: 'Uncommitted' },
+        {
+            scope: 'all',
+            label: ALL_CHANGES_LABEL,
+            note: comparison
+                ? 'Branch commits and uncommitted changes'
+                : 'Local changes until a comparison base is available',
+        },
+        ...(comparison
+            ? [{ scope: 'branch' as const, label: 'Branch', note: 'Committed changes against the base' }]
+            : []),
+        { scope: 'uncommitted', label: 'Uncommitted', note: 'Staged, unstaged and untracked changes' },
         ...(runScope ? [{ scope: runScope, label: LAST_RUN_LABEL, note: LAST_RUN_NOTE }] : []),
-        ...(hasBase(base)
-            ? base.commits.map(commit => ({ scope: commitScope(commit.sha), label: commitLabel(commit), commit }))
+        ...(comparison
+            ? comparison.commits.map(commit => ({
+                  scope: commitScope(commit.sha),
+                  label: commit.subject || 'No commit message',
+                  note: commitNote(commit, now),
+                  commit,
+              }))
             : []),
     ];
 }

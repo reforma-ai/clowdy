@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     createFixtureData,
     FIXTURE_EMPTY_PROJECT_ID,
+    FIXTURE_PERSONAL_PROJECT_ID,
     FIXTURE_PROJECT_ID,
     FIXTURE_WORKSPACE_CHAT_ID,
     FIXTURE_WORKTREE_SECOND_CHAT_ID,
@@ -23,10 +24,10 @@ import type { Transport } from '../../daemon/transport';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const CLOWDY_WORKTREE = '/Users/dev/Clowdy/workspaces/car-rental/ab12cd34/car-rental';
-const FOUND_WORKTREE = '/Users/dev/orca/car-rental/search-filters';
+const FOUND_WORKTREE = '/Users/dev/worktrees/car-rental/search-filters';
 const LOCKED_WORKTREE = '/Users/dev/car-rental-hotfix';
 const MISSING_WORKTREE = '/Users/dev/car-rental-old';
-const DETACHED_WORKTREE = '/Users/dev/orca/car-rental-api/readme';
+const DETACHED_WORKTREE = '/Users/dev/worktrees/car-rental-api/readme';
 
 let store: RootStore;
 
@@ -46,6 +47,24 @@ async function settle() {
     });
 }
 
+/**
+ * The tooltip that a keyboard focus opens: it is there once the library's own timer has run, which a loaded machine delays past one `settle`. Each pause is
+ * inside `act`, which is what draws what the timer asked for; the wait ends as soon as the tooltip is, or fails with its own message before the test's limit.
+ */
+async function openTooltip(): Promise<Element> {
+    const deadline = Date.now() + 4000;
+
+    for (;;) {
+        await settle();
+
+        const found = document.querySelector('[role="tooltip"]');
+
+        if (found) return found;
+
+        if (Date.now() > deadline) throw new Error('The tooltip did not open');
+    }
+}
+
 /** The projects' state is loaded by the feed: the chats of the project are there once it has answered. */
 async function flush() {
     await act(async () => {
@@ -53,14 +72,21 @@ async function flush() {
     });
 }
 
-async function open(options: { overrides?: Partial<Transport>; data?: FixtureData; folderId?: string } = {}) {
-    const { overrides = {}, data = withFixtureWorktrees(createFixtureData()), folderId } = options;
+async function open(
+    options: { overrides?: Partial<Transport>; data?: FixtureData; folderId?: string; projectId?: string } = {}
+) {
+    const {
+        overrides = {},
+        data = withFixtureWorktrees(createFixtureData()),
+        folderId,
+        projectId = FIXTURE_PROJECT_ID,
+    } = options;
 
     store = new RootStore(overrideTransport(new FixtureTransport({ data }), overrides), { storage: memoryStorage() });
     await store.load();
-    store.selectProject(FIXTURE_PROJECT_ID);
+    store.selectProject(projectId);
     await flush();
-    act(() => openManageWorktrees({ root: store, projectId: FIXTURE_PROJECT_ID, ...(folderId && { folderId }) }));
+    act(() => openManageWorktrees({ root: store, projectId, ...(folderId && { folderId }) }));
     await settle();
 }
 
@@ -88,6 +114,11 @@ const pressEscape = () =>
 /** Opens the More menu of a row. */
 async function openMore(path: string) {
     await click(row(path).querySelector<HTMLElement>('button[aria-label^="More for"]')!);
+    await settle();
+}
+
+async function openChats() {
+    await click(textButton(row(CLOWDY_WORKTREE), '2 chats')!);
     await settle();
 }
 
@@ -157,8 +188,11 @@ describe('Manage worktrees', () => {
             toJSON: () => ({}),
         });
 
-        await open();
-        await click(textButton(group('car-rental-api'), 'New worktree')!);
+        await open({ folderId: 'fld_api' });
+        const add = textButton(group('car-rental-api'), 'New worktree')!;
+
+        expect(add.closest('li')).toBe(group('car-rental-api').querySelector('ul')!.lastElementChild);
+        await click(add);
         await settle();
 
         const input = document.querySelector<HTMLInputElement>('input[aria-label="Worktree name"]')!;
@@ -170,10 +204,14 @@ describe('Manage worktrees', () => {
                 input.dispatchEvent(new Event('input', { bubbles: true }));
             });
 
+        expect(textButton(form, 'Cancel')?.dataset.variant).toBe('filled');
+        expect(form.textContent).not.toContain('Repository:');
+        expect(form.textContent).toContain('Settings → Chat → Branch prefix');
         expect(submit.disabled).toBe(true);
         await typeName('../next');
         expect(submit.disabled).toBe(true);
         await typeName('next');
+        expect(form.textContent).toContain('Creates a separate Git branch named clowdy/next');
         await click(submit);
         await settle();
 
@@ -183,30 +221,45 @@ describe('Manage worktrees', () => {
                 .map(row => row.textContent)
                 .join()
         ).toContain('clowdy/next');
-        expect(group('car-rental').textContent).not.toContain('clowdy/next');
+        expect(groups()).toHaveLength(1);
     });
 
-    it("lists the project's repositories, each with its own checkout first and a row for every worktree git lists, and no group for a folder that is no repository", async () => {
-        await open();
+    it('requires saving edited settings before creating a worktree', async () => {
+        await open({ folderId: 'fld_api' });
+        const name = dialog()!.querySelector<HTMLInputElement>('input[aria-label="Folder name"]')!;
+        const create = textButton(group('car-rental-api'), 'New worktree')!;
+        expect(create.disabled).toBe(false);
+        act(() => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(name, 'Backend');
+            name.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        expect(name.value).toBe('Backend');
+        expect(create.disabled).toBe(true);
+        expect(dialog()!.textContent).toContain('Save folder settings before creating a worktree');
+        act(() => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(name, '');
+            name.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        expect(create.disabled).toBe(false);
+    });
 
-        expect(dialog()!.textContent).toContain('Manage worktrees');
-        expect(groups().map(section => section.querySelector('h3')!.textContent)).toEqual([
-            'car-rental',
-            'car-rental-api',
-        ]);
-        expect(rowsOf(group('car-rental')).map(item => item.dataset.worktreePath)).toEqual([
-            '/Users/dev/car-rental',
-            CLOWDY_WORKTREE,
-            FOUND_WORKTREE,
-            LOCKED_WORKTREE,
-            MISSING_WORKTREE,
-        ]);
+    it('keeps worktrees accessible in the personal space without offering unsupported settings', async () => {
+        await open({ projectId: FIXTURE_PERSONAL_PROJECT_ID });
+        expect(dialog()!.textContent).toContain('Worktrees');
+        expect(dialog()!.textContent).toContain('Folder settings are unavailable in the personal space');
+        expect(dialog()!.querySelector('input[aria-label="Folder name"]')).toBeNull();
+    });
+
+    it('shows only the selected folder, alongside its settings', async () => {
+        await open({ folderId: 'fld_api' });
+        expect(dialog()!.textContent).toContain('Settings of car-rental-api');
+        expect(groups().map(section => section.querySelector('h3')!.textContent)).toEqual(['car-rental-api']);
         expect(rowsOf(group('car-rental-api')).map(item => item.dataset.worktreePath)).toEqual([
             '/Users/dev/car-rental-api',
             '/Users/dev/Clowdy/workspaces/car-rental-api/ab12cd34/car-rental-api',
             DETACHED_WORKTREE,
         ]);
-        expect(document.body.textContent).not.toContain('notes');
+        expect(dialog()!.querySelector('input[aria-label="Folder name"]')).not.toBeNull();
     });
 
     it("marks the folder's own checkout with its branch and whether it has local changes, and gives it no Remove", async () => {
@@ -243,9 +296,6 @@ describe('Manage worktrees', () => {
 
         expect(locked.textContent).toContain('hotfix/invoice');
         expect(locked.textContent).toContain('No local changes');
-
-        // A worktree on a detached HEAD is named by its commit.
-        expect(row(DETACHED_WORKTREE).textContent).toContain('Detached at 3a2b1c0');
     });
 
     it('has the path of a worktree in the tooltip of its name, and in no line of the row', async () => {
@@ -253,7 +303,7 @@ describe('Manage worktrees', () => {
 
         const found = row(FOUND_WORKTREE);
 
-        expect(found.textContent).not.toContain('/Users/dev/orca');
+        expect(found.textContent).not.toContain('/Users/dev/worktrees');
 
         // The name takes the focus, which a keyboard reaches, and the tooltip opens on it.
         const name = [...found.querySelectorAll<HTMLElement>('[tabindex="0"]')].find(
@@ -264,9 +314,8 @@ describe('Manage worktrees', () => {
             document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
             name.focus();
         });
-        await settle();
 
-        expect(document.querySelector('[role="tooltip"]')?.textContent).toBe('~/orca/car-rental/search-filters');
+        expect((await openTooltip()).textContent).toBe('~/worktrees/car-rental/search-filters');
     });
 
     it('gives each row one badge at most, the one that matters most: Locked over Merged, Missing on disk over the rest', async () => {
@@ -306,19 +355,31 @@ describe('Manage worktrees', () => {
         expect(buttonIn(row(FOUND_WORKTREE), 'New chat in this worktree: search-filters')!.disabled).toBe(false);
     });
 
-    it('lists the chats that work in a worktree, the archived ones too, and none for a worktree nobody works in', async () => {
+    it('shows a chat count beside the changes and previews the chat names on keyboard focus', async () => {
         await open();
 
-        const chats = row(CLOWDY_WORKTREE).querySelector<HTMLElement>('[aria-label="Chats"]')!;
-        const buttons = [...chats.querySelectorAll('button')].map(button => button.textContent);
+        const worktree = row(CLOWDY_WORKTREE);
+        const count = textButton(worktree, '2 chats')!;
 
-        expect(buttons).toEqual(['Weekend surcharge in a worktree', 'Show the weekend surcharge in the formArchived']);
-        expect(row(FOUND_WORKTREE).querySelector('[aria-label="Chats"]')).toBeNull();
+        expect(worktree.textContent).toContain('3 changes·2 chats');
+        expect(worktree.textContent).not.toContain('Weekend surcharge in a worktree');
+        expect(textButton(row(FOUND_WORKTREE), '0 chats')).toBeUndefined();
+
+        await act(async () => {
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+            count.focus();
+        });
+
+        const tooltip = await openTooltip();
+
+        expect(tooltip.textContent).toContain('Weekend surcharge in a worktree');
+        expect(tooltip.textContent).toContain('Show the weekend surcharge in the form (archived)');
     });
 
     it('opens the chat that works in a worktree when it is pressed, and closes the dialog', async () => {
         await open();
-        await click(textButton(row(CLOWDY_WORKTREE), 'Weekend surcharge in a worktree')!);
+        await openChats();
+        await click(item('Weekend surcharge in a worktree')!);
         await flush();
 
         expect(store.ui.forProject(FIXTURE_PROJECT_ID).chatId).toBe(FIXTURE_WORKSPACE_CHAT_ID);
@@ -327,7 +388,8 @@ describe('Manage worktrees', () => {
 
     it('brings an archived chat out of the archive, as a link to one does, when it is pressed', async () => {
         await open();
-        await click(textButton(row(CLOWDY_WORKTREE), 'Show the weekend surcharge in the formArchived')!);
+        await openChats();
+        await click(item('Show the weekend surcharge in the form')!);
         await flush();
 
         const ui = store.ui.forProject(FIXTURE_PROJECT_ID);
@@ -353,7 +415,7 @@ describe('Manage worktrees', () => {
     });
 
     it("opens the new-chat page for another folder of the project, in that folder's worktree", async () => {
-        await open();
+        await open({ folderId: 'fld_api' });
         await click(buttonIn(row(DETACHED_WORKTREE), 'New chat in this worktree: Detached at 3a2b1c0')!);
 
         const ui = store.ui.forProject(FIXTURE_PROJECT_ID);
@@ -363,7 +425,7 @@ describe('Manage worktrees', () => {
     });
 
     it("opens the new-chat page in the folder's own checkout, with no worktree, when New chat in this folder is pressed", async () => {
-        await open();
+        await open({ folderId: 'fld_api' });
 
         // Start from a worktree, as the page may have had one chosen: the checkout is the folder itself.
         store.ui.forProject(FIXTURE_PROJECT_ID).openDraft([], null, { mode: 'existing', path: FOUND_WORKTREE });
@@ -389,28 +451,12 @@ describe('Manage worktrees', () => {
 
         trigger.focus();
         await open();
-        await click(textButton(row(CLOWDY_WORKTREE), 'Weekend surcharge in a worktree')!);
+        await openChats();
+        await click(item('Weekend surcharge in a worktree')!);
         await flush();
 
         expect(isOpen()).toBe(false);
         expect(document.activeElement).not.toBe(trigger);
-    });
-
-    it('scrolls the group of the folder it was opened for into view, once', async () => {
-        const scrolled: Array<string | undefined> = [];
-
-        vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(function scroll(this: Element) {
-            scrolled.push((this as HTMLElement).dataset.folderId);
-        });
-        await open({ folderId: 'fld_api' });
-
-        expect(scrolled).toEqual(['fld_api']);
-
-        // A read the window's focus makes does not move the person's scroll.
-        await act(async () => void window.dispatchEvent(new Event('focus')));
-        await settle();
-
-        expect(scrolled).toEqual(['fld_api']);
     });
 
     it("draws Remove in the More menu of every worktree but the folder's own checkout, and holds it off for a lock and for a chat that works in the worktree", async () => {
@@ -636,7 +682,7 @@ describe('Manage worktrees', () => {
 
         expect(getProjectWorktrees).toHaveBeenCalledTimes(2);
         // The list stays while the next read runs.
-        expect(groups()).toHaveLength(2);
+        expect(groups()).toHaveLength(1);
     });
 
     it('shows what is changed since the last read when the window gets focus again', async () => {
@@ -748,7 +794,7 @@ describe('Manage worktrees', () => {
         await settle();
 
         expect(dialog()!.textContent).not.toContain("Couldn't load the worktrees");
-        expect(groups()).toHaveLength(2);
+        expect(groups()).toHaveLength(1);
     });
 
     it('keeps the list it has and says so when a later read fails', async () => {
@@ -763,7 +809,7 @@ describe('Manage worktrees', () => {
         await act(async () => void window.dispatchEvent(new Event('focus')));
         await settle();
 
-        expect(groups()).toHaveLength(2);
+        expect(groups()).toHaveLength(1);
         expect(dialog()!.textContent).toContain("Couldn't refresh the list");
         expect(dialog()!.textContent).not.toContain("Couldn't load the worktrees");
     });
@@ -787,7 +833,7 @@ describe('Manage worktrees', () => {
 
         expect(getProjectWorktrees).toHaveBeenCalledTimes(3);
         expect(dialog()!.textContent).not.toContain("Couldn't refresh the list");
-        expect(groups()).toHaveLength(2);
+        expect(groups()).toHaveLength(1);
     });
 
     it("says so when none of the project's folders is a repository", async () => {
@@ -802,7 +848,7 @@ describe('Manage worktrees', () => {
         await open({ overrides: { getProjectWorktrees } });
 
         expect(groups()).toEqual([]);
-        expect(dialog()!.textContent).toContain('No folder of this project is a git repository');
+        expect(dialog()!.textContent).toContain('This folder is not a git repository');
     });
 
     it('stays open when the window shows another project, as it does when it is opened from Settings for a project the window does not show', async () => {
@@ -811,7 +857,7 @@ describe('Manage worktrees', () => {
         await settle();
 
         expect(isOpen()).toBe(true);
-        expect(groups()).toHaveLength(2);
+        expect(groups()).toHaveLength(1);
     });
 
     it('takes the person to the project with Settings shut when a new chat or a chat is chosen, though the window showed another project with Settings open', async () => {

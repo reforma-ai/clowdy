@@ -148,6 +148,43 @@ describe('the line under the message box', () => {
     });
 });
 
+describe('following sent messages', () => {
+    it('leaves the position alone when an empty message is submitted', async () => {
+        await start();
+        await draw('c-2');
+        const scroll = container.querySelector<HTMLElement>('[data-stick-at-bottom]')!;
+        Object.defineProperty(scroll, 'scrollHeight', { configurable: true, value: 2000 });
+        Object.defineProperty(scroll, 'clientHeight', { configurable: true, value: 400 });
+        scroll.scrollTop = 100;
+        await act(async () => scroll.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, bubbles: true })));
+        await act(async () => scroll.dispatchEvent(new Event('scroll')));
+        await act(async () =>
+            field()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+        );
+        expect(scroll.scrollTop).toBe(100);
+    });
+
+    it('returns to the latest messages when the person sends after scrolling up', async () => {
+        await start();
+        await draw('c-2');
+        const scroll = container.querySelector<HTMLElement>('[data-stick-at-bottom]')!;
+        Object.defineProperty(scroll, 'scrollHeight', { configurable: true, value: 2000 });
+        Object.defineProperty(scroll, 'clientHeight', { configurable: true, value: 400 });
+        scroll.scrollTop = 100;
+        await act(async () => scroll.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, bubbles: true })));
+        await act(async () => scroll.dispatchEvent(new Event('scroll')));
+        expect(scroll.scrollTop).toBe(100);
+        await act(async () => {
+            (field() as HTMLElement & { editor: Editor }).editor.commands.insertContent('A long message '.repeat(80));
+        });
+        await act(async () =>
+            field()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+        );
+        expect(scroll.scrollTop).toBe(2000);
+        expect(scroll.dataset.stickAtBottom).toBe('true');
+    });
+});
+
 describe('git over the message box', () => {
     const withPullRequest = (data: FixtureData) => {
         data.pullRequests['/Users/dev/car-rental'] = { checkout: 'open' };
@@ -440,10 +477,20 @@ describe('a chat whose orchestrator waits for background work', () => {
         await start();
         await draw('c-5');
 
-        // The first command can be stopped alone and has a row of its own; the other is counted.
+        // The commands are folded under one line that counts them. Opened, each has a row, and only the first can be stopped alone: the other is counted.
+        const commands = [
+            ...container.querySelectorAll<HTMLButtonElement>('[aria-label="Work in progress"] button[aria-expanded]'),
+        ].find(button => button.textContent === 'Commands2 running')!;
+
+        expect(commands.getAttribute('aria-expanded')).toBe('false');
+
+        await act(async () => commands.click());
+
         expect(
-            [...container.querySelectorAll('[aria-label="Work in progress"] > div')].map(row => row.textContent)
-        ).toEqual(['Command · bun run testStop', 'Background task runningStop']);
+            [...container.querySelectorAll('[aria-label="Work in progress"] [class*="agentRows"] > div')].map(
+                row => row.textContent
+            )
+        ).toEqual(['Command · bun run testStop', 'Command · bun run typecheck', 'Background task runningStop run']);
         expect(container.textContent).not.toContain('Waiting for background work…');
         expect(notice()).toBeNull();
         expect(field()).not.toBeNull();
@@ -752,7 +799,10 @@ describe('Reply in a chat', () => {
             // The editor takes the focus on a frame of its own.
             await act(async () => frames.splice(0).forEach(callback => callback(0)));
 
-            expect(written()).toBe(`> ${node.textContent!.slice(6, 15)}\n`);
+            const quoted = node.textContent!.slice(6, 15);
+
+            expect(field()?.querySelector('blockquote')?.textContent).toBe(quoted);
+            expect(written()).toBe(`${quoted}\n`);
             expect(window.getSelection()!.isCollapsed).toBe(true);
             expect(document.activeElement).toBe(field());
             expect(document.body.querySelector('[role="toolbar"]')).toBeNull();

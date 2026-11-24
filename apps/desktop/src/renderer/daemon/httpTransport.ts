@@ -37,6 +37,7 @@ import type {
     GitFileSides,
     GitMessage,
     GitPullRequestInfo,
+    GitPushRequest,
     GitRemoteRequest,
     GitRemoteResult,
     GitScope,
@@ -233,8 +234,13 @@ export class HttpTransport implements Transport {
         });
     }
 
-    generateGitMessage(projectId: ProjectId, place: PlaceRef, paths: string[]): Promise<GitMessage> {
-        return this.#write(ROUTES.projectGitMessage(projectId), { ...place, paths });
+    generateGitMessage(
+        projectId: ProjectId,
+        place: PlaceRef,
+        paths: string[],
+        signal?: AbortSignal
+    ): Promise<GitMessage> {
+        return this.#write(ROUTES.projectGitMessage(projectId), { ...place, paths }, signal);
     }
 
     discardGit(projectId: ProjectId, place: PlaceRef, paths: string[]): Promise<GitDiscardResult> {
@@ -249,8 +255,15 @@ export class HttpTransport implements Transport {
         return this.#write(ROUTES.projectGitRemote(projectId, 'pull'), { ...place } satisfies GitRemoteRequest);
     }
 
-    pushGit(projectId: ProjectId, place: PlaceRef): Promise<GitRemoteResult> {
-        return this.#write(ROUTES.projectGitRemote(projectId, 'push'), { ...place } satisfies GitRemoteRequest);
+    pushGit(
+        projectId: ProjectId,
+        place: PlaceRef,
+        expectedHead?: GitPushRequest['expectedHead']
+    ): Promise<GitRemoteResult> {
+        return this.#write(ROUTES.projectGitRemote(projectId, 'push'), {
+            ...place,
+            expectedHead,
+        } satisfies GitPushRequest);
     }
 
     updateGit(projectId: ProjectId, place: PlaceRef): Promise<GitRemoteResult> {
@@ -517,11 +530,12 @@ export class HttpTransport implements Transport {
     }
 
     /** A write the daemon makes for a person (a commit, a fetch, a pull, a push) or a run it makes for one (a message), as JSON. Sent once, never retried: the daemon's reason is the error. */
-    async #write<T>(route: string, body: unknown): Promise<T> {
+    async #write<T>(route: string, body: unknown, signal?: AbortSignal): Promise<T> {
         const response = await this.#fetch(this.#base + route, {
             method: 'POST',
             headers: { ...this.#headers, 'content-type': 'application/json' },
             body: JSON.stringify(body),
+            signal,
         });
 
         if (!response.ok) throw await refusal(response, route);

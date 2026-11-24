@@ -2,7 +2,7 @@ import { Readable, Writable } from 'node:stream';
 import { client, methods, ndJsonStream, PROTOCOL_VERSION } from '@agentclientprotocol/sdk/unstable';
 
 import { EngineFailure, errorMessage } from '../../errors';
-import { answeredInTime, Channel, ProcessEnded, watchEnd } from './connection';
+import { answeredInTime, Channel, ProcessEnded, toWebReadable, watchEnd } from './connection';
 import {
     advertisesSteering,
     applyChoices,
@@ -32,9 +32,10 @@ import type { LayerHost, ProtocolLayer } from './layer';
 import type { ResolvedAgent } from './registry';
 
 /** What the client tells an agent it can do in `initialize`. The probe sends the same, so it shows the options a run gets. */
-export const clientCapabilities = (agent: Pick<ResolvedAgent, 'clientMeta'>): ClientCapabilities => ({
+export const clientCapabilities = (agent: Pick<ResolvedAgent, 'clientMeta' | 'elicitation'>): ClientCapabilities => ({
     fs: { readTextFile: false, writeTextFile: false },
     terminal: false,
+    ...(agent.elicitation && { elicitation: { form: {} } }),
     ...(agent.clientMeta && { _meta: agent.clientMeta }),
 });
 
@@ -168,9 +169,15 @@ export class V1Layer implements ProtocolLayer {
                 return {
                     outcome: optionId === undefined ? { outcome: 'cancelled' } : { outcome: 'selected', optionId },
                 };
+            })
+            .onRequest(methods.client.elicitation.create, async ({ params, signal }) => {
+                const answer = await host.pickQuestion(params, signal);
+                return answer === undefined
+                    ? { action: 'cancel' }
+                    : { action: 'accept', content: { clowdy_answer: answer } };
             });
 
-        const input = Readable.toWeb(proc.child.stdout as Readable) as ReadableStream<Uint8Array>;
+        const input = toWebReadable(proc.child.stdout as Readable);
         const output = Writable.toWeb(proc.child.stdin as Writable) as WritableStream<Uint8Array>;
         const connection = app.connect(ndJsonStream(output, input));
 

@@ -26,7 +26,7 @@ export function shellSequence(
 
 /**
  * Keys that are the app's own and must reach it from the terminal, where xterm would turn them into bytes for the shell and stop them: `Ctrl+`` (the terminal's
- * toggle) on every system, `Cmd+Esc` (the side panel's) on a Mac, where xterm would send the Esc, and `Ctrl+Shift+B`, `Ctrl+Shift+Enter` and `Ctrl+0` to `5` (the panel's, its
+ * toggle) on every system, `Cmd+Esc` (the side panel's) on a Mac, where xterm would send the Esc, and `Ctrl+Shift+B`, `Ctrl+Shift+Enter` and `Ctrl+1` to `5` (the panel's, its
  * expanded view's and its tabs') elsewhere. Other Cmd chords on a Mac are never taken by xterm.
  */
 export function isAppShortcut(
@@ -41,8 +41,8 @@ export function isAppShortcut(
 
     if (event.code === 'Backquote') return !event.shiftKey;
 
-    // The panel's tabs (`SIDE_PANEL_TAB_KEYS`) are Ctrl+0 to 5 where Ctrl is the app's modifier.
-    if (platform !== 'darwin' && !event.shiftKey && /^(?:Digit|Numpad)[0-5]$/.test(event.code)) return true;
+    // The panel's tabs (`sidePanelTabKeys`) are Ctrl+1 to 5 where Ctrl is the app's modifier.
+    if (platform !== 'darwin' && !event.shiftKey && /^(?:Digit|Numpad)[1-5]$/.test(event.code)) return true;
 
     return platform !== 'darwin' && event.shiftKey && (event.code === 'KeyB' || event.code === 'Enter');
 }

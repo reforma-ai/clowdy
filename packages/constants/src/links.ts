@@ -1,5 +1,5 @@
 /** The project's repository on GitHub: where the app is downloaded and starred. Every build points here, a fork's too, since it is the project that is being starred. */
-export const GITHUB_URL = 'https://github.com/kachurun/clowdy';
+export const GITHUB_URL = 'https://github.com/reforma-ai/clowdy';
 
 /** The page of the latest release, which has the installers. */
 export const RELEASES_URL = `${GITHUB_URL}/releases/latest`;

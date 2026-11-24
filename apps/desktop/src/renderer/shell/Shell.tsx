@@ -18,7 +18,7 @@ import { TitleBand } from './TitleBand';
 import { Unreachable } from './Unreachable';
 
 /**
- * The window: the rail at the right edge, as tall as the window (the panel's button, its tabs, Info and Settings), which is there whether the panel is open or not, and the rest
+ * The window: the rail at the right edge, as tall as the window (the panel's button, its tabs and Settings), which is there whether the panel is open or not, and the rest
  * of the window beside it: the title band across the top and under it the Agents screen (the list of chats and the chat beside it) with the side panel beside it while a
  * project's panel is open. Settings is a window over all this.
  */

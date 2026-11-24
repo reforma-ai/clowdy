@@ -112,11 +112,6 @@
     cursor: default;
 }
 
-/* A queue starts at the card's inset. End the controls at the same inset. */
-.main:not(:first-child) > .row {
-    margin-block-end: 0;
-}
-
 .start,
 .end {
     display: flex;

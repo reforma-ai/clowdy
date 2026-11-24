@@ -2,18 +2,15 @@ import { describe, expect, it } from 'vitest';
 
 import {
     agentRowLabel,
-    agentRowText,
     backgroundItemText,
     backgroundRows,
     backgroundRowText,
     canStopAlone,
     drawnRows,
     MAX_AGENT_ROWS,
-    offersStopAll,
     openBackground,
     runningAgents,
     stripRows,
-    threadRowText,
     threadsAtWork,
     unlistedBackground,
 } from './runningAgentRows';
@@ -59,20 +56,6 @@ describe("a row's words", () => {
         expect(agentRowLabel({ name: 'Explore' })).toBe('Explore agent');
         expect(agentRowLabel({ name: 'general-purpose' })).toBe('General agent');
         expect(agentRowLabel({ name: 'Sub-agent' })).toBe('Sub-agent');
-    });
-
-    it('says what the agent does and how many tools it called, that it works before its first step, and that it waits for the person', () => {
-        const explore = { name: 'Explore', status: 'running' as const };
-
-        expect(agentRowText(explore, 'Reading form.tsx', 4)).toBe('Explore agent · Reading form.tsx · 4 calls');
-        expect(agentRowText(explore, 'Reading form.tsx', 1)).toBe('Explore agent · Reading form.tsx · 1 call');
-        expect(agentRowText(explore, undefined, 0)).toBe('Explore agent working');
-        expect(agentRowText({ name: 'Plan', status: 'waiting_user' }, 'Reading a.ts', 7)).toBe(
-            'Plan agent · Waiting for you'
-        );
-        expect(agentRowText({ name: 'Plan', status: 'running', awaitingUser: true }, 'Reading a.ts', 7)).toBe(
-            'Plan agent · Waiting for you'
-        );
     });
 });
 
@@ -147,19 +130,19 @@ describe('the rows of background items', () => {
         const workflow = { id: 'wf-1', kind: 'task' as const, title: 'Workflow', canStopAlone: true };
 
         expect(backgroundRows([stoppable(1), plain, workflow, stoppable(2)], [])).toEqual({
-            own: [stoppable(1), workflow, stoppable(2)],
+            own: [stoppable(1), plain, workflow, stoppable(2)],
             counted: [plain],
         });
-        expect(backgroundRows([plain], [])).toEqual({ own: [], counted: [plain] });
+        expect(backgroundRows([plain], [])).toEqual({ own: [plain], counted: [plain] });
         expect(backgroundRows([], [])).toEqual({ own: [], counted: [] });
     });
 
-    it('keeps the order of the list, and the rows past the cap go to the count', () => {
+    it('keeps every stoppable item in order', () => {
         const items = Array.from({ length: MAX_AGENT_ROWS + 2 }, (_, index) => stoppable(index + 1));
         const { own, counted } = backgroundRows([plain, ...items], []);
 
-        expect(own).toEqual(items.slice(0, MAX_AGENT_ROWS));
-        expect(counted).toEqual([plain, ...items.slice(MAX_AGENT_ROWS)]);
+        expect(own).toEqual([plain, ...items]);
+        expect(counted).toEqual([plain]);
     });
 
     it('never gives a sub-agent one: its row is its child run, and one with none is counted', () => {
@@ -181,30 +164,6 @@ describe('Stop on a row', () => {
         expect(canStopAlone({ canStopAlone: true })).toBe(true);
         expect(canStopAlone({ canStopAlone: false })).toBe(false);
         expect(canStopAlone({})).toBe(false);
-    });
-});
-
-describe('Stop all', () => {
-    const alone = { canStopAlone: true };
-    const fixed = {};
-
-    it('is offered from two agents that can stop alone', () => {
-        expect(offersStopAll([])).toBe(false);
-        expect(offersStopAll([alone])).toBe(false);
-        expect(offersStopAll([alone, alone])).toBe(true);
-    });
-
-    it('does not count an agent that cannot stop alone, so it neither makes the button appear nor is stopped by it', () => {
-        expect(offersStopAll([fixed, fixed, fixed])).toBe(false);
-        expect(offersStopAll([alone, fixed])).toBe(false);
-        expect(offersStopAll([alone, fixed, alone])).toBe(true);
-    });
-
-    it('counts every thread at work, since each can be stopped alone', () => {
-        expect(offersStopAll([], 1)).toBe(false);
-        expect(offersStopAll([], 2)).toBe(true);
-        expect(offersStopAll([alone], 1)).toBe(true);
-        expect(offersStopAll([fixed], 1)).toBe(false);
     });
 });
 
@@ -257,7 +216,7 @@ describe('threads in the strip', () => {
         ).toEqual([]);
     });
 
-    it('puts what waits for the person first, then the rest oldest first, so a cap never hides a question', () => {
+    it('puts what waits for the person first, then the rest oldest first, so questions appear first', () => {
         const runs = new Map([
             ['run-old', orchestrator('old', 'running')],
             ['run-new', orchestrator('new', 'waiting_background')],
@@ -303,25 +262,5 @@ describe('threads in the strip', () => {
             'thread:t',
             'agent:agent-late',
         ]);
-    });
-
-    it('says what a thread does: its activity, that it works, that it waits for the person, for background work or a slot, or why it is blocked', () => {
-        const fix = { title: 'Fix login' };
-
-        expect(threadRowText(fix, { status: 'running' }, 'Running bun test')).toBe('Fix login · Running bun test');
-        expect(threadRowText(fix, { status: 'running' }, undefined)).toBe('Fix login working');
-        expect(threadRowText(fix, { status: 'waiting_user' }, 'Thinking…')).toBe('Fix login · Waiting for you');
-        expect(threadRowText(fix, { status: 'waiting_background' }, undefined)).toBe(
-            'Fix login · Waiting for background work'
-        );
-        // A thread that rests for its background work while its agent asks is waiting for the person, whichever card it is.
-        expect(threadRowText(fix, { status: 'waiting_background', awaitingUser: true }, undefined)).toBe(
-            'Fix login · Waiting for you'
-        );
-        expect(threadRowText(fix, { status: 'queued' }, undefined)).toBe('Fix login · Waiting for a free slot');
-        expect(threadRowText(fix, { status: 'blocked', statusReason: 'Usage limit until 14:00' }, undefined)).toBe(
-            'Fix login · Usage limit until 14:00'
-        );
-        expect(threadRowText(fix, { status: 'blocked' }, undefined)).toBe('Fix login · Blocked');
     });
 });

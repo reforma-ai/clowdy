@@ -27,6 +27,21 @@
         line-height: inherit;
     }
 
+    .editor :global(blockquote[data-composer-quote]) {
+        margin: 0;
+        padding-inline-start: var(--spacing-md);
+        border-inline-start: 3px solid var(--color-secondary-muted-border);
+        color: var(--color-secondary-muted-text);
+    }
+
+    .editor :global(blockquote[data-composer-quote]:not(:first-child)) {
+        margin-block-start: var(--spacing-xs);
+    }
+
+    .editor :global(blockquote[data-composer-quote]:not(:last-child)) {
+        margin-block-end: var(--spacing-xs);
+    }
+
     /* The same 600 as bold in a sent message (markdown); the browser's own would be 700. */
     .editor :global(strong) {
         font-weight: 600;

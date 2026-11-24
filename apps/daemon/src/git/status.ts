@@ -5,7 +5,7 @@ import { MAX_GIT_COMMITS, MAX_GIT_STATUS_ENTRIES } from '@clowdy/protocol';
 import { gitLine, gitRead, gitRecords } from '../domain/git';
 import { unavailable } from '../errors';
 import { lastFetchedAt } from './lastFetch';
-import { baseOf, workingTreeRoot } from './state';
+import { baseOf, rebaseUnderWay, workingTreeRoot } from './state';
 
 import type {
     GitBase,
@@ -61,7 +61,7 @@ interface ResolvedRef {
 }
 
 /**
- * The ref a base name means, picked as bb and GitHub Desktop do. A full ref (`refs/...`) is taken as it is. A name that is a local branch is `origin/<name>` when that
+ * The ref a base name means. A full ref (`refs/...`) is taken as it is. A name that is a local branch is `origin/<name>` when that
  * is where the local branch is or behind where it is (the person has not pulled; the remote's is the base that counts), and the local branch when it is ahead or has
  * diverged (its own commits are the base's). A name that is a remote branch already (`origin/main`) is taken as it is. A bare name with no local branch is `origin/<name>`.
  * Last, a hash is a commit. The refs are spelled out, `refs/heads/<name>` and `refs/remotes/<name>`, since a tag may be called `main` too.
@@ -343,6 +343,7 @@ export async function placeStatus(place: Place, options: BaseOptions = {}): Prom
     if (!status.ok) throw unavailable('git did not answer');
 
     const { commit, branch, upstream, entries } = parseStatus(status.records);
+    const rebasing = branch === undefined && (await rebaseUnderWay(cwd));
     const head: GitHead =
         branch === undefined
             ? { kind: 'detached', commit: commit ?? '' }
@@ -361,6 +362,7 @@ export async function placeStatus(place: Place, options: BaseOptions = {}): Prom
         entries: entries.slice(0, MAX_GIT_STATUS_ENTRIES),
         ...(truncated && { truncated: true as const }),
         ...(merging && { merging }),
+        ...(rebasing && { rebasing: true as const }),
         base,
     };
 }

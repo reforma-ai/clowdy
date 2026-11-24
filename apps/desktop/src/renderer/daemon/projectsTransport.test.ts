@@ -447,14 +447,14 @@ describe('FixtureTransport.getProjectWorktrees', () => {
                 { id: 'c-10', archived: true },
             ],
         });
-        expect(byPath('/Users/dev/orca/car-rental/search-filters')).toMatchObject({
+        expect(byPath('/Users/dev/worktrees/car-rental/search-filters')).toMatchObject({
             managed: false,
             changes: 2,
             submodules: true,
             merged: false,
             chats: [],
         });
-        expect(byPath('/Users/dev/orca/car-rental/search-filters')?.blocked).toBeUndefined();
+        expect(byPath('/Users/dev/worktrees/car-rental/search-filters')?.blocked).toBeUndefined();
         expect(byPath('/Users/dev/car-rental-hotfix')).toMatchObject({
             locked: 'on an external drive',
             blocked: 'locked',
@@ -479,7 +479,7 @@ describe('FixtureTransport.getProjectWorktrees', () => {
 });
 
 describe('FixtureTransport workspace.remove', () => {
-    const FOUND = '/Users/dev/orca/car-rental/search-filters';
+    const FOUND = '/Users/dev/worktrees/car-rental/search-filters';
     const LOCKED = '/Users/dev/car-rental-hotfix';
     const MISSING = '/Users/dev/car-rental-old';
     const remove = (
@@ -1068,7 +1068,7 @@ describe('FixtureTransport pull request reads', () => {
         });
     });
 
-    it("gives a chat's worktree an open pull request with a failing, a pending and a passing check, counted and listed worst first", async () => {
+    it("gives a chat's worktree an open pull request with counts for every check state", async () => {
         const info = await worktree().getGitPullRequest(FIXTURE_PROJECT_ID, inWorktree);
 
         expect(info).toMatchObject({
@@ -1087,22 +1087,6 @@ describe('FixtureTransport pull request reads', () => {
                 checks: { state: 'failing', passing: 3, failing: 1, pending: 2, skipped: 1 },
             },
         });
-
-        const { items } = (info as { pullRequest: { checks: { items: Array<{ name: string; state: string }> } } })
-            .pullRequest.checks;
-
-        expect(items.map(item => item.state)).toEqual([
-            'failing',
-            'pending',
-            'pending',
-            'passing',
-            'passing',
-            'passing',
-            'skipped',
-        ]);
-        expect(items.every(item => item.state === 'skipped' || (item as { url?: string }).url !== undefined)).toBe(
-            true
-        );
     });
 
     it("scripts the other places: a merged pull request on Clowdy's branch, a draft on the API's, and a closed one on request", async () => {
@@ -1187,18 +1171,14 @@ describe('FixtureTransport pull request reads', () => {
 
     it('does not give the same object twice, so a caller that edits an answer does not change the next', async () => {
         const transport = worktree();
-        const first = (await transport.getGitPullRequest(FIXTURE_PROJECT_ID, inWorktree)) as {
-            pullRequest: { checks: { items: unknown[] } };
-        };
+        const first = await transport.getGitPullRequest(FIXTURE_PROJECT_ID, inWorktree);
 
-        first.pullRequest.checks.items.length = 0;
-        expect(
-            (
-                (await transport.getGitPullRequest(FIXTURE_PROJECT_ID, inWorktree)) as {
-                    pullRequest: { checks: { items: unknown[] } };
-                }
-            ).pullRequest.checks.items
-        ).toHaveLength(7);
+        if (!first.isRepository || !first.pullRequest) throw new Error('Expected the worktree pull request');
+
+        first.pullRequest.checks.passing = 0;
+        expect(await transport.getGitPullRequest(FIXTURE_PROJECT_ID, inWorktree)).toMatchObject({
+            pullRequest: { checks: { passing: 3 } },
+        });
     });
 });
 
@@ -1545,13 +1525,20 @@ describe('FixtureTransport projects', () => {
 describe('HttpTransport git writes', () => {
     /** A transport whose daemon answers `body` with `status`, and what it was sent. */
     function transportFor(body: unknown, status = 200) {
-        const sent: Array<{ url: string; method?: string; body?: unknown; headers: Record<string, string> }> = [];
+        const sent: Array<{
+            url: string;
+            method?: string;
+            body?: unknown;
+            headers: Record<string, string>;
+            signal?: AbortSignal | null;
+        }> = [];
         const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
             sent.push({
                 url: String(input),
                 method: init?.method,
                 body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined,
                 headers: init?.headers as Record<string, string>,
+                signal: init?.signal,
             });
 
             return new Response(JSON.stringify(body), { status });
@@ -1585,9 +1572,10 @@ describe('HttpTransport git writes', () => {
 
     it('asks for the message of the ticked files', async () => {
         const { sent, transport } = transportFor({ message: 'feat: add a' });
+        const { signal } = new AbortController();
 
         expect(
-            await transport.generateGitMessage('prj_a', { folderId: 'fld_b', workspaceId: 'wks_c' }, ['a.ts'])
+            await transport.generateGitMessage('prj_a', { folderId: 'fld_b', workspaceId: 'wks_c' }, ['a.ts'], signal)
         ).toEqual({ message: 'feat: add a' });
         expect(sent.map(request => [request.url, request.method, request.body])).toEqual([
             [
@@ -1596,6 +1584,7 @@ describe('HttpTransport git writes', () => {
                 { folderId: 'fld_b', workspaceId: 'wks_c', paths: ['a.ts'] },
             ],
         ]);
+        expect(sent[0]?.signal).toBe(signal);
     });
 
     it('discards the files of a place, a worktree of its folder included, with the paths named, and gives what was discarded and where the copy is', async () => {
@@ -1970,10 +1959,13 @@ describe('HttpTransport git remote actions', () => {
         expect(await transport.fetchGit('prj a', { folderId: 'fld/b' })).toEqual(done);
         expect(await transport.pullGit('prj a', { folderId: 'fld/b', workspaceId: 'wks 1' })).toEqual(done);
         expect(await transport.pushGit('prj_a', { folderId: 'fld_b' })).toEqual(done);
+        const expectedHead = { branch: 'feature', commit: 'a'.repeat(40) };
+        expect(await transport.pushGit('prj_a', { folderId: 'fld_b' }, expectedHead)).toEqual(done);
         expect(sent.map(request => [request.url, request.method, request.body])).toEqual([
             ['http://127.0.0.1:4310/v1/projects/prj%20a/git/fetch', 'POST', { folderId: 'fld/b' }],
             ['http://127.0.0.1:4310/v1/projects/prj%20a/git/pull', 'POST', { folderId: 'fld/b', workspaceId: 'wks 1' }],
             ['http://127.0.0.1:4310/v1/projects/prj_a/git/push', 'POST', { folderId: 'fld_b' }],
+            ['http://127.0.0.1:4310/v1/projects/prj_a/git/push', 'POST', { folderId: 'fld_b', expectedHead }],
         ]);
     });
 

@@ -561,6 +561,66 @@ describe('stop and send for an agent that cannot steer', () => {
                     event.data.run.statusReason === STOPPED_TO_SEND_REASON
             );
 
+    test('does not start a replacement when closing the previous session fails', async () => {
+        const { h, engine, chat, send, queue, start } = await setup();
+        const originalStart = engine.start.bind(engine);
+        engine.start = options => {
+            const session = originalStart(options);
+            return {
+                ...session,
+                close: async () => {
+                    await session.close();
+                    throw new Error('close failed');
+                },
+            };
+        };
+        const runId = await start();
+        send('next');
+        h.ok('chat.sendQueued', { chatId: chat.id, itemId: queue()[0].id });
+        await waitFor(() => h.run(runId).status === 'failed', 'the close failure');
+        expect(engine.turns).toHaveLength(1);
+        expect(queue().map(brief)).toEqual([['queue', 'next']]);
+        send('try again');
+        await waitFor(
+            () => h.run(runId).status === 'failed' && h.run(runId).error?.includes('could not be confirmed'),
+            'the retry to be refused'
+        );
+        expect(engine.turns).toHaveLength(1);
+    });
+
+    test('does not publish an answer when the interrupted session cannot close', async () => {
+        const answer = latch();
+        const { h, engine, chat, send, queue, start } = await setup(
+            undefined,
+            {},
+            {
+                script: async function* () {
+                    yield { type: 'session', sessionId: 's1' };
+                    await answer.wait();
+                    yield { type: 'done', result: 'answer' };
+                },
+            }
+        );
+        const originalStart = engine.start.bind(engine);
+        engine.start = options => {
+            const session = originalStart(options);
+            return {
+                ...session,
+                close: async () => {
+                    await session.close();
+                    throw new Error('close failed');
+                },
+            };
+        };
+        const runId = await start();
+        send('next');
+        h.ok('chat.sendQueued', { chatId: chat.id, itemId: queue()[0].id });
+        answer.release();
+        await waitFor(() => h.run(runId).status === 'failed', 'the close failure');
+        expect(engine.turns).toHaveLength(1);
+        expect(h.run(runId).result).toBeUndefined();
+    });
+
     test('Send now ends the running turn, and the message is the next turn of the same session, told that the last one was stopped', async () => {
         const { h, engine, chat, send, chatNow, queue, bodies, people, start, release } = await setup();
         const runId = await start();

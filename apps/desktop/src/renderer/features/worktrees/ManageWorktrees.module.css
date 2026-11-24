@@ -1,3 +1,5 @@
+@reference '@clowdy/styles/rulesets';
+
 .dialog {
     display: flex;
     flex-direction: column;
@@ -10,6 +12,11 @@
     flex-direction: column;
     gap: var(--spacing-xxs);
     min-width: 0;
+}
+
+.branchName {
+    font-weight: 500;
+    overflow-wrap: anywhere;
 }
 
 /* The list on screen is from an earlier read: what failed to refresh it, and the way to read again. */
@@ -72,7 +79,7 @@
     white-space: nowrap;
 }
 
-/* The failure and the empty note, in the middle of the space the groups would take. */
+/* The empty note in the space the groups would take. */
 .message {
     display: flex;
     flex-direction: column;
@@ -86,14 +93,6 @@
 .group {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-md);
-    min-width: 0;
-}
-
-.groupHeading {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
     gap: var(--spacing-md);
     min-width: 0;
 }
@@ -115,6 +114,31 @@
 
 .card > * + * {
     border-top: 1px solid var(--color-secondary-muted-border);
+}
+
+.add {
+    @ruleset typography-text-md;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    width: 100%;
+    min-height: calc(var(--leading-md) + var(--spacing-lg) * 2);
+    padding: 0 var(--spacing-xl);
+    border: 0;
+    background: none;
+    color: var(--color-text);
+    font-weight: 500;
+    text-align: start;
+    cursor: pointer;
+}
+
+.add:hover {
+    background: var(--color-secondary-muted);
+}
+
+.add:focus-visible {
+    outline: 2px solid var(--color-focus-ring, currentcolor);
+    outline-offset: -2px;
 }
 
 .row {
@@ -179,32 +203,25 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: var(--spacing-md);
-}
-
-.chats {
-    display: flex;
-    flex-wrap: wrap;
     gap: var(--spacing-xs);
-    margin-top: var(--spacing-xs);
-    /* The chips' own side padding (xs buttons: --spacing-md) hangs out to the left, so the titles line up with the path above them. */
-    margin-inline-start: calc(var(--spacing-md) * -1);
 }
 
-.chat {
-    max-width: 16rem;
+.chatFact {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-xs);
 }
 
-.chatTitle {
+.chatPreview > div {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.archived {
-    flex-shrink: 0;
-    margin-inline-start: var(--spacing-sm);
-    color: var(--color-secondary-muted-text);
+.chatCount {
+    text-decoration: underline dotted;
+    text-underline-offset: 0.15em;
+    white-space: nowrap;
 }
 
 /* Shown on hover, on focus inside the row and while a menu of the row is open, as the lists' row actions are; always where nothing hovers (a touch screen). */
@@ -216,7 +233,6 @@
     flex-shrink: 0;
     align-items: center;
     gap: var(--spacing-xs);
-    /* The buttons are centred on the row, whatever it holds: one line, or the chats under it. */
     align-self: center;
 }
 

@@ -1,7 +1,12 @@
+import { Alert, AlertDescription, AlertIcon } from '@clowdy/components/Alert';
 import { Button } from '@clowdy/components/Button';
+import { Menu, MenuItem, MenuTrigger } from '@clowdy/components/List';
 import { Modal, useModalContext } from '@clowdy/components/Modal';
+import { Popover } from '@clowdy/components/Popover';
 import { Spinner } from '@clowdy/components/Spinner';
 import { Text } from '@clowdy/components/Text';
+import { toast } from '@clowdy/components/Toast';
+import { AttentionCircle, Check, ChevronDown, Close } from '@clowdy/icons/14';
 import { errorMessage } from '@clowdy/lib';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 
@@ -9,10 +14,11 @@ import { type Transport, TransportError } from '../../daemon/transport';
 import { tildePath } from '../../shared/displayPath';
 import { homeFolder } from '../../shared/homeFolder';
 import { PickerList, type PickerOption } from '../../shared/PickerPopover';
-import { canOpenPaths, chosenPrograms, openEffects, useOpenApps } from '../openWith';
 import styles from './BranchMergeDialog.module.css';
 import { commitsWords } from './changesActions';
+import { confirmAbortMerge } from './confirmAbortMerge';
 import { type GitPlaceKey, gitFactsOf, placeRef } from './gitFacts';
+import { sourceControlPreferences } from './sourceControlPreferences';
 
 import type {
     GitBranches,
@@ -20,13 +26,14 @@ import type {
     GitBranchMergeRequest,
     GitBranchMergeResult,
     GitBranchMergeSelection,
+    GitBranchMergeStrategy,
 } from '@clowdy/protocol';
 import type { RemoteActions } from './RemoteActions';
 
 export const MERGE_LABELS = { from: 'Merge from branch…', into: 'Merge into branch…' } as const;
 
 type MergeDirection = GitBranchMergeSelection['direction'];
-type MergeOutcome = Exclude<GitBranchMergeResult, GitBranchMergePreview>;
+type MergeOutcome = Extract<GitBranchMergeResult, { state: 'conflicts' | 'done' }>;
 type MergeAction = Exclude<GitBranchMergeRequest, { action: 'preview' }>;
 
 interface MergeOptions {
@@ -48,18 +55,17 @@ function choicesOf(listing: GitBranches | undefined, current: string, includeOri
 
     const local = listing.local
         .filter(branch => branch.name !== current)
-        .map(({ name }) => ({ id: `refs/heads/${name}`, label: name, branch: name, group: 'Local' }));
+        .map(({ name }) => ({ id: `refs/heads/${name}`, label: name, branch: name }));
     const origin = includeOrigin
-        ? (listing.origin ?? listing.remote).map(({ name }) => ({
+        ? listing.remote.map(({ name }) => ({
               id: `refs/remotes/origin/${name}`,
               label: `origin/${name}`,
               branch: name,
-              group: 'Origin',
               remote: true as const,
           }))
         : [];
 
-    return [...origin, ...local];
+    return [...local, ...origin];
 }
 
 interface Failure {
@@ -76,20 +82,50 @@ const MODES: Record<GitBranchMergePreview['mode'], string> = {
     'up-to-date': 'Already up to date',
     'fast-forward': 'Fast-forward',
     'merge-commit': 'Creates a merge commit',
+    squash: 'Creates one commit',
+    rebase: 'Rebase',
 };
+
+const STRATEGIES: Record<GitBranchMergeStrategy, { label: string; description: string }> = {
+    merge: { label: 'Merge', description: 'Fast-forward or create a merge commit' },
+    'fast-forward-only': { label: 'Fast-forward only', description: 'Only if the branches have not diverged' },
+    squash: { label: 'Squash and merge', description: 'Combine changes into one commit' },
+    rebase: { label: 'Rebase', description: 'Replay commits on the selected branch' },
+};
+
+function mergeBlock(
+    { source, target, targetPath, mode, conflictCheck }: GitBranchMergePreview,
+    strategy: GitBranchMergeStrategy,
+    direction: MergeDirection
+): Failure | undefined {
+    if (mode === 'up-to-date') return undefined;
+    if (strategy === 'fast-forward-only' && mode !== 'fast-forward')
+        return { message: `Can't fast-forward ${target} because the branches have diverged` };
+    if (direction === 'into' && !targetPath) return { message: `Check out ${target} before merging into it` };
+
+    if (conflictCheck === 'conflicts')
+        return {
+            message: `Can't ${mode === 'squash' ? 'squash' : 'merge'} into ${target} because the branches conflict`,
+            hint: `In a chat on ${target}, use Merge from branch to merge ${source} and resolve the conflicts`,
+        };
+
+    if ((mode === 'squash' || (direction === 'into' && mode === 'merge-commit')) && conflictCheck !== 'clean')
+        return { message: "Couldn't check for merge conflicts" };
+}
 
 function FailureText({ failure }: { failure: Failure }) {
     return (
-        <div className={styles.error} role="alert">
-            <Text color="danger" select="text">
-                {failure.message}
-            </Text>
+        <Alert color="danger">
+            <AlertIcon>
+                <AttentionCircle />
+            </AlertIcon>
+            <AlertDescription className="select-text">{failure.message}</AlertDescription>
             {failure.hint && (
-                <Text color="secondary" select="text">
+                <Text variant="xs" color="secondary" select="text">
                     {failure.hint}
                 </Text>
             )}
-        </div>
+        </Alert>
     );
 }
 
@@ -113,14 +149,15 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
     const [fetchFailed, setFetchFailed] = useState<Failure>();
     const [loading, setLoading] = useState(true);
     const [selected, setSelected] = useState<string>();
+    const [strategy, setStrategy] = useState<GitBranchMergeStrategy>('merge');
     const [preview, setPreview] = useState<GitBranchMergePreview>();
     const [pending, setPending] = useState<MergeAction['action']>();
     const [result, setResult] = useState<MergeOutcome>();
     const [failure, setFailure] = useState<Failure>();
     const previewRound = useRef(0);
-    const apps = useOpenApps();
 
     const fetchOrigin = direction === 'from' && hasOrigin;
+    const autoPush = sourceControlPreferences.autoPush;
     const choices = useMemo(
         () => choicesOf(listing, current, fetchOrigin && !fetchFailed),
         [listing, current, fetchOrigin, fetchFailed]
@@ -132,22 +169,34 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
         current,
         branch: choice.branch,
         ...(choice.remote && { remote: true as const }),
+        ...(strategy !== 'merge' && { strategy }),
     };
 
     useEffect(() => {
         let active = true;
 
         const load = async () => {
+            const place = placeRef(placeKey);
             try {
                 if (fetchOrigin) {
-                    const fetch = await remote.run('fetch', { report: false });
+                    const wasSyncing = remote.running !== undefined;
+                    const fetching = remote.run('fetch', { report: false });
+
+                    if (wasSyncing) {
+                        // Local refs can be picked while the fetch waits for origin. The full list below retries if this read fails.
+                        const local = await transport.getGitBranches(projectId, place).catch(() => undefined);
+                        if (!active) return;
+                        if (local?.isRepository) setListing({ ...local, remote: [] });
+                    }
+
+                    const fetch = await fetching;
 
                     if (!active) return;
 
                     if (!fetch.ok) setFetchFailed({ message: "Couldn't fetch origin", hint: fetch.failure.message });
                 }
 
-                const branches = await transport.getGitBranches(projectId, placeRef(placeKey));
+                const branches = await transport.getGitBranches(projectId, place);
 
                 if (active) setListing(branches);
             } catch (error) {
@@ -165,7 +214,7 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
         };
     }, [fetchOrigin, placeKey, projectId, remote, transport]);
 
-    const pick = async (id: string) => {
+    const pick = async (id: string, method = strategy) => {
         if (pending) return;
 
         const picked = choices.find(option => option.id === id);
@@ -185,37 +234,89 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
                 current,
                 branch: picked.branch,
                 ...(picked.remote && { remote: true as const }),
+                ...(method !== 'merge' && { strategy: method }),
             });
 
             if (response.state !== 'preview') throw new Error("Couldn't compare the branches");
+            if (
+                (method === 'squash' || method === 'rebase') &&
+                response.mode !== method &&
+                response.mode !== 'up-to-date'
+            )
+                throw new Error(`Update Clowdy to use ${STRATEGIES[method].label}`);
             if (round === previewRound.current) setPreview(response);
         } catch (error) {
             if (round === previewRound.current) setFailure(failureOf(error));
         }
     };
 
+    const source = preview?.source ?? (direction === 'from' ? (choice?.label ?? '…') : current);
+    const target = preview?.target ?? (direction === 'into' ? (choice?.label ?? '…') : current);
+    const mergeMessage = (branch: string) =>
+        strategy === 'rebase'
+            ? `Rebased ${branch} onto ${source}`
+            : strategy === 'squash'
+              ? `Squashed into ${branch}`
+              : `Merged into ${branch}`;
+
     const run = async (request: MergeAction) => {
         if (pending) return;
 
-        setPending(request.action);
+        let action = request.action;
+        setPending(action);
         setFailure(undefined);
 
         try {
-            const response = await transport.branchMergeGit(projectId, placeRef(placeKey), request);
+            const place = placeRef(placeKey);
+            let response = await transport.branchMergeGit(projectId, place, request);
+
+            if (response.state === 'conflicts') {
+                setResult(response);
+                return;
+            }
+
+            if (action === 'merge' && response.state === 'done' && response.canPush) {
+                if (autoPush || direction === 'into') setResult(response);
+                if (autoPush) {
+                    action = 'push';
+                    setPending(action);
+                    response = await transport.branchMergeGit(projectId, place, {
+                        action,
+                        target: response.target,
+                        commit: response.commit,
+                    });
+                    if (response.state !== 'pushed') throw new Error("Couldn't push the merged branch");
+                } else if (direction === 'into') return;
+            }
 
             if (response.state === 'preview') throw new Error("Couldn't apply the branch action");
-            setResult(response);
+            modal.cancel();
+            if (response.state === 'aborted') {
+                toast.info({
+                    message:
+                        response.operation === 'rebase'
+                            ? `Rebase of ${response.target} aborted`
+                            : `Merge into ${response.target} aborted`,
+                });
+            } else {
+                const message =
+                    response.state === 'pushed' ? `Pushed ${response.target} to origin` : mergeMessage(response.target);
+                toast.success({ message });
+            }
         } catch (error) {
-            if (request.action === 'merge') setPreview(undefined);
-            setFailure(failureOf(error));
+            if (action === 'merge') setPreview(undefined);
+            const cause = failureOf(error);
+            setFailure(action === 'push' ? { ...cause, message: `Push failed: ${cause.message}` } : cause);
         } finally {
             gitFactsOf(transport).refreshFolder(placeKey);
             setPending(undefined);
         }
     };
 
+    const blocked = preview ? mergeBlock(preview, strategy, direction) : undefined;
+
     const merge = () => {
-        if (!selection || !preview || preview.mode === 'up-to-date') return;
+        if (!selection || !preview || preview.mode === 'up-to-date' || blocked) return;
 
         void run({
             action: 'merge',
@@ -225,12 +326,25 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
         });
     };
 
-    const title = direction === 'from' ? 'Merge from branch' : 'Merge into branch';
-    const source = preview?.source ?? (direction === 'from' ? (choice?.label ?? 'Source branch') : current);
-    const target = preview?.target ?? (direction === 'into' ? (choice?.label ?? 'Destination branch') : current);
+    const actionLabel =
+        strategy !== 'merge'
+            ? STRATEGIES[strategy].label
+            : preview?.mode === 'merge-commit'
+              ? 'Create merge commit'
+              : preview?.mode === 'fast-forward'
+                ? 'Fast-forward'
+                : 'Merge';
+    const replay = preview?.replayCommits ?? 0;
     const isWorking = pending !== undefined;
-    const { editor, fileManager } = chosenPrograms(apps);
-    const openIn = editor ?? fileManager;
+    const empty = loading ? (
+        <Spinner
+            size="xxs"
+            className={styles.loading}
+            aria-label={fetchOrigin ? 'Fetching branches from origin' : 'Loading branches'}
+        />
+    ) : choices.length === 0 ? (
+        'No branches available'
+    ) : undefined;
 
     return (
         <div
@@ -245,44 +359,54 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
                 }
             }}
         >
-            <div className={styles.heading}>
-                <Text id={headingId} as="h2" variant="heading-3">
-                    {title}
-                </Text>
-                <Text weight="medium">{`${source} → ${target}`}</Text>
-            </div>
-            {loading && (
-                <div className={styles.loading} role="status">
-                    <Spinner size="xs" aria-hidden />
-                    <Text color="secondary">
-                        {fetchOrigin ? 'Fetching branches from origin…' : 'Loading branches…'}
-                    </Text>
-                </div>
-            )}
-            {!result && listing && (
+            <Text id={headingId} as="h2" variant="heading-3" className={styles.heading}>
+                {`Merge ${source} to ${target}`}
+            </Text>
+            <Button
+                className={styles.close}
+                size="sm"
+                variant="filling"
+                color="secondary"
+                iconOnly
+                aria-label="Close"
+                isDisabled={isWorking}
+                onPress={() => modal.cancel()}
+            >
+                <Close />
+            </Button>
+            {!result && (loading || listing) && (
                 <div inert={isWorking}>
                     <PickerList
                         options={choices}
                         aria-label={direction === 'from' ? 'Source branch' : 'Destination branch'}
                         selectedIds={selected ? [selected] : []}
                         placeholder="Filter branches"
-                        empty={choices.length === 0 ? 'No branches available' : undefined}
+                        empty={empty}
+                        listClassName={styles.branches}
                         onPick={id => void pick(id)}
                     />
                 </div>
             )}
             {!result && fetchFailed && <FailureText failure={fetchFailed} />}
             {!result && selected && !preview && !failure && (
-                <Text color="secondary" role="status">
+                <Text variant="sm" color="secondary" role="status">
                     Comparing branches…
                 </Text>
             )}
             {!result && preview && (
                 <div className={styles.detail} role="status">
-                    <Text>
-                        {preview.mode === 'up-to-date'
-                            ? MODES[preview.mode]
-                            : `${commitsWords(preview.commits)} · ${MODES[preview.mode]}`}
+                    <Text variant="sm">
+                        {preview.mode === 'rebase'
+                            ? replay > 0
+                                ? `Replay ${commitsWords(replay)} from ${target} on top of ${source}`
+                                : `Fast-forward ${target} to ${source}`
+                            : preview.mode === 'up-to-date'
+                              ? MODES[preview.mode]
+                              : commitsWords(preview.commits)}
+                        {preview.mode !== 'up-to-date' &&
+                            preview.mode !== 'rebase' &&
+                            !blocked &&
+                            ` · ${MODES[preview.mode]}`}
                     </Text>
                     {direction === 'into' && preview.targetPath && (
                         <Text color="secondary" variant="xs" title={preview.targetPath}>
@@ -291,66 +415,118 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
                     )}
                 </div>
             )}
+            {!result && blocked && <FailureText failure={blocked} />}
             {result?.state === 'conflicts' && (
                 <div className={styles.detail} role="status">
-                    <Text color="warning">
+                    <Text variant="sm" color={result.conflicts > 0 ? 'warning' : undefined}>
                         {result.conflicts === 0
-                            ? `Finish the merge in ${result.target}`
+                            ? `${result.operation === 'rebase' ? 'Rebase paused' : 'Complete the merge'} in ${result.target}`
                             : `${result.conflicts} ${result.conflicts === 1 ? 'conflict' : 'conflicts'} in ${result.target}`}
                     </Text>
                     <Text color="secondary" variant="xs" select="text">
                         {result.targetPath}
                     </Text>
+                    {result.operation === 'rebase' && (
+                        <Text color="secondary" variant="xs">
+                            {result.conflicts > 0
+                                ? 'Resolve the conflicts and continue the rebase in this chat'
+                                : 'Continue the rebase in this chat'}
+                        </Text>
+                    )}
                 </div>
             )}
-            {result?.state === 'done' && <Text role="status">{`Merged into ${result.target}`}</Text>}
-            {result?.state === 'pushed' && <Text role="status">{`Pushed ${result.target} to origin`}</Text>}
-            {result?.state === 'aborted' && <Text role="status">{`Merge into ${result.target} aborted`}</Text>}
+            {result?.state === 'done' && (
+                <Text variant="sm" role="status">
+                    {mergeMessage(result.target)}
+                </Text>
+            )}
             {failure && <FailureText failure={failure} />}
             <div className={styles.actions}>
-                {result?.state === 'conflicts' && (
+                {!result && (
+                    <div className={styles.split}>
+                        <Button
+                            size="md"
+                            color="contrast"
+                            className={styles.primary}
+                            isDisabled={!preview || preview.mode === 'up-to-date' || blocked !== undefined}
+                            isPending={pending === 'merge'}
+                            onPress={merge}
+                        >
+                            {autoPush && hasOrigin && preview && preview.mode !== 'up-to-date' && !blocked
+                                ? `${actionLabel} & Push`
+                                : actionLabel}
+                        </Button>
+                        <MenuTrigger>
+                            <Button
+                                size="md"
+                                color="contrast"
+                                iconOnly
+                                className={styles.mode}
+                                aria-label="Choose merge mode"
+                                isDisabled={isWorking}
+                            >
+                                <ChevronDown aria-hidden="true" />
+                            </Button>
+                            <Popover placement="top end" spacing="xs" width={300}>
+                                <Menu
+                                    size="sm"
+                                    aria-label="Merge mode"
+                                    selectionMode="single"
+                                    selectedKeys={[strategy]}
+                                    disallowEmptySelection
+                                    onAction={key => {
+                                        const next = key as GitBranchMergeStrategy;
+                                        if (next === strategy) return;
+                                        setStrategy(next);
+                                        if (selected) void pick(selected, next);
+                                    }}
+                                >
+                                    {(Object.keys(STRATEGIES) as GitBranchMergeStrategy[]).map(id => (
+                                        <MenuItem
+                                            key={id}
+                                            id={id}
+                                            text={STRATEGIES[id].label}
+                                            description={
+                                                id === 'rebase' && direction === 'into'
+                                                    ? 'Open a chat on the destination branch'
+                                                    : STRATEGIES[id].description
+                                            }
+                                            endAffix={strategy === id ? <Check aria-hidden="true" /> : undefined}
+                                            stacked
+                                            isDisabled={id === 'rebase' && direction === 'into'}
+                                        />
+                                    ))}
+                                </Menu>
+                            </Popover>
+                        </MenuTrigger>
+                    </div>
+                )}
+                {result?.state === 'conflicts' && (result.conflicts > 0 || result.operation === 'rebase') && (
                     <Button
-                        size="sm"
+                        size="md"
                         variant="bordered"
                         isDisabled={isWorking}
                         isPending={pending === 'abort'}
                         onPress={() =>
-                            void run({
-                                action: 'abort',
-                                target: result.target,
-                                commit: result.commit,
-                                sourceCommit: result.sourceCommit,
-                            })
+                            confirmAbortMerge(
+                                () =>
+                                    run({
+                                        action: 'abort',
+                                        target: result.target,
+                                        commit: result.commit,
+                                        sourceCommit: result.sourceCommit,
+                                        ...(result.operation && { operation: result.operation }),
+                                    }),
+                                result.operation
+                            )
                         }
                     >
-                        Abort merge
+                        {result.operation === 'rebase' ? 'Abort rebase' : 'Abort merge'}
                     </Button>
                 )}
-                <Button size="sm" variant="filling" isDisabled={isWorking} onPress={() => modal.cancel()}>
-                    {result ? 'Done' : 'Cancel'}
-                </Button>
-                {!result && choice && failure && (
-                    <Button size="sm" variant="bordered" onPress={() => void pick(choice.id)}>
-                        Refresh preview
-                    </Button>
-                )}
-                {result?.state === 'conflicts' && openIn && canOpenPaths() && (
+                {result?.state === 'done' && (
                     <Button
-                        className={styles.action}
-                        size="sm"
-                        color="contrast"
-                        isDisabled={isWorking}
-                        onPress={() =>
-                            openEffects.openPath(result.targetPath, editor ? 'editor' : 'fileManager', openIn)
-                        }
-                    >
-                        {`Open ${result.target}`}
-                    </Button>
-                )}
-                {result?.state === 'done' && direction === 'into' && result.canPush && (
-                    <Button
-                        className={styles.action}
-                        size="sm"
+                        size="md"
                         color="contrast"
                         isPending={pending === 'push'}
                         onPress={() => void run({ action: 'push', target: result.target, commit: result.commit })}
@@ -358,18 +534,15 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
                         {`Push ${result.target}`}
                     </Button>
                 )}
-                {!result && (
-                    <Button
-                        className={styles.action}
-                        size="sm"
-                        color="contrast"
-                        isDisabled={!preview || preview.mode === 'up-to-date'}
-                        isPending={pending === 'merge'}
-                        onPress={merge}
-                    >
-                        {preview || choice || direction === 'from' ? `Merge into ${target}` : 'Merge'}
-                    </Button>
-                )}
+                <Button
+                    size="md"
+                    variant="filled"
+                    color="secondary"
+                    isDisabled={isWorking}
+                    onPress={() => modal.cancel()}
+                >
+                    {result ? 'Done' : 'Cancel'}
+                </Button>
             </div>
         </div>
     );

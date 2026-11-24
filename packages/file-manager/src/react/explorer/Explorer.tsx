@@ -370,6 +370,11 @@ export const Explorer = observer(function Explorer({
 
             if (revealed && visible(revealed.path, manager.tree.get(revealed.path)?.kind)) {
                 reveal(api, revealed.path);
+                if (revealed.expand && manager.tree.get(revealed.path)?.kind === 'directory') {
+                    api.open(revealed.path);
+                    // A requested folder takes precedence over the previously active editor tab on mount.
+                    shown.current.activePath = activePath;
+                }
             }
         }
 
@@ -656,6 +661,19 @@ export const Explorer = observer(function Explorer({
                                     }
 
                                     return dragNodes.every(node => node.parent?.id === parentNode.id);
+                                }}
+                                onSelect={nodes => {
+                                    const selected = nodes.length === 1 ? nodes[0] : undefined;
+                                    const temporary = manager.tree.revealedPath;
+                                    if (
+                                        !scope &&
+                                        temporary &&
+                                        selected?.data.kind === 'directory' &&
+                                        !isPathWithin(selected.id, temporary) &&
+                                        !isPathWithin(temporary, selected.id)
+                                    ) {
+                                        manager.tree.revealPath(null);
+                                    }
                                 }}
                                 onToggle={id => {
                                     const api = treeApi.current;

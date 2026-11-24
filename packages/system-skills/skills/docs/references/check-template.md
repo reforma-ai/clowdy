@@ -1,6 +1,6 @@
 # Check report template
 
-One report per verification, in `checks/<YYYY-MM-DD>-<what-was-checked>.md`. It is evidence, not a status message: someone who did not see the run must be able to tell what was done and trust the result. Reports are not edited afterwards. A new run gets a new file, and the older one stays as history.
+Write one report per verification in `checks/<YYYY-MM-DD>-<what-was-checked>.md`. It is evidence, not a status message: a reader must be able to tell what was done and trust the result. Never edit a report afterwards; each new run gets a new file and older reports stay as history.
 
 ```markdown
 # Check: <what was verified, in user terms>

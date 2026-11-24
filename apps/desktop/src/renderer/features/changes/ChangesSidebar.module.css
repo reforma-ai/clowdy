@@ -34,14 +34,15 @@
     flex: 1;
     flex-direction: column;
     min-height: 0;
+    overflow-y: auto;
 }
 
-/* The base and how far the branch is from it, the row of the upstream with its menu, and the pull request or Create PR. */
+/* Sync and comparison actions, and the pull request or Create PR. */
 .facts {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: var(--spacing-4);
+    gap: var(--spacing-8);
     flex-shrink: 0;
     padding: var(--spacing-8) var(--spacing-12);
     border-bottom: 1px solid var(--color-surface-border);
@@ -50,26 +51,4 @@
 /* The lines of the facts are cut by the sidebar's edge with an ellipsis, as narrow as it is dragged: a column that lines its items up at the start leaves each as wide as its text. */
 .facts > * {
     max-width: 100%;
-}
-
-.baseRow {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--spacing-6);
-    width: 100%;
-}
-
-.baseCounts {
-    display: inline-flex;
-    flex-shrink: 0;
-    align-items: center;
-    gap: var(--spacing-8);
-    font-variant-numeric: tabular-nums;
-}
-
-.baseCount {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--spacing-2);
 }

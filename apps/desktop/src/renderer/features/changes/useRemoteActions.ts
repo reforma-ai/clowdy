@@ -2,7 +2,7 @@ import { useRootStore } from '../../stores';
 import { gitFactsOf, type PlaceFacts } from './gitFacts';
 import { type RemoteActions, remoteActionsOf } from './RemoteActions';
 
-/** The moves of a place's branch to and from `origin`, which the sidebar's menu, its Create PR and Commit & Push share. A run ends with a new round of the place's git facts. */
+/** The sidebar and Commit & Push share the remote actions for a place. Each completion refreshes its Git facts. */
 export function useRemoteActions(facts: PlaceFacts): RemoteActions {
     const { transport } = useRootStore();
 

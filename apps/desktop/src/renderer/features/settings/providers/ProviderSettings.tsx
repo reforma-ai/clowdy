@@ -213,13 +213,13 @@ export function ProviderAdvanced({ agent, commands }: SettingsProps) {
 }
 
 /** The agent's own settings as switches. Nothing for an agent that has none. */
-export function ProviderSettings({ agent, commands }: SettingsProps) {
-    const settings = agent.settings ?? [];
-
-    if (settings.length === 0) return null;
-
+export function ProviderSettings({
+    name,
+    settings,
+    commands,
+}: Pick<SettingsProps, 'commands'> & { name: string; settings: AgentSetting[] }) {
     return (
-        <ul className={styles.list} aria-label={`${agent.name} settings`}>
+        <ul className={styles.list} aria-label={`${name} settings`}>
             {settings.map(setting => (
                 <SettingRow
                     key={setting.id}

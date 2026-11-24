@@ -158,20 +158,27 @@ export interface AgentSetting {
     default: boolean;
 }
 
-/** The `AgentSetting.id` of the switch that lets an agent write commit messages (`Commit messages`, off until the person turns it on). Only the daemon reads it. */
+/** The stored setting behind the commit message provider choice. Older profiles may have it on for both agents. */
 export const COMMIT_MESSAGE_SETTING_ID = 'commitMessage';
 
+/** Codex was tried first when both providers were enabled. Keep that selection for older profiles. */
+export const COMMIT_MESSAGE_PROVIDERS = ['codex', 'claude'] as const;
+export type CommitMessageProvider = (typeof COMMIT_MESSAGE_PROVIDERS)[number];
+
+/** The selected provider, regardless of whether it is ready to generate a message. */
+export function commitMessageAgent(agents: readonly AgentInfo[]): AgentInfo | undefined {
+    for (const id of COMMIT_MESSAGE_PROVIDERS) {
+        const agent = agents.find(candidate => candidate.id === id);
+
+        if (agent?.settings?.some(setting => setting.id === COMMIT_MESSAGE_SETTING_ID && setting.value)) return agent;
+    }
+}
+
 /**
- * Whether the app may offer to have a commit message written by this agent: it is switched on and can start, somebody is signed in to it (`unknown` is not a yes) and the person turned
- * `Commit messages` on for it. The daemon decides again when it is asked (`POST .../git/message`), so this only says whether to show the button.
+ * Whether the selected provider can write the message: it is enabled, ready and signed in. The daemon checks again when asked.
  */
-export function writesCommitMessages(agent: AgentInfo): boolean {
-    return (
-        agent.enabled &&
-        agent.status === 'ready' &&
-        agent.signIn?.status === 'signed-in' &&
-        agent.settings?.some(setting => setting.id === COMMIT_MESSAGE_SETTING_ID && setting.value) === true
-    );
+export function writesCommitMessages(agent: AgentInfo | undefined): boolean {
+    return agent?.enabled === true && agent.status === 'ready' && agent.signIn?.status === 'signed-in';
 }
 
 /** One model an agent offers, as its own program lists it on this machine and account. */

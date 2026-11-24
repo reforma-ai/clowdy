@@ -28,7 +28,6 @@ import type {
     FolderWorktrees,
     GitChangedFile,
     GitChanges,
-    GitCheck,
     GitCommit,
     GitFileSides,
     GitHead,
@@ -855,43 +854,12 @@ function fixtureRepoOf(remoteUrl: string | undefined): GitHubRepo | undefined {
     return found ? { host: found[1]!, owner: found[2]!, name: found[3]! } : undefined;
 }
 
-/** The checks of the fixture's open pull request: one that failed, two that are running, some that passed and one that was skipped, as a commit status and check runs. */
-const FIXTURE_CHECKS: GitCheck[] = [
-    { name: 'unit (windows)', state: 'failing', url: 'https://github.com/acme/car-rental/actions/runs/101/job/2' },
-    { name: 'e2e', state: 'pending', url: 'https://github.com/acme/car-rental/actions/runs/101/job/4' },
-    { name: 'unit (ubuntu)', state: 'pending', url: 'https://github.com/acme/car-rental/actions/runs/101/job/3' },
-    { name: 'ci/deploy-preview', state: 'passing', url: 'https://preview.car-rental.example/pr-128' },
-    { name: 'lint', state: 'passing', url: 'https://github.com/acme/car-rental/actions/runs/101/job/1' },
-    { name: 'typecheck', state: 'passing', url: 'https://github.com/acme/car-rental/actions/runs/101/job/5' },
-    { name: 'docs', state: 'skipped' },
-];
-
-/** The checks of a pull request that has them all in one state (counted, and listed by name). */
-function fixtureChecksOf(items: GitCheck[]): GitPullRequest['checks'] {
-    const count = (state: GitCheck['state']) => items.filter(item => item.state === state).length;
-    const [passing, failing, pending, skipped] = [
-        count('passing'),
-        count('failing'),
-        count('pending'),
-        count('skipped'),
-    ];
-
-    return {
-        state: items.length === 0 ? 'none' : failing > 0 ? 'failing' : pending > 0 ? 'pending' : 'passing',
-        passing,
-        failing,
-        pending,
-        skipped,
-        items: structuredClone(items),
-    };
-}
-
 /**
  * What `GET git/pull-request` answers for a place of the fixture, by the script the folder gives it (`FixtureData.pullRequests`): no repository when `git` says nothing of the
  * folder, else the access the script names and, for a pull request, one of the four below, each of the branch the place has. `undefined` for the script that stands for a
  * `gh` that cannot read, which the daemon answers `unavailable`.
  *
- * - `open`: #128, review required, blocked by it, with the checks above (one failing, two pending, three passing, one skipped);
+ * - `open`: #128, review required, blocked by it, with one failing, two pending, three passing and one skipped check;
  * - `draft`: #54, whose only check is running;
  * - `merged`: #31, whose checks passed, with the branch at the pull request's head (a branch that went on has none);
  * - `closed`: #19, with a failing check.
@@ -936,28 +904,20 @@ export function fixtureGitPullRequest(
             state: 'open',
             reviewDecision: 'review_required',
             mergeability: 'blocked',
-            checks: fixtureChecksOf(FIXTURE_CHECKS),
+            checks: { state: 'failing', passing: 3, failing: 1, pending: 2, skipped: 1 },
         }),
         draft: pullRequest(54, 'Take payments with Stripe', {
             state: 'draft',
-            checks: fixtureChecksOf([
-                { name: 'unit', state: 'pending', url: 'https://github.com/acme/car-rental-api/actions/runs/77/job/1' },
-            ]),
+            checks: { state: 'pending', passing: 0, failing: 0, pending: 1, skipped: 0 },
         }),
         merged: pullRequest(31, 'Release the booking form', {
             state: 'merged',
             reviewDecision: 'approved',
-            checks: fixtureChecksOf(FIXTURE_CHECKS.filter(check => check.state === 'passing')),
+            checks: { state: 'passing', passing: 3, failing: 0, pending: 0, skipped: 0 },
         }),
         closed: pullRequest(19, 'Try a three-step booking form', {
             state: 'closed',
-            checks: fixtureChecksOf([
-                {
-                    name: 'unit (ubuntu)',
-                    state: 'failing',
-                    url: 'https://github.com/acme/car-rental/actions/runs/58/job/1',
-                },
-            ]),
+            checks: { state: 'failing', passing: 0, failing: 1, pending: 0, skipped: 0 },
         }),
     };
 
@@ -3191,7 +3151,7 @@ export function createFixtureData(now = Date.now()): FixtureData {
         worktrees: {
             '/Users/dev/car-rental': [
                 {
-                    path: '/Users/dev/orca/car-rental/search-filters',
+                    path: '/Users/dev/worktrees/car-rental/search-filters',
                     branch: 'search-filters',
                     head: '5c4b3a2',
                     changes: 2,
@@ -3206,7 +3166,7 @@ export function createFixtureData(now = Date.now()): FixtureData {
                 },
                 { path: '/Users/dev/car-rental-old', branch: 'old-pricing', head: '1d2c3b4', missing: true },
             ],
-            '/Users/dev/car-rental-api': [{ path: '/Users/dev/orca/car-rental-api/readme', head: '3a2b1c0' }],
+            '/Users/dev/car-rental-api': [{ path: '/Users/dev/worktrees/car-rental-api/readme', head: '3a2b1c0' }],
         },
         // Car Rental's own checkout is on `main` and has no pull request, the worktree of its chat has an open one; Clowdy's `next` has one that merged, and the API's branch a draft.
         pullRequests: {

@@ -21,6 +21,7 @@ import type {
     GitFileSides,
     GitMessage,
     GitPullRequestInfo,
+    GitPushRequest,
     GitRemoteResult,
     GitScope,
     GitStatus,
@@ -157,7 +158,12 @@ export interface Transport {
      * Runs only when asked. Rejects with a `TransportError`: 400 for paths that are not changed files or when no agent has the switch on, 503 with `Couldn't write the message` when the agent
      * is signed out, its run failed or did not end in time.
      */
-    generateGitMessage: (projectId: ProjectId, place: PlaceRef, paths: string[]) => Promise<GitMessage>;
+    generateGitMessage: (
+        projectId: ProjectId,
+        place: PlaceRef,
+        paths: string[],
+        signal?: AbortSignal
+    ) => Promise<GitMessage>;
     /**
      * Discards the changes of the files of a place (`POST git/discard`): the daemon keeps a copy of what each holds now (for a few days, in its own data folder, never in the repository), and
      * then a file the last commit has goes back to it (staged and edited versions alike) while one it has not (a new file) is deleted, that file alone. `paths` are `GitChangedFile.path`s of the
@@ -191,7 +197,11 @@ export interface Transport {
      * Sends the place's branch to its upstream on origin (`POST git/push`), or publishes it (`-u`, `published: true`) when it has none. Never forced, never with a tag. Rejects as `pullGit` does, and
      * with 409 and git's own line for a push that origin rejects (`! [rejected] main -> main (fetch first)`), a hook or no permission.
      */
-    pushGit: (projectId: ProjectId, place: PlaceRef) => Promise<GitRemoteResult>;
+    pushGit: (
+        projectId: ProjectId,
+        place: PlaceRef,
+        expectedHead?: GitPushRequest['expectedHead']
+    ) => Promise<GitRemoteResult>;
     /**
      * The branches a place can switch to (`GET git/branches`): the local ones with the current and the default one, the upstream and the worktree that has one checked out, the branches
      * only `origin` has, and the last few the place was on, newest first; or that the folder is no repository. Read when asked, never pushed, nothing fetched: a branch changes in a

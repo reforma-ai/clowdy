@@ -3,6 +3,8 @@ import {
     branchNameProblem,
     branchPrefixOf,
     branchPrefixProblem,
+    COMMIT_MESSAGE_SETTING_ID,
+    commitMessageAgent,
     folderNames,
     isBusyRunStatus,
     isTerminalRunStatus,
@@ -84,6 +86,7 @@ import type {
     GitFileSides,
     GitMessage,
     GitPullRequestInfo,
+    GitPushRequest,
     GitRemoteAction,
     GitRemoteResult,
     GitScope,
@@ -396,7 +399,15 @@ export class FixtureTransport implements Transport {
             const pending = this.#mergeConflicts.get(key);
 
             if (merged) status.head.commit = merged.commit;
-            if (pending) status.merging = { conflicts: pending.conflicts };
+            if (pending) {
+                if (pending.operation === 'rebase') status.rebasing = true;
+                else status.merging = { conflicts: pending.conflicts };
+                status.entries = [
+                    { path: 'notes.md', staged: 'added' },
+                    { path: 'src/booking/price.ts', staged: 'modified' },
+                    { path: 'src/limits.ts', unstaged: 'conflicted' },
+                ];
+            }
         }
 
         if (!workspace) return structuredClone(this.#branches.dirtied(status));
@@ -440,7 +451,19 @@ export class FixtureTransport implements Transport {
         return this.#remote('pull', projectId, place);
     }
 
-    pushGit(projectId: ProjectId, place: PlaceRef): Promise<GitRemoteResult> {
+    async pushGit(
+        projectId: ProjectId,
+        place: PlaceRef,
+        expectedHead?: GitPushRequest['expectedHead']
+    ): Promise<GitRemoteResult> {
+        if (expectedHead) {
+            const { head, workspace } = this.#gitPlace(projectId, place);
+            const { branch } = this.#remotePlace(head, workspace, place);
+
+            if (branch !== expectedHead.branch)
+                throw new TransportError(`The checkout switched from ${expectedHead.branch}`, 409);
+        }
+
         return this.#remote('push', projectId, place);
     }
 
@@ -522,14 +545,20 @@ export class FixtureTransport implements Transport {
         }
 
         if (request.action === 'abort') {
-            if (pending?.commit !== request.commit || pending.sourceCommit !== request.sourceCommit)
+            if (
+                pending?.commit !== request.commit ||
+                pending.sourceCommit !== request.sourceCommit ||
+                pending.operation !== request.operation
+            )
                 throw new TransportError('The merge is no longer in progress', 409);
 
             this.#mergeConflicts.delete(key);
-            return { state: 'aborted', target };
+            return { state: 'aborted', target, ...(request.operation && { operation: request.operation }) };
         }
 
         if (request.current !== current) throw new TransportError('The current branch changed', 409);
+        if (request.strategy === 'rebase' && request.direction === 'into')
+            throw new TransportError('Open the destination branch to rebase it', 400);
 
         const isRemote = request.remote === true;
         const source = request.direction === 'into' ? current : isRemote ? `origin/${request.branch}` : request.branch;
@@ -545,12 +574,18 @@ export class FixtureTransport implements Transport {
             (isRemote ? undefined : this.#branchMerges.get(refKey(source))?.commit) ??
             mergeCommitId(refKey(isRemote ? `refs/remotes/${source}` : `refs/heads/${source}`));
         const targetCommit = merged?.commit ?? mergeCommitId(refKey(`refs/heads/${target}`));
-        const mode =
+        const outgoingConflict = request.direction === 'into' && this.#branches.mergeConflict;
+        const relationship =
             source === target || merged?.sourceCommit === sourceCommit
                 ? 'up-to-date'
-                : source === 'origin/main' || source === 'origin/feature/search'
+                : outgoingConflict || source === 'origin/main' || source === 'origin/feature/search'
                   ? 'merge-commit'
                   : 'fast-forward';
+        const mode =
+            relationship !== 'up-to-date' && (request.strategy === 'squash' || request.strategy === 'rebase')
+                ? request.strategy
+                : relationship;
+        const squashConflict = mode === 'squash' && (outgoingConflict || source === 'origin/feature/search');
         const preview: GitBranchMergePreview = {
             state: 'preview',
             source,
@@ -559,13 +594,32 @@ export class FixtureTransport implements Transport {
             targetCommit,
             mode,
             commits: mode === 'up-to-date' ? 0 : 3,
+            ...(mode === 'rebase' && { replayCommits: relationship === 'merge-commit' ? 2 : 0 }),
             ...(targetPath && { targetPath }),
+            ...(targetPath &&
+                (mode === 'squash' ||
+                    (request.direction === 'into' &&
+                        mode === 'merge-commit' &&
+                        request.strategy !== 'fast-forward-only')) && {
+                    conflictCheck: outgoingConflict || squashConflict ? 'conflicts' : 'clean',
+                }),
         };
 
         if (request.action === 'preview') return preview;
 
         if (request.sourceCommit !== sourceCommit || request.targetCommit !== targetCommit)
             throw new TransportError('The branches moved since the preview', 409);
+
+        if (mode === 'up-to-date') return { state: 'done', target, commit: targetCommit, canPush: false };
+        if (request.strategy === 'fast-forward-only' && mode !== 'fast-forward')
+            throw new TransportError(`Can't fast-forward ${target} because the branches have diverged`, 409);
+        if (!targetPath) throw new TransportError(`Check out ${target} before merging into it`, 409);
+        if (outgoingConflict || squashConflict)
+            throw new TransportError(
+                `Can't ${mode === 'squash' ? 'squash' : 'merge'} into ${target} because the branches conflict`,
+                409,
+                `In a chat on ${target}, use Merge from branch to merge ${source} and resolve the conflicts`
+            );
 
         const status =
             target === current || workspaceId !== undefined || holder?.main
@@ -583,20 +637,16 @@ export class FixtureTransport implements Transport {
                 sourceCommit,
                 targetPath,
                 conflicts: 1,
+                ...(mode === 'rebase' && { operation: 'rebase' as const }),
             } as const;
             this.#mergeConflicts.set(key, result);
             return result;
         }
 
-        const commit =
-            mode === 'up-to-date'
-                ? targetCommit
-                : mode === 'fast-forward'
-                  ? sourceCommit
-                  : mergeCommitId(`${targetCommit}+${sourceCommit}`);
+        const commit = mode === 'fast-forward' ? sourceCommit : mergeCommitId(`${targetCommit}+${sourceCommit}`);
         this.#branchMerges.set(key, { sourceCommit, commit });
 
-        if (mode !== 'up-to-date') this.#gitRemote.committed(remotePlace);
+        this.#gitRemote.committed(remotePlace);
 
         return { state: 'done', target, commit, canPush: this.#gitRemote.hasOrigin };
     }
@@ -651,7 +701,9 @@ export class FixtureTransport implements Transport {
 
     async getGitChanges(projectId: ProjectId, place: PlaceRef, scope: GitScope): Promise<GitChanges> {
         const { head, workspace } = this.#gitPlace(projectId, place);
-        const committed = this.#gitWrites.committedOf(place.workspaceId ?? '');
+        const branch = workspace?.branch ?? head?.branch;
+        const merging = this.#mergeConflicts.has(`${projectId}/${place.folderId}/${branch}`);
+        const committed = merging ? new Set<string>() : this.#gitWrites.committedOf(place.workspaceId ?? '');
         // A checkout that has uncommitted files (`&branches=dirty`) has the worktree's, in the scopes that list them.
         const dirtyCheckout =
             workspace === undefined && this.#branches.dirty && (scope === 'all' || scope === 'uncommitted');
@@ -672,6 +724,12 @@ export class FixtureTransport implements Transport {
             throw new TransportError('The changes of that run are no longer in the repository', 503);
 
         if (!changes) throw new TransportError(`Commit ${scope.slice('commit:'.length)} does not exist`, 404);
+
+        if (merging && changes.isRepository && (scope === 'all' || scope === 'uncommitted')) {
+            changes.files = changes.files.map(file =>
+                file.path === 'src/limits.ts' ? { ...file, kind: 'conflicted' } : file
+            );
+        }
 
         return structuredClone(changes);
     }
@@ -794,12 +852,17 @@ export class FixtureTransport implements Transport {
         );
     }
 
-    async generateGitMessage(projectId: ProjectId, place: PlaceRef, paths: string[]): Promise<GitMessage> {
-        // The daemon asks the agents' settings; so does the fixture, of the agents it lists.
-        if (!this.#data.agents.some(writesCommitMessages)) throw new TransportError("Couldn't write the message", 400);
+    async generateGitMessage(
+        projectId: ProjectId,
+        place: PlaceRef,
+        paths: string[],
+        signal?: AbortSignal
+    ): Promise<GitMessage> {
+        const agent = commitMessageAgent(this.#data.agents);
+        if (!writesCommitMessages(agent)) throw new TransportError("Couldn't write the message", agent ? 503 : 400);
 
         return structuredClone(
-            await this.#gitWrites.message(place.workspaceId ?? '', this.#uncommitted(projectId, place), paths)
+            await this.#gitWrites.message(place.workspaceId ?? '', this.#uncommitted(projectId, place), paths, signal)
         );
     }
 
@@ -853,10 +916,13 @@ export class FixtureTransport implements Transport {
         return this.#removal(chat);
     }
 
-    /**
-     * What the daemon says of a chat's worktree: removable when Clowdy made it and it is on the disk (`ready`), and no chat outside this one and the threads below it (archived ones
-     * count) works in it. The fixtures keep no files, so what the daemon reads from the tree (changes, merged work) is taken as fine.
-     */
+    #isStandaloneWorktree(path: string): boolean {
+        return Object.values(this.#data.worktreeEdits ?? {}).some(edits =>
+            edits.created.some(tree => tree.path === path)
+        );
+    }
+
+    /** A chat may remove its worktree when it is ready, shared only with its threads, and was created for a chat. */
     #removal(chat: Chat): ChatWorkspaceRemoval {
         const { workspace } = chat;
 
@@ -866,7 +932,7 @@ export class FixtureTransport implements Transport {
         const shared = this.#data.chats.some(other => other.workspace?.id === workspace.id && !below.has(other.id));
 
         return {
-            removable: workspace.managed && workspace.ready && !shared,
+            removable: workspace.managed && workspace.ready && !shared && !this.#isStandaloneWorktree(workspace.path),
             path: workspace.path,
             ...(workspace.branch !== undefined && { branch: workspace.branch }),
         };
@@ -913,7 +979,7 @@ export class FixtureTransport implements Transport {
         edits.created.push({ path, branch });
         this.#opened.set(id, {
             projectId: project.id,
-            workspace: { id, path, branch, folderId: folder.id, managed: false, ready: true },
+            workspace: { id, path, branch, folderId: folder.id, managed: true, ready: true },
         });
 
         return ok({ path, branch });
@@ -2074,12 +2140,16 @@ export class FixtureTransport implements Transport {
                     this.#emit(deleted.projectId, { type: 'chat.deleted', chatId: deleted.id, runIds: [...runIds] });
                 }
 
-                // Like the daemon: a worktree's row goes with the last chat that points at it, so a row `workspace.open` answered is made again when it is asked for.
+                // Standalone rows outlive the last chat; other rows are opened again when needed.
                 for (const deleted of gone) {
-                    const workspaceId = deleted.workspace?.id;
+                    const workspace = deleted.workspace;
 
-                    if (workspaceId && !data.chats.some(candidate => candidate.workspace?.id === workspaceId))
-                        this.#opened.delete(workspaceId);
+                    if (
+                        workspace &&
+                        !this.#isStandaloneWorktree(workspace.path) &&
+                        !data.chats.some(candidate => candidate.workspace?.id === workspace.id)
+                    )
+                        this.#opened.delete(workspace.id);
                 }
 
                 return ok({ chatId: chat.id });
@@ -2160,6 +2230,16 @@ export class FixtureTransport implements Transport {
                 return fail('unavailable', 'The demo data cannot add or remove agents');
             case 'agent.update':
                 return this.#updateAgent(command);
+            case 'agents.setCommitMessageProvider': {
+                for (const agent of data.agents) {
+                    const setting = agent.settings?.find(candidate => candidate.id === COMMIT_MESSAGE_SETTING_ID);
+                    if (setting) setting.value = agent.id === command.provider;
+                }
+
+                this.#agentsChanged();
+
+                return ok({ provider: command.provider });
+            }
             case 'agent.signIn':
                 return this.#startSignIn(command.id);
             case 'agent.cancelSignIn':

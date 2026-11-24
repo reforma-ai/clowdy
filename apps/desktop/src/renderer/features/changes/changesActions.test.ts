@@ -11,7 +11,6 @@ import {
     isDiverged,
     isFetchFirst,
     lastFetchedWords,
-    mergeBanner,
     pushOrPublish,
     RUNNING_WORDS,
     remoteActions,
@@ -351,7 +350,7 @@ describe('syncButton', () => {
         });
     });
 
-    it("goes down GitHub Desktop's order: running, no origin, no branch, not published, not on origin, behind (a diverged branch too), ahead, level", () => {
+    it('prioritizes progress, unavailable states, and upstream sync before updating from the base or fetching', () => {
         const order = (value: GitStatus, running?: Parameters<typeof syncButton>[1]) => sync(value, running)?.kind;
 
         expect(order(status({ origin: false }, null), 'fetch')).toBe('running');
@@ -365,6 +364,16 @@ describe('syncButton', () => {
         expect(order(status({}, { ahead: 3 }))).toBe('push');
         expect(order(status({}, { behind: 3 }))).toBe('pull');
         expect(order(status())).toBe('fetch');
+
+        const base = { ...READY, behind: 2 };
+
+        expect(sync(status({ base }))).toMatchObject({ kind: 'update', label: 'Update from main', action: 'update' });
+        expect(order(status({ base }, { name: 'upstream/feature' }))).toBe('update');
+        expect(order(status({ base }, { behind: 1 }))).toBe('pull');
+        expect(order(status({ base }, { ahead: 1 }))).toBe('push');
+        expect(order(status({ base }, null))).toBe('publish');
+        expect(order(status({ base, origin: false }))).toBe('no_origin');
+        expect(order(status({ base, merging: { conflicts: 1 } }))).toBe('fetch');
     });
 });
 
@@ -464,18 +473,17 @@ describe('isFetchFirst', () => {
 });
 
 describe('remoteNotice', () => {
-    it('says what each action did', () => {
+    it('does not show a notice for any successful action', () => {
         expect(remoteNotice({ state: 'done', action: 'fetch' })).toBeUndefined();
-        expect(remoteNotice({ state: 'done', action: 'pull', pulled: 1 })).toEqual({ words: 'Pulled 1 commit' });
-        expect(remoteNotice({ state: 'done', action: 'pull', pulled: 3 })).toEqual({ words: 'Pulled 3 commits' });
-        expect(remoteNotice({ state: 'done', action: 'pull', pulled: 0 })).toEqual({ words: 'Already up to date' });
-        expect(remoteNotice({ state: 'done', action: 'push' })).toEqual({ words: 'Pushed to origin' });
-        expect(remoteNotice({ state: 'done', action: 'push', published: true })).toEqual({
-            words: 'Published to origin',
-        });
+        expect(remoteNotice({ state: 'done', action: 'pull', pulled: 2, merged: true })).toBeUndefined();
+        expect(remoteNotice({ state: 'done', action: 'pull', pulled: 0 })).toBeUndefined();
+        expect(remoteNotice({ state: 'done', action: 'push' })).toBeUndefined();
+        expect(remoteNotice({ state: 'done', action: 'push', published: true })).toBeUndefined();
+        expect(remoteNotice({ state: 'done', action: 'update', pulled: 1 })).toBeUndefined();
+        expect(remoteNotice({ state: 'done', action: 'abort' })).toBeUndefined();
     });
 
-    it('says a merge that stopped, and a merge that went through, with no period', () => {
+    it('reports a merge that stopped on conflicts', () => {
         expect(remoteNotice({ state: 'conflicts', action: 'pull', conflicts: 2 })).toEqual({
             words: '2 conflicts',
             tone: 'warning',
@@ -484,38 +492,32 @@ describe('remoteNotice', () => {
             words: '1 conflict',
             tone: 'warning',
         });
-        expect(remoteNotice({ state: 'done', action: 'pull', pulled: 2, merged: true })).toEqual({
-            words: 'Merged 2 commits',
-        });
-        expect(remoteNotice({ state: 'done', action: 'update', pulled: 1 })).toEqual({
-            words: 'Updated with 1 commit',
-        });
-        expect(remoteNotice({ state: 'done', action: 'abort' })).toEqual({ words: 'Aborted the merge' });
+    });
+
+    it('leaves a merge with no remaining conflicts to the commit section', () => {
+        expect(remoteNotice({ state: 'conflicts', action: 'pull', conflicts: 0 })).toBeUndefined();
+        expect(remoteNotice({ state: 'conflicts', action: 'update', conflicts: 0 })).toBeUndefined();
     });
 });
 
-describe('update from the base and the merge banner', () => {
+describe('update from the base', () => {
     it('offers Update from main when the branch is behind the base and is not the base', () => {
-        expect(updateFromBase(status({ base: { ...READY, behind: 2 } }))).toEqual({ label: 'Update from main' });
-        expect(updateFromBase(status())).toBeUndefined();
-        expect(
-            updateFromBase(
-                status({
-                    head: { kind: 'branch', name: 'main', commit: 'a'.repeat(40) },
-                    base: { ...READY, name: 'origin/main', behind: 2 },
-                })
-            )
-        ).toBeUndefined();
-        expect(updateFromBase(status({ merging: { conflicts: 1 }, base: { ...READY, behind: 2 } }))).toBeUndefined();
-    });
-
-    it('says how a merge stands, and asks the agent only while a conflict is left', () => {
-        expect(mergeBanner(status({ merging: { conflicts: 3 } }))).toEqual({ words: '3 conflicts', ask: true });
-        expect(mergeBanner(status({ merging: { conflicts: 0, subject: 'Merge branch main' } }))).toEqual({
-            words: 'Conflicts resolved, commit the merge',
-            ask: false,
+        expect(updateFromBase(status({ base: { ...READY, behind: 2 } }))).toEqual({
+            label: 'Update from main',
+            behind: 2,
         });
-        expect(mergeBanner(status())).toBeUndefined();
+        expect(updateFromBase(status())).toBeUndefined();
+        for (const name of ['main', 'origin/main']) {
+            expect(
+                updateFromBase(
+                    status({
+                        head: { kind: 'branch', name, commit: 'a'.repeat(40) },
+                        base: { ...READY, name: 'origin/main', behind: 2 },
+                    })
+                )
+            ).toBeUndefined();
+        }
+        expect(updateFromBase(status({ merging: { conflicts: 1 }, base: { ...READY, behind: 2 } }))).toBeUndefined();
     });
 });
 
