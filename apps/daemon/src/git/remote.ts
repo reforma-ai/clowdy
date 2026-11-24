@@ -226,14 +226,17 @@ export class GitRemote {
     /** `POST .../git/update`: fetches `origin` and merges the place's base into the branch. Already being that branch is `invalid`. */
     update(place: Place): Promise<GitRemoteResult> {
         return this.#alone(place, async () => {
-            const head = await this.#inspect(place);
+            const { branch, born } = await this.#inspect(place);
 
-            if (head.branch === undefined) throw invalid('HEAD is detached, switch to a branch to update');
+            if (branch === undefined) throw invalid('HEAD is detached, switch to a branch to update');
 
-            if (!head.born) throw invalid(`${head.branch} has no commits yet`);
+            if (!born) throw invalid(`${branch} has no commits yet`);
 
+            const repo = await switchRepositoryKey(place.path);
+            const before = await this.#syncHead(place, repo, branch);
             await this.#run(place, 'update', ['fetch', ...NO_SUBMODULES, ORIGIN]);
             await rememberFetch(place.path);
+            await this.#syncHead(place, repo, branch, before);
 
             const underway = await this.#conflictCount(place);
 
@@ -243,19 +246,19 @@ export class GitRemote {
 
             if (base.state === 'no_base') throw invalid('There is no branch to update from');
 
-            if (base.state === 'no_merge_base') throw invalid(`${head.branch} shares no history with ${base.name}`);
+            if (base.state === 'no_merge_base') throw invalid(`${branch} shares no history with ${base.name}`);
 
-            if (base.state !== 'ready') throw invalid(`${head.branch} has no commits yet`);
+            if (base.state !== 'ready') throw invalid(`${branch} has no commits yet`);
 
             const baseBranch = base.name.startsWith(`${ORIGIN}/`) ? base.name.slice(ORIGIN.length + 1) : base.name;
 
-            if (head.branch === baseBranch || head.branch === base.name) throw invalid(`Already on ${head.branch}`);
+            if (branch === baseBranch || branch === base.name) throw invalid(`Already on ${branch}`);
 
             const counts = await gitAnswer(place.path, [
                 'rev-list',
                 '--left-right',
                 '--count',
-                `${base.commit}...HEAD`,
+                `${base.commit}...${before}`,
             ]);
             const [behind, ahead] = (counts ?? '').split(/\s+/).map(Number);
 
@@ -268,12 +271,23 @@ export class GitRemote {
             )
                 throw unavailable('git did not answer');
 
+            let updatedHead: { branch: string; commit: string } | undefined;
             if (behind > 0) {
-                // A short hash is a commit, not a ref a person would read in the merge message: merge the commit itself.
-                const ref = /^[0-9a-f]{7,40}$/i.test(base.name) ? base.commit : base.name;
-                const stopped = await this.#merge(place, 'update', ref);
+                const env = await this.environment.of(place.path);
+                await this.#syncHead(place, repo, branch, before);
+                const stopped = await this.#merge(place, 'update', base.commit, ['-m', `Merge ${base.name}`], env);
 
                 if (stopped) return { state: 'conflicts', action: 'update', conflicts: stopped.conflicts };
+
+                // A repository can leave a clean merge unfinished with --no-commit.
+                const unfinished = await this.#conflictCount(place);
+                if (unfinished !== undefined) return { state: 'conflicts', action: 'update', conflicts: unfinished };
+
+                const commit = await this.#syncHead(place, repo, branch);
+                if (commit !== before) {
+                    await this.#checkMergedTip(place, branch, commit, [before, base.commit]);
+                    updatedHead = { branch, commit };
+                }
             }
 
             const upstream = await this.#upstream(place);
@@ -281,8 +295,9 @@ export class GitRemote {
             return {
                 state: 'done',
                 action: 'update',
-                pulled: behind,
-                ...(behind > 0 && ahead > 0 && { merged: true as const }),
+                pulled: updatedHead ? behind : 0,
+                ...(updatedHead && ahead > 0 && { merged: true as const }),
+                ...(updatedHead && { updatedHead }),
                 ...(upstream && { upstream }),
             };
         });
@@ -426,12 +441,7 @@ export class GitRemote {
                     if (merged) return { state: 'conflicts', branch, path: place.path, conflicts: merged.conflicts };
 
                     tip = await this.#syncHead(place, repo, branch);
-                    const ancestors = await Promise.all(
-                        [before, incoming].map(ancestor =>
-                            gitRead(place.path, ['merge-base', '--is-ancestor', ancestor, tip])
-                        )
-                    );
-                    if (ancestors.some(result => !result.ok)) throw conflict(`The merge into ${branch} did not finish`);
+                    await this.#checkMergedTip(place, branch, tip, [before, incoming]);
                 }
             }
 
@@ -493,6 +503,14 @@ export class GitRemote {
         if (!staged.ok) throw unavailable("Couldn't read the staging area");
         if (staged.stdout.length > 0)
             throw conflict(`Commit or stash the staged changes in ${branch} before merging from origin`);
+    }
+
+    /** Verify both inputs to a merge are included before using its result for a push. */
+    async #checkMergedTip(place: Place, branch: string, tip: string, inputs: readonly string[]): Promise<void> {
+        const ancestors = await Promise.all(
+            inputs.map(commit => gitRead(place.path, ['merge-base', '--is-ancestor', commit, tip]))
+        );
+        if (ancestors.some(result => !result.ok)) throw conflict(`The merge into ${branch} did not finish`);
     }
 
     async #syncHead(place: Place, repo: string, branch: string, expected?: string): Promise<string> {

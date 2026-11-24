@@ -2,6 +2,8 @@
 
 ## Decisions
 
+- [Source Control action priority](decisions/2026-11-24-source-control-action-priority.md) records which action wins and how base updates follow automatic Sync. Status: accepted.
+
 - [Sync after commits and branch merges](decisions/2026-11-24-sync-after-commit-and-merge.md) records the shared Sync action and how it resolves branch divergence. Status: accepted.
 
 - [Changes tab render performance](decisions/2026-11-24-changes-tab-render-performance.md) records why far diff cards are empty boxes and unchanged git answers keep their objects. Status: accepted.
@@ -16,6 +18,8 @@
 - [One provider for commit messages](decisions/2026-11-24-choose-one-commit-provider.md) records the Source Control selector and how older settings map to it. Status: accepted.
 
 ## Checks
+
+- [Source Control action priority](checks/2026-11-24-source-control-action-priority.md) covers Push, Update, Fetch and the automatic Sync preference. Status: passed with limits.
 
 - [Branch Sync](checks/2026-11-24-smart-sync.md) covers the origin exchange, conflict recovery, destination safety and streamed progress. Status: passed with limits.
 

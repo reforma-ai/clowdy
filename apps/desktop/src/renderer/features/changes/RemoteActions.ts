@@ -2,8 +2,9 @@ import { errorMessage } from '@clowdy/lib';
 import { makeAutoObservable, observable, runInAction } from 'mobx';
 
 import { type Transport, TransportError } from '../../daemon/transport';
-import { type RemoteActionId, remoteNotice } from './changesActions';
+import { type RemoteActionId, remoteNotice, syncBlock } from './changesActions';
 import { type PlaceFacts, placeRef } from './gitFacts';
+import { sourceControlPreferences } from './sourceControlPreferences';
 
 import type { GitRemoteResult, GitSyncProgress, GitSyncResult, GitSyncTarget } from '@clowdy/protocol';
 import type { IObservableValue } from 'mobx';
@@ -28,9 +29,10 @@ export type RemoteOutcome = Outcome<GitRemoteResult>;
 export type SyncOutcome = Outcome<GitSyncResult>;
 
 type DirectAction = Exclude<RemoteActionId, 'sync'>;
+type SyncPhase = IObservableValue<GitSyncProgress['phase'] | undefined>;
 type PendingRequest =
-    | { id: DirectAction; fetching?: Promise<RemoteOutcome> }
-    | { id: 'sync'; phase: IObservableValue<GitSyncProgress['phase'] | undefined> };
+    | { id: Exclude<DirectAction, 'update'>; fetching?: Promise<RemoteOutcome> }
+    | { id: 'sync' | 'update'; phase: SyncPhase };
 
 interface SyncOptions {
     report?: boolean;
@@ -69,7 +71,7 @@ export class RemoteActions {
 
     get syncPhase(): GitSyncProgress['phase'] | undefined {
         const first = this.#requests[0];
-        return first?.id === 'sync' ? first.phase.get() : undefined;
+        return first && 'phase' in first ? first.phase.get() : undefined;
     }
 
     isPending(id: RemoteActionId): boolean {
@@ -84,6 +86,11 @@ export class RemoteActions {
     /** Sends a direct action to the daemon's write queue. */
     run(id: DirectAction, { report = true }: { report?: boolean } = {}): Promise<RemoteOutcome> {
         if (this.facts.switching) return Promise.resolve(this.#switching(id));
+
+        if (id === 'update') {
+            const phase = observable.box<GitSyncProgress['phase'] | undefined>(undefined);
+            return this.#track({ id, phase }, this.#update(phase, report));
+        }
 
         if (id === 'fetch') {
             const pending = this.#requests.find(request => request.id === 'fetch');
@@ -103,8 +110,6 @@ export class RemoteActions {
                             return this.transport.fetchGit(key.projectId, place);
                         case 'pull':
                             return this.transport.pullGit(key.projectId, place);
-                        case 'update':
-                            return this.transport.updateGit(key.projectId, place);
                         case 'abort':
                             return this.transport.abortGit(key.projectId, place);
                     }
@@ -113,6 +118,44 @@ export class RemoteActions {
             )
         );
         if (id === 'fetch') request.fetching = outcome;
+        return outcome;
+    }
+
+    /** An update that changed the local branch can sync exactly that result. Keep both steps under one UI pending state. */
+    async #update(phase: SyncPhase, report: boolean): Promise<RemoteOutcome> {
+        const { key, status } = this.facts;
+        const place = placeRef(key);
+        const autoSync = sourceControlPreferences.autoSync && syncBlock(status.value) === undefined;
+        const outcome = await this.#perform('update', () => this.transport.updateGit(key.projectId, place), report);
+
+        if (!autoSync || !outcome.ok || outcome.result.state !== 'done' || !outcome.result.pulled) return outcome;
+
+        const target = outcome.result.updatedHead;
+        if (!target) {
+            if (report) {
+                runInAction(() => {
+                    this.failure = { action: 'sync', message: "Updated locally. Couldn't verify the branch for sync" };
+                });
+            }
+            return outcome;
+        }
+
+        const synced = await this.#perform(
+            'sync',
+            () =>
+                this.transport.syncGit(key.projectId, place, target, progress =>
+                    runInAction(() => phase.set(progress.phase))
+                ),
+            report
+        );
+        if (report && !synced.ok) {
+            runInAction(() => {
+                this.failure = {
+                    ...synced.failure,
+                    message: `Updated locally, sync failed: ${synced.failure.message}`,
+                };
+            });
+        }
         return outcome;
     }
 

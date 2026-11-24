@@ -70,16 +70,6 @@
     gap: var(--spacing-6);
 }
 
-.update[data-size][data-variant] {
-    width: 100%;
-    min-width: 0;
-}
-
-.update .content {
-    justify-content: space-between;
-    text-align: start;
-}
-
 .spinner {
     flex-shrink: 0;
 }

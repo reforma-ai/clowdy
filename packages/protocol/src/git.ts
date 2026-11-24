@@ -508,6 +508,8 @@ export interface GitRemoteDone {
     pulled?: number;
     /** `pull` and `update`: a merge commit was made, because the branch had commits of its own. Absent for a fast-forward. */
     merged?: true;
+    /** `update`: the updated branch and its new tip, for a guarded follow-up sync. Absent when the base was already integrated. */
+    updatedHead?: { branch: string; commit: string };
     /** `push`: the branch was not on origin under its own name (no upstream, a gone one, or another branch's), so it was published and now tracks `origin/<name>`. */
     published?: true;
 }

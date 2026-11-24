@@ -187,9 +187,9 @@ describe('the sync button in the sidebar', () => {
         await start();
         const sync = vi.spyOn(transport, 'syncGit');
 
-        expect(syncCopy()).toBe('SyncPublish this branch to origin');
+        expect(syncCopy()).toBe('Publish branchPublish this branch to origin');
         expect(syncButton().disabled).toBe(false);
-        expect(buttonOf(updateLabel)?.querySelector('[data-commit-count="down"]')?.textContent).toBe('1');
+        expect(buttonOf(updateLabel)).toBeUndefined();
         await openMenu();
         expect(items().map(candidate => candidate.textContent)).toEqual([
             'Fetch origin',
@@ -207,25 +207,25 @@ describe('the sync button in the sidebar', () => {
         expect(sync).toHaveBeenCalledExactlyOnceWith(FIXTURE_PROJECT_ID, place, { branch }, expect.any(Function));
         expect(await read()).toMatchObject({ upstream: { name: `origin/${branch}`, ahead: 0, behind: 0 } });
         expect(status()).toBeNull();
-        expect(buttonOf(updateLabel)).toBeDefined();
+        expect(syncButton()).toBe(buttonOf(updateLabel));
     });
 
     it('fetches when the branch is even and refreshes the clock without a separate success notice', async () => {
         await start({ key: CHECKOUT });
 
-        expect(syncCopy()).toBe('SyncLast fetched 3 minutes ago');
+        expect(syncCopy()).toBe('Fetch originLast fetched 3 minutes ago');
         await press(syncButton());
         await settle();
 
         expect(status()).toBeNull();
-        expect(syncCopy()).toBe('SyncLast fetched just now');
+        expect(syncCopy()).toBe('Fetch originLast fetched just now');
 
         act(() => root.unmount());
         stop();
         store.dispose();
         root = createRoot(container);
         await start({ key: CHECKOUT, gitWrites: { remote: 'never' } });
-        expect(syncCopy()).toBe('SyncNever fetched');
+        expect(syncCopy()).toBe('Fetch originNever fetched');
     });
 
     it('moves its line while the window stays open without a new read', async () => {
@@ -235,15 +235,15 @@ describe('the sync button in the sidebar', () => {
             await start({ key: CHECKOUT });
             const reads = vi.spyOn(transport, 'getGitStatus');
 
-            expect(syncCopy()).toBe('SyncLast fetched 3 minutes ago');
+            expect(syncCopy()).toBe('Fetch originLast fetched 3 minutes ago');
             act(() => {
                 vi.advanceTimersByTime(29_000);
             });
-            expect(syncCopy()).toBe('SyncLast fetched 3 minutes ago');
+            expect(syncCopy()).toBe('Fetch originLast fetched 3 minutes ago');
             act(() => {
                 vi.advanceTimersByTime(2 * 60_000);
             });
-            expect(syncCopy()).toBe('SyncLast fetched 5 minutes ago');
+            expect(syncCopy()).toBe('Fetch originLast fetched 5 minutes ago');
             expect(reads).not.toHaveBeenCalled();
         } finally {
             vi.useRealTimers();
@@ -253,7 +253,7 @@ describe('the sync button in the sidebar', () => {
     it('syncs a branch that tracks another name with its own name on origin', async () => {
         await start({ gitWrites: { remote: 'renamed' } });
 
-        expect(syncCopy()).toBe('SyncTracks origin/main');
+        expect(syncCopy()).toBe('Publish branchTracks origin/main');
         expect(syncDetail()).toBe(`Publish as origin/${branch}`);
         await openMenu();
         expect(isOff('Pull origin')).toBe(true);
@@ -266,31 +266,42 @@ describe('the sync button in the sidebar', () => {
     });
 
     it.each([
-        ['ahead', 2, 0, true],
-        ['behind', 0, 2, false],
-        ['diverged', 1, 2, true],
-    ] as const)('uses the same Sync action for a branch that is %s', async (remote, ahead, behind, pushed) => {
-        await start({ gitWrites: { clean: true, remote } });
-        const sync = vi.spyOn(transport, 'syncGit');
-        const pr = vi.spyOn(transport, 'getGitPullRequest');
+        ['ahead', 'Push origin', 2, 0],
+        ['behind', 'Pull origin', 0, 2],
+        ['diverged', 'Sync', 1, 2],
+    ] as const)(
+        'recommends the upstream action before updating the base for a branch that is %s',
+        async (remote, label, ahead, behind) => {
+            await start({ gitWrites: { clean: true, remote } });
+            const sync = vi.spyOn(transport, 'syncGit');
+            const pull = vi.spyOn(transport, 'pullGit');
+            const pr = vi.spyOn(transport, 'getGitPullRequest');
 
-        expect(syncCopy()).toBe('SyncLast fetched 3 minutes ago');
-        expect(syncDetail()).toContain(
-            ahead > 0 ? `${ahead} commit${ahead === 1 ? '' : 's'} to push` : '2 commits to pull'
-        );
-        if (behind > 0) {
-            expect(syncDetail()).toContain(`${behind} commits to pull`);
+            expect(syncCopy()).toBe(`${label}Last fetched 3 minutes ago`);
+            expect(syncDetail()).toContain(
+                ahead > 0 ? `${ahead} commit${ahead === 1 ? '' : 's'} to push` : '2 commits to pull'
+            );
+            expect(buttonOf(updateLabel)).toBeUndefined();
+            if (behind > 0) {
+                expect(syncDetail()).toContain(`${behind} commits to pull`);
+            }
+
+            await press(syncButton());
+            await settle();
+
+            expect(sync).toHaveBeenCalledTimes(1);
+            expect(await sync.mock.results[0]?.value).toMatchObject({
+                state: 'done',
+                pulled: behind,
+                pushed: ahead > 0,
+            });
+            expect(pull).not.toHaveBeenCalled();
+            expect(await read()).toMatchObject({ upstream: { ahead: 0, behind: 0 } });
+            expect(syncButton()).toBe(buttonOf(updateLabel));
+            expect(pr).toHaveBeenCalled();
+            expect(status()).toBeNull();
         }
-
-        await press(syncButton());
-        await settle();
-
-        expect(sync).toHaveBeenCalledTimes(1);
-        expect(await sync.mock.results[0]?.value).toMatchObject({ state: 'done', pulled: behind, pushed });
-        expect(await read()).toMatchObject({ upstream: { ahead: 0, behind: 0 } });
-        expect(pr).toHaveBeenCalled();
-        expect(status()).toBeNull();
-    });
+    );
 
     it('keeps the explicit Pull and its incoming count in the menu', async () => {
         await start({ gitWrites: { clean: true, remote: 'behind' } });
@@ -308,7 +319,7 @@ describe('the sync button in the sidebar', () => {
     });
 
     it('shows conflicts as a warning while the status refresh catches up', async () => {
-        await start({ gitWrites: { clean: true, remote: 'behind' } });
+        await start({ gitWrites: { clean: true, remote: 'diverged' } });
         vi.spyOn(transport, 'syncGit').mockResolvedValue({
             state: 'conflicts',
             branch,
@@ -375,7 +386,7 @@ describe('the sync button in the sidebar', () => {
     });
 
     it('shows each phase without replacing the button or blocking merge choices', async () => {
-        await start({ key: CHECKOUT });
+        await start({ key: CHECKOUT, gitWrites: { remote: 'ahead' } });
         const reply = Promise.withResolvers<GitSyncResult>();
         let progress: (step: GitSyncProgress) => void = () => undefined;
 
@@ -403,7 +414,7 @@ describe('the sync button in the sidebar', () => {
 
         expect(syncButton()).toBe(button);
         expect(button.hasAttribute('data-pending')).toBe(false);
-        expect(button.dataset.sync).toBe('sync');
+        expect(button.dataset.sync).toBe('push');
         expect(status()).toBeNull();
     });
 
@@ -426,41 +437,89 @@ describe('the sync button in the sidebar', () => {
         ]);
     });
 
-    it('keeps Update from the base separate and shows the new outgoing commit on Sync', async () => {
-        await start({ gitWrites: { clean: true, remote: 'level' } });
-        const readStatus = transport.getGitStatus.bind(transport);
-        let updated = false;
-        vi.spyOn(transport, 'getGitStatus').mockImplementation(async (projectId, place) => {
-            const current = await readStatus(projectId, place);
+    it('follows Push with Update and syncs the update before recommending Fetch', async () => {
+        await start({ gitWrites: { clean: true, remote: 'ahead' } });
+        const sync = vi.spyOn(transport, 'syncGit');
+        const applySync = transport.syncGit.bind(transport);
+        const update = vi.spyOn(transport, 'updateGit');
+        const primary = syncButton();
 
-            if (updated && current.isRepository && current.base.state === 'ready' && current.upstream) {
-                current.base.behind = 0;
-                current.upstream.ahead = 1;
-            }
+        expect(primary.getAttribute('aria-label')).toBe('Push origin');
+        expect(buttonOf(updateLabel)).toBeUndefined();
+        await press(primary);
+        await settle();
+        expect(syncButton()).toBe(primary);
+        expect(primary.getAttribute('aria-label')).toBe(updateLabel);
+        expect(primary.querySelector('[data-commit-count="down"]')?.textContent).toBe('1');
 
-            return current;
+        const release = Promise.withResolvers<void>();
+        sync.mockImplementationOnce(async (project, place, target, progress) => {
+            progress?.({ phase: 'fetch' });
+            await release.promise;
+            return applySync(project, place, target, progress);
         });
-        const reply = Promise.withResolvers<GitRemoteResult>();
-        const update = vi.spyOn(transport, 'updateGit').mockReturnValueOnce(reply.promise);
-        const updateButton = buttonOf(updateLabel)!;
-
-        expect(updateButton.querySelector('[data-commit-count="down"]')?.textContent).toBe('1');
-        await press(updateButton);
+        await press(primary);
         await settle();
 
         expect(update).toHaveBeenCalledExactlyOnceWith(FIXTURE_PROJECT_ID, place);
-        expect(syncCopy()).toBe('Updating');
+        const result = await update.mock.results[0]?.value;
+        expect(result).toMatchObject({ state: 'done', updatedHead: { branch, commit: expect.any(String) } });
+        expect(sync).toHaveBeenLastCalledWith(
+            FIXTURE_PROJECT_ID,
+            place,
+            result.state === 'done' ? result.updatedHead : undefined,
+            expect.any(Function)
+        );
+        expect(syncCopy()).toBe('Fetching origin');
         await openMenu();
         expect(isOff(updateLabel)).toBe(true);
         expect(isOff('Fetch origin')).toBe(false);
 
-        updated = true;
-        reply.resolve({ state: 'done', action: 'update', pulled: 1 });
+        release.resolve();
+        await settle();
+        expect(syncButton()).toBe(primary);
+        expect(primary.getAttribute('aria-label')).toBe('Fetch origin');
+        expect(await read()).toMatchObject({ upstream: { ahead: 0 }, base: { behind: 0 } });
+        expect(alert()).toBeNull();
+    });
+
+    it('leaves the update local when automatic sync is off', async () => {
+        sourceControlPreferences.setAutoSync(false);
+        await start({ gitWrites: { clean: true, remote: 'level' } });
+        const sync = vi.spyOn(transport, 'syncGit');
+
+        expect(syncButton().getAttribute('aria-label')).toBe(updateLabel);
+        await press(syncButton());
         await settle();
 
-        expect(status()).toBeNull();
-        expect(buttonOf(updateLabel)).toBeUndefined();
-        expect(syncDetail()).toContain('1 commit to push');
+        expect(sync).not.toHaveBeenCalled();
+        expect(syncButton().getAttribute('aria-label')).toBe('Push origin');
+    });
+
+    it('keeps the local update and recommends Push when its sync fails', async () => {
+        await start({ gitWrites: { clean: true, remote: 'level' } });
+        vi.spyOn(transport, 'syncGit').mockRejectedValueOnce(new TransportError('Network is offline', 503));
+
+        await press(syncButton());
+        await settle();
+
+        expect(await read()).toMatchObject({ upstream: { ahead: 1 }, base: { behind: 0 } });
+        expect(syncButton().getAttribute('aria-label')).toBe('Push origin');
+        expect(alert()?.textContent).toContain('Updated locally, sync failed: Network is offline');
+    });
+
+    it.each([
+        { state: 'conflicts', action: 'update', conflicts: 2 },
+        { state: 'done', action: 'update', pulled: 0 },
+    ] as const)('does not sync an update that never made a commit ($state)', async outcome => {
+        await start({ gitWrites: { clean: true, remote: 'level' } });
+        vi.spyOn(transport, 'updateGit').mockResolvedValueOnce(outcome);
+        const sync = vi.spyOn(transport, 'syncGit');
+
+        await press(syncButton());
+        await settle();
+
+        expect(sync).not.toHaveBeenCalled();
     });
 });
 
@@ -1041,7 +1100,7 @@ describe('Create PR in the sidebar', () => {
 
         expect(createPRButton()).toBeUndefined();
         expect(buttonOf('Push first')).toBeUndefined();
-        expect(syncButton().getAttribute('data-sync')).toBe('sync');
+        expect(syncButton().getAttribute('data-sync')).toBe('push');
 
         await press(syncButton());
         await settle();
@@ -1061,7 +1120,7 @@ describe('Create PR in the sidebar', () => {
     it('offers Create PR once a branch tracking another branch is published under its own name', async () => {
         await start({ tweak: noPullRequest, gitWrites: { remote: 'renamed' } });
         expect(createPRButton()).toBeUndefined();
-        expect(syncCopy()).toBe('SyncTracks origin/main');
+        expect(syncCopy()).toBe('Publish branchTracks origin/main');
 
         await press(syncButton());
         await settle();

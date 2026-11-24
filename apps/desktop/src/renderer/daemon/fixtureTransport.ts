@@ -386,7 +386,8 @@ export class FixtureTransport implements Transport {
     async getGitStatus(projectId: ProjectId, place: PlaceRef): Promise<GitStatus> {
         const { head, workspace } = this.#gitPlace(projectId, place);
 
-        const upstream = this.#gitRemote.upstreamOf(this.#remotePlace(head, workspace, place));
+        const remotePlace = this.#remotePlace(head, workspace, place);
+        const upstream = this.#gitRemote.upstreamOf(remotePlace);
         const { lastFetchedAt, hasOrigin, head: script } = this.#gitRemote;
 
         const status = fixtureGitStatus(head, workspace, this.#gitWrites.settledOf(place.workspaceId ?? ''), {
@@ -397,6 +398,11 @@ export class FixtureTransport implements Transport {
         });
 
         if (status.isRepository && status.head.kind === 'branch') {
+            const updated = this.#gitRemote.updatedHeadOf(remotePlace);
+            if (updated) {
+                status.head.commit = updated.commit;
+                if (status.base.state === 'ready') status.base.behind = 0;
+            }
             const key = `${projectId}/${place.folderId}/${status.head.name}`;
             const merged = this.#branchMerges.get(key);
             const pending = this.#mergeConflicts.get(key);

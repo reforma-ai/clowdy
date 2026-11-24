@@ -168,10 +168,17 @@ describe('syncButton', () => {
         });
     });
 
-    it('uses the same Sync action whether origin is even, ahead or behind and shows both counts', () => {
-        expect(sync(status())).toMatchObject({ kind: 'sync', label: 'Sync', action: 'sync', line: 'Never fetched' });
-        expect(sync(status({}, { ahead: 3 }))?.ahead).toBe(3);
-        expect(sync(status({}, { behind: 2 }))?.behind).toBe(2);
+    it('prefers upstream work to a base update, then fetches when both are level', () => {
+        const base = { ...READY, behind: 5 };
+        expect(sync(status())).toMatchObject({
+            kind: 'fetch',
+            label: 'Fetch origin',
+            action: 'fetch',
+            line: 'Never fetched',
+        });
+        expect(sync(status({ base }))).toMatchObject({ kind: 'update', action: 'update', behind: 5 });
+        expect(sync(status({ base }, { ahead: 3 }))).toMatchObject({ kind: 'push', action: 'sync', ahead: 3 });
+        expect(sync(status({ base }, { behind: 2 }))).toMatchObject({ kind: 'pull', action: 'sync', behind: 2 });
         expect(sync(status({ lastFetchedAt: FETCHED }, { ahead: 1, behind: 2 }))).toMatchObject({
             kind: 'sync',
             label: 'Sync',
@@ -184,13 +191,13 @@ describe('syncButton', () => {
 
     it('offers to publish under the local branch name and only fetches for a foreign upstream', () => {
         expect(sync(status({}, null))).toMatchObject({
-            kind: 'sync',
+            kind: 'publish',
             action: 'sync',
             line: 'Publish this branch to origin',
             title: 'Publish as origin/feature',
         });
         expect(sync(status({}, { gone: true }))).toMatchObject({
-            kind: 'sync',
+            kind: 'publish',
             action: 'sync',
             line: 'Upstream gone from origin',
             tone: 'warning',
@@ -200,6 +207,10 @@ describe('syncButton', () => {
             label: 'Fetch origin',
             action: 'fetch',
             line: 'Tracks upstream/feature, not origin',
+        });
+        expect(sync(status({ base: { ...READY, behind: 2 } }, { name: 'upstream/feature' }))).toMatchObject({
+            kind: 'update',
+            action: 'update',
         });
     });
 });
@@ -371,8 +382,8 @@ describe('a branch that tracks a branch of another name', () => {
 
     it('offers to sync under the local name and keeps Create PR hidden until the branch is published', () => {
         expect(syncButton(renamed(), undefined, 0)).toMatchObject({
-            kind: 'sync',
-            label: 'Sync',
+            kind: 'publish',
+            label: 'Publish branch',
             action: 'sync',
             line: 'Tracks origin/main',
             title: 'Publish as origin/feature',
@@ -394,14 +405,14 @@ describe('a branch that tracks a branch of another name', () => {
                 undefined,
                 0
             )
-        ).toMatchObject({ kind: 'sync', ahead: 1 });
+        ).toMatchObject({ kind: 'push', ahead: 1 });
         // A name that only begins like the branch's is another branch.
         expect(syncButton(status({}, { name: 'origin/feature-2', ahead: 1 }), undefined, 0)).toMatchObject({
-            kind: 'sync',
+            kind: 'publish',
             line: 'Tracks origin/feature-2',
         });
         expect(syncButton(status({}, { name: 'origin/feature/x', ahead: 1 }), undefined, 0)).toMatchObject({
-            kind: 'sync',
+            kind: 'publish',
             line: 'Tracks origin/feature/x',
         });
     });

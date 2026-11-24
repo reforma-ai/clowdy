@@ -111,7 +111,7 @@ export function lastFetchedWords(at: number | undefined, now: number): string {
     return days < 365 ? ago(Math.floor(days / 30), 'month') : ago(Math.floor(days / 365), 'year');
 }
 
-export type SyncKind = 'running' | 'no_origin' | 'blocked' | 'sync' | 'fetch';
+export type SyncKind = 'running' | 'no_origin' | 'blocked' | 'publish' | 'sync' | 'pull' | 'push' | 'update' | 'fetch';
 
 /** The sync button's copy, progress and counts. */
 export interface SyncView {
@@ -120,13 +120,13 @@ export interface SyncView {
     line?: string;
     ahead?: number;
     behind?: number;
-    action?: 'sync' | 'fetch';
+    action?: 'sync' | 'update' | 'fetch';
     reason?: string;
     tone?: 'warning';
     title: string;
 }
 
-/** Show the active operation or offer Sync using the latest known branch state. */
+/** Show progress, then prefer the branch's origin over its base. Fetch is the fallback. */
 export function syncButton(
     status: GitStatus | undefined,
     running: RemoteActionId | undefined,
@@ -136,7 +136,7 @@ export function syncButton(
     if (status?.isRepository !== true) return undefined;
 
     if (running !== undefined) {
-        const label = running === 'sync' && phase ? SYNC_WORDS[phase] : RUNNING_WORDS[running];
+        const label = phase ? SYNC_WORDS[phase] : RUNNING_WORDS[running];
         return { kind: 'running', label, reason: 'An action is running', title: label };
     }
 
@@ -163,21 +163,30 @@ export function syncButton(
 
     const tracking = trackingOf(status);
     const fetched = lastFetchedWords(status.lastFetchedAt, now);
-    const label = 'Sync';
+    const update = updateFromBase(status);
+    const updateView: SyncView | undefined = update && {
+        kind: 'update',
+        label: update.label,
+        line: fetched,
+        behind: update.behind,
+        action: 'update',
+        title: `${update.label} · ${commitsWords(update.behind)} to merge from the base`,
+    };
 
     if (tracking.kind === 'foreign') {
         const line = foreignWords(tracking.upstream);
-        return { kind: 'fetch', label: 'Fetch origin', line, action: 'fetch', title: line };
+        return updateView ?? { kind: 'fetch', label: 'Fetch origin', line, action: 'fetch', title: line };
     }
 
     const publish = `Publish as ${ORIGIN}/${branchOf(status)}`;
+    const label = 'Publish branch';
 
     if (tracking.kind === 'none')
-        return { kind: 'sync', label, line: 'Publish this branch to origin', action: 'sync', title: publish };
+        return { kind: 'publish', label, line: 'Publish this branch to origin', action: 'sync', title: publish };
 
     if (tracking.kind === 'gone')
         return {
-            kind: 'sync',
+            kind: 'publish',
             label,
             line: `Upstream gone from ${ORIGIN}`,
             action: 'sync',
@@ -187,7 +196,7 @@ export function syncButton(
 
     if (tracking.kind === 'renamed')
         return {
-            kind: 'sync',
+            kind: 'publish',
             label,
             line: `Tracks ${tracking.upstream.name}`,
             action: 'sync',
@@ -195,21 +204,34 @@ export function syncButton(
         };
 
     const { ahead, behind, name } = tracking.upstream;
-    const details = [
-        behind > 0 && `${commitsWords(behind)} to pull`,
-        ahead > 0 && `${commitsWords(ahead)} to push`,
-        fetched,
-    ].filter(Boolean);
+    if (ahead > 0 || behind > 0) {
+        const kind = ahead > 0 ? (behind > 0 ? 'sync' : 'push') : 'pull';
+        const label = kind === 'sync' ? 'Sync' : kind === 'push' ? 'Push origin' : 'Pull origin';
+        const details = [
+            behind > 0 && `${commitsWords(behind)} to pull`,
+            ahead > 0 && `${commitsWords(ahead)} to push`,
+            fetched,
+        ].filter(Boolean);
+        return {
+            kind,
+            label,
+            line: fetched,
+            action: 'sync',
+            ...(ahead > 0 && { ahead }),
+            ...(behind > 0 && { behind }),
+            title: [`${label} · ${name}`, ...details].join(' · '),
+        };
+    }
 
-    return {
-        kind: 'sync',
-        label,
-        line: fetched,
-        action: 'sync',
-        ...(ahead > 0 && { ahead }),
-        ...(behind > 0 && { behind }),
-        title: [`Sync with ${name}`, ...details].join(' · '),
-    };
+    return (
+        updateView ?? {
+            kind: 'fetch',
+            label: 'Fetch origin',
+            line: fetched,
+            action: 'fetch',
+            title: `Fetch origin · ${fetched}`,
+        }
+    );
 }
 
 /** A conflict can be reported before the refreshed status reaches the commit section. Successful actions need no separate line. */
@@ -267,7 +289,8 @@ export function githubBaseName(base: GitBase | undefined): string | undefined {
  * and when the base is not behind.
  */
 export function updateFromBase(status: GitStatus | undefined): { label: string; behind: number } | undefined {
-    if (status?.isRepository !== true || status.merging || status.head.kind !== 'branch') return undefined;
+    if (status?.isRepository !== true || status.merging || status.rebasing || status.head.kind !== 'branch')
+        return undefined;
 
     const { base, head } = status;
     const name = githubBaseName(base);

@@ -2466,6 +2466,12 @@
                     "name": "vsc",
                     "sourceHash": "845b0f7608c04aa04f5b9bbb4b51f3dfc167c227df5d12cdbb6c0283e8b0c388"
                 },
+                "16637:129550": {
+                    "file": "merge.svg",
+                    "fingerprint": "3706ec02f0246eafdbc071ff9ef4dd0f9872fe82e39e7a200df8e9e987acde33",
+                    "name": "merge",
+                    "sourceHash": "af034d9dcb05a8757498d5723eaa02f328bc5c9d9e918383b9fefa51e2f292ae"
+                },
                 "11591:83392": {
                     "file": "commit.svg",
                     "fingerprint": "c16fdadd832cba3ff8c8834ab757e0db557ddd8400baa1ffe8d1c1b8e844d84a",

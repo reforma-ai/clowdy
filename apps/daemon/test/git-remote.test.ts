@@ -918,6 +918,7 @@ withScripts('POST /v1/projects/:id/git/fetch, pull and push', () => {
 
             expect(level).toMatchObject({ state: 'done', action: 'update', pulled: 0 });
             expect(level).not.toHaveProperty('merged');
+            expect(level).not.toHaveProperty('updatedHead');
 
             const base = commitFile(other, 'base.txt');
 
@@ -926,11 +927,56 @@ withScripts('POST /v1/projects/:id/git/fetch, pull and push', () => {
 
             const updated = await result('update');
 
-            expect(updated).toMatchObject({ state: 'done', action: 'update', pulled: 1, merged: true });
+            expect(updated).toMatchObject({
+                state: 'done',
+                action: 'update',
+                pulled: 1,
+                merged: true,
+                updatedHead: { branch: 'feature', commit: git(path, 'rev-parse', 'HEAD') },
+            });
             expect(updated).not.toHaveProperty('upstream');
             expect(git(path, 'rev-parse', 'HEAD^2')).toBe(base);
             expect(existsSync(join(path, 'base.txt'))).toBe(true);
             expect(existsSync(join(path, 'feature.txt'))).toBe(true);
+        });
+
+        test('keeps the configured merge policy when a base update could fast-forward', async () => {
+            const h = await start();
+            const { path, origin } = repository();
+            const { result } = await open(path, h);
+            const other = neighbour(origin);
+
+            git(path, 'switch', '-q', '-c', 'feature');
+            git(path, 'config', 'merge.ff', 'false');
+            const before = git(path, 'rev-parse', 'HEAD');
+            const base = commitFile(other, 'base.txt');
+            git(other, 'push', '-q');
+
+            const updated = await result('update');
+
+            expect(updated).toMatchObject({
+                state: 'done',
+                pulled: 1,
+                updatedHead: { branch: 'feature', commit: git(path, 'rev-parse', 'HEAD') },
+            });
+            expect(git(path, 'log', '-1', '--format=%P')).toBe(`${before} ${base}`);
+        });
+
+        test('does not expose a new tip when the configured update still needs a merge commit', async () => {
+            const h = await start();
+            const { path, origin } = repository();
+            const { result } = await open(path, h);
+            const other = neighbour(origin);
+
+            git(path, 'switch', '-q', '-c', 'feature');
+            git(path, 'config', 'branch.feature.mergeOptions', '--no-commit');
+            const before = commitFile(path, 'feature.txt');
+            const base = commitFile(other, 'base.txt');
+            git(other, 'push', '-q');
+
+            expect(await result('update')).toEqual({ state: 'conflicts', action: 'update', conflicts: 0 });
+            expect(git(path, 'rev-parse', 'HEAD')).toBe(before);
+            expect(git(path, 'rev-parse', 'MERGE_HEAD')).toBe(base);
         });
 
         test('refuses to update the branch that is the base, and moves nothing', async () => {

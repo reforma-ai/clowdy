@@ -4,7 +4,7 @@ import { Popover } from '@clowdy/components/Popover';
 import { Spinner } from '@clowdy/components/Spinner';
 import { Text } from '@clowdy/components/Text';
 import { Tooltip } from '@clowdy/components/Tooltip';
-import { ArrowDown, ArrowDownRight, ArrowUp, ArrowUpRight, ChevronDown, Refresh, Vsc } from '@clowdy/icons/14';
+import { ArrowDown, ArrowDownRight, ArrowUp, ArrowUpRight, ChevronDown, Merge, Refresh } from '@clowdy/icons/14';
 import { useId, useState } from 'react';
 
 import { Unavailable } from '../../shared/Unavailable';
@@ -96,8 +96,7 @@ function SyncWords({ label, line, tone }: SyncCopy) {
 }
 
 /**
- * Sync follows one branch on origin. The oldest pending action drives its spinner, while the menu keeps Fetch, Pull and branch merges available.
- * An update from the base is a separate button.
+ * One split button recommends the next action. Its menu keeps explicit Fetch, Pull, Update and branch merges available.
  */
 export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
     const { transport } = useRootStore();
@@ -116,8 +115,6 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
     const offHint = facts.switching ? 'The branch is being changed' : view.title;
     const current = status?.isRepository && status.head.kind === 'branch' ? status.head.name : undefined;
     const hasOrigin = status?.isRepository === true && status.origin;
-    const updateCount = update ? `${commitsWords(update.behind)} to merge from the base` : undefined;
-    const updateTooltip = update && `${update.label} · ${updateCount}`;
     const updateBlocked = !hasOrigin || facts.switching || remote.isPending('update');
     const detail = !off && view.title !== view.label ? view.title : undefined;
     const sync = () => {
@@ -164,11 +161,15 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
                             data-sync={view.kind}
                             onPress={() => {
                                 if (view.action === 'sync') sync();
-                                if (view.action === 'fetch') void remote.run('fetch');
+                                else if (view.action) void remote.run(view.action);
                             }}
                         >
                             <SyncWords label={view.label} line={view.line} tone={view.tone} />
-                            <Counts ahead={view.ahead} behind={view.behind} />
+                            {view.kind === 'update' && view.behind ? (
+                                <CommitCountBadge direction="down" count={view.behind} />
+                            ) : (
+                                <Counts ahead={view.ahead} behind={view.behind} />
+                            )}
                             {running !== undefined && <Spinner size="xxs" className={styles.spinner} aria-hidden />}
                         </Button>
                     </Tooltip>
@@ -212,7 +213,7 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
                             ))}
                             <MenuSeparator />
                             {update && (
-                                <MenuItem id="update" icon={<Vsc />} text={update.label} isDisabled={updateBlocked} />
+                                <MenuItem id="update" icon={<Merge />} text={update.label} isDisabled={updateBlocked} />
                             )}
                             <MenuItem
                                 id="merge-from"
@@ -230,24 +231,6 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
                     </Popover>
                 </MenuTrigger>
             </div>
-
-            {update && hasOrigin && (
-                <Button
-                    variant="bordered"
-                    size="sm"
-                    className={styles.update}
-                    contentClassName={styles.content}
-                    isDisabled={updateBlocked}
-                    aria-label={update.label}
-                    aria-description={updateCount}
-                    tooltip={updateTooltip}
-                    tooltipPlacement="bottom"
-                    onPress={() => void remote.run('update')}
-                >
-                    <Text truncate>{update.label}</Text>
-                    <CommitCountBadge direction="down" count={update.behind} />
-                </Button>
-            )}
 
             {failure && (
                 <div className={styles.failure} role="alert">
