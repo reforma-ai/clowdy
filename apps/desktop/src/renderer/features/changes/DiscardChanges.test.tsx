@@ -2,7 +2,8 @@
 import { toast } from '@clowdy/components/Toast';
 import { commitScope } from '@clowdy/protocol';
 import { observer } from 'mobx-react-lite';
-import { act } from 'react';
+import { act, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -21,6 +22,7 @@ import { overrideTransport } from '../../daemon/testing';
 import { type Transport, TransportError } from '../../daemon/transport';
 import { RootStore, RootStoreProvider } from '../../stores';
 import ChangesTab from './ChangesTab';
+import { DiscardButton } from './DiscardButton';
 import { gitFactsOf } from './gitFacts';
 import { placeChangesOf } from './PlaceChanges';
 import { changesSidebarLayout } from './sidebarLayout';
@@ -60,9 +62,25 @@ vi.mock('./ChangesSidebar', async importOriginal => ({
 vi.mock('./CommitBox', async importOriginal => ({
     CommitBox: observer((await importOriginal<typeof import('./CommitBox')>()).CommitBox),
 }));
-vi.mock('./DiffCard', async importOriginal => ({
-    DiffCard: observer((await importOriginal<typeof import('./DiffCard')>()).DiffCard),
-}));
+// The card no longer exposes discard. Mount its retained dialog trigger only for the discard flow tests.
+const discardHarness = vi.hoisted(() => ({ enabled: true }));
+vi.mock('./DiffCard', async importOriginal => {
+    const Original = (await importOriginal<typeof import('./DiffCard')>()).DiffCard;
+    const Harness = observer((props: Parameters<typeof Original>[0]) => {
+        const [wrapper, setWrapper] = useState<HTMLDivElement | null>(null);
+        const header = wrapper?.querySelector<HTMLElement>('[data-card] > div');
+        const file = discardHarness.enabled ? props.model.discardable.get(props.file.path) : undefined;
+
+        return (
+            <div ref={setWrapper}>
+                <Original {...props} />
+                {header && file && createPortal(<DiscardButton model={props.model} file={file} />, header)}
+            </div>
+        );
+    });
+
+    return { DiffCard: Harness };
+});
 vi.mock('./PullRequestChip', async importOriginal => ({
     PullRequestChip: observer((await importOriginal<typeof import('./PullRequestChip')>()).PullRequestChip),
 }));
@@ -170,6 +188,7 @@ const chooseScope = async (scope: GitScope) => {
 };
 
 beforeEach(() => {
+    discardHarness.enabled = true;
     localStorage.clear();
     vi.stubGlobal(
         'IntersectionObserver',
@@ -208,7 +227,14 @@ afterEach(async () => {
     document.body.innerHTML = '';
 });
 
-describe('Discard changes… on the diff cards', () => {
+it('does not offer discard on diff cards', async () => {
+    discardHarness.enabled = false;
+    await start();
+    expect(cardPaths()).toHaveLength(6);
+    expect(discardButtons()).toHaveLength(0);
+});
+
+describe('the retained discard trigger in the test harness', () => {
     it('is on the diff cards of the uncommitted files in All changes, and not on the files that are only committed', async () => {
         await start();
 

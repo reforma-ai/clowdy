@@ -11,7 +11,6 @@ import { type CSSProperties, useEffect, useState } from 'react';
 import { useAddToChat } from '../chats/useAddToChat';
 import { CARD_TEXT, type CardBody, cardBody, estimatedLines, needsSides } from './cardView';
 import styles from './DiffCard.module.css';
-import { DiscardButton } from './DiscardButton';
 import { sidesKey } from './fileSides';
 import { CHANGE_KIND_VIEW, splitPath } from './gitSummary';
 import { useNearViewport } from './useNearViewport';
@@ -95,8 +94,7 @@ function Body({ body, file, onRetry }: { body: CardBody; file: GitChangedFile; o
 
 /**
  * One changed file of the list: a header with a chevron, the file's path (the folder dimmed, the name strong, cut at the start when it does not fit), what happened to it
- * (added, modified, deleted, renamed, with the old path of a rename under it), its added and removed lines, a button that copies the path and, for a file whose changes
- * can be discarded, `Discard changes…` (it shows while the pointer is over the header or the focus is in it), followed by a divider and `Viewed` checkbox; and, when it is
+ * (added, modified, deleted, renamed, with the old path of a rename under it), a button that copies the path, its added and removed lines, and a divider and `Viewed` checkbox; and, when it is
  * open, the diff of its two texts. Ticking `Viewed` shuts the card and unticking opens it (the model decides, and the tick shows before the daemon has answered). Its texts are asked of the cache while the card is near the scroller's edge and open, and not before, and a read that has not begun is
  * let go of when it stops being near, so a list of hundreds costs what is on screen; the header sticks to the top of the list while its diff scrolls.
  */
@@ -121,8 +119,6 @@ export function DiffCard({ model, file }: { model: PlaceChanges; file: GitChange
         return () => model.sides.drop(request);
     }, [wanted, key, model]);
 
-    // The uncommitted entry of the file, when its changes can be discarded from the scope that is shown: the card of a file that is only committed has none.
-    const discard = model.discardable.get(file.path);
     const kind = CHANGE_KIND_VIEW[file.kind];
     const renamedFrom =
         (file.kind === 'renamed' || file.kind === 'copied') && file.oldPath !== undefined ? file.oldPath : undefined;
@@ -170,7 +166,6 @@ export function DiffCard({ model, file }: { model: PlaceChanges; file: GitChange
                             >{`Renamed from ${renamedFrom}`}</Text>
                         )}
                     </span>
-                    <LineCounts file={file} />
                 </Button>
                 <CopyButton
                     value={file.path}
@@ -180,8 +175,8 @@ export function DiffCard({ model, file }: { model: PlaceChanges; file: GitChange
                     tooltip="Copy path"
                     aria-label={`Copy the path of ${file.path}`}
                 />
-                {discard && <DiscardButton model={model} file={discard} className={styles.discard} />}
-                <Separator orientation="vertical" spacing={0} aria-hidden="true" />
+                <LineCounts file={file} />
+                <Separator orientation="vertical" spacing={0} className={styles.divider} aria-hidden="true" />
                 <Checkbox
                     size="sm"
                     className={styles.viewed}
