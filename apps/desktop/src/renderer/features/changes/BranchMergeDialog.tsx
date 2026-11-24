@@ -34,6 +34,7 @@ import type { RemoteActions } from './RemoteActions';
 export const MERGE_LABELS = { from: 'Merge from branch…', into: 'Merge into branch…' } as const;
 
 type MergeDirection = GitBranchMergeSelection['direction'];
+type DialogStrategy = Exclude<GitBranchMergeStrategy, 'fast-forward-only'>;
 type MergeOutcome =
     | Extract<GitBranchMergeResult, { state: 'conflicts' | 'done' }>
     | { state: 'sync-conflicts'; target: string; targetPath: string; conflicts: number };
@@ -91,21 +92,22 @@ const MODES: Record<GitBranchMergePreview['mode'], string> = {
     rebase: 'Rebase',
 };
 
-const STRATEGIES: Record<GitBranchMergeStrategy, { label: string; description: string }> = {
-    merge: { label: 'Merge', description: 'Fast-forward when possible, otherwise create a merge commit' },
-    'fast-forward-only': { label: 'Fast-forward only', description: 'Stop if a merge commit would be needed' },
+const STRATEGIES: Record<DialogStrategy, { label: string; description: string }> = {
+    merge: {
+        label: 'Create a merge commit',
+        description: 'Join the branch histories, using a fast-forward when possible',
+    },
     squash: { label: 'Squash and merge', description: 'Combine incoming changes into one new commit' },
     rebase: { label: 'Rebase', description: 'Replay the current branch’s commits on the selected branch' },
 };
 
 function mergeBlock(
-    { source, target, targetPath, mode, conflictCheck }: GitBranchMergePreview,
-    strategy: GitBranchMergeStrategy,
+    { source, target, targetPath, mode, fastForwardOnly, conflictCheck }: GitBranchMergePreview,
     direction: MergeDirection
 ): Failure | undefined {
     if (mode === 'up-to-date') return undefined;
-    if (strategy === 'fast-forward-only' && mode !== 'fast-forward')
-        return { message: `Can't fast-forward ${target} because the branches have diverged` };
+    if (fastForwardOnly && mode === 'merge-commit')
+        return { message: `Can't merge into ${target} because Git is configured to require a fast-forward` };
     if (direction === 'into' && !targetPath) return { message: `Check out ${target} before merging into it` };
 
     if (conflictCheck === 'conflicts')
@@ -154,7 +156,7 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
     const [fetchFailed, setFetchFailed] = useState<Failure>();
     const [loading, setLoading] = useState(true);
     const [selected, setSelected] = useState<string>();
-    const [strategy, setStrategy] = useState<GitBranchMergeStrategy>('merge');
+    const [strategy, setStrategy] = useState<DialogStrategy>('merge');
     const [preview, setPreview] = useState<GitBranchMergePreview>();
     const [pending, setPending] = useState<MergeAction['action']>();
     const [syncPhase, setSyncPhase] = useState<GitSyncProgress['phase']>();
@@ -347,7 +349,7 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
         }
     };
 
-    const blocked = preview ? mergeBlock(preview, strategy, direction) : undefined;
+    const blocked = preview ? mergeBlock(preview, direction) : undefined;
     const canMerge = selection !== undefined && preview !== undefined && preview.mode !== 'up-to-date' && !blocked;
 
     const merge = () => {
@@ -358,6 +360,7 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
             ...selection,
             sourceCommit: preview.sourceCommit,
             targetCommit: preview.targetCommit,
+            expectedMode: preview.mode,
         });
     };
 
@@ -508,13 +511,13 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
                                     selectedKeys={[strategy]}
                                     disallowEmptySelection
                                     onAction={key => {
-                                        const next = key as GitBranchMergeStrategy;
+                                        const next = key as DialogStrategy;
                                         if (next === strategy) return;
                                         setStrategy(next);
                                         if (selected) void pick(selected, next);
                                     }}
                                 >
-                                    {(Object.keys(STRATEGIES) as GitBranchMergeStrategy[]).map(id => (
+                                    {(Object.keys(STRATEGIES) as DialogStrategy[]).map(id => (
                                         <MenuItem
                                             key={id}
                                             id={id}

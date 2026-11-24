@@ -598,14 +598,19 @@ export interface GitBranchMergeSelection {
     branch: string;
     /** The selected source is a ref on origin. The destination is always local. */
     remote?: true;
-    /** Defaults to a regular merge with fast-forward when possible. */
+    /** Defaults to a regular merge with the destination's fast-forward policy. */
     strategy?: GitBranchMergeStrategy;
 }
 
 /** The body of POST /v1/projects/:id/git/merge, together with the place. */
 export type GitBranchMergeRequest =
     | (GitBranchMergeSelection & { action: 'preview' })
-    | (GitBranchMergeSelection & { action: 'merge'; sourceCommit: string; targetCommit: string })
+    | (GitBranchMergeSelection & {
+          action: 'merge';
+          sourceCommit: string;
+          targetCommit: string;
+          expectedMode?: GitBranchMergePreview['mode'];
+      })
     | { action: 'push'; target: string; commit: string }
     | { action: 'abort'; target: string; commit: string; sourceCommit: string; operation?: 'rebase' };
 
@@ -617,6 +622,8 @@ export interface GitBranchMergePreview {
     targetCommit: string;
     commits: number;
     mode: 'up-to-date' | 'fast-forward' | 'merge-commit' | 'squash' | 'rebase';
+    /** The destination's Git configuration allows only fast-forward merges. */
+    fastForwardOnly?: true;
     /** Destination commits that would be replayed in a rebase. */
     replayCommits?: number;
     /** Existing checkout of the destination, when there is one. */

@@ -135,6 +135,7 @@ const gitMergeBody = z.discriminatedUnion('action', [
         action: z.literal('merge'),
         sourceCommit: gitCommitHash,
         targetCommit: gitCommitHash,
+        expectedMode: z.enum(['up-to-date', 'fast-forward', 'merge-commit', 'squash', 'rebase']).optional(),
     }),
     z.object({ ...gitMergeTarget, action: z.literal('push') }),
     z.object({

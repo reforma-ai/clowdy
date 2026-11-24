@@ -14,10 +14,12 @@
 - [Manual chat order](decisions/2026-11-24-use-manual-chat-order.md) records why the sidebar uses one saved order and puts new chats first. Status: accepted.
 - [Switch branches in a merged chat worktree](decisions/2026-11-24-switch-merged-worktree-branches.md) describes which branch switches are allowed. Status: accepted.
 - [Merge into existing checkouts](decisions/2026-11-24-merge-into-existing-checkouts.md) describes conflict checks for outgoing merges and how to resolve conflicts in an existing checkout. Status: accepted.
-- [Select the branch operation](decisions/2026-11-24-select-branch-merge-mode.md) records the split button and the scope of the four choices. Status: accepted.
+- [Branch merge choices](decisions/2026-11-24-branch-merge-choices.md) records the three choices and the destination's fast-forward policy. Status: accepted.
 - [One provider for commit messages](decisions/2026-11-24-choose-one-commit-provider.md) records the Source Control selector and how older settings map to it. Status: accepted.
 
 ## Checks
+
+- [Branch merge choices](checks/2026-11-24-branch-merge-choices.md) verifies the three modes and the result of the destination's Git policy. Status: passed with limits.
 
 - [Source Control action priority](checks/2026-11-24-source-control-action-priority.md) covers Push, Update, Fetch and the automatic Sync preference. Status: passed with limits.
 
@@ -50,6 +52,8 @@
 - [Stop commit message generation](checks/2026-11-24-stop-commit-message-generation.md) covers the stop control, retry and provider process cancellation. Status: passed.
 
 ## Superseded
+
+- [Select the branch operation](decisions/2026-11-24-select-branch-merge-mode.md) records the earlier four choices. Status: superseded.
 
 - [Push after commits and branch merges](decisions/2026-11-24-push-after-commit-and-merge.md) records the earlier push-only preference. Status: superseded.
 

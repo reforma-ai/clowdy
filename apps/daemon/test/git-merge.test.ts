@@ -52,6 +52,7 @@ async function open(path: string, options: Parameters<typeof startHarness>[1] = 
         ...selection,
         sourceCommit: plan.sourceCommit,
         targetCommit: plan.targetCommit,
+        expectedMode: plan.mode,
     });
 
     return { h, project, folderId, call, result, preview, merge };
@@ -92,6 +93,65 @@ test('merges a fetched origin branch into the current branch without a merge com
     expect(git(path, 'rev-parse', 'HEAD')).toBe(sourceCommit);
     expect(git(origin, 'for-each-ref', '--format=%(refname)', 'refs/heads')).toBe('refs/heads/main');
     expect(await preview(selection)).toMatchObject({ mode: 'up-to-date', commits: 0 });
+});
+
+test('uses the destination checkout fast-forward policy and rejects a preview whose outcome changed', async () => {
+    const path = makeRepo(tempDir('git-merge'));
+    identify(path);
+    const target = join(tempDir('git-merge'), 'next');
+    git(path, 'worktree', 'add', '-q', '-b', 'next', target);
+    const targetCommit = git(target, 'rev-parse', 'HEAD');
+    const sourceCommit = commitFile(path, 'main.txt');
+    git(path, 'config', 'extensions.worktreeConfig', 'true');
+    git(path, 'config', '--worktree', 'merge.ff', 'true');
+
+    const { call, result, preview, merge } = await open(path);
+    const selection = { direction: 'into', branch: 'next', current: 'main' } as const;
+    const before = await preview(selection);
+    expect(before.mode).toBe('fast-forward');
+
+    git(target, 'config', '--worktree', 'merge.ff', 'no');
+
+    const stale = await call(merge(selection, before));
+    expect(stale.status).toBe(409);
+    expect(await stale.text()).toContain('The merge result changed since the preview');
+    expect(git(target, 'rev-parse', 'HEAD')).toBe(targetCommit);
+    expect(left(target)).toEqual([]);
+
+    const explicit = await preview({ ...selection, strategy: 'fast-forward-only' });
+    expect(explicit.mode).toBe('fast-forward');
+
+    const plan = await preview(selection);
+    expect(plan).toMatchObject({ mode: 'merge-commit', conflictCheck: 'clean' });
+    expect(await result(merge(selection, plan))).toMatchObject({ state: 'done', target: 'next' });
+    expect(git(target, 'rev-list', '--parents', '-1', 'HEAD').split(' ').slice(1)).toEqual([
+        targetCommit,
+        sourceCommit,
+    ]);
+    expect(git(path, 'rev-parse', 'HEAD')).toBe(sourceCommit);
+    expect(left(target)).toEqual([]);
+});
+
+test('blocks a divergent regular merge when configured to require a fast-forward', async () => {
+    const path = makeRepo(tempDir('git-merge'));
+    identify(path);
+    git(path, 'switch', '-q', '-c', 'next');
+    const targetCommit = commitFile(path, 'next.txt');
+    git(path, 'switch', '-q', 'main');
+    const sourceCommit = commitFile(path, 'main.txt');
+    git(path, 'switch', '-q', 'next');
+    git(path, 'config', 'merge.ff', 'only');
+
+    const { call, preview, merge } = await open(path);
+    const selection = { direction: 'from', branch: 'main', current: 'next' } as const;
+    const plan = await preview(selection);
+    expect(plan).toMatchObject({ mode: 'merge-commit', fastForwardOnly: true, targetCommit, sourceCommit });
+
+    const refused = await call(merge(selection, plan));
+    expect(refused.status).toBe(409);
+    expect(await refused.text()).toContain("Can't fast-forward next because the branches have diverged");
+    expect(git(path, 'rev-parse', 'HEAD')).toBe(targetCommit);
+    expect(left(path)).toEqual([]);
 });
 
 test('fast-forward only declines diverged tips and squash writes one commit in the existing destination', async () => {
