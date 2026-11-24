@@ -33,8 +33,8 @@ it('opens the task list, updates progress, and navigates to a selected task', as
     expect(header.textContent).toBe(`Tasks${progress.summary}`);
     expect(container.textContent).not.toContain(progress.tasks[0].title);
     await act(async () => header.click());
-    const row = [...container.querySelectorAll('button')].find(button =>
-        button.textContent?.includes(progress.tasks[0].title)
+    const row = [...container.querySelectorAll<HTMLElement>('[role="row"]')].find(item =>
+        item.textContent?.includes(progress.tasks[0].title)
     )!;
     expect(row.textContent).toContain(progress.tasks[0].key);
     expect(row.textContent).toContain(project.statuses.find(status => status.id === progress.tasks[0].statusId)!.name);

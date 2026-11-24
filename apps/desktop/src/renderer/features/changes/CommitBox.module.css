@@ -9,7 +9,7 @@
     padding: var(--spacing-md) var(--spacing-lg) var(--spacing-lg);
 }
 
-.root > :not(.list, .mergeList) {
+.root > :not(.list) {
     flex-shrink: 0;
 }
 
@@ -34,28 +34,34 @@
 }
 
 /* Use the available height and shrink the files before the commit controls. */
-.list,
-.mergeList {
+.list {
     flex: 0 1 auto;
     min-height: var(--spacing-30);
-}
-
-.list {
     margin-inline: calc(var(--spacing-lg) * -1);
-}
-
-.mergeList {
-    min-height: var(--spacing-64);
-}
-
-.mergeRows {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-sm);
 }
 
 .rows {
     padding-inline: var(--spacing-xs);
+}
+
+.fileGroupHeading,
+.conflictActions {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding-inline: var(--spacing-lg);
+}
+
+.fileGroupHeading {
+    min-height: var(--spacing-24);
+}
+
+.fileGroupHeading > h3 {
+    margin: 0;
+}
+
+.conflictActions {
+    flex-wrap: wrap;
 }
 
 /* The row's label: the letter, the name, strong, and the folder after it, dimmed; the folder is cut before the name is. */

@@ -1,6 +1,5 @@
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@clowdy/components/Collapsible';
-import { GridList, GridListItem } from '@clowdy/components/List';
-import { Scrollable } from '@clowdy/components/Scrollable';
+import { Collapsible, CollapsibleTrigger } from '@clowdy/components/Collapsible';
+import { GridListItem } from '@clowdy/components/List';
 import { Text } from '@clowdy/components/Text';
 
 import { useProjectState, useRootStore } from '../../stores';
@@ -8,7 +7,7 @@ import { chatFolder } from '../agents/agentTree';
 import { CHANGE_KIND_VIEW, filesWords, splitPath } from '../changes/gitSummary';
 import { openRunInChanges } from '../changes/openRunInChanges';
 import { chatPlace, isPlaceReady } from '../sidePanel/currentPlace';
-import { ComposerBanner, ComposerBannerHeader } from './ComposerBanner';
+import { ComposerBanner, ComposerBannerHeader, ComposerBannerList } from './ComposerBanner';
 import styles from './LastRunPlate.module.css';
 import { isLastRunCurrent, lastRunScope, plateFilesOf, plateTotals, rowCounts, rowLabel } from './lastRunRows';
 import { useLastRunChanges } from './useLastRunChanges';
@@ -101,24 +100,11 @@ function RunPlate({ changes, onOpen }: { changes: RepositoryChanges; onOpen: (pa
                             </ComposerBannerHeader>
                         </CollapsibleTrigger>
                         {state.isExpanded && (
-                            <CollapsibleContent asChild>
-                                <Scrollable
-                                    className={styles.files}
-                                    containerClass={styles.fileScroll}
-                                    contentClass={styles.rows}
-                                >
-                                    <GridList
-                                        aria-label="Files the run changed"
-                                        size="sm"
-                                        className={styles.list}
-                                        onAction={key => onOpen(String(key))}
-                                    >
-                                        {changes.files.map(file => (
-                                            <Row key={file.path} file={file} />
-                                        ))}
-                                    </GridList>
-                                </Scrollable>
-                            </CollapsibleContent>
+                            <ComposerBannerList label="Files the run changed" onAction={onOpen}>
+                                {changes.files.map(file => (
+                                    <Row key={file.path} file={file} />
+                                ))}
+                            </ComposerBannerList>
                         )}
                     </>
                 )}

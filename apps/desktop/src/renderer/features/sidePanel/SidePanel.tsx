@@ -3,7 +3,6 @@ import { lazy, Suspense } from 'react';
 
 import { useProjectUi } from '../../stores';
 import { SIDE_PANEL_TAB_LABELS } from './commands';
-import { InfoTab } from './InfoTab';
 import styles from './SidePanel.module.css';
 
 // Its own chunk, loaded when the Files or the Docs tab is first shown (they are one view): the editor and the file tree are the heaviest part of the panel.
@@ -53,7 +52,6 @@ export function SidePanel() {
                         <ChangesTab />
                     </Suspense>
                 )}
-                {chosen === 'info' && <InfoTab />}
             </section>
         </aside>
     );

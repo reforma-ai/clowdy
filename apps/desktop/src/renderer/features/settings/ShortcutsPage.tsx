@@ -4,6 +4,7 @@ import { Fragment, useMemo } from 'react';
 import { PressesHotkey } from '../../hotkeys';
 import { groupHelpEntries, type HelpEntry } from '../../hotkeys/helpEntries';
 import { shortcutEntries } from '../../shell/keymap';
+import { panelOrder } from '../sidePanel/panelOrder';
 import styles from './ShortcutsPage.module.css';
 import { SettingsCard } from './ui/SettingsCard';
 import { SettingsPage } from './ui/SettingsPage';
@@ -15,7 +16,8 @@ import { SettingsSection } from './ui/SettingsSection';
  * `?` opens Settings here. The list is the whole keymap (`shortcutEntries`), not the registry, which holds only the commands of the section that is mounted, and Settings takes its place.
  */
 export function ShortcutsPage() {
-    const groups = useMemo(() => groupHelpEntries(shortcutEntries()), []);
+    const order = panelOrder.order.join(',');
+    const groups = useMemo(() => groupHelpEntries(shortcutEntries()), [order]);
 
     return (
         <SettingsPage description="The keys that run commands in Clowdy">

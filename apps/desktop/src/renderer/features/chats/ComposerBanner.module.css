@@ -29,6 +29,25 @@
     margin-block-start: 0;
 }
 
+/* Five small list rows with their gaps and insets. */
+.listViewport {
+    max-height: min(40vh, calc(5 * var(--spacing-30) + 6 * var(--spacing-xxs)));
+}
+
+.listScroll {
+    overscroll-behavior-y: contain;
+}
+
+.listRows {
+    padding: var(--spacing-xxs) var(--spacing-xs);
+}
+
+/* The label sits 8px inside the hover plate, which is 4px inside the banner. */
+.list {
+    --clowdy-listbox-item-padding-inline: var(--spacing-md);
+    --clowdy-listbox-item-padding: var(--spacing-xs) var(--clowdy-listbox-item-padding-inline);
+}
+
 .status {
     position: relative;
     display: flex;

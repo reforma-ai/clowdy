@@ -399,7 +399,8 @@ export class FixtureTransport implements Transport {
 
             if (merged) status.head.commit = merged.commit;
             if (pending) {
-                status.merging = { conflicts: pending.conflicts };
+                if (pending.operation === 'rebase') status.rebasing = true;
+                else status.merging = { conflicts: pending.conflicts };
                 status.entries = [
                     { path: 'notes.md', staged: 'added' },
                     { path: 'src/booking/price.ts', staged: 'modified' },
@@ -531,14 +532,20 @@ export class FixtureTransport implements Transport {
         }
 
         if (request.action === 'abort') {
-            if (pending?.commit !== request.commit || pending.sourceCommit !== request.sourceCommit)
+            if (
+                pending?.commit !== request.commit ||
+                pending.sourceCommit !== request.sourceCommit ||
+                pending.operation !== request.operation
+            )
                 throw new TransportError('The merge is no longer in progress', 409);
 
             this.#mergeConflicts.delete(key);
-            return { state: 'aborted', target };
+            return { state: 'aborted', target, ...(request.operation && { operation: request.operation }) };
         }
 
         if (request.current !== current) throw new TransportError('The current branch changed', 409);
+        if (request.strategy === 'rebase' && request.direction === 'into')
+            throw new TransportError('Open the destination branch to rebase it', 400);
 
         const isRemote = request.remote === true;
         const source = request.direction === 'into' ? current : isRemote ? `origin/${request.branch}` : request.branch;
@@ -555,12 +562,17 @@ export class FixtureTransport implements Transport {
             mergeCommitId(refKey(isRemote ? `refs/remotes/${source}` : `refs/heads/${source}`));
         const targetCommit = merged?.commit ?? mergeCommitId(refKey(`refs/heads/${target}`));
         const outgoingConflict = request.direction === 'into' && this.#branches.mergeConflict;
-        const mode =
+        const relationship =
             source === target || merged?.sourceCommit === sourceCommit
                 ? 'up-to-date'
                 : outgoingConflict || source === 'origin/main' || source === 'origin/feature/search'
                   ? 'merge-commit'
                   : 'fast-forward';
+        const mode =
+            relationship !== 'up-to-date' && (request.strategy === 'squash' || request.strategy === 'rebase')
+                ? request.strategy
+                : relationship;
+        const squashConflict = mode === 'squash' && (outgoingConflict || source === 'origin/feature/search');
         const preview: GitBranchMergePreview = {
             state: 'preview',
             source,
@@ -569,11 +581,14 @@ export class FixtureTransport implements Transport {
             targetCommit,
             mode,
             commits: mode === 'up-to-date' ? 0 : 3,
+            ...(mode === 'rebase' && { replayCommits: relationship === 'merge-commit' ? 2 : 0 }),
             ...(targetPath && { targetPath }),
             ...(targetPath &&
-                request.direction === 'into' &&
-                mode === 'merge-commit' && {
-                    conflictCheck: outgoingConflict ? 'conflicts' : 'clean',
+                (mode === 'squash' ||
+                    (request.direction === 'into' &&
+                        mode === 'merge-commit' &&
+                        request.strategy !== 'fast-forward-only')) && {
+                    conflictCheck: outgoingConflict || squashConflict ? 'conflicts' : 'clean',
                 }),
         };
 
@@ -583,10 +598,12 @@ export class FixtureTransport implements Transport {
             throw new TransportError('The branches moved since the preview', 409);
 
         if (mode === 'up-to-date') return { state: 'done', target, commit: targetCommit, canPush: false };
+        if (request.strategy === 'fast-forward-only' && mode !== 'fast-forward')
+            throw new TransportError(`Can't fast-forward ${target} because the branches have diverged`, 409);
         if (!targetPath) throw new TransportError(`Check out ${target} before merging into it`, 409);
-        if (outgoingConflict)
+        if (outgoingConflict || squashConflict)
             throw new TransportError(
-                `Can't merge into ${target} because the branches conflict`,
+                `Can't ${mode === 'squash' ? 'squash' : 'merge'} into ${target} because the branches conflict`,
                 409,
                 `In a chat on ${target}, use Merge from branch to merge ${source} and resolve the conflicts`
             );
@@ -607,6 +624,7 @@ export class FixtureTransport implements Transport {
                 sourceCommit,
                 targetPath,
                 conflicts: 1,
+                ...(mode === 'rebase' && { operation: 'rebase' as const }),
             } as const;
             this.#mergeConflicts.set(key, result);
             return result;

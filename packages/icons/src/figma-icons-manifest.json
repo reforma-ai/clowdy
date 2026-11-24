@@ -907,28 +907,34 @@
                     "sourceHash": "2adbebfe6829247db76918eb7c7635ed6627f0a7f6d17df673e4db26e2bdffef"
                 },
                 "2321:58152": {
-                    "file": "check-circle-solid.svg",
-                    "fingerprint": "45b436fdeba11b83fdc8c9977540d4c3e734bdebaa8b76f192596509845bb386",
-                    "name": "check-circle-solid",
+                    "file": "circle-check.svg",
+                    "fingerprint": "7107114bd78d3576b5123e84d05feab02c05043aab3922c6b65a7ee2fd32b7b2",
+                    "name": "circle-check",
                     "sourceHash": "c8800c396f7db1eee67f498087f218ed3e1270e0f3ae39893f670588b3d8e587"
                 },
                 "10368:28787": {
-                    "file": "chat-editing.svg",
-                    "fingerprint": "470ed661d3312f28a05baed63f465d2d2d3b830647ab274fac04029bffccf9e8",
-                    "name": "chat-editing",
+                    "file": "circle-plus.svg",
+                    "fingerprint": "930d9f43eb36d354ac4b34ad06e2b71e81c0f63967bcc98fc5f6e45f604213db",
+                    "name": "circle-plus",
                     "sourceHash": "c98c0dc23bf5d71aabea112a4d31f69460be1ca0f03d5e4e40b4501bcfb2ce14"
                 },
                 "10368:72047": {
-                    "file": "chat-delete.svg",
-                    "fingerprint": "177e1efb29f434c859ecd71964258c9be7886de085680f56da7a83fa1af9329d",
-                    "name": "chat-delete",
+                    "file": "circle-minus.svg",
+                    "fingerprint": "98bbda2f2c188cb5176ad5faf9602ee6c0878a21a4ab5238c892b5199bec6937",
+                    "name": "circle-minus",
                     "sourceHash": "37805e58ad1d97abbf94b1cdf55378c358c10e58992db670385212360ec09efd"
                 },
                 "10368:113956": {
-                    "file": "chat-changed.svg",
-                    "fingerprint": "7664444f2b7ffe8f9519bd89380912c458009c538acf925a1991f2954ee23773",
-                    "name": "chat-changed",
+                    "file": "circle-edit.svg",
+                    "fingerprint": "d884ade46a21666fb9888455157a29b927769dfb3b717393739654320456a54b",
+                    "name": "circle-edit",
                     "sourceHash": "4d4ef854c76866e0bd0e98bf770b26d37381e1010da26bf08b781bdad99c5c46"
+                },
+                "16617:129538": {
+                    "file": "circle-warning.svg",
+                    "fingerprint": "25bbebdc1eae041f837d99d3ef1266a90e545fc0555be75d91e72a4d65232b23",
+                    "name": "circle-warning",
+                    "sourceHash": "02eb7ec2068fb0b7dc5d5a840b7bb2db2cd9c7aeea039ecccd67869f22ee7033"
                 },
                 "1369:8046": {
                     "file": "props.svg",

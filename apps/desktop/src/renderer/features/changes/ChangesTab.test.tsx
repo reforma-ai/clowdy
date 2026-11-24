@@ -279,7 +279,9 @@ describe('the Changes tab of a chat in a worktree', () => {
         expect(
             sidebar?.querySelector('button[aria-label="Update from main"] [data-commit-count="down"]')?.textContent
         ).toBe('1');
-        expect(container.querySelector('[aria-label="Pull request"]')?.textContent).toContain('PR #128');
+        expect(container.querySelector('button[aria-label^="Open pull request 128"]')?.textContent).toContain(
+            'PR #128'
+        );
     });
 
     it("opens every card, and reads a file's texts only once its card is near the scroller's edge", async () => {
@@ -774,21 +776,7 @@ describe('the sidebar', () => {
     it('offers a base update and the pull request, and opens the repository on GitHub', async () => {
         const open = vi.spyOn(window, 'open').mockReturnValue(null);
 
-        await start({
-            wrap: base =>
-                overrideTransport(base, {
-                    getGitPullRequest: async (project, place) => {
-                        const answer = await base.getGitPullRequest(project, place);
-                        const preview = answer.isRepository
-                            ? answer.pullRequest?.checks.items.find(check => check.name === 'ci/deploy-preview')
-                            : undefined;
-
-                        if (preview) preview.url = 'http://preview.car-rental.example/pr-128';
-
-                        return answer;
-                    },
-                }),
-        });
+        await start();
         await draw();
 
         const sidebar = container.querySelector('[aria-label="Changes sidebar"]')!;
@@ -796,19 +784,17 @@ describe('the sidebar', () => {
         await press(sidebar.querySelector('button[aria-label="Open the repository on GitHub"]')!);
         expect(open).toHaveBeenCalledExactlyOnceWith('https://github.com/acme/car-rental', '_blank', 'noopener');
 
-        await press(sidebar.querySelector('button[aria-label^="Show checks"]')!);
-        await settle();
-        const checks = document.querySelector('ul[aria-label="Checks"]')!;
-        const failedCheck = checks.querySelector<HTMLAnchorElement>('a[aria-label="unit (windows), Failing"]')!;
-        const skippedCheck = checks.querySelector<HTMLAnchorElement>('a[aria-label="docs, Skipped"]')!;
-        const previewCheck = checks.querySelector<HTMLAnchorElement>('a[aria-label="ci/deploy-preview, Passing"]')!;
+        const pullRequest = sidebar.querySelector('button[aria-label^="Open pull request 128"]')!;
+        const checks = pullRequest.querySelector('[data-check="failed"]')!;
 
-        expect(checks.querySelectorAll('li')).toHaveLength(7);
-        expect(failedCheck.getAttribute('href')).toBe('https://github.com/acme/car-rental/actions/runs/101/job/2');
-        expect(failedCheck.target).toBe('_blank');
-        expect(failedCheck.rel).toBe('noopener');
-        expect(skippedCheck.getAttribute('href')).toBe('https://github.com/acme/car-rental/pull/128/checks');
-        expect(previewCheck.getAttribute('href')).toBe('https://github.com/acme/car-rental/pull/128/checks');
+        open.mockClear();
+        await press(checks);
+        expect(open).toHaveBeenCalledExactlyOnceWith(
+            'https://github.com/acme/car-rental/pull/128',
+            '_blank',
+            'noopener'
+        );
+        expect(document.querySelector('ul[aria-label="Checks"]')).toBeNull();
     });
 
     it('is hidden by a press on its button, which is then in the toolbar of the diffs, and comes back on a second press', async () => {

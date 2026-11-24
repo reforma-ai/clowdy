@@ -88,65 +88,38 @@ describe('parseRemote', () => {
 });
 
 describe('rollupChecks', () => {
-    const run = (name: string, status: string, conclusion: string | null, startedAt?: string, detailsUrl?: string) => ({
+    const run = (name: string, status: string, conclusion: string | null, startedAt?: string) => ({
         __typename: 'CheckRun',
         name,
         status,
         conclusion,
         startedAt: startedAt ?? null,
-        detailsUrl: detailsUrl ?? null,
     });
-    const context = (name: string, state: string, createdAt?: string, targetUrl?: string) => ({
+    const context = (name: string, state: string, createdAt?: string) => ({
         __typename: 'StatusContext',
         context: name,
         state,
         createdAt: createdAt ?? null,
-        targetUrl: targetUrl ?? null,
     });
 
-    test('counts a check by how it ended, and lists failing first, then pending, passing and skipped, by name', () => {
+    test('counts each check by how it ended', () => {
         const checks = rollupChecks([
-            run('lint', 'COMPLETED', 'SUCCESS', undefined, 'https://ci.example/lint'),
+            run('lint', 'COMPLETED', 'SUCCESS'),
             run('typecheck', 'COMPLETED', 'NEUTRAL'),
             run('e2e', 'IN_PROGRESS', null),
             run('deploy', 'QUEUED', null),
             run('docs', 'COMPLETED', 'SKIPPED'),
-            run('unit', 'COMPLETED', 'FAILURE', undefined, 'https://ci.example/unit'),
+            run('unit', 'COMPLETED', 'FAILURE'),
             run('build', 'COMPLETED', 'TIMED_OUT'),
             run('approve', 'COMPLETED', 'ACTION_REQUIRED'),
             run('odd', 'COMPLETED', null),
-            context('coverage', 'SUCCESS', undefined, 'https://cov.example'),
+            context('coverage', 'SUCCESS'),
             context('legacy', 'ERROR'),
             context('required', 'EXPECTED'),
         ]);
 
         expect(checks).toMatchObject({ state: 'failing', passing: 3, failing: 4, pending: 4, skipped: 1 });
         expect(checks.truncated).toBeUndefined();
-        expect(checks.items.map(item => `${item.state}:${item.name}`)).toEqual([
-            'failing:approve',
-            'failing:build',
-            'failing:legacy',
-            'failing:unit',
-            'pending:deploy',
-            'pending:e2e',
-            'pending:odd',
-            'pending:required',
-            'passing:coverage',
-            'passing:lint',
-            'passing:typecheck',
-            'skipped:docs',
-        ]);
-        expect(checks.items.find(item => item.name === 'unit')).toEqual({
-            name: 'unit',
-            state: 'failing',
-            url: 'https://ci.example/unit',
-        });
-        expect(checks.items.find(item => item.name === 'coverage')).toEqual({
-            name: 'coverage',
-            state: 'passing',
-            url: 'https://cov.example',
-        });
-        expect(checks.items.find(item => item.name === 'build')).toEqual({ name: 'build', state: 'failing' });
     });
 
     test('adds up to pending when nothing failed and something is not done, passing when all are, and none when no check ran', () => {
@@ -155,7 +128,7 @@ describe('rollupChecks', () => {
             'passing'
         );
         expect(rollupChecks([run('a', 'COMPLETED', 'SKIPPED')]).state).toBe('passing');
-        expect(rollupChecks([])).toEqual({ state: 'none', passing: 0, failing: 0, pending: 0, skipped: 0, items: [] });
+        expect(rollupChecks([])).toEqual({ state: 'none', passing: 0, failing: 0, pending: 0, skipped: 0 });
     });
 
     test('keeps the run that began last of a name, a commit status by its context, and the later in the list when neither has a time', () => {
@@ -169,28 +142,7 @@ describe('rollupChecks', () => {
             run('plain', 'COMPLETED', 'SUCCESS'),
         ]);
 
-        expect(checks.items).toEqual([
-            { name: 'build', state: 'passing' },
-            { name: 'ci/old', state: 'passing' },
-            { name: 'plain', state: 'passing' },
-        ]);
-        expect(checks.state).toBe('passing');
-    });
-
-    test('keeps the link of a check only when it is a web address', () => {
-        const checks = rollupChecks([
-            run('web', 'COMPLETED', 'SUCCESS', undefined, 'HTTPS://ci.example/web'),
-            run('script', 'COMPLETED', 'SUCCESS', undefined, 'javascript:alert(1)'),
-            run('file', 'COMPLETED', 'SUCCESS', undefined, 'file:///etc/passwd'),
-            context('ci/custom', 'SUCCESS', undefined, 'myapp://open?x=1'),
-        ]);
-
-        expect(checks.items).toEqual([
-            { name: 'ci/custom', state: 'passing' },
-            { name: 'file', state: 'passing' },
-            { name: 'script', state: 'passing' },
-            { name: 'web', state: 'passing', url: 'HTTPS://ci.example/web' },
-        ]);
+        expect(checks).toEqual({ state: 'passing', passing: 3, failing: 0, pending: 0, skipped: 0 });
     });
 
     test('ignores a node it cannot read, and a check with no name', () => {
@@ -203,7 +155,7 @@ describe('rollupChecks', () => {
             run('ok', 'COMPLETED', 'SUCCESS'),
         ]);
 
-        expect(checks.items).toEqual([{ name: 'ok', state: 'passing' }]);
+        expect(checks).toEqual({ state: 'passing', passing: 1, failing: 0, pending: 0, skipped: 0 });
     });
 
     test("takes the worse of its own state and GitHub's when GitHub has more checks than were read", () => {
@@ -388,12 +340,11 @@ const graphql = (nodes: unknown[], defaultBranch = 'main') => ({
     data: { repository: { defaultBranchRef: { name: defaultBranch }, pullRequests: { nodes } } },
 });
 
-const checkRun = (name: string, status: string, conclusion: string | null, detailsUrl?: string) => ({
+const checkRun = (name: string, status: string, conclusion: string | null) => ({
     __typename: 'CheckRun',
     name,
     status,
     conclusion,
-    detailsUrl: detailsUrl ?? null,
     startedAt: '2026-11-20T10:00:00Z',
 });
 
@@ -685,9 +636,10 @@ withStandIn('PullRequests', () => {
                 'pullRequests(headRefName: $head, first: 20, orderBy: { field: CREATED_AT, direction: DESC })'
             );
             expect(call![7]).toContain('statusCheckRollup { state contexts(first: 100)');
+            expect(call![7]).not.toMatch(/detailsUrl|targetUrl/);
         });
 
-        test('answers an open pull request with its checks counted and listed', async () => {
+        test('answers an open pull request with the CI summary', async () => {
             const { place, head } = repoOn();
 
             gh.reply('feature', {
@@ -695,14 +647,13 @@ withStandIn('PullRequests', () => {
                     node(
                         { headRefOid: head, reviewDecision: 'REVIEW_REQUIRED', mergeStateStatus: 'BLOCKED' },
                         [
-                            checkRun('lint', 'COMPLETED', 'SUCCESS', 'https://github.com/acme/app/runs/1'),
-                            checkRun('unit', 'COMPLETED', 'FAILURE', 'https://github.com/acme/app/runs/2'),
+                            checkRun('lint', 'COMPLETED', 'SUCCESS'),
+                            checkRun('unit', 'COMPLETED', 'FAILURE'),
                             checkRun('e2e', 'IN_PROGRESS', null),
                             {
                                 __typename: 'StatusContext',
                                 context: 'ci/legacy',
                                 state: 'SUCCESS',
-                                targetUrl: 'https://ci.example/9',
                                 createdAt: '2026-11-20T10:00:00Z',
                             },
                         ],
@@ -734,12 +685,6 @@ withStandIn('PullRequests', () => {
                         failing: 1,
                         pending: 1,
                         skipped: 0,
-                        items: [
-                            { name: 'unit', state: 'failing', url: 'https://github.com/acme/app/runs/2' },
-                            { name: 'e2e', state: 'pending' },
-                            { name: 'ci/legacy', state: 'passing', url: 'https://ci.example/9' },
-                            { name: 'lint', state: 'passing', url: 'https://github.com/acme/app/runs/1' },
-                        ],
                     },
                 },
             });
@@ -796,7 +741,6 @@ withStandIn('PullRequests', () => {
                 failing: 0,
                 pending: 0,
                 skipped: 0,
-                items: [],
             });
         });
 
@@ -1053,7 +997,6 @@ withStandIn('PullRequests', () => {
             const checks = (await pullRequestOf(place))?.checks as GitChecks;
 
             expect(checks).toMatchObject({ state: 'pending', truncated: true, passing: 100 });
-            expect(checks.items).toHaveLength(100);
         });
     });
 

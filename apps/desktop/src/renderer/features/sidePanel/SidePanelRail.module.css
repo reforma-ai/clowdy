@@ -13,7 +13,7 @@
     padding-bottom: calc(var(--spacing-lg) + var(--spacing-xs));
 }
 
-/* The tabs take the column's height, so Info can go to its bottom, above Settings. */
+/* The tabs take the available height above Settings. */
 .tabs {
     display: flex;
     flex: 1;

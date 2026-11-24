@@ -285,6 +285,8 @@ export type GitStatus =
            * message git prepared.
            */
           merging?: { conflicts: number; subject?: string };
+          /** A rebase is paused in this checkout. */
+          rebasing?: true;
           base: GitBase;
       };
 
@@ -400,16 +402,7 @@ export type GitPullRequestState = 'open' | 'draft' | 'merged' | 'closed';
 /** How one check ended: `skipped` is a check that was not run on purpose (it does not count against the pull request); an unfinished one, or one that GitHub has not said how it ended, is `pending`. */
 export type GitCheckState = 'passing' | 'failing' | 'pending' | 'skipped';
 
-/** One check of the pull request's head commit: a check run or a commit status. */
-export interface GitCheck {
-    /** The check run's name, or the status's context. */
-    name: string;
-    state: GitCheckState;
-    /** Where the check's own page is. */
-    url?: string;
-}
-
-/** The checks of a pull request's head commit, one for each name (the latest run of it), and what they add up to. */
+/** Summary of the checks at a pull request’s head commit, using the latest run of each name. */
 export interface GitChecks {
     /** `none` when no check ran, `failing` when one failed, else `pending` when one is not finished, else `passing`. */
     state: 'none' | 'passing' | 'failing' | 'pending';
@@ -418,13 +411,11 @@ export interface GitChecks {
     failing: number;
     pending: number;
     skipped: number;
-    /** Failing first, then pending, passing and skipped; by name within a state. At most `MAX_GIT_CHECKS` (the first that GitHub lists). */
-    items: GitCheck[];
-    /** GitHub has more checks than `MAX_GIT_CHECKS`: `items` and the counts cover the first ones, and `state` is the worse of what they say and what GitHub says of all of them. */
+    /** GitHub has more than `MAX_GIT_CHECKS` checks. The counts cover the first page and `state` also reflects GitHub’s total. */
     truncated?: true;
 }
 
-/** The most checks `GitChecks` lists: GitHub's first page of them. */
+/** The maximum number of checks read from GitHub when computing summary counts. */
 export const MAX_GIT_CHECKS = 100;
 
 /** What reviewers have decided, when the repository asks for a review. */
@@ -570,6 +561,9 @@ export type GitBranches =
           truncated?: true;
       };
 
+export const GIT_BRANCH_MERGE_STRATEGIES = ['merge', 'fast-forward-only', 'squash', 'rebase'] as const;
+export type GitBranchMergeStrategy = (typeof GIT_BRANCH_MERGE_STRATEGIES)[number];
+
 export interface GitBranchMergeSelection {
     direction: 'from' | 'into';
     /** The branch checked out when the dialog opened. */
@@ -577,6 +571,8 @@ export interface GitBranchMergeSelection {
     branch: string;
     /** The selected source is a ref on origin. The destination is always local. */
     remote?: true;
+    /** Defaults to a regular merge with fast-forward when possible. */
+    strategy?: GitBranchMergeStrategy;
 }
 
 /** The body of POST /v1/projects/:id/git/merge, together with the place. */
@@ -584,7 +580,7 @@ export type GitBranchMergeRequest =
     | (GitBranchMergeSelection & { action: 'preview' })
     | (GitBranchMergeSelection & { action: 'merge'; sourceCommit: string; targetCommit: string })
     | { action: 'push'; target: string; commit: string }
-    | { action: 'abort'; target: string; commit: string; sourceCommit: string };
+    | { action: 'abort'; target: string; commit: string; sourceCommit: string; operation?: 'rebase' };
 
 export interface GitBranchMergePreview {
     state: 'preview';
@@ -593,10 +589,12 @@ export interface GitBranchMergePreview {
     sourceCommit: string;
     targetCommit: string;
     commits: number;
-    mode: 'up-to-date' | 'fast-forward' | 'merge-commit';
+    mode: 'up-to-date' | 'fast-forward' | 'merge-commit' | 'squash' | 'rebase';
+    /** Destination commits that would be replayed in a rebase. */
+    replayCommits?: number;
     /** Existing checkout of the destination, when there is one. */
     targetPath?: string;
-    /** Preflight for an outgoing merge commit in the existing destination checkout. */
+    /** Preflight for a squash or outgoing merge in the existing destination checkout. */
     conflictCheck?: 'clean' | 'conflicts';
 }
 
@@ -610,8 +608,10 @@ export type GitBranchMergeResult =
           sourceCommit: string;
           targetPath: string;
           conflicts: number;
+          operation?: 'rebase';
       }
-    | { state: 'pushed' | 'aborted'; target: string };
+    | { state: 'pushed'; target: string }
+    | { state: 'aborted'; target: string; operation?: 'rebase' };
 
 /** Where a new branch starts: at the place's HEAD, or at the repository's default branch. */
 export type GitSwitchStart = 'current' | 'default';

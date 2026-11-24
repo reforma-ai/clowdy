@@ -129,6 +129,7 @@ export class CommitDraft {
     get canGenerate(): boolean {
         return (
             this.busy === undefined &&
+            !this.rebasing &&
             !this.noneTicked &&
             (this.message.trim() === '' || this.message === this.generated)
         );
@@ -147,6 +148,12 @@ export class CommitDraft {
         const status = this.model.facts.status.value;
 
         return status?.isRepository === true ? status.merging : undefined;
+    }
+
+    get rebasing(): boolean {
+        const status = this.model.facts.status.value;
+
+        return status?.isRepository === true && status.rebasing === true;
     }
 
     /** A resolved merge can be committed without ticking files. */
@@ -171,6 +178,7 @@ export class CommitDraft {
     get canCommit(): boolean {
         return (
             this.busy === undefined &&
+            !this.rebasing &&
             (this.merging?.conflicts ?? 0) === 0 &&
             this.message.trim() !== '' &&
             (this.concluding || !this.noneTicked)
@@ -183,6 +191,7 @@ export class CommitDraft {
      */
     get commitReason(): string | undefined {
         if (this.busy !== undefined) return undefined;
+        if (this.rebasing) return 'Continue or abort the rebase first';
 
         if ((this.merging?.conflicts ?? 0) > 0) return 'Resolve the conflicts first';
 
