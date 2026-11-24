@@ -67,20 +67,40 @@ function AgentRow({ run, now }: { run: Run; now: number }) {
     );
 }
 
+function threadStatus(run: Run): string | undefined {
+    switch (shownRunStatus(run)) {
+        case 'waiting_user':
+            return 'Waiting for you';
+        case 'waiting_background':
+            return 'Waiting for background work';
+        case 'queued':
+            return 'Waiting for a free slot';
+        case 'blocked':
+            return run.statusReason ? `Blocked · ${run.statusReason}` : 'Blocked';
+        default:
+            return undefined;
+    }
+}
+
 function ThreadRow({ chat, run }: ThreadAtWork) {
     const root = useRootStore();
     const project = useProjectState();
     const ui = useProjectUi();
-    const waiting = shownRunStatus(run) === 'waiting_user';
+    const detail = threadStatus(run);
+    const stream = useRunStream(run.id);
+    const calls =
+        stream?.status === 'ready' ? stream.items.filter(item => item.body.kind === 'tool').length : undefined;
+    const progress = calls === undefined ? undefined : `${calls} ${calls === 1 ? 'call' : 'calls'} total`;
 
     return (
         <ComposerBannerStatus
             icon={<Split />}
-            detail={waiting ? 'Waiting for you' : undefined}
+            progress={progress}
+            detail={detail}
             action="Stop"
             onAction={() => void perform(root, { type: 'run.cancel', runId: run.id })}
             onPress={() => void openChat(root, project, ui, chat.id)}
-            pressLabel={`Open ${chat.title}${waiting ? '. Waiting for you' : ''}`}
+            pressLabel={`Open ${chat.title}${detail ? `. ${detail}` : ''}${progress ? `. ${progress}` : ''}`}
         >
             {chat.title}
         </ComposerBannerStatus>

@@ -515,10 +515,54 @@ describe('RunningAgents, threads', () => {
         await draw('c-6');
 
         expect(rows().map(row => buttons(row))).toEqual([
-            ['Fix the price rounding', 'Stop'],
-            ['Load test the checkout', 'Stop'],
+            ['Fix the price rounding4 calls total', 'Stop'],
+            ['Load test the checkoutWaiting for background work2 calls total', 'Stop'],
         ]);
         expect(buttons(header())).toEqual([toggle().textContent]);
+    });
+
+    it('shows a live session total across turns only when the full stream is ready', async () => {
+        await draw('c-6');
+        const stream = store.streams.of('r-orch-6a');
+        const tool = stream.items.find(item => item.body.kind === 'tool')!;
+        const user = stream.items.find(item => item.body.kind === 'user')!;
+        expect(rows()[0].textContent).toContain('4 calls total');
+
+        stream.upsert({ ...user, id: 'new-turn', seq: 100 });
+        stream.upsert({ ...tool, id: 'new-call', seq: 101 });
+        await render('c-6');
+        expect(rows()[0].textContent).toContain('5 calls total');
+        expect(rows()[0].querySelector('button')?.getAttribute('aria-label')).toContain('5 calls total');
+
+        stream.status = 'loading';
+        await render('c-6');
+        expect(rows()[0].textContent).not.toContain('calls total');
+        stream.status = 'failed';
+        await render('c-6');
+        expect(rows()[0].textContent).not.toContain('calls total');
+        stream.status = 'ready';
+        stream.truncate(1);
+        await render('c-6');
+        expect(rows()[0].textContent).toContain('0 calls total');
+    });
+
+    it('shows queued and blocked states with the reason in the accessible name', async () => {
+        const thread = runs().get('r-orch-6a')!;
+        put({ ...thread, status: 'queued' });
+        await draw('c-6');
+        expect(rows()[0].textContent).toContain('Waiting for a free slot');
+        expect(rows()[0].querySelector('button')?.getAttribute('aria-label')).toContain('Waiting for a free slot');
+
+        put({ ...thread, status: 'blocked', statusReason: 'Usage limit until 14:00' });
+        await draw('c-6');
+        expect(rows()[0].textContent).toContain('Blocked · Usage limit until 14:00');
+        expect(rows()[0].querySelector('button')?.getAttribute('aria-label')).toContain(
+            'Blocked · Usage limit until 14:00'
+        );
+
+        put({ ...thread, status: 'blocked', statusReason: undefined });
+        await draw('c-6');
+        expect(rows()[0].querySelector('button')?.getAttribute('aria-label')).toContain('. Blocked.');
     });
 
     it('puts a thread that waits for the person first, also when it rests for its background work and its card is the only sign', async () => {
@@ -526,8 +570,8 @@ describe('RunningAgents, threads', () => {
         await draw('c-6');
 
         expect(rows().map(row => buttons(row))).toEqual([
-            ['Load test the checkoutWaiting for you', 'Stop'],
-            ['Fix the price rounding', 'Stop'],
+            ['Load test the checkoutWaiting for you2 calls total', 'Stop'],
+            ['Fix the price rounding4 calls total', 'Stop'],
         ]);
     });
 
@@ -536,7 +580,9 @@ describe('RunningAgents, threads', () => {
         ui().toggleAgentsFolded();
         await draw('c-6');
 
-        expect(rows().map(row => buttons(row))).toEqual([['Load test the checkoutWaiting for you', 'Stop']]);
+        expect(rows().map(row => buttons(row))).toEqual([
+            ['Load test the checkoutWaiting for you2 calls total', 'Stop'],
+        ]);
         expect(header()!.textContent).toBe('Agents2 running');
 
         // Once it is decided nothing is left to show on the folded line.
@@ -580,7 +626,7 @@ describe('RunningAgents, threads', () => {
         await draw('c-6');
         expect(container.textContent).not.toContain('Check the currency table');
         await draw('c-6a');
-        expect(rows().map(row => buttons(row))).toEqual([['Check the currency table', 'Stop']]);
+        expect(rows().map(row => buttons(row))).toEqual([['Check the currency table1 call total', 'Stop']]);
     });
 
     it('keeps a long thread name and waiting status accessible at narrow widths', async () => {
@@ -591,7 +637,7 @@ describe('RunningAgents, threads', () => {
         container.style.width = '240px';
         await draw('c-6');
         const button = rows()[0].querySelector('button')!;
-        expect(button.getAttribute('aria-label')).toBe(`Open ${title}. Waiting for you`);
+        expect(button.getAttribute('aria-label')).toBe(`Open ${title}. Waiting for you. 2 calls total`);
         expect(button.textContent).toContain('Waiting for you');
     });
 
