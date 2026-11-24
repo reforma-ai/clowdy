@@ -481,7 +481,7 @@ describe('grouped by folder', () => {
         expect(rowOf(`@empty:${API.id}`).textContent).toBe('No chats');
     });
 
-    it('opens the menu of the folder from a press on the name of its group, with the new-chat page of that folder shown, in the desktop app only', async () => {
+    it('keeps the current chat when opening a folder menu and opens a draft when New chat is chosen', async () => {
         const name = (folderId: string) =>
             rowOf(head(folderId)).querySelector<HTMLButtonElement>('button[aria-label^="Folder:"]');
         const menuItems = () =>
@@ -503,11 +503,21 @@ describe('grouped by folder', () => {
             expect(name(MAIN)?.textContent).toBe('car-rental');
             await draw(() => ui().openChat('c-1'));
 
-            // The press shows the new chat of the folder, which is then the folder the window works in: the menu can open it in the Files tab and the terminal.
             await press(name(API.id)!);
+            expect([ui().draft, ui().chatId]).toEqual([false, 'c-1']);
+            expect(isSelected('c-1')).toBe(true);
+            expect(menuItems()).toEqual(['New chat', 'Copy path', 'Open in…', 'Manage worktrees…']);
+
+            await press(menuItem('New chat'));
+            await draw();
+
             expect([ui().draft, ui().draftFolderId]).toEqual([true, API.id]);
-            // Manage worktrees… is the last item, there from the first frame.
+            expect(isSelected('@new-chat')).toBe(true);
+
+            // The built-in tabs can open the folder when it matches the current draft.
+            await press(name(API.id)!);
             expect(menuItems()).toEqual([
+                'New chat',
                 'Open in Files',
                 'Open in Terminal',
                 'Copy path',
@@ -515,19 +525,14 @@ describe('grouped by folder', () => {
                 'Manage worktrees…',
             ]);
 
-            // The main folder's new chat has no folder of its own. The menu holds the page while it is open: this one is a fresh start.
-            await restart();
-            await draw(() => ui().openChat('c-2'));
+            await press(menuItem('New chat'));
+            await draw(() => ui().setDraftWorkspace({ mode: 'new' }));
             await press(name(MAIN)!);
+            expect([ui().draft, ui().draftFolderId, ui().draftWorkspace]).toEqual([true, API.id, { mode: 'new' }]);
+            await press(menuItem('New chat'));
+
+            // The main folder's draft follows the project's main folder.
             expect([ui().draft, ui().draftFolderId]).toEqual([true, null]);
-            expect(menuItems()).toEqual([
-                'Open in Files',
-                'Open in Terminal',
-                'Copy path',
-                'Open in…',
-                'Manage worktrees…',
-            ]);
-            // It folds nothing.
             expect(ui().collapsedFolders).toEqual([]);
         } finally {
             window.desktop = undefined;
@@ -577,10 +582,14 @@ describe('grouped by folder', () => {
             expect(menuItems()).toEqual([
                 'Locate…',
                 'Remove from project',
+                'New chat',
                 'Copy path',
                 'Open in…',
                 'Manage worktrees…',
             ]);
+            expect(item('New chat').getAttribute('aria-disabled')).toBe('true');
+            await press(item('New chat'));
+            expect(ui().draft).toBe(false);
 
             await press(item('Locate…'));
             await vi.waitFor(() =>
@@ -1238,8 +1247,11 @@ describe('the archive', () => {
         expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe('c-1');
     });
 
-    it('is not offered from the row while an agent of the chat works', () => {
-        expect(rowOf('c-1').querySelector('button[aria-label="Archive"]')?.hasAttribute('disabled')).toBe(true);
+    it('shows a green status in place of the archive shortcut while the chat works', () => {
+        const busyActions = rowOf('c-1').querySelector('[slot="endAffix"]');
+
+        expect(busyActions?.querySelector('button[aria-label="Archive"]')).toBeNull();
+        expect(busyActions?.querySelector('[aria-label="Working"] [data-tone="success"]')).not.toBeNull();
         expect(rowOf('c-4').querySelector('button[aria-label="Archive"]')?.hasAttribute('disabled')).toBe(false);
     });
 
@@ -1458,7 +1470,10 @@ describe('threads', () => {
     it('offers no Archive on a chat whose threads work, and offers it on a finished thread', async () => {
         await draw(() => ui().toggleChatExpanded('c-6'));
 
-        expect(rowOf('c-6').querySelector('button[aria-label="Archive"]')?.hasAttribute('disabled')).toBe(true);
+        const busyActions = rowOf('c-6').querySelector('[slot="endAffix"]');
+
+        expect(busyActions?.querySelector('button[aria-label="Archive"]')).toBeNull();
+        expect(busyActions?.querySelector('[aria-label="Threads working"] [data-tone="success"]')).not.toBeNull();
         expect(rowOf('c-6b').querySelector('button[aria-label="Archive"]')?.hasAttribute('disabled')).toBe(false);
 
         await press(rowOf('c-6').querySelector<HTMLElement>('button[aria-label="Chat actions"]')!);

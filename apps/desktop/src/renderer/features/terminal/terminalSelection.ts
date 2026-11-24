@@ -41,3 +41,47 @@ export function selectedBufferRows(lineAt: (index: number) => BufferRow | undefi
 
     return { from: start.y + 1, to: start.y + lines.length, text };
 }
+
+/** The gap kept between the button and the screen's right edge, the same one the file editor keeps. */
+const EDGE_GAP = 8;
+
+/** Where the Add to chat button stands, in px inside the terminal's screen. */
+export interface QuoteButtonPlace {
+    left: number;
+    top: number;
+}
+
+/**
+ * Where the Add to chat button stands: just under the end of the selection, pulled back inside the screen when that end is past the right
+ * edge, as the button over a file is. Nothing when that row is scrolled out of the screen. A selection that ends at the start of a row ends
+ * on the row before it, at the screen's right edge.
+ */
+export function quoteButtonPlace(input: {
+    startY: number;
+    endX: number;
+    endY: number;
+    viewportY: number;
+    cols: number;
+    rows: number;
+    cellWidth: number;
+    cellHeight: number;
+    buttonWidth: number;
+    buttonHeight: number;
+}): QuoteButtonPlace | undefined {
+    const endsOnNextRow = input.endX === 0 && input.endY > input.startY;
+    const row = endsOnNextRow ? input.endY - 1 : input.endY;
+    const column = endsOnNextRow ? input.cols : input.endX;
+    const viewRow = row - input.viewportY;
+
+    if (viewRow < 0 || viewRow >= input.rows) return undefined;
+
+    const screenWidth = input.cols * input.cellWidth;
+    const screenHeight = input.rows * input.cellHeight;
+    const maxLeft = Math.max(0, screenWidth - input.buttonWidth - EDGE_GAP);
+    const left = Math.min(Math.max(column * input.cellWidth, 0), maxLeft);
+    const below = (viewRow + 1) * input.cellHeight;
+    const above = viewRow * input.cellHeight - input.buttonHeight;
+    const top = below + input.buttonHeight <= screenHeight ? below : Math.max(0, above);
+
+    return { left, top };
+}

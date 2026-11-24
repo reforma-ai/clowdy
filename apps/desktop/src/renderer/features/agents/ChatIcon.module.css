@@ -12,8 +12,7 @@
     display: flex;
 }
 
-/* Doubled so it outranks the dot's own size. */
-.dotMark.dotMark {
+.dot > span {
     width: var(--spacing-sm);
     height: var(--spacing-sm);
 }
