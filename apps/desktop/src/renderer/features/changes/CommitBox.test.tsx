@@ -160,18 +160,19 @@ describe('the commit box', () => {
         expect(generateButton()?.disabled).toBe(false);
     });
 
-    it('ticks and unticks a file on a press anywhere on its row, as on its tick', async () => {
+    it('asks the diff list to bring a file up on a press on its row, and ticks it only on its tick', async () => {
         await start();
 
         const row = tickOf('src/limits.ts').closest('[role="row"]')!;
 
         await press(row);
-        expect(tickOf('src/limits.ts').checked).toBe(false);
-        expect(box()?.textContent).toContain('2 of 3');
-
-        await press(row);
+        expect(model.revealRequest).toBe('src/limits.ts');
         expect(tickOf('src/limits.ts').checked).toBe(true);
         expect(box()?.textContent).toContain('3 of 3');
+
+        await press(tickOf('src/limits.ts'));
+        expect(tickOf('src/limits.ts').checked).toBe(false);
+        expect(box()?.textContent).toContain('2 of 3');
     });
 
     it('commits only the files that are ticked, with the message as typed, clears the box, and reads the place again', async () => {

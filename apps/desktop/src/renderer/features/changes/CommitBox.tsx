@@ -161,7 +161,8 @@ function CommitFileList({
             onAction={key => {
                 const path = String(key);
 
-                if (mergeGroup === undefined) draft.setTicked(path, !draft.isTicked(path));
+                // A press on the row opens the file's diff; its tick is the checkbox's own.
+                if (mergeGroup === undefined) draft.model.showFile(path);
                 else draft.model.showUncommittedFile(path);
             }}
         >
