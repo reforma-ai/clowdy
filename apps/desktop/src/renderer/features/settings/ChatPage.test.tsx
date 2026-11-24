@@ -7,7 +7,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { chatListPreferences } from '../agents/chatListPreferences';
-import { branchPrefix } from '../chats/branchPrefix';
 import { busyEnter } from '../chats/busyEnter';
 import { newChatDefaults } from '../chats/newChatDefaults';
 import { swipeToReply } from '../chats/swipeReplyPreference';
@@ -32,8 +31,6 @@ const radio = (group: string, label: string) =>
 const checked = (group: string) =>
     container.querySelector(`[aria-label="${group}"] [role="radio"][aria-checked="true"]`)?.textContent;
 const finished = () => container.querySelector<HTMLInputElement>('input[aria-label="Finished threads"]')!;
-const prefixField = () => container.querySelector<HTMLInputElement>('input[aria-label="Branch prefix"]')!;
-const prefixNote = () => container.querySelector('[role="alert"]')?.textContent;
 const labels = (group: string) =>
     [...container.querySelectorAll<HTMLElement>(`[aria-label="${group}"] [role="radio"]`)].map(
         item => item.textContent
@@ -42,7 +39,6 @@ const labels = (group: string) =>
 function reset() {
     busyEnter.setMode('steer');
     swipeToReply.setEnabled(true);
-    branchPrefix.setValue('');
     newChatDefaults.setEngine(undefined);
     newChatDefaults.setMode(undefined);
     chatListPreferences.setShowFinishedThreads(true);
@@ -75,6 +71,10 @@ afterEach(() => {
 });
 
 describe('ChatPage', () => {
+    it('leaves the worktree prefix to Source Control', () => {
+        expect(container.querySelector('input[aria-label="Branch prefix"]')).toBeNull();
+    });
+
     it('offers how a message sent while the agent works goes, steering by default', () => {
         expect(checked(LABEL)).toBe('Steer');
         expect(container.textContent).toContain(
@@ -130,71 +130,6 @@ describe('ChatPage', () => {
         act(() => radio('Mode for new chats', 'Last used').click());
 
         expect([newChatDefaults.engine, newChatDefaults.mode]).toEqual([undefined, undefined]);
-    });
-
-    describe('the branch prefix of a new worktree', () => {
-        const type = (text: string) =>
-            act(() => {
-                prefixField().focus();
-                Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(prefixField(), text);
-                prefixField().dispatchEvent(new Event('input', { bubbles: true }));
-            });
-        const leave = () => act(() => prefixField().blur());
-
-        it('is clowdy at first, with a line that says what it does and no period after it', () => {
-            expect(prefixField().value).toBe('clowdy');
-            expect(container.textContent).toContain('Branches of new worktrees are named like clowdy/ab12cd34');
-            expect(container.textContent).not.toContain('such as clowdy/ab12cd34.');
-            expect(prefixNote()).toBeUndefined();
-        });
-
-        it('keeps a prefix on this computer as it is typed, and shows it in the example', () => {
-            type('max');
-
-            expect(branchPrefix.value).toBe('max');
-            expect(localStorage.getItem('clowdy:branch-prefix')).toBe('"max"');
-            expect(container.textContent).toContain('named like max/ab12cd34');
-            expect(prefixNote()).toBeUndefined();
-
-            type('team/max');
-            leave();
-
-            expect(branchPrefix.value).toBe('team/max');
-            expect(prefixField().value).toBe('team/max');
-        });
-
-        it('says why a prefix is refused, keeps the one that was in force, and shows the box as it was typed until it is fixed', () => {
-            type('max');
-            type('two words');
-
-            expect(prefixNote()).toBe('The branch prefix cannot have a space or a control character');
-            expect(prefixField().getAttribute('aria-invalid')).toBe('true');
-            expect(branchPrefix.value).toBe('max');
-            expect(localStorage.getItem('clowdy:branch-prefix')).toBe('"max"');
-
-            // Leaving the box does not make a refused text the setting, nor throw it away.
-            leave();
-
-            expect(prefixField().value).toBe('two words');
-            expect(prefixNote()).toBeDefined();
-
-            type('two-words');
-
-            expect(prefixNote()).toBeUndefined();
-            expect(branchPrefix.value).toBe('two-words');
-        });
-
-        it('is the default again when the box is emptied, and shows it once the box is left', () => {
-            type('max');
-            type('');
-
-            expect(branchPrefix.value).toBe('clowdy');
-            expect(prefixNote()).toBeUndefined();
-
-            leave();
-
-            expect(prefixField().value).toBe('clowdy');
-        });
     });
 
     it('keeps the finished threads filter and removes the automatic chat sort setting', () => {
