@@ -55,8 +55,8 @@ function Counts({ ahead, behind }: Pick<SyncView, 'ahead' | 'behind'>) {
 }
 
 /**
- * The one button that moves the branch, with GitHub Desktop's words: its label is the next action (`Publish branch`, `Pull origin` or `Push origin` with the commits it moves, `Fetch origin`),
- * and under it is when the last fetch was (`Last fetched 3 minutes ago`, `Never fetched`) or the one thing to know of the state. A branch that diverged is `Pull origin`: the pull merges. It is
+ * The one button that moves the branch: its label is Publish, Pull or Push when the branch needs to sync. Otherwise it shows `Update from <base>` if the base is ahead, or `Fetch origin`.
+ * Under the label is when the last fetch was (`Last fetched 3 minutes ago`, `Never fetched`) or the one thing to know of the state. A branch that diverged is `Pull origin`: the pull merges. It is
  * `syncButton`'s rule. While an action runs the label is its progress with a spinner, and nothing can be pressed; where there is nothing to press (no origin, no branch) it is off, and its
  * tooltip says why. The words are cut by the sidebar's edge, narrow as it is dragged: the tooltip has all of them. Beside it a dropdown keeps every action with the reason it cannot run
  * (`remoteActions`: nothing to pull, nothing to push, not published, pull first, no origin), Fetch origin first and always. When an action ends a quiet line

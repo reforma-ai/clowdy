@@ -101,10 +101,11 @@ export function ChangesSidebar({
             <div className={styles.body}>
                 {(base || pr || hint || status?.isRepository === true) && (
                     <div className={styles.facts}>
+                        <RemoteMenu facts={facts} />
                         {base && (
                             <div className={styles.baseRow} title={`${base.name}, ${counts}`}>
                                 <Text variant="xs" color="secondary" truncate>
-                                    {`→ ${base.name}`}
+                                    {`Base: ${base.name}`}
                                 </Text>
                                 {(base.ahead > 0 || base.behind > 0) && (
                                     <Text
@@ -130,7 +131,6 @@ export function ChangesSidebar({
                                 )}
                             </div>
                         )}
-                        <RemoteMenu facts={facts} />
                         <MergeBanner facts={facts} />
                         {pr ? (
                             <PullRequestChip pr={pr} stale={facts.pullRequest.stale} />

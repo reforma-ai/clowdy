@@ -193,7 +193,7 @@ describe('the sync button in the sidebar', () => {
         expect(isOff('Publish branch')).toBe(false);
     });
 
-    it('publishes the branch on a press, says so, and is then Fetch origin with when the repository last fetched', async () => {
+    it('publishes the branch on a press, says so, and offers to update from the base', async () => {
         await start();
 
         const push = vi.spyOn(transport, 'pushGit');
@@ -207,8 +207,8 @@ describe('the sync button in the sidebar', () => {
             workspaceId: 'wks_ab12cd34',
         });
         expect(status()?.textContent).toBe('Published to origin');
-        expect(syncButton().getAttribute('data-sync')).toBe('fetch');
-        expect(syncButton().textContent).toBe('Fetch originLast fetched 3 minutes ago');
+        expect(syncButton().getAttribute('data-sync')).toBe('update');
+        expect(syncButton().textContent).toBe('Update from mainLast fetched 3 minutes ago');
 
         await openMenu();
         expect(items().map(candidate => candidate.textContent)).toEqual([
@@ -290,7 +290,7 @@ describe('the sync button in the sidebar', () => {
         });
         expect(pull).not.toHaveBeenCalled();
         expect(status()?.textContent).toBe('Published to origin');
-        expect(syncButton().getAttribute('data-sync')).toBe('fetch');
+        expect(syncButton().getAttribute('data-sync')).toBe('update');
         expect(
             await transport.getGitStatus(FIXTURE_PROJECT_ID, {
                 folderId: 'fld_car_rental',
@@ -342,7 +342,7 @@ describe('the sync button in the sidebar', () => {
         expect(reads.status).toHaveBeenCalled();
         expect(reads.pullRequest).toHaveBeenCalled();
         expect(status()?.textContent).toBe('Pulled 2 commits');
-        expect(syncButton().getAttribute('data-sync')).toBe('fetch');
+        expect(syncButton().getAttribute('data-sync')).toBe('update');
     });
 
     it('is Push origin with the count for a branch that is ahead, and a press pushes it', async () => {
@@ -358,7 +358,7 @@ describe('the sync button in the sidebar', () => {
 
         expect(push).toHaveBeenCalledTimes(1);
         expect(status()?.textContent).toBe('Pushed to origin');
-        expect(syncButton().getAttribute('data-sync')).toBe('fetch');
+        expect(syncButton().getAttribute('data-sync')).toBe('update');
     });
 
     it('is Pull origin for a branch that diverged, which merges, and holds Push until the pull', async () => {
@@ -529,8 +529,20 @@ describe('the sync button in the sidebar', () => {
         ]);
     });
 
-    it('updates a branch from its base through the menu and shows progress on the sync button', async () => {
+    it('updates from the main button, keeps Fetch in the menu, and offers Push when the merge adds a commit', async () => {
         await start({ gitWrites: { clean: true, remote: 'level' } });
+        const readStatus = transport.getGitStatus.bind(transport);
+        let updated = false;
+        vi.spyOn(transport, 'getGitStatus').mockImplementation(async (projectId, place) => {
+            const current = await readStatus(projectId, place);
+
+            if (updated && current.isRepository && current.base.state === 'ready' && current.upstream) {
+                current.base.behind = 0;
+                current.upstream.ahead = 1;
+            }
+
+            return current;
+        });
         let finish: (result: GitRemoteResult) => void = () => undefined;
         const update = vi.spyOn(transport, 'updateGit').mockImplementation(
             () =>
@@ -539,9 +551,13 @@ describe('the sync button in the sidebar', () => {
                 })
         );
 
-        expect(buttonOf(updateLabel)).toBeUndefined();
+        expect(syncButton().textContent).toContain(updateLabel);
         await openMenu();
-        await press(item(updateLabel));
+        expect(isOff('Fetch origin')).toBe(false);
+        expect(isOff(updateLabel)).toBe(false);
+        await press(item('Fetch origin'));
+        await settle();
+        await press(syncButton());
         await settle();
 
         expect(update).toHaveBeenCalledExactlyOnceWith(FIXTURE_PROJECT_ID, {
@@ -552,9 +568,12 @@ describe('the sync button in the sidebar', () => {
         await openMenu();
         expect(isOff(updateLabel)).toBe(true);
 
+        updated = true;
         finish({ state: 'done', action: 'update', pulled: 1 });
         await settle();
+        await settle();
         expect(status()?.textContent).toBe('Updated with 1 commit');
+        expect(syncButton().getAttribute('data-sync')).toBe('push');
     });
 });
 

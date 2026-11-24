@@ -351,7 +351,7 @@ describe('syncButton', () => {
         });
     });
 
-    it("goes down GitHub Desktop's order: running, no origin, no branch, not published, not on origin, behind (a diverged branch too), ahead, level", () => {
+    it('prioritizes progress, unavailable states, and upstream sync before updating from the base or fetching', () => {
         const order = (value: GitStatus, running?: Parameters<typeof syncButton>[1]) => sync(value, running)?.kind;
 
         expect(order(status({ origin: false }, null), 'fetch')).toBe('running');
@@ -365,6 +365,16 @@ describe('syncButton', () => {
         expect(order(status({}, { ahead: 3 }))).toBe('push');
         expect(order(status({}, { behind: 3 }))).toBe('pull');
         expect(order(status())).toBe('fetch');
+
+        const base = { ...READY, behind: 2 };
+
+        expect(sync(status({ base }))).toMatchObject({ kind: 'update', label: 'Update from main', action: 'update' });
+        expect(order(status({ base }, { name: 'upstream/feature' }))).toBe('update');
+        expect(order(status({ base }, { behind: 1 }))).toBe('pull');
+        expect(order(status({ base }, { ahead: 1 }))).toBe('push');
+        expect(order(status({ base }, null))).toBe('publish');
+        expect(order(status({ base, origin: false }))).toBe('no_origin');
+        expect(order(status({ base, merging: { conflicts: 1 } }))).toBe('fetch');
     });
 });
 
@@ -498,14 +508,16 @@ describe('update from the base and the merge banner', () => {
     it('offers Update from main when the branch is behind the base and is not the base', () => {
         expect(updateFromBase(status({ base: { ...READY, behind: 2 } }))).toEqual({ label: 'Update from main' });
         expect(updateFromBase(status())).toBeUndefined();
-        expect(
-            updateFromBase(
-                status({
-                    head: { kind: 'branch', name: 'main', commit: 'a'.repeat(40) },
-                    base: { ...READY, name: 'origin/main', behind: 2 },
-                })
-            )
-        ).toBeUndefined();
+        for (const name of ['main', 'origin/main']) {
+            expect(
+                updateFromBase(
+                    status({
+                        head: { kind: 'branch', name, commit: 'a'.repeat(40) },
+                        base: { ...READY, name: 'origin/main', behind: 2 },
+                    })
+                )
+            ).toBeUndefined();
+        }
         expect(updateFromBase(status({ merging: { conflicts: 1 }, base: { ...READY, behind: 2 } }))).toBeUndefined();
     });
 

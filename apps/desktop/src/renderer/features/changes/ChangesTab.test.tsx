@@ -275,7 +275,10 @@ describe('the Changes tab of a chat in a worktree', () => {
         expect(container.querySelector('[aria-label="Changes sidebar"]')?.textContent).toContain('clowdy/ab12cd34');
         const base = container.querySelector('[title="origin/main, 2 ahead, 1 behind"]');
 
-        expect(base?.textContent).toContain('→ origin/main');
+        expect(base?.textContent).toContain('Base: origin/main');
+        expect(container.querySelector('[data-sync]')?.compareDocumentPosition(base!)).toBe(
+            Node.DOCUMENT_POSITION_FOLLOWING
+        );
         expect(base?.querySelector('[role="img"][aria-label="2 ahead, 1 behind"]')?.textContent).toBe('21');
         expect(container.querySelector('[aria-label="Pull request"]')?.textContent).toContain('PR #128');
     });
