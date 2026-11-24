@@ -6,6 +6,10 @@
     max-width: min(100%, 24rem);
 }
 
+.trigger[data-detail] {
+    max-width: min(100%, 28rem);
+}
+
 .trigger[data-open] {
     --clowdy-button-color: var(--color-secondary-muted-text);
     --clowdy-button-color--hover: var(--color-secondary-muted-text);

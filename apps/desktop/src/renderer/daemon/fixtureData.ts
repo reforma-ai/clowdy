@@ -3151,7 +3151,7 @@ export function createFixtureData(now = Date.now()): FixtureData {
         worktrees: {
             '/Users/dev/car-rental': [
                 {
-                    path: '/Users/dev/orca/car-rental/search-filters',
+                    path: '/Users/dev/worktrees/car-rental/search-filters',
                     branch: 'search-filters',
                     head: '5c4b3a2',
                     changes: 2,
@@ -3166,7 +3166,7 @@ export function createFixtureData(now = Date.now()): FixtureData {
                 },
                 { path: '/Users/dev/car-rental-old', branch: 'old-pricing', head: '1d2c3b4', missing: true },
             ],
-            '/Users/dev/car-rental-api': [{ path: '/Users/dev/orca/car-rental-api/readme', head: '3a2b1c0' }],
+            '/Users/dev/car-rental-api': [{ path: '/Users/dev/worktrees/car-rental-api/readme', head: '3a2b1c0' }],
         },
         // Car Rental's own checkout is on `main` and has no pull request, the worktree of its chat has an open one; Clowdy's `next` has one that merged, and the API's branch a draft.
         pullRequests: {

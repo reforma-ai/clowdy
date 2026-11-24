@@ -1,3 +1,5 @@
+import { Readable } from 'node:stream';
+
 import type { AgentProcess } from '../process';
 import type { LayerHost } from './layer';
 
@@ -6,6 +8,11 @@ import type { LayerHost } from './layer';
  * of an adapter fetched with `bun x` can be slow, so the bound is generous.
  */
 const INITIALIZE_TIMEOUT_MS = 120_000;
+
+/** A Node stream as the web stream the ACP SDK reads: `Readable.toWeb` is typed with `node:stream/web`, which Bun's global `ReadableStream` does not accept as it is. */
+export function toWebReadable(stream: Readable): ReadableStream<Uint8Array> {
+    return Readable.toWeb(stream) as unknown as ReadableStream<Uint8Array>;
+}
 
 /** An unbounded queue read with `await next()`. */
 export class Channel<T> {

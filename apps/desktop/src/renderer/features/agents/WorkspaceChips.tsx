@@ -17,9 +17,24 @@ import { ChipTrigger } from './ChipTrigger';
 import { MainBranchPicker } from './MainBranchPicker';
 import { type MainBranchBlock } from './mainBranch';
 import styles from './WorkspaceChips.module.css';
-import { chatsUsing, pickableWorktrees, type Repository, repositoryOf, worktreeLabel } from './workspaceChoice';
+import {
+    chatsUsing,
+    pickableWorktrees,
+    type Repository,
+    repositoryOf,
+    samePath,
+    worktreeLabel,
+} from './workspaceChoice';
 
-import type { Chat, ChatId, ChatWorkspaceChoice, FolderId, GitWorktree, ProjectFolder } from '@clowdy/protocol';
+import type {
+    Chat,
+    ChatId,
+    ChatWorkspace,
+    ChatWorkspaceChoice,
+    FolderId,
+    GitWorktree,
+    ProjectFolder,
+} from '@clowdy/protocol';
 import type { BranchListing } from '../changes/branchChoices';
 import type { FolderRepository } from './useFolderRepository';
 
@@ -122,6 +137,7 @@ interface WorkspaceChipProps extends FolderChoices {
     git: Repository;
     /** What the chat is sent with: `undefined` for the folder's own checkout. */
     choice: ChatWorkspaceChoice | undefined;
+    workspaceRow?: ChatWorkspace;
     chats: ReadonlyMap<ChatId, Chat>;
     /** The branch of the folder's own checkout: without it the row only says which branch the folder is on. */
     main?: MainBranchControls;
@@ -143,6 +159,7 @@ interface WorkspaceChipProps extends FolderChoices {
 function WorkspaceChip({
     git,
     choice,
+    workspaceRow,
     chats,
     main,
     onChoose,
@@ -202,7 +219,10 @@ function WorkspaceChip({
             description={usersLine(chatsUsing(chats.values(), worktree.path))}
         />
     );
-    const chosen = choice?.mode === 'existing' ? worktrees.find(worktree => worktree.path === choice.path) : undefined;
+    const chosen =
+        choice?.mode === 'existing'
+            ? (worktrees.find(worktree => samePath(worktree.path, choice.path)) ?? workspaceRow)
+            : undefined;
     const base = choice?.mode === 'new' ? (choice.base ?? git.defaultBranch) : git.defaultBranch;
     const canMakeOne = git.defaultBranch !== undefined;
     const branch = git.branch;
@@ -241,8 +261,9 @@ function WorkspaceChip({
     const shown = picked ?? branch;
     const why = main?.refusal ?? main?.block;
     const whyWords = why && (why.hint ? `${why.message} (${why.hint})` : why.message);
-    // What `effectiveChoice` hands over is a worktree the folder lists, so an existing choice always has its row; anything else is the folder's own checkout.
-    const path = chosen?.path ?? folders.find(folder => folder.id === selectedFolderId)?.path;
+    // The selected worktree path remains available even while its listing is refreshing.
+    const path =
+        choice?.mode === 'existing' ? choice.path : folders.find(folder => folder.id === selectedFolderId)?.path;
     const placePath = path ? tildePath(path, homeFolder.path) : undefined;
     const trigger =
         choice?.mode === 'new'
@@ -251,11 +272,13 @@ function WorkspaceChip({
                   trail: base === undefined ? undefined : `from ${base}`,
                   ariaLabel: `Where it runs: New worktree${base === undefined ? '' : ` from ${base}`}`,
               }
-            : chosen
+            : choice?.mode === 'existing'
               ? {
-                    lead: 'Worktree',
-                    label: worktreeLabel(chosen),
-                    ariaLabel: `Where it runs: Worktree, ${chosen.branch ? `branch ${chosen.branch}` : worktreeLabel(chosen).toLowerCase()}`,
+                    lead: chosen ? 'Worktree' : undefined,
+                    label: chosen ? worktreeLabel(chosen) : 'Worktree',
+                    ariaLabel: chosen
+                        ? `Where it runs: Worktree, ${chosen.branch ? `branch ${chosen.branch}` : worktreeLabel(chosen).toLowerCase()}`
+                        : 'Where it runs: Worktree',
                     tooltip: placePath,
                 }
               : picked !== undefined
@@ -523,8 +546,10 @@ function RowButton({
 export interface WorkspaceChipsProps extends FolderChoices {
     /** What the daemon says of the folder the new chat is for. */
     repository: FolderRepository;
-    /** What the chat will be sent with (`effectiveChoice`): the control shows this and never what the repository does not bear out. */
+    /** What the chat will be sent with, including an existing path while the listing is being refreshed. */
     choice: ChatWorkspaceChoice | undefined;
+    /** The selected checkout from `workspace.open`, which can answer before the listing does. */
+    workspaceRow?: ChatWorkspace;
     /** The project's chats, which the list of worktrees names the users of each by. */
     chats: ReadonlyMap<ChatId, Chat>;
     /** The branch of the folder's own checkout (`useMainBranch`); without it the main worktree's row only says which branch the folder is on. */
@@ -543,6 +568,7 @@ export interface WorkspaceChipsProps extends FolderChoices {
 export function WorkspaceChips({
     repository,
     choice,
+    workspaceRow,
     chats,
     main,
     onChoose,
@@ -583,10 +609,19 @@ export function WorkspaceChips({
                 onPickFolder={pickFolder}
                 restoreRef={restoreRef}
                 choice={choice}
+                workspaceRow={workspaceRow}
                 chats={chats}
                 main={main}
                 onChoose={onChoose}
                 onManage={onManage}
+            />
+        );
+
+    if (choice?.mode === 'existing')
+        return (
+            <WorkspaceLabel
+                worktree={choice.path}
+                git={workspaceRow?.branch ? { branch: workspaceRow.branch } : undefined}
             />
         );
 

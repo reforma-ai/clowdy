@@ -395,6 +395,8 @@ describe('a watcher that cannot tell exactly', () => {
 
         expect(created[0]).toEqual({ type: 'created', path: 'big', kind: 'directory' });
         expect(created.length).toBeGreaterThan(1000);
-        expect(created.length).toBeLessThanOrEqual(2001);
+        // The walk tells 2000 of the 2100 files at most. macOS tells nothing more, so the folder and the 2000 are all; on Linux the inotify watches report the rest of the files too, each path once.
+        expect(created.length).toBeLessThanOrEqual(process.platform === 'darwin' ? 2001 : 2101);
+        expect(new Set(created.map(change => change.path)).size).toBe(created.length);
     });
 });

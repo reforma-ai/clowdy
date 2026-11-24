@@ -134,7 +134,7 @@ export const commandSchema = z.discriminatedUnion('type', [
         folderId: z.string().min(1).optional(),
         path: z.string().min(1),
     }),
-    /** Creates a checkout on a new, prefixed branch of the chosen folder and answers `CreatedWorktree` once Git finishes. */
+    /** Creates a checkout on a new, prefixed branch and applies the folder setup before answering `CreatedWorktree`. */
     z.object({
         ...base,
         type: z.literal('workspace.create'),

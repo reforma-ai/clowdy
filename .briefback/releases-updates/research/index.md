@@ -53,7 +53,7 @@ Clowdy:
 
 ## Assumptions and coverage limits
 
-- Nothing was built, packaged, tested, or released; no GitHub resources were created. Network probes were read-only `curl` calls against a public repo (`oven-sh/bun`) and read-only `gh api` calls on `kachurun/clowdy`.
+- Nothing was built, packaged, tested, or released; no GitHub resources were created. Network probes were read-only `curl` calls against a public repo (`oven-sh/bun`) and read-only `gh api` calls on `reforma-ai/clowdy`.
 - Reforma's real-run claims come from its own docs (first ad-hoc release 13 Nov 2026; signed releases not yet run).
 - electron-updater behavior is from the 6.8.11 source in Reforma's `node_modules`; electron-builder docs read were v26 (stable) and v27 (unreleased "next").
 - Not read in depth: Reforma `toolchain.ts`, `ci-plan.ts`, `security.yml`, front-side update UI beyond file names; Clowdy `apps/daemon/AGENTS.md` beyond the run, environment, layout, invariants, and agents sections; `.briefback/acp/` research.

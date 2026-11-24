@@ -24,7 +24,7 @@ export interface OpenWithMenuProps {
     /** For a folder that is gone: Locate… and Remove from project, under the note (`useFolderRepair`). */
     repair?: FolderRepair;
     git: FolderGit | undefined;
-    /** The sidebar folder menu offers a new chat in this folder. */
+    /** Offers a new chat in the target's checkout. */
     onNewChat?: () => void;
     /** A last item, under a separator, `Folder settings…`, runs this (it opens the folder's settings and worktrees). Without it there is no such item. */
     onManageWorktrees?: () => void;
@@ -114,7 +114,11 @@ export function OpenWithMenu({
         <PopoverScroll>
             <Menu aria-label={label} size="sm" onAction={key => run(String(key))}>
                 <MenuSection aria-label="Open">
-                    {missing && <MenuHeader>This folder no longer exists</MenuHeader>}
+                    {missing && (
+                        <MenuHeader>
+                            {target.workspace ? 'This worktree no longer exists' : 'This folder no longer exists'}
+                        </MenuHeader>
+                    )}
                     {repair && (
                         <MenuItem id="locate" icon={<Search aria-hidden="true" />} textValue="Locate…">
                             Locate…
@@ -130,7 +134,7 @@ export function OpenWithMenu({
                             id="new-chat"
                             icon={<NewChat aria-hidden="true" />}
                             textValue="New chat"
-                            isDisabled={missing}
+                            isDisabled={missing || !isPlaceReady(place)}
                         >
                             New chat
                         </MenuItem>

@@ -364,8 +364,6 @@ describe('the new-chat row', () => {
 describe('grouped by folder', () => {
     const API = { id: 'fld_api', path: '/Users/dev/car-rental-api' };
     const MAIN = 'fld_car_rental';
-    /** The name of the one folder of the fixture project. */
-    const SINGLE = 'car-rental';
     const head = (folderId: string) => `@folder:${folderId}`;
     const field = () => container.querySelector<HTMLElement>('[contenteditable="true"]');
     const editor = () => (field() as HTMLElement & { editor: Editor }).editor;
@@ -489,19 +487,26 @@ describe('grouped by folder', () => {
         } as never;
 
         try {
-            await restart();
+            await restart({ transport: new FixtureTransport({ data: withFixtureWorkspace(twoFolders()) }) });
             expect(name(MAIN)?.textContent).toBe('car-rental');
-            await draw(() => ui().openChat('c-1'));
+            await draw(() => ui().openChat(FIXTURE_WORKSPACE_CHAT_ID));
+            const workspace = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
+
+            await press(name(MAIN)!);
+            await press(menuItem('New chat'));
+            expect(ui().draftWorkspace).toEqual({ mode: 'existing', path: workspace.path });
+            await draw(() => ui().openChat(FIXTURE_WORKSPACE_CHAT_ID));
 
             await press(name(API.id)!);
-            expect([ui().draft, ui().chatId]).toEqual([false, 'c-1']);
-            expect(isSelected('c-1')).toBe(true);
+            expect([ui().draft, ui().chatId]).toEqual([false, FIXTURE_WORKSPACE_CHAT_ID]);
+            expect(isSelected(FIXTURE_WORKSPACE_CHAT_ID)).toBe(true);
             expect(menuItems()).toEqual(['New chat', 'Copy path', 'Open in…', 'Folder settings…']);
 
             await press(menuItem('New chat'));
             await draw();
 
             expect([ui().draft, ui().draftFolderId]).toEqual([true, API.id]);
+            expect(ui().draftWorkspace).toBeNull();
             expect(isSelected('@new-chat')).toBe(true);
 
             // The built-in tabs can open the folder when it matches the current draft.
@@ -721,6 +726,16 @@ describe('grouped by folder', () => {
         expect([ui().draft, ui().draftFolderId]).toEqual([true, null]);
         expect(isSelected('@new-chat')).toBe(true);
         expect(folderSelect()?.textContent).toContain('car-rental');
+    });
+
+    it('starts New chat in the active chat’s folder when it uses the folder checkout', async () => {
+        await restart();
+        await draw(() => ui().openChat('c-2'));
+        await press(rowOf('@new-chat'));
+        await draw();
+
+        expect(folderSelect()?.textContent).toContain('car-rental-api');
+        expect(ui().draftWorkspace).toBeNull();
     });
 
     it("shows the main folder's page when the folder the new-chat page was for left the project", async () => {
@@ -1636,6 +1651,28 @@ describe('a chat that works in a worktree', () => {
         await vi.waitFor(() =>
             expect(container.querySelector('[aria-label="Current place: branch main"]')?.textContent).toBe('main')
         );
+    });
+
+    it('shares the active chat’s worktree when the first message is sent from New chat', async () => {
+        await restart();
+        await draw(() => ui().openChat(FIXTURE_WORKSPACE_CHAT_ID));
+        const workspace = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
+
+        await press(rowOf('@new-chat'));
+        await draw();
+        await vi.waitFor(() => expect(ui().draftWorkspaceRow?.id).toBe(workspace.id));
+
+        const field = container.querySelector<HTMLElement & { editor: Editor }>('[contenteditable="true"]')!;
+
+        await act(async () => {
+            field.editor.commands.insertContent('Check the worktree');
+            field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+        });
+        await draw();
+
+        expect(ui().draft).toBe(false);
+        expect(ui().chatId).not.toBe(FIXTURE_WORKSPACE_CHAT_ID);
+        expect(project().chats.get(ui().chatId!)?.workspace?.id).toBe(workspace.id);
     });
 });
 

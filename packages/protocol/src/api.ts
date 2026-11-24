@@ -206,7 +206,7 @@ export interface GitWorktree {
     dirty: boolean;
 }
 
-/** A worktree created by `workspace.create`, with a warning if Git reported a failure after the checkout. */
+/** A worktree created by `workspace.create`, with a warning if the checkout hook or folder setup failed. */
 export interface CreatedWorktree {
     path: string;
     branch: string;

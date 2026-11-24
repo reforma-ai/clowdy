@@ -1,12 +1,22 @@
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
-import { chmodSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 
 import { executeCommandAsync } from '../src/commands';
 import { getChat } from '../src/db/chats';
+import { getWorkspace, insertWorkspace } from '../src/db/workspaces';
 import { cleanTempDirs, git, makeRepo, ScriptEngine, scriptEngines, startHarness, tempDir, waitFor } from './helpers';
 
-import type { Chat, CommandResult, FolderWorktrees, Project, Run, WorktreeInfo } from '@clowdy/protocol';
+import type {
+    Chat,
+    ChatWorkspace,
+    CommandResult,
+    CreatedWorktree,
+    FolderWorktrees,
+    Project,
+    Run,
+    WorktreeInfo,
+} from '@clowdy/protocol';
 import type { Harness, Script } from './helpers';
 
 afterAll(cleanTempDirs);
@@ -111,7 +121,12 @@ test('creates a named checkout over HTTP, using the configured base and sharing 
 
     git(repo, 'checkout', '-b', 'next');
     commit(repo, 'next-only');
-    h.ok('project.updateFolder', { projectId: project.id, folderId, settings: { baseBranch: 'next' } });
+    writeFileSync(join(repo, '.env'), 'LOCAL_TEST=1\n');
+    h.ok('project.updateFolder', {
+        projectId: project.id,
+        folderId,
+        settings: { baseBranch: 'next', setup: { files: ['.env'], command: 'git hash-object .env > ready.txt' } },
+    });
 
     const create = async (requestId: string, branchName: string, folder = folderId) => {
         const response = await h.fetch('/v1/commands', {
@@ -126,7 +141,7 @@ test('creates a named checkout over HTTP, using the configured base and sharing 
             }),
         });
 
-        return (await response.json()) as CommandResult<{ path: string; branch: string }>;
+        return (await response.json()) as CommandResult<CreatedWorktree>;
     };
 
     const [first, second] = await Promise.all([create('create-next-1', 'next'), create('create-next-2', 'next')]);
@@ -149,12 +164,56 @@ test('creates a named checkout over HTTP, using the configured base and sharing 
     expect(git(repo, 'branch', '--show-current')).toBe('next');
     expect(git(path, 'branch', '--show-current')).toBe(branch);
     expect(git(path, 'rev-parse', 'HEAD')).toBe(git(repo, 'rev-parse', 'HEAD'));
-    expect(await at(path)).toMatchObject({ branch, chats: [] });
+    expect(readFileSync(join(path, '.env'), 'utf8')).toBe('LOCAL_TEST=1\n');
+    expect(readFileSync(join(path, 'ready.txt'), 'utf8').trim()).toBe(git(repo, 'hash-object', '.env'));
+    expect(await at(path)).toMatchObject({ branch, chats: [], managed: true });
+    expect(created.data.warning).toBeUndefined();
+    const { workspace } = h.ok('workspace.open', { projectId: project.id, folderId, path }) as {
+        workspace: ChatWorkspace;
+    };
 
     const chat = await start({ mode: 'existing', path });
 
-    expect(chat.workspace).toMatchObject({ path: real(path), branch, ready: true });
+    expect(chat.workspace).toMatchObject({ id: workspace.id, path: real(path), branch, managed: true, ready: true });
     expect((await at(path)).chats.map(chat => chat.id)).toEqual([chat.id]);
+});
+
+test('keeps the checkout after a setup failure and retries setup in that same worktree on the first turn', async () => {
+    const { h, repo, project, make, start } = await setup();
+    const folderId = project.folders[0].id;
+    const configure = (command: string) =>
+        h.ok('project.updateFolder', { projectId: project.id, folderId, settings: { setup: { files: [], command } } });
+
+    configure('exit 7');
+    const result = (await executeCommandAsync(h.daemon.services, {
+        requestId: 'standalone-failed-setup',
+        type: 'workspace.create',
+        projectId: project.id,
+        folderId,
+        branchName: 'retry-setup',
+    })) as CommandResult<CreatedWorktree>;
+
+    if (!result.ok) throw new Error(result.error.message);
+
+    const { path, warning } = result.data;
+    expect(warning).toContain('The setup command failed with exit code 7');
+    const { workspace } = h.ok('workspace.open', { projectId: project.id, folderId, path }) as {
+        workspace: ChatWorkspace;
+    };
+    expect(workspace).toMatchObject({ managed: true, ready: false });
+
+    const abandoned = make({ mode: 'existing', path });
+    h.ok('chat.delete', { chatId: abandoned.id });
+
+    configure('echo ready > ready.txt');
+    const chat = await start({ mode: 'existing', path });
+
+    expect(chat.workspace).toMatchObject({ id: workspace.id, managed: true, ready: true });
+    expect(readFileSync(join(path, 'ready.txt'), 'utf8').trim()).toBe('ready');
+    expect(git(repo, 'branch', '--show-current')).toBe('main');
+    rmSync(join(path, 'ready.txt'));
+    const removal = await h.fetch(`/v1/chats/${chat.id}/workspace`);
+    expect(await removal.json()).toMatchObject({ removable: false, path });
 });
 
 test.skipIf(process.platform === 'win32')(
@@ -182,6 +241,39 @@ test.skipIf(process.platform === 'win32')(
         expect(await rows()).toContainEqual(expect.objectContaining({ branch: 'team/hook', missing: false }));
     }
 );
+
+test('can reuse a name reserved by an interrupted standalone checkout that never appeared on disk', async () => {
+    const { h, root, project, rows } = await setup();
+    const folderId = project.folders[0].id;
+    const id = 'wks_interrupted';
+    const branch = 'clowdy/retry';
+
+    h.store.tx(() =>
+        insertWorkspace(h.store.db, {
+            id,
+            projectId: project.id,
+            folderId,
+            branch,
+            path: join(root, id.slice(-8), 'shop-web'),
+            base: 'main',
+            managed: true,
+            ready: false,
+            createdAt: Date.now(),
+        })
+    );
+
+    expect(
+        await executeCommandAsync(h.daemon.services, {
+            requestId: 'retry-interrupted-create',
+            type: 'workspace.create',
+            projectId: project.id,
+            folderId,
+            branchName: 'retry',
+        })
+    ).toMatchObject({ ok: true, data: { branch } });
+    expect(getWorkspace(h.store.db, id)).toBeUndefined();
+    expect(await rows()).toContainEqual(expect.objectContaining({ branch, managed: true }));
+});
 
 describe('GET /v1/projects/:id/worktrees', () => {
     test("lists the folder's own checkout first, with its branch, clean, and nothing to remove or to compare with a base", async () => {

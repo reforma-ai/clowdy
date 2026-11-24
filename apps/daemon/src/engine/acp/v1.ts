@@ -2,7 +2,7 @@ import { Readable, Writable } from 'node:stream';
 import { client, methods, ndJsonStream, PROTOCOL_VERSION } from '@agentclientprotocol/sdk/unstable';
 
 import { EngineFailure, errorMessage } from '../../errors';
-import { answeredInTime, Channel, ProcessEnded, watchEnd } from './connection';
+import { answeredInTime, Channel, ProcessEnded, toWebReadable, watchEnd } from './connection';
 import {
     advertisesSteering,
     applyChoices,
@@ -177,7 +177,7 @@ export class V1Layer implements ProtocolLayer {
                     : { action: 'accept', content: { clowdy_answer: answer } };
             });
 
-        const input = Readable.toWeb(proc.child.stdout as Readable) as ReadableStream<Uint8Array>;
+        const input = toWebReadable(proc.child.stdout as Readable);
         const output = Writable.toWeb(proc.child.stdin as Writable) as WritableStream<Uint8Array>;
         const connection = app.connect(ndJsonStream(output, input));
 

@@ -146,7 +146,11 @@ export class FsService {
         return this.contentSearch.search(root, request, signal);
     }
 
-    async read(project: Project, at: FsTarget, path: string): Promise<{ bytes: Uint8Array; version: string }> {
+    async read(
+        project: Project,
+        at: FsTarget,
+        path: string
+    ): Promise<{ bytes: Uint8Array<ArrayBuffer>; version: string }> {
         const { root } = await this.open(project, at);
         const rel = normalizeFsPath(path);
 

@@ -20,7 +20,10 @@ export interface QuotedRows {
  * The buffer rows a terminal selection covers, numbered as the log file numbers them: line 1 is the first row of the active buffer, and each row stays its own
  * line. Nothing when the selection is empty or only blank. A selection that ends at the start of a row does not include that row.
  */
-export function selectedBufferRows(lineAt: (index: number) => BufferRow | undefined, range: BufferSelection): QuotedRows | undefined {
+export function selectedBufferRows(
+    lineAt: (index: number) => BufferRow | undefined,
+    range: BufferSelection
+): QuotedRows | undefined {
     const { start, end } = range;
 
     if (end.y < start.y || (end.y === start.y && end.x <= start.x)) return undefined;

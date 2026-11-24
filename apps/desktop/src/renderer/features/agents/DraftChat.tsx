@@ -45,9 +45,10 @@ export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
     const target = draftTarget(folders, ui.draftFolderId);
     // The main folder is what a chat works in when it names no folder.
     const folderId = target.isMain ? undefined : target.folder.id;
-    // What git says of that folder, and of the choice made for it only what that bears out: nothing is sent for a folder that is no repository, or while the read has not answered.
     const repository = useFolderRepository(project.id, target.folder.id);
-    const workspace = effectiveChoice(ui.draftWorkspace, repository);
+    const selected = ui.draftWorkspace;
+    // The daemon validates an existing path. A stale listing must never send the first message to the main checkout instead.
+    const workspace = effectiveChoice(selected, repository) ?? (selected?.mode === 'existing' ? selected : undefined);
 
     // The branch of the folder's own checkout, when the person picked one: the daemon switches it as the chat is made.
     const mainBranch = useMainBranch(project.id, target.folder.id, workspace);
@@ -57,9 +58,9 @@ export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
     // The worktree the page works in once its row is there: the same the window's tabs show, and the box's `@` list reads.
     const workspaceRow = currentPlace(project, ui).workspace;
 
-    // A choice made for the folder (a worktree) is sent only once the read bears it out, so the first message waits for it rather than go to the folder itself.
+    // The branch or base for a new worktree comes from the Git listing. An existing checkout is validated by path.
     const waiting =
-        ui.draftWorkspace !== null && repository.status === 'loading'
+        selected !== null && selected.mode !== 'existing' && repository.status === 'loading'
             ? "Wait until the folder's worktrees are read"
             : undefined;
 
@@ -114,6 +115,7 @@ export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
                                         }
                                         repository={repository}
                                         choice={workspace}
+                                        workspaceRow={workspaceRow}
                                         chats={project.chats}
                                         main={mainBranch.controls}
                                         onChoose={choice => ui.setDraftWorkspace(choice)}

@@ -772,6 +772,7 @@ const app = agent({ name: 'fake-acp-agent' })
 app.connect(
     ndJsonStream(
         Writable.toWeb(process.stdout) as WritableStream<Uint8Array>,
-        Readable.toWeb(process.stdin) as ReadableStream<Uint8Array>
+        // Node types the stream with `node:stream/web`, which Bun's global `ReadableStream` does not accept as it is.
+        Readable.toWeb(process.stdin) as unknown as ReadableStream<Uint8Array>
     )
 );

@@ -17,7 +17,7 @@ import { CommandError } from '../src/errors';
 import { PullRequests } from '../src/git/pullRequest';
 import { GitRemote, remoteFailureLine } from '../src/git/remote';
 import { WriteEnvironment } from '../src/git/writeEnv';
-import { cleanTempDirs, git, makeRepo, startHarness, tempDir } from './helpers';
+import { cleanTempDirs, git, makeRepo, startHarness, tempDir, waitFor } from './helpers';
 
 import type { GitPushRequest, GitRemoteAction, GitRemoteResult, GitSyncEvent, GitSyncTarget } from '@clowdy/protocol';
 import type { Place } from '../src/domain/places';
@@ -130,6 +130,16 @@ const locksIn = (path: string): string[] =>
     readdirSync(join(path, '.git'), { recursive: true })
         .map(String)
         .filter(name => name.endsWith('.lock'));
+
+/**
+ * The locks in `.git` once git's own background maintenance is done: a fetch starts `git maintenance run --auto` detached, and it holds `objects/maintenance.lock`
+ * while it runs. A lock a stopped git left behind does not go, so it is still there when the wait ends.
+ */
+const locksLeft = async (path: string): Promise<string[]> => {
+    await waitFor(() => locksIn(path).length === 0, 'the locks to go').catch(() => undefined);
+
+    return locksIn(path);
+};
 
 const json = async <T>(response: Response) => (await response.json()) as T;
 
@@ -1519,7 +1529,7 @@ withScripts('GitRemote', () => {
         expect(error).toBeInstanceOf(CommandError);
         expect(error).toMatchObject({ code: 'unavailable', message: 'The push did not finish in time' });
         expect(Date.now() - started).toBeLessThan(5000);
-        expect(locksIn(path)).toEqual([]);
+        expect(await locksLeft(path)).toEqual([]);
 
         const running = new GitRemote({ store: h.store, environment: isolated() });
         const pending = running.push(place).catch((caught: unknown) => caught);
@@ -1698,7 +1708,7 @@ withScripts('GitRemote', () => {
         for (const tree of trees)
             expect(git(origin, 'rev-parse', `refs/heads/${tree.name}`)).toBe(git(tree.place.path, 'rev-parse', 'HEAD'));
 
-        expect(locksIn(path)).toEqual([]);
+        expect(await locksLeft(path)).toEqual([]);
         expect(git(path, 'fsck', '--no-progress')).not.toMatch(/error|missing/i);
     });
 
@@ -1719,7 +1729,7 @@ withScripts('GitRemote', () => {
             message: 'The fetch did not finish in time',
         });
         expect(Date.now() - started).toBeLessThan(5000);
-        expect(locksIn(path)).toEqual([]);
+        expect(await locksLeft(path)).toEqual([]);
         // What git was running when it was stopped is gone, not left waiting.
         expect(Bun.spawnSync(['pgrep', '-f', ssh]).exitCode).not.toBe(0);
     });

@@ -447,14 +447,14 @@ describe('FixtureTransport.getProjectWorktrees', () => {
                 { id: 'c-10', archived: true },
             ],
         });
-        expect(byPath('/Users/dev/orca/car-rental/search-filters')).toMatchObject({
+        expect(byPath('/Users/dev/worktrees/car-rental/search-filters')).toMatchObject({
             managed: false,
             changes: 2,
             submodules: true,
             merged: false,
             chats: [],
         });
-        expect(byPath('/Users/dev/orca/car-rental/search-filters')?.blocked).toBeUndefined();
+        expect(byPath('/Users/dev/worktrees/car-rental/search-filters')?.blocked).toBeUndefined();
         expect(byPath('/Users/dev/car-rental-hotfix')).toMatchObject({
             locked: 'on an external drive',
             blocked: 'locked',
@@ -479,7 +479,7 @@ describe('FixtureTransport.getProjectWorktrees', () => {
 });
 
 describe('FixtureTransport workspace.remove', () => {
-    const FOUND = '/Users/dev/orca/car-rental/search-filters';
+    const FOUND = '/Users/dev/worktrees/car-rental/search-filters';
     const LOCKED = '/Users/dev/car-rental-hotfix';
     const MISSING = '/Users/dev/car-rental-old';
     const remove = (

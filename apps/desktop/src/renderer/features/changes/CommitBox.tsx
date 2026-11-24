@@ -193,17 +193,12 @@ function ConflictActions({
 
     return (
         <div className={styles.conflictActions}>
-            <Button
-                variant="filled"
-                color="secondary"
-                size="xs"
-                aria-label="Ask agent to resolve conflicts"
-                onPress={ask}
-            >
+            <Button variant="ghost" color="primary" size="xs" aria-label="Ask agent to resolve conflicts" onPress={ask}>
+                <AiStar aria-hidden="true" />
                 Ask agent
             </Button>
             <Button
-                variant="filling"
+                variant="bordered"
                 color="secondary"
                 size="xs"
                 isDisabled={writing || remote.busy}

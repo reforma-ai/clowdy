@@ -1,3 +1,4 @@
+import { openNewChat } from '../features/agents/openNewChat';
 import { SETTINGS_COMMAND, SETTINGS_KEYS } from '../features/settings/commands';
 import {
     SIDE_PANEL_COMMAND,
@@ -24,7 +25,10 @@ const FORWARD_KEYS = '$mod+BracketRight';
 
 /** What the shell's commands need of the root store. */
 export interface ShellCommandsRoot
-    extends Pick<RootStore, 'phase' | 'selectedProjectId' | 'selectedProjectUi' | 'showsProjectScreen' | 'ui'> {
+    extends Pick<
+        RootStore,
+        'phase' | 'selectedProject' | 'selectedProjectId' | 'selectedProjectUi' | 'showsProjectScreen' | 'ui'
+    > {
     history: Pick<NavHistory, 'back' | 'forward' | 'canGoBack' | 'canGoForward'>;
 }
 
@@ -67,7 +71,7 @@ export function shellCommands(root: ShellCommandsRoot): ScopedCommand[] {
                 if (!root.selectedProjectId) return;
 
                 root.ui.closeSettings();
-                root.ui.forProject(root.selectedProjectId).openDraft();
+                openNewChat(root.selectedProject, root.ui.forProject(root.selectedProjectId));
             },
         },
         {

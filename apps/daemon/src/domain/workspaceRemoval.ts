@@ -22,7 +22,16 @@ import {
 } from '../git/state';
 import { requireChat, stoppedSubtree } from './chats';
 import { gitRead } from './git';
-import { exclusive, mustGit, openWorkspace, pathKey, placeOf, samePlace, WorkspaceError } from './workspaces';
+import {
+    exclusive,
+    isStandaloneWorktree,
+    mustGit,
+    openWorkspace,
+    pathKey,
+    placeOf,
+    samePlace,
+    WorkspaceError,
+} from './workspaces';
 
 import type { Chat, ChatWorkspaceRemoval, Project } from '@clowdy/protocol';
 import type { Config } from '../config';
@@ -250,6 +259,10 @@ async function checkRemoval(store: Store, chat: Chat): Promise<Verdict> {
 
     if (!record.managed) {
         return refused('Clowdy did not make this worktree', record);
+    }
+
+    if (isStandaloneWorktree(record)) {
+        return refused('This worktree was created separately from the chat', record);
     }
 
     const project = getProject(store.db, record.projectId);

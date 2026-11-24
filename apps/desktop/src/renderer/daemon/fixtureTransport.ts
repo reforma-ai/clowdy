@@ -956,10 +956,13 @@ export class FixtureTransport implements Transport {
         return this.#removal(chat);
     }
 
-    /**
-     * What the daemon says of a chat's worktree: removable when Clowdy made it and it is on the disk (`ready`), and no chat outside this one and the threads below it (archived ones
-     * count) works in it. The fixtures keep no files, so what the daemon reads from the tree (changes, merged work) is taken as fine.
-     */
+    #isStandaloneWorktree(path: string): boolean {
+        return Object.values(this.#data.worktreeEdits ?? {}).some(edits =>
+            edits.created.some(tree => tree.path === path)
+        );
+    }
+
+    /** A chat may remove its worktree when it is ready, shared only with its threads, and was created for a chat. */
     #removal(chat: Chat): ChatWorkspaceRemoval {
         const { workspace } = chat;
 
@@ -969,7 +972,7 @@ export class FixtureTransport implements Transport {
         const shared = this.#data.chats.some(other => other.workspace?.id === workspace.id && !below.has(other.id));
 
         return {
-            removable: workspace.managed && workspace.ready && !shared,
+            removable: workspace.managed && workspace.ready && !shared && !this.#isStandaloneWorktree(workspace.path),
             path: workspace.path,
             ...(workspace.branch !== undefined && { branch: workspace.branch }),
         };
@@ -1016,7 +1019,7 @@ export class FixtureTransport implements Transport {
         edits.created.push({ path, branch });
         this.#opened.set(id, {
             projectId: project.id,
-            workspace: { id, path, branch, folderId: folder.id, managed: false, ready: true },
+            workspace: { id, path, branch, folderId: folder.id, managed: true, ready: true },
         });
 
         return ok({ path, branch });
@@ -2177,12 +2180,16 @@ export class FixtureTransport implements Transport {
                     this.#emit(deleted.projectId, { type: 'chat.deleted', chatId: deleted.id, runIds: [...runIds] });
                 }
 
-                // Like the daemon: a worktree's row goes with the last chat that points at it, so a row `workspace.open` answered is made again when it is asked for.
+                // Standalone rows outlive the last chat; other rows are opened again when needed.
                 for (const deleted of gone) {
-                    const workspaceId = deleted.workspace?.id;
+                    const workspace = deleted.workspace;
 
-                    if (workspaceId && !data.chats.some(candidate => candidate.workspace?.id === workspaceId))
-                        this.#opened.delete(workspaceId);
+                    if (
+                        workspace &&
+                        !this.#isStandaloneWorktree(workspace.path) &&
+                        !data.chats.some(candidate => candidate.workspace?.id === workspace.id)
+                    )
+                        this.#opened.delete(workspace.id);
                 }
 
                 return ok({ chatId: chat.id });

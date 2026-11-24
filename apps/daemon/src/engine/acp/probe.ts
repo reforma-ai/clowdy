@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import { errorMessage } from '../../errors';
 import { spawnInOwnGroup } from '../process';
+import { toWebReadable } from './connection';
 import { buildAgentEnv } from './env';
 import { clientCapabilities } from './v1';
 
@@ -61,7 +62,7 @@ export async function probeAgent(
     const connection = client({ name: 'clowdy-probe' }).connect(
         ndJsonStream(
             Writable.toWeb(proc.child.stdin as Writable) as WritableStream<Uint8Array>,
-            Readable.toWeb(proc.child.stdout as Readable) as ReadableStream<Uint8Array>
+            toWebReadable(proc.child.stdout as Readable)
         )
     );
     const access = bridge.register(

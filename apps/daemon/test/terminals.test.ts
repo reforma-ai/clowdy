@@ -459,13 +459,15 @@ describe('the plain log of a terminal', () => {
         const project = { id: 'prj_1', name: 'P', folders: [{ id: 'fld_1', path: root }] } as unknown as Project;
         const info = service.create(project, { projectId: 'prj_1', folderId: 'fld_1', cols: 40, rows: 10 });
 
-        expect(info.logPath).toBe(join(logs, 'prj_1', `${info.id}.log`));
+        const logPath = join(logs, 'prj_1', `${info.id}.log`);
+
+        expect(info.logPath).toBe(logPath);
         // At least one burst, so the flush and the log write start before remove returns.
         pty.emit('x'.repeat(64 * 1024));
         service.remove(info.id);
         await tick(300);
 
-        expect(existsSync(info.logPath)).toBe(false);
+        expect(existsSync(logPath)).toBe(false);
         expect(existsSync(join(logs, 'prj_1', `.${info.id}.log.tmp`))).toBe(false);
         service.stop();
     });
@@ -832,12 +834,16 @@ describe.skipIf(!posix)('the terminal routes', () => {
             socket.onerror = () => reject(new Error('The stream was refused'));
         });
 
+        /** What the shell showed: the screen the stream began with, which holds a prompt a fast shell drew before the stream opened, and then its output. */
+        const shown = () =>
+            [...messages.flatMap(message => (message.type === 'screen' ? [message.screen] : [])), output].join('\n');
+
         return {
             socket,
             messages,
             output: () => output,
             send: (text: string) => socket.send(encoder.encode(text)),
-            until: (what: string) => waitFor(() => output.includes(what) && output, `${what} on the stream`, 6000),
+            until: (what: string) => waitFor(() => shown().includes(what) && shown(), `${what} on the stream`, 6000),
             close: () => socket.close(),
         };
     }

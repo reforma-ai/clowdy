@@ -17,7 +17,7 @@ import { currentPlace } from '../sidePanel/currentPlace';
 import { openManageWorktrees } from '../worktrees';
 import { DraftChat } from './DraftChat';
 
-import type { Chat, CommandResult, FolderGit } from '@clowdy/protocol';
+import type { Chat, CommandResult, CreatedWorktree, FolderGit } from '@clowdy/protocol';
 import type { Editor } from '@tiptap/core';
 import type { KeyValueStorage } from '../../stores/storage';
 
@@ -1017,6 +1017,37 @@ describe('a folder that offers no worktree', () => {
 });
 
 describe('the first message', () => {
+    it('selects and uses a newly created worktree while the draft still has an older Git listing', async () => {
+        const transport = new FixtureTransport();
+        const command = vi.spyOn(transport, 'command');
+        await start({ transport });
+
+        const folderId = 'fld_car_rental';
+        const oldListing = await transport.getFolderGit(FIXTURE_PROJECT_ID, folderId);
+        vi.spyOn(transport, 'getFolderGit').mockResolvedValue(oldListing);
+        const created = await store.command({
+            type: 'workspace.create',
+            projectId: FIXTURE_PROJECT_ID,
+            folderId,
+            branchName: 'fresh',
+        });
+        if (!created.ok) throw new Error(created.error.message);
+        const { path } = created.data as CreatedWorktree;
+        const known = new Set(store.selectedProject!.chats.keys());
+
+        await draw(() => ui().openDraft([], null, { mode: 'existing', path }));
+        await settle();
+
+        expect(chip()?.getAttribute('aria-label')).toBe('Where it runs: Worktree, branch clowdy/fresh');
+        expect(currentPlace(store.selectedProject!, ui()).workspace?.path).toBe(path);
+        await send('Work here');
+
+        expect(command).toHaveBeenCalledWith(
+            expect.objectContaining({ type: 'chat.create', workspace: { mode: 'existing', path } })
+        );
+        expect(made(known)[0]?.workspace?.path).toBe(path);
+    });
+
     it('makes a chat in the folder itself when Project checkout is on', async () => {
         const before = new Set(store.selectedProject!.chats.keys());
 
