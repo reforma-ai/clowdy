@@ -304,22 +304,21 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
                 }
             }}
         >
-            <div className={styles.heading}>
-                <Text id={headingId} as="h2" variant="heading-3">
-                    {`Merge ${source} to ${target}`}
-                </Text>
-                <Button
-                    size="sm"
-                    variant="filling"
-                    color="secondary"
-                    iconOnly
-                    aria-label="Close"
-                    isDisabled={isWorking}
-                    onPress={() => modal.cancel()}
-                >
-                    <Close />
-                </Button>
-            </div>
+            <Text id={headingId} as="h2" variant="heading-3" className={styles.heading}>
+                {`Merge ${source} to ${target}`}
+            </Text>
+            <Button
+                className={styles.close}
+                size="sm"
+                variant="filling"
+                color="secondary"
+                iconOnly
+                aria-label="Close"
+                isDisabled={isWorking}
+                onPress={() => modal.cancel()}
+            >
+                <Close />
+            </Button>
             {!result && (loading || listing) && (
                 <div inert={isWorking}>
                     <PickerList
@@ -405,7 +404,7 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
                 {!result && (
                     <div className={styles.split}>
                         <Button
-                            size="sm"
+                            size="md"
                             color="contrast"
                             className={styles.primary}
                             isDisabled={!preview || preview.mode === 'up-to-date' || blocked !== undefined}
@@ -416,7 +415,7 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
                         </Button>
                         <MenuTrigger>
                             <Button
-                                size="sm"
+                                size="md"
                                 color="contrast"
                                 iconOnly
                                 className={styles.mode}
@@ -461,7 +460,7 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
                 )}
                 {result?.state === 'conflicts' && (result.conflicts > 0 || result.operation === 'rebase') && (
                     <Button
-                        size="sm"
+                        size="md"
                         variant="bordered"
                         isDisabled={isWorking}
                         isPending={pending === 'abort'}
@@ -484,7 +483,7 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
                 )}
                 {result?.state === 'done' && direction === 'into' && result.canPush && (
                     <Button
-                        size="sm"
+                        size="md"
                         color="contrast"
                         isPending={pending === 'push'}
                         onPress={() => void run({ action: 'push', target: result.target, commit: result.commit })}
@@ -493,7 +492,7 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
                     </Button>
                 )}
                 <Button
-                    size="sm"
+                    size="md"
                     variant="filled"
                     color="secondary"
                     isDisabled={isWorking}
