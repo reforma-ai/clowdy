@@ -395,6 +395,8 @@ describe('a watcher that cannot tell exactly', () => {
 
         expect(created[0]).toEqual({ type: 'created', path: 'big', kind: 'directory' });
         expect(created.length).toBeGreaterThan(1000);
-        expect(created.length).toBeLessThanOrEqual(2001);
+        // The walk tells 2000 of the 2100 files at most. Where the platform also reports the files one by one (inotify does), the rest comes as events of its own: all of them, each path once.
+        expect(created.length).toBeLessThanOrEqual(2101);
+        expect(new Set(created.map(change => change.path)).size).toBe(created.length);
     });
 });
