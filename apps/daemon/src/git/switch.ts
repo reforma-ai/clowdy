@@ -4,7 +4,7 @@ import { gitAnswer, gitRead } from '../domain/git';
 import { chatsWorkingIn } from '../domain/places';
 import { exclusive, pathKey } from '../domain/workspaces';
 import { conflict, invalid, unavailable } from '../errors';
-import { runProgram } from '../providers/exec';
+import { LEFTOVER_GRACE_MS, runProgram } from '../providers/exec';
 import { failureLine, printedLines, shownLine, writeLine } from './commit';
 import { baseOf, countChanges, isMerged, isOnDisk, parseWorktrees, placeOf, workingTreeRoot } from './state';
 import { parseStatus, resolveRef } from './status';
@@ -259,6 +259,7 @@ export class GitSwitch {
             maxChars: MAX_PRINTED_CHARS,
             signal: this.#stopper.signal,
             stopSignal: 'SIGTERM',
+            leftoverGraceMs: LEFTOVER_GRACE_MS,
         });
 
         if (run.error === 'stopped') throw unavailable('The daemon is stopping');

@@ -5,7 +5,7 @@ import { MAX_GIT_MESSAGE_CHARS } from '@clowdy/protocol';
 import { gitLine, gitRead } from '../domain/git';
 import { exclusive, pathKey, placeOf } from '../domain/workspaces';
 import { conflict, invalid, unavailable } from '../errors';
-import { runProgram } from '../providers/exec';
+import { LEFTOVER_GRACE_MS, runProgram } from '../providers/exec';
 import { selectChanged } from './selection';
 import { rebaseUnderWay } from './state';
 import { namesSigningKey, SIGNING_HINT, WriteEnvironment } from './writeEnv';
@@ -264,6 +264,7 @@ export class GitWrites {
             maxChars: MAX_PRINTED_CHARS,
             signal: this.#stopper.signal,
             stopSignal: 'SIGTERM',
+            leftoverGraceMs: LEFTOVER_GRACE_MS,
         });
     }
 

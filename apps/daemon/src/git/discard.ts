@@ -8,7 +8,7 @@ import { gitLine, gitRead } from '../domain/git';
 import { exclusive } from '../domain/workspaces';
 import { conflict, invalid, unavailable } from '../errors';
 import { fsFailure, locate, normalizeFsPath } from '../fs/paths';
-import { runProgram } from '../providers/exec';
+import { LEFTOVER_GRACE_MS, runProgram } from '../providers/exec';
 import { failureLine, writeLine } from './commit';
 import { DiscardCopies } from './discardCopies';
 import { selectChanged } from './selection';
@@ -509,6 +509,7 @@ export class GitDiscard {
             maxChars: MAX_PRINTED_CHARS,
             signal: this.#stopper.signal,
             stopSignal: 'SIGTERM',
+            leftoverGraceMs: LEFTOVER_GRACE_MS,
         });
     }
 
