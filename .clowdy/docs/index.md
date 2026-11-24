@@ -2,6 +2,8 @@
 
 ## Decisions
 
+- [Provider question capabilities](decisions/2026-11-24-provider-question-capabilities.md) records how agents opt into form elicitation and its current limits. Status: accepted.
+
 - [Stage coordination follows Briefback](decisions/2026-11-24-briefback-stage-coordination.md) records the stage, review and delegation model. Status: accepted.
 - [Manual chat order](decisions/2026-11-24-use-manual-chat-order.md) records why the sidebar uses one saved order and puts new chats first. Status: accepted.
 - [Switch branches in a merged chat worktree](decisions/2026-11-24-switch-merged-worktree-branches.md) describes which branch switches are allowed. Status: accepted.
@@ -10,6 +12,8 @@
 - [One provider for commit messages](decisions/2026-11-24-choose-one-commit-provider.md) records the Source Control selector and how older settings map to it. Status: accepted.
 
 ## Checks
+
+- [Question lifecycle](checks/2026-11-24-question-lifecycle.md) covers provider questions, cancellation, and the remaining Cursor timeout. Status: partial.
 
 - [Briefback stage coordination](checks/2026-11-24-briefback-stage-coordination.md) covers skill validation, prompt tests and the daemon typecheck baseline. Status: passed with limits.
 - [System skill edits](checks/2026-11-24-system-skill-edit.md) covers validation, integration tests and semantic review. Status: passed with limits.

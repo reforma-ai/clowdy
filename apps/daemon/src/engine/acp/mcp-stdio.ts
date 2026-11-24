@@ -9,11 +9,14 @@ interface Message {
     id?: number | string;
     method?: string;
     params?: Record<string, unknown>;
+    result?: { action?: string; content?: Record<string, unknown> };
+    error?: unknown;
 }
 
 interface BridgeEnv {
     CLOWDY_BRIDGE_URL?: string;
     CLOWDY_BRIDGE_TOKEN?: string;
+    CLOWDY_ELICITATION?: string;
 }
 
 const FALLBACK_PROTOCOL = '2025-06-18';
@@ -30,12 +33,19 @@ export async function runMcpBridge(io: McpBridgeIo): Promise<void> {
     const base = io.env.CLOWDY_BRIDGE_URL;
     const headers = { authorization: `Bearer ${io.env.CLOWDY_BRIDGE_TOKEN}`, 'content-type': 'application/json' };
     const calls = new Map<number | string, AbortController>();
+    const elicitations = new Map<string, (result: Message) => void>();
+    let nextElicitation = 0;
     const send = (message: object) => io.write(`${JSON.stringify({ jsonrpc: '2.0', ...message })}\n`);
     const reply = (id: number | string, result: object) => send({ id, result });
     const fail = (id: number | string, code: number, message: string) => send({ id, error: { code, message } });
 
     async function handle(message: Message): Promise<void> {
         const { id, method, params = {} } = message;
+
+        if (method === undefined && typeof id === 'string' && elicitations.has(id)) {
+            elicitations.get(id)?.(message);
+            return;
+        }
 
         if (method === 'notifications/cancelled') {
             calls.get(params.requestId as number | string)?.abort();
@@ -83,6 +93,60 @@ export async function runMcpBridge(io: McpBridgeIo): Promise<void> {
                 calls.set(id, controller);
 
                 try {
+                    if (params.name === 'ask_user' && io.env.CLOWDY_ELICITATION === '1') {
+                        const requestId = `clowdy-question-${++nextElicitation}`;
+                        const answer = await new Promise<Message>(resolve => {
+                            elicitations.set(requestId, resolve);
+                            controller.signal.addEventListener(
+                                'abort',
+                                () => {
+                                    send({ method: 'notifications/cancelled', params: { requestId } });
+                                    resolve({ error: 'cancelled' });
+                                },
+                                { once: true }
+                            );
+                            send({
+                                id: requestId,
+                                method: 'elicitation/create',
+                                params: {
+                                    mode: 'form',
+                                    message: 'Clowdy question',
+                                    requestedSchema: {
+                                        type: 'object',
+                                        properties: {
+                                            clowdy_answer: {
+                                                type: 'string',
+                                                description: JSON.stringify(params.arguments),
+                                            },
+                                        },
+                                        required: ['clowdy_answer'],
+                                    },
+                                },
+                            });
+                        });
+                        elicitations.delete(requestId);
+                        if (!controller.signal.aborted) {
+                            if (
+                                answer.result?.action === 'accept' &&
+                                typeof answer.result.content?.clowdy_answer === 'string'
+                            ) {
+                                reply(id, {
+                                    content: [
+                                        {
+                                            type: 'text',
+                                            text: JSON.stringify({ answer: answer.result.content.clowdy_answer }),
+                                        },
+                                    ],
+                                });
+                            } else {
+                                reply(id, {
+                                    content: [{ type: 'text', text: 'The question was cancelled' }],
+                                    isError: true,
+                                });
+                            }
+                        }
+                        break;
+                    }
                     const response = await io.fetch(`${base}/call`, {
                         method: 'POST',
                         headers,
@@ -153,6 +217,7 @@ export async function runMcpBridge(io: McpBridgeIo): Promise<void> {
         }
     }
 
+    for (const controller of calls.values()) controller.abort();
     await Promise.allSettled(pending);
 }
 

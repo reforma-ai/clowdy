@@ -82,6 +82,17 @@ export function findQuestion(db: Database, runId: string, questionId: string): S
     return row ? toItem(row, false) : undefined;
 }
 
+/** Unanswered questions whose session can no longer receive an answer after a restart. */
+export function listOpenQuestions(db: Database, runId: string): StreamItem[] {
+    return (
+        db
+            .query(
+                "SELECT * FROM stream_items WHERE run_id = ? AND json_extract(body, '$.kind') = 'question' AND json_extract(body, '$.answer') IS NULL AND json_extract(body, '$.state') IS NULL ORDER BY seq"
+            )
+            .all(runId) as ItemRow[]
+    ).map(row => toItem(row, false));
+}
+
 export function findApproval(db: Database, runId: string, approvalId: string): StreamItem | undefined {
     const row = db
         .query("SELECT * FROM stream_items WHERE run_id = ? AND json_extract(body, '$.approvalId') = ?")

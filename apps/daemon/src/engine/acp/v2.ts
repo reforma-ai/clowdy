@@ -50,7 +50,8 @@ import type { ResolvedAgent } from './registry';
  * What the client tells an agent it can do in `initialize`: nothing. Clowdy offers no file access and no terminal (ACP v2 has neither; an agent's tools
  * are its own, and the runtime's reach it through an MCP server).
  */
-const clientCapabilities = (agent: Pick<ResolvedAgent, 'clientMeta'>): ClientCapabilities => ({
+const clientCapabilities = (agent: Pick<ResolvedAgent, 'clientMeta' | 'elicitation'>): ClientCapabilities => ({
+    ...(agent.elicitation && { elicitation: { form: {} } }),
     ...(agent.clientMeta && { _meta: agent.clientMeta }),
 });
 
@@ -693,6 +694,12 @@ export class V2Layer implements ProtocolLayer {
                 return {
                     outcome: optionId === undefined ? { outcome: 'cancelled' } : { outcome: 'selected', optionId },
                 };
+            })
+            .onRequest(methods.client.elicitation.create, async ({ params, signal }) => {
+                const answer = await host.pickQuestion(params, signal);
+                return answer === undefined
+                    ? { action: 'cancel' }
+                    : { action: 'accept', content: { clowdy_answer: answer } };
             });
 
         const input = Readable.toWeb(proc.child.stdout as Readable) as ReadableStream<Uint8Array>;

@@ -7,7 +7,14 @@ import {
 } from '@clowdy/protocol';
 
 import { getChat } from '../db/chats';
-import { findApproval, findQuestion, listOpenApprovals, listOpenThoughts, listRunningTools } from '../db/items';
+import {
+    findApproval,
+    findQuestion,
+    listOpenApprovals,
+    listOpenQuestions,
+    listOpenThoughts,
+    listRunningTools,
+} from '../db/items';
 import { getProject } from '../db/projects';
 import {
     activeSubtree,
@@ -109,6 +116,7 @@ export class RunService {
     private answers = new Map<string, (answer: string) => void>();
     /** Runs with a question card open: a run asks one question at a time, because a reply wakes the run and a second open card could no longer be answered. */
     private asking = new Set<string>();
+    private questionCalls = new Map<string, { controller: AbortController; turnEnded: boolean }>();
     /**
      * What each run waits on the person for: how many questions and approvals are open, and whether the run is parked (`waiting_user`, which frees its
      * slot) on their account. The run goes back to work, taking a slot again, when the last one ends.
@@ -479,12 +487,17 @@ export class RunService {
         }
 
         const questionId = newId('qst');
+        const withdrawn = new AbortController();
+        const call = { controller: withdrawn, turnEnded: false };
+        const questionSignal = AbortSignal.any([signal, withdrawn.signal]);
         let counted = false;
         let parked = false;
-        let answer: string;
+        let answer = '';
 
         this.asking.add(runId);
+        this.questionCalls.set(runId, call);
 
+        let failure: unknown;
         try {
             // A question parks the run for certain: a run that cannot be parked has no business asking, so the change of status is not skipped as an approval's is.
             this.waitForPerson(
@@ -497,22 +510,42 @@ export class RunService {
 
             answer = await new Promise<string>((resolve, reject) => {
                 this.answers.set(questionId, resolve);
-                signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+                if (questionSignal.aborted) reject(questionSignal.reason);
+                else questionSignal.addEventListener('abort', () => reject(questionSignal.reason), { once: true });
             });
+        } catch (error) {
+            failure = error;
+            const item = findQuestion(this.store.db, runId, questionId);
+            if (item?.body.kind === 'question' && item.body.answer === undefined) {
+                updateItem(this.store, runId, item.seq, { ...item.body, state: 'cancelled' });
+            }
         } finally {
             this.answers.delete(questionId);
             this.asking.delete(runId);
+            this.questionCalls.delete(runId);
 
             if (counted) {
                 parked = this.endWait(runId);
             }
         }
 
-        if (parked) {
-            await this.acquireSlot(runId, signal);
+        if (parked && !call.turnEnded) {
+            const liveSignal = failure === undefined ? signal : this.controllers.get(runId)?.signal;
+            if (liveSignal && !liveSignal.aborted) await this.acquireSlot(runId, liveSignal);
         }
 
+        if (failure !== undefined) throw failure;
+
         return answer;
+    }
+
+    /** The agent ended its turn without waiting for its question. */
+    withdrawQuestion(runId: string): void {
+        const call = this.questionCalls.get(runId);
+        if (call) {
+            call.turnEnded = true;
+            call.controller.abort();
+        }
     }
 
     /**
@@ -593,6 +626,10 @@ export class RunService {
                 throw notFound('Question', questionId);
             }
 
+            if (item.body.state !== undefined) {
+                throw conflict('This question is no longer open');
+            }
+
             if (item.body.answer !== undefined) {
                 throw conflict('This question has already been answered');
             }
@@ -671,6 +708,11 @@ export class RunService {
      */
     private waitForPerson(runId: string, reason: string, write: () => void, strict = false): void {
         const parked = this.store.tx(() => {
+            for (const item of listOpenQuestions(this.store.db, runId)) {
+                if (item.body.kind === 'question' && !this.answers.has(item.body.questionId)) {
+                    updateItem(this.store, runId, item.seq, { ...item.body, state: 'expired' });
+                }
+            }
             write();
 
             const { status } = this.require(runId);
@@ -945,6 +987,10 @@ export class RunService {
                     if (body.kind === 'approval') {
                         updateItem(this.store, run.id, seq, { ...body, state: 'expired' });
                     }
+                }
+
+                for (const { seq, body } of listOpenQuestions(this.store.db, run.id)) {
+                    if (body.kind === 'question') updateItem(this.store, run.id, seq, { ...body, state: 'expired' });
                 }
             }
 

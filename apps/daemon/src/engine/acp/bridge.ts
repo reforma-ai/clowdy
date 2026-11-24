@@ -68,7 +68,7 @@ export class ToolBridge {
     private registrations = new Map<string, Registration>();
 
     /** Gives `tools` to one session. `signal` ends every call still running for it. */
-    register(tools: ToolDefinition[], signal: AbortSignal): BridgeAccess {
+    register(tools: ToolDefinition[], signal: AbortSignal, elicitation = false): BridgeAccess {
         const token = randomBytes(32).toString('hex');
         const url = `http://127.0.0.1:${this.listener().port}`;
         const ended = new AbortController();
@@ -87,6 +87,7 @@ export class ToolBridge {
                     env: [
                         { name: 'CLOWDY_BRIDGE_URL', value: url },
                         { name: 'CLOWDY_BRIDGE_TOKEN', value: token },
+                        ...(elicitation ? [{ name: 'CLOWDY_ELICITATION', value: '1' }] : []),
                     ],
                 },
             }),

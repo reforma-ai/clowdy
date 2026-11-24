@@ -267,6 +267,14 @@ describe('AgentRegistry', () => {
         expect(reg.taskChannel('nobody')).toBe('cli');
     });
 
+    test('a custom agent can opt into verified elicitation in its saved properties', async () => {
+        program('my-agent', 'agent 1');
+        const dataDir = join(root, 'data');
+        const reg = registry(dataDir);
+        reg.add({ id: 'mine', name: 'Mine', command: 'my-agent', args: [], elicitation: true });
+        expect(await registry(dataDir).resolve('mine')).toMatchObject({ ok: true, agent: { elicitation: true } });
+    });
+
     test("on macOS a run of Cursor keeps its state in a folder of Clowdy's own (owner only), and Cursor learns that the client can show a model's effort", async () => {
         const cursor = program('cursor-agent', 'cursor 2026.09.01');
         const dataDir = join(root, 'data');

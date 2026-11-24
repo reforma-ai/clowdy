@@ -605,13 +605,7 @@ export class RunDriver {
             cwd,
             additionalDirectories: additionalFolders(project, cwd, ownChat?.workspace, terminalsDir),
             systemPrompt: [
-                systemPrompt(
-                    mode,
-                    project,
-                    cwd,
-                    chat && { ...chat, ...(workspace && { workspace }) },
-                    terminalsDir
-                ),
+                systemPrompt(mode, project, cwd, chat && { ...chat, ...(workspace && { workspace }) }, terminalsDir),
                 skillPrompt(config.systemSkillsDir, chat?.parent !== undefined),
             ]
                 .filter(Boolean)
@@ -1309,6 +1303,7 @@ export class RunDriver {
         native: NativeAgents,
         result: string | undefined
     ): Promise<boolean> {
+        this.deps.runs.withdrawQuestion(run.id);
         writer.end();
         this.markPoint(run, live, writer);
         // Before the run's status changes, so the chat has what the turn changed by the time the app sees the run at rest.

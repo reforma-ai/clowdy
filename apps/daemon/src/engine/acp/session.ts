@@ -389,7 +389,9 @@ export class AcpSession implements EngineSession {
 
         this.access?.dispose();
         this.access =
-            this.options.tools.length > 0 ? this.deps.bridge.register(this.options.tools, this.signal) : undefined;
+            this.options.tools.length > 0
+                ? this.deps.bridge.register(this.options.tools, this.signal, agent.elicitation)
+                : undefined;
 
         return spawnInOwnGroup({
             command: agent.command,
@@ -513,6 +515,21 @@ export class AcpSession implements EngineSession {
             openBridge: () => this.access,
             offerTitle: title => this.offerTitle(title),
             pickPermission: (request, withdrawn) => this.pickPermission(agent, request, withdrawn),
+            pickQuestion: async (request, withdrawn) => {
+                const form = request as {
+                    mode?: string;
+                    requestedSchema?: { properties?: { clowdy_answer?: { description?: unknown } } };
+                };
+                const description = form.requestedSchema?.properties?.clowdy_answer?.description;
+                const ask = options.tools.find(tool => tool.name === 'ask_user');
+                if (form.mode !== 'form' || typeof description !== 'string' || !ask) return undefined;
+                try {
+                    const result = await ask.execute(JSON.parse(description), AbortSignal.any([signal, withdrawn]));
+                    return (result as { answer?: string }).answer;
+                } catch {
+                    return undefined;
+                }
+            },
             promptIs: state => this.promptIs(state),
             promptRunning: () => this.prompt === 'running',
             record: () => this.record(),

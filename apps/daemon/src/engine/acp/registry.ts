@@ -54,6 +54,7 @@ export interface ResolvedAgent {
     login?: string;
     /** The ACP version the engine speaks to it: `AgentSpec.protocol`, and `v1` for a custom agent. */
     protocol: AgentProtocol;
+    elicitation?: boolean;
     /** `AgentSpec.wakesOnBackgroundEnd`: the agent starts no report turn for background work that ended, so the runtime tells it. */
     wakesOnBackgroundEnd?: boolean;
     /** The `_meta` of `session/new`, for the options its adapter reads. */
@@ -459,6 +460,7 @@ export class AgentRegistry {
                     env: { ...entry.agent.env, ...override.env },
                     scrub: [],
                     protocol: 'v1',
+                    ...(entry.agent.elicitation && { elicitation: true }),
                     permission: permit.permission,
                 },
             };
@@ -478,6 +480,7 @@ export class AgentRegistry {
             scrub: spec.scrub ?? [],
             login: spec.login,
             protocol: spec.protocol ?? 'v1',
+            ...(spec.elicitation && { elicitation: true }),
             ...(spec.wakesOnBackgroundEnd && { wakesOnBackgroundEnd: true }),
             sessionMeta: withToolRules(spec.sessionMeta, applied),
             ...(spec.clientMeta && { clientMeta: spec.clientMeta }),
@@ -659,6 +662,7 @@ function parseStored(data: unknown, specs: readonly AgentSpec[]): Stored {
             args: Array.isArray(entry.args) ? entry.args.map(String) : [],
             ...(isStrings(entry.env) && { env: entry.env }),
             ...((entry.taskTools === 'cli' || entry.taskTools === 'mcp') && { taskTools: entry.taskTools }),
+            ...(entry.elicitation === true && { elicitation: true }),
         });
     }
 

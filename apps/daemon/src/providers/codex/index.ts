@@ -19,6 +19,7 @@ export const codex: Provider = {
         // machine whose global `~/.bunfig.toml` sets `minimumReleaseAge` fails with "blocked by minimum-release-age", in any folder, unless the bunx cache already
         // holds 2.8.0.
         protocol: 'v2',
+        elicitation: true,
         wakesOnBackgroundEnd: true,
         compact: '/compact',
         // `codex-acp@2.8.0` reads the same fork point (`SessionFork.ts`: the message id is looked up among the thread's items and `thread/fork` runs through the
