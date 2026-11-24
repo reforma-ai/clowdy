@@ -99,20 +99,8 @@
     }
 }
 
-.message {
-    width: 100%;
-}
-
-.actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--spacing-sm);
-}
-
-/* Keep Commit and its menu together when Generate is also offered. */
 .commitGroup {
     display: flex;
-    flex: 1 1 100%;
     gap: var(--spacing-sm);
     min-width: 0;
 }
@@ -152,7 +140,6 @@
     }
 }
 
-.generate[data-size][data-variant],
 .more[data-size][data-variant] {
     flex: 0 0 auto;
 }

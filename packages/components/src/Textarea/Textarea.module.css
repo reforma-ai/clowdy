@@ -222,6 +222,7 @@
         transition: opacity var(--transition-duration-fast) var(--ease-in-out);
     }
 
+    .endAction[data-always-visible],
     .field:hover > .endAction,
     .field:focus-within > .endAction {
         opacity: 1;

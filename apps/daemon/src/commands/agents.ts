@@ -28,7 +28,13 @@ function change<T>(services: Services, id: string | undefined, apply: () => T): 
 
 export const agentsHandlers: Pick<
     Handlers,
-    'agent.add' | 'agent.update' | 'agent.remove' | 'agents.refresh' | 'agent.signIn' | 'agent.cancelSignIn'
+    | 'agent.add'
+    | 'agent.update'
+    | 'agent.remove'
+    | 'agents.refresh'
+    | 'agent.signIn'
+    | 'agent.cancelSignIn'
+    | 'agents.setCommitMessageProvider'
 > = {
     'agent.add': (services, { id, name, command, args, env }) =>
         change(services, id, () => {
@@ -55,6 +61,12 @@ export const agentsHandlers: Pick<
             services.agents.remove(id);
 
             return { id };
+        }),
+    'agents.setCommitMessageProvider': (services, { provider }) =>
+        change(services, undefined, () => {
+            services.agents.setCommitMessageProvider(provider);
+
+            return { provider };
         }),
     'agent.signIn': (services, { id }) => {
         try {

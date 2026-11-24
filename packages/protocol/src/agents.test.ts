@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
-import { COMMIT_MESSAGE_SETTING_ID, writesCommitMessages } from './index';
+import { COMMIT_MESSAGE_SETTING_ID, commitMessageAgent, writesCommitMessages } from './index';
 
 import type { AgentInfo } from './index';
 
@@ -16,17 +16,25 @@ const codex = (patch: Partial<AgentInfo> = {}, value = true): AgentInfo => ({
     ...patch,
 });
 
+describe('commitMessageAgent', () => {
+    test('chooses the provider configured in settings and prefers Codex for older profiles with both on', () => {
+        const claude = codex({ id: 'claude' });
+        const configuredCodex = codex({ signIn: { status: 'signed-out', checkedAt: 1 } });
+
+        expect(commitMessageAgent([claude, configuredCodex])).toBe(configuredCodex);
+        expect(commitMessageAgent([claude, codex({}, false)])).toBe(claude);
+        expect(commitMessageAgent([codex({}, false)])).toBeUndefined();
+        expect(commitMessageAgent([codex({ settings: undefined })])).toBeUndefined();
+    });
+});
+
 describe('writesCommitMessages', () => {
-    test('is a yes for an agent that is on, ready, signed in and has Commit messages on', () => {
+    test('is a yes for a selected agent that is on, ready and signed in', () => {
         expect(writesCommitMessages(codex())).toBe(true);
     });
 
-    test('is a no when the switch is off, there is no such switch, nobody is signed in or the daemon could not tell', () => {
-        expect(writesCommitMessages(codex({}, false))).toBe(false);
-        expect(
-            writesCommitMessages(codex({ settings: [{ id: 'memory', label: 'Memory', value: true, default: false }] }))
-        ).toBe(false);
-        expect(writesCommitMessages(codex({ settings: undefined }))).toBe(false);
+    test('is a no when no provider is selected or its sign-in is unconfirmed', () => {
+        expect(writesCommitMessages(undefined)).toBe(false);
         expect(writesCommitMessages(codex({ signIn: { status: 'signed-out', checkedAt: 1 } }))).toBe(false);
         expect(writesCommitMessages(codex({ signIn: { status: 'unknown', checkedAt: 1 } }))).toBe(false);
         expect(writesCommitMessages(codex({ signIn: undefined }))).toBe(false);

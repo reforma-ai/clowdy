@@ -3,6 +3,8 @@ import {
     branchNameProblem,
     branchPrefixOf,
     branchPrefixProblem,
+    COMMIT_MESSAGE_SETTING_ID,
+    commitMessageAgent,
     folderNames,
     isBusyRunStatus,
     isTerminalRunStatus,
@@ -820,8 +822,8 @@ export class FixtureTransport implements Transport {
     }
 
     async generateGitMessage(projectId: ProjectId, place: PlaceRef, paths: string[]): Promise<GitMessage> {
-        // The daemon asks the agents' settings; so does the fixture, of the agents it lists.
-        if (!this.#data.agents.some(writesCommitMessages)) throw new TransportError("Couldn't write the message", 400);
+        const agent = commitMessageAgent(this.#data.agents);
+        if (!writesCommitMessages(agent)) throw new TransportError("Couldn't write the message", agent ? 503 : 400);
 
         return structuredClone(
             await this.#gitWrites.message(place.workspaceId ?? '', this.#uncommitted(projectId, place), paths)
@@ -2185,6 +2187,16 @@ export class FixtureTransport implements Transport {
                 return fail('unavailable', 'The demo data cannot add or remove agents');
             case 'agent.update':
                 return this.#updateAgent(command);
+            case 'agents.setCommitMessageProvider': {
+                for (const agent of data.agents) {
+                    const setting = agent.settings?.find(candidate => candidate.id === COMMIT_MESSAGE_SETTING_ID);
+                    if (setting) setting.value = agent.id === command.provider;
+                }
+
+                this.#agentsChanged();
+
+                return ok({ provider: command.provider });
+            }
             case 'agent.signIn':
                 return this.#startSignIn(command.id);
             case 'agent.cancelSignIn':

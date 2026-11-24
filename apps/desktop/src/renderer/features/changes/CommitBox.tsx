@@ -7,7 +7,7 @@ import { Scrollable } from '@clowdy/components/Scrollable';
 import { Text } from '@clowdy/components/Text';
 import { Textarea } from '@clowdy/components/Textarea';
 import { AiStar, ArrowUp, ChevronDown } from '@clowdy/icons/14';
-import { writesCommitMessages } from '@clowdy/protocol';
+import { commitMessageAgent, writesCommitMessages } from '@clowdy/protocol';
 import { useEffect, useState } from 'react';
 
 import { Unavailable } from '../../shared/Unavailable';
@@ -128,7 +128,7 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
         () => gitFactsOf(root.transport).refresh(model.facts.key),
         remote
     );
-    const canWrite = agents.some(writesCommitMessages);
+    const canWrite = writesCommitMessages(commitMessageAgent(agents));
     const { generation } = model.facts;
     const scope = model.effectiveScope;
     const names = draft.files.map(file => file.path).join('\0');
@@ -232,7 +232,32 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
                 placeholder={draft.busy === 'generate' ? 'Writing the message' : 'Message'}
                 value={draft.message}
                 isReadOnly={draft.busy !== undefined}
-                className={styles.message}
+                alwaysShowEndAction
+                endAction={
+                    !merging && (
+                        <Button
+                            variant="filling"
+                            size="xs"
+                            iconOnly
+                            isDisabled={canWrite && !draft.canGenerate}
+                            isPending={draft.busy === 'generate'}
+                            aria-label="Generate commit message"
+                            aria-haspopup={canWrite ? undefined : 'dialog'}
+                            tooltip={
+                                canWrite
+                                    ? (draft.generateBlock ?? 'Generate commit message')
+                                    : 'Set up commit message generation'
+                            }
+                            tooltipPlacement="top"
+                            onPress={() => {
+                                if (canWrite) void draft.generate();
+                                else root.ui.openSettings('source-control');
+                            }}
+                        >
+                            <AiStar aria-hidden="true" />
+                        </Button>
+                    )
+                }
                 onChange={text => draft.setMessage(text)}
                 onKeyDown={event => {
                     if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
@@ -250,73 +275,54 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
                 </Text>
             )}
 
-            <div className={styles.actions}>
-                {!merging && canWrite && (
+            <div className={styles.commitGroup}>
+                <Unavailable label={label} hint={reason} className={styles.commitHost}>
                     <Button
-                        variant="bordered"
+                        color="contrast"
                         size="sm"
-                        className={styles.generate}
-                        isDisabled={!draft.canGenerate}
-                        isPending={draft.busy === 'generate'}
-                        spinnerPlacement="start"
-                        tooltip={draft.generateBlock}
+                        className={styles.commit}
+                        contentClassName={styles.commitContent}
+                        isDisabled={!(commitAndPush ? draft.canCommitAndPush : draft.canCommit)}
+                        isPending={draft.writing}
+                        tooltip={
+                            hasChangesToCommit && reason === undefined && !merging && !commitAndPush && target
+                                ? `Commit to ${target.name}`
+                                : undefined
+                        }
                         tooltipPlacement="top"
-                        onPress={() => void draft.generate()}
+                        onPress={event => void draft.commit(commitAndPush && event.shiftKey)}
                     >
-                        <AiStar aria-hidden="true" />
-                        Generate
+                        {label}
                     </Button>
-                )}
-                {/* Commit and its menu wrap together, so the menu's button is never left alone on a line. */}
-                <div className={styles.commitGroup}>
-                    <Unavailable label={label} hint={reason} className={styles.commitHost}>
+                </Unavailable>
+                {!merging && (
+                    <MenuTrigger>
                         <Button
-                            color="contrast"
+                            variant="bordered"
                             size="sm"
-                            className={styles.commit}
-                            contentClassName={styles.commitContent}
-                            isDisabled={!(commitAndPush ? draft.canCommitAndPush : draft.canCommit)}
-                            isPending={draft.writing}
-                            tooltip={
-                                hasChangesToCommit && reason === undefined && !merging && !commitAndPush && target
-                                    ? `Commit to ${target.name}`
-                                    : undefined
-                            }
+                            iconOnly
+                            className={styles.more}
+                            isDisabled={!draft.canCommit}
+                            aria-label="More ways to commit"
+                            tooltip="More ways to commit"
                             tooltipPlacement="top"
-                            onPress={event => void draft.commit(commitAndPush && event.shiftKey)}
                         >
-                            {label}
+                            <ChevronDown aria-hidden="true" />
                         </Button>
-                    </Unavailable>
-                    {!merging && (
-                        <MenuTrigger>
-                            <Button
-                                variant="bordered"
-                                size="sm"
-                                iconOnly
-                                className={styles.more}
-                                isDisabled={!draft.canCommit}
-                                aria-label="More ways to commit"
-                                tooltip="More ways to commit"
-                                tooltipPlacement="top"
-                            >
-                                <ChevronDown aria-hidden="true" />
-                            </Button>
-                            <Popover placement="top end" spacing="xs" width={220}>
-                                <Menu aria-label="Commit" size="sm" onAction={() => void draft.commit(true)}>
-                                    <MenuItem
-                                        id="commit-and-push"
-                                        icon={<ArrowUp />}
-                                        text="Commit & Push"
-                                        description={draft.pushBlock}
-                                        stacked={draft.pushBlock !== undefined}
-                                        isDisabled={draft.pushBlock !== undefined}
-                                    />
-                                </Menu>
-                            </Popover>
-                        </MenuTrigger>
-                    )}
-                </div>
+                        <Popover placement="top end" spacing="xs" width={220}>
+                            <Menu aria-label="Commit" size="sm" onAction={() => void draft.commit(true)}>
+                                <MenuItem
+                                    id="commit-and-push"
+                                    icon={<ArrowUp />}
+                                    text="Commit & Push"
+                                    description={draft.pushBlock}
+                                    stacked={draft.pushBlock !== undefined}
+                                    isDisabled={draft.pushBlock !== undefined}
+                                />
+                            </Menu>
+                        </Popover>
+                    </MenuTrigger>
+                )}
             </div>
 
             {/* Several chats share a place, so a commit that goes straight to the branch the work is compared with is said before it is made. */}
