@@ -12,7 +12,6 @@
         --clowdy-button-color--hover: inherit;
         --clowdy-button-border--hover: transparent;
         --clowdy-button-opacity--hover: 1;
-        --clowdy-button-transform-pressed: scale(0.97);
         --clowdy-button-radius: var(--radius-lg);
 
         /* Reset */
@@ -61,8 +60,8 @@
         color: var(--clowdy-button-color--hover);
     }
 
-    /* Scale only while the pointer is down. A toggled isPressed stays at data-pressed for color, not size. */
-    .button:active {
+    /* Icon buttons scale only while the pointer is down; toggled buttons keep their size. */
+    .button[data-icon-only]:active {
         transform: var(--clowdy-button-transform-pressed);
     }
 
@@ -133,7 +132,7 @@
 
     .button[data-icon-only] {
         padding: 0;
-        /* Square hit targets are smaller — use a stronger press scale than text buttons. */
+        /* Square hit targets use a press scale. */
         --clowdy-button-transform-pressed: scale(0.92);
     }
 
@@ -412,7 +411,6 @@
         --clowdy-button-opacity--hover: var(--opacity-hover);
         --clowdy-button-color: var(--color-text);
         --clowdy-button-color--hover: var(--color-text);
-        --clowdy-button-transform-pressed: scale(0.99);
 
         padding: 0;
         height: auto;
