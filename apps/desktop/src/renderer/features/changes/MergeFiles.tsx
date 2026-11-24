@@ -1,5 +1,4 @@
 import { Button } from '@clowdy/components/Button';
-import { Scrollable } from '@clowdy/components/Scrollable';
 import { Text } from '@clowdy/components/Text';
 import { Check, ChevronRight, Close } from '@clowdy/icons/14';
 
@@ -55,48 +54,42 @@ function MergeFileList({
     const diffs = new Map(model.uncommitted?.files.map(file => [file.path, file]));
 
     return (
-        <Scrollable className={styles.scroll}>
-            <ul aria-label={conflicts ? 'Conflicting files' : 'Staged files'} className={styles.list}>
-                {entries.map(entry => {
-                    const { path, unstaged } = entry;
-                    const { name } = splitPath(path);
-                    // The diff includes worktree edits, so only show its counts for index-only changes.
-                    const diff = unstaged === undefined ? diffs.get(path) : undefined;
-                    const hasCounts = diff?.additions !== undefined && diff.deletions !== undefined;
+        <ul aria-label={conflicts ? 'Conflicting files' : 'Staged files'} className={styles.list}>
+            {entries.map(entry => {
+                const { path, unstaged } = entry;
+                const { name } = splitPath(path);
+                // The diff includes worktree edits, so only show its counts for index-only changes.
+                const diff = unstaged === undefined ? diffs.get(path) : undefined;
+                const hasCounts = diff?.additions !== undefined && diff.deletions !== undefined;
 
-                    return (
-                        <li key={path}>
-                            <Button
-                                variant="filling"
-                                color="secondary"
-                                size="xs"
-                                className={styles.file}
-                                contentClassName={styles.fileContent}
-                                aria-label={`Show diff for ${path}`}
-                                onPress={() => model.showUncommittedFile(path)}
-                            >
-                                <Text
-                                    color={conflicts ? 'danger' : 'success'}
-                                    className={styles.mark}
-                                    aria-hidden="true"
-                                >
-                                    {conflicts ? <Close size={12} /> : <Check size={12} />}
-                                </Text>
-                                <Text variant="xs" truncate className={styles.name} title={path}>
-                                    {name}
-                                </Text>
-                                {hasCounts && (
-                                    <span className={styles.counts}>
-                                        <Text variant="xs" color="success">{`+${diff.additions}`}</Text>
-                                        <Text variant="xs" color="danger">{`−${diff.deletions}`}</Text>
-                                    </span>
-                                )}
-                            </Button>
-                        </li>
-                    );
-                })}
-            </ul>
-        </Scrollable>
+                return (
+                    <li key={path}>
+                        <Button
+                            variant="filling"
+                            color="secondary"
+                            size="xs"
+                            className={styles.file}
+                            contentClassName={styles.fileContent}
+                            aria-label={`Show diff for ${path}`}
+                            onPress={() => model.showUncommittedFile(path)}
+                        >
+                            <Text color={conflicts ? 'danger' : 'success'} className={styles.mark} aria-hidden="true">
+                                {conflicts ? <Close size={12} /> : <Check size={12} />}
+                            </Text>
+                            <Text variant="xs" truncate className={styles.name} title={path}>
+                                {name}
+                            </Text>
+                            {hasCounts && (
+                                <span className={styles.counts}>
+                                    <Text variant="xs" color="success">{`+${diff.additions}`}</Text>
+                                    <Text variant="xs" color="danger">{`−${diff.deletions}`}</Text>
+                                </span>
+                            )}
+                        </Button>
+                    </li>
+                );
+            })}
+        </ul>
     );
 }
 

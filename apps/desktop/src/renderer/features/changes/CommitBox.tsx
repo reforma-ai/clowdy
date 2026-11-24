@@ -178,7 +178,9 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
     return (
         <section className={styles.root} aria-label="Commit">
             {merging && status?.isRepository ? (
-                <MergeFiles model={model} status={status} writing={draft.writing} />
+                <Scrollable className={styles.mergeList} contentClass={styles.mergeRows}>
+                    <MergeFiles model={model} status={status} writing={draft.writing} />
+                </Scrollable>
             ) : (
                 <>
                     <div className={styles.header}>

@@ -63,7 +63,7 @@
     padding: var(--spacing-4);
 }
 
-.body > :not(.scroll, .actions) {
+.body > :not(.list, .actions) {
     margin: var(--spacing-4);
 }
 
@@ -77,10 +77,6 @@
 
 .ready {
     justify-content: space-between;
-}
-
-.scroll {
-    max-height: calc(var(--spacing-24) * 5.5);
 }
 
 .list {
