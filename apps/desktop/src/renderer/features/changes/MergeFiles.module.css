@@ -67,16 +67,11 @@
     margin: var(--spacing-4);
 }
 
-.actions,
-.ready {
+.actions {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: var(--spacing-4);
-}
-
-.ready {
-    justify-content: space-between;
 }
 
 .list {

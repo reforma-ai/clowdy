@@ -323,9 +323,9 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
             {!result && blocked && <FailureText failure={blocked} />}
             {result?.state === 'conflicts' && (
                 <div className={styles.detail} role="status">
-                    <Text variant="sm" color="warning">
+                    <Text variant="sm" color={result.conflicts > 0 ? 'warning' : undefined}>
                         {result.conflicts === 0
-                            ? `Finish the merge in ${result.target}`
+                            ? `Complete the merge in ${result.target}`
                             : `${result.conflicts} ${result.conflicts === 1 ? 'conflict' : 'conflicts'} in ${result.target}`}
                     </Text>
                     <Text color="secondary" variant="xs" select="text">
@@ -342,7 +342,7 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
             )}
             {failure && <FailureText failure={failure} />}
             <div className={styles.actions}>
-                {result?.state === 'conflicts' && (
+                {result?.state === 'conflicts' && result.conflicts > 0 && (
                     <Button
                         size="sm"
                         variant="bordered"

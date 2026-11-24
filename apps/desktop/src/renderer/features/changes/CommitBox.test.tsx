@@ -529,6 +529,7 @@ describe('the commit box', () => {
             expect(list('Staged files')?.textContent).toContain('price.ts');
             expect(list('Staged files')?.textContent).not.toMatch(/limits\.ts|notes\.md/);
             expect(conflictRow.textContent).toBe('limits.ts');
+            expect(buttonOf('Abort merge')).toBeDefined();
             expect(checkboxes()).toHaveLength(0);
             await press(conflictRow);
             expect(model.effectiveScope).toBe('uncommitted');
@@ -545,6 +546,8 @@ describe('the commit box', () => {
             await settle();
             expect(list('Conflicting files')).toBeNull();
             expect(list('Staged files')?.textContent).toContain('limits.ts');
+            expect(box()?.textContent).not.toContain('Conflicts resolved');
+            expect(buttonOf('Abort merge')).toBeUndefined();
             expect(buttonOf('Complete merge')?.disabled).toBe(false);
             await press(buttonOf('Complete merge')!);
             expect(commit).toHaveBeenCalledWith(FIXTURE_PROJECT_ID, PLACE, expect.any(Array), 'Merge both changes', {

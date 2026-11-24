@@ -311,17 +311,12 @@ export function syncButton(
 
 /** A conflict can be reported before the refreshed status reaches the commit section. Successful actions need no separate line. */
 export function remoteNotice(result: GitRemoteResult): { words: string; tone: 'warning' } | undefined {
-    if (result.state !== 'conflicts') return undefined;
+    if (result.state !== 'conflicts' || result.conflicts === 0) return undefined;
 
     const { conflicts } = result;
 
     return {
-        words:
-            conflicts === 0
-                ? 'Conflicts resolved, commit the merge'
-                : conflicts === 1
-                  ? '1 conflict'
-                  : `${conflicts} conflicts`,
+        words: conflicts === 1 ? '1 conflict' : `${conflicts} conflicts`,
         tone: 'warning',
     };
 }

@@ -120,29 +120,12 @@ export function MergeFiles({
         if (quoteIntoComposer(quote)) ui.showChat();
     };
 
-    const abort = (
-        <Button
-            variant="filling"
-            color="secondary"
-            size="xs"
-            isDisabled={writing || remote.busy}
-            isPending={remote.running === 'abort'}
-            onPress={() =>
-                confirmAbortMerge(async () => {
-                    await remote.run('abort');
-                })
-            }
-        >
-            Abort merge
-        </Button>
-    );
-
     return (
         <>
             <Text as="h3" variant="sm" weight="medium" className={styles.title}>
                 Changes
             </Text>
-            {count > 0 ? (
+            {count > 0 && (
                 <FileGroup label="Conflicts" count={count} conflict>
                     <div className={styles.actions}>
                         <Button
@@ -154,7 +137,20 @@ export function MergeFiles({
                         >
                             Ask agent
                         </Button>
-                        {abort}
+                        <Button
+                            variant="filling"
+                            color="secondary"
+                            size="xs"
+                            isDisabled={writing || remote.busy}
+                            isPending={remote.running === 'abort'}
+                            onPress={() =>
+                                confirmAbortMerge(async () => {
+                                    await remote.run('abort');
+                                })
+                            }
+                        >
+                            Abort merge
+                        </Button>
                     </div>
                     <MergeFileList model={model} entries={conflicts} conflicts />
                     {conflicts.length < count && (
@@ -163,13 +159,6 @@ export function MergeFiles({
                         </Text>
                     )}
                 </FileGroup>
-            ) : (
-                <div className={styles.ready}>
-                    <Text variant="xs" color="secondary">
-                        Conflicts resolved
-                    </Text>
-                    {abort}
-                </div>
             )}
             <FileGroup label="Staged" count={staged.length}>
                 <MergeFileList model={model} entries={staged} />

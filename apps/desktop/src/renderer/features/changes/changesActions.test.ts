@@ -493,6 +493,11 @@ describe('remoteNotice', () => {
             tone: 'warning',
         });
     });
+
+    it('leaves a merge with no remaining conflicts to the commit section', () => {
+        expect(remoteNotice({ state: 'conflicts', action: 'pull', conflicts: 0 })).toBeUndefined();
+        expect(remoteNotice({ state: 'conflicts', action: 'update', conflicts: 0 })).toBeUndefined();
+    });
 });
 
 describe('update from the base', () => {
