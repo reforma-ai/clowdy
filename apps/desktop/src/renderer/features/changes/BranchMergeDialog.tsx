@@ -84,8 +84,7 @@ const failureOf = (error: unknown): Failure => ({
     ...(error instanceof TransportError && error.hint !== undefined && { hint: error.hint }),
 });
 
-const MODES: Record<GitBranchMergePreview['mode'], string> = {
-    'up-to-date': 'Already up to date',
+const MODES: Record<Exclude<GitBranchMergePreview['mode'], 'up-to-date'>, string> = {
     'fast-forward': 'Moves the branch forward without a merge commit',
     'merge-commit': 'Creates a merge commit',
     squash: 'Creates one commit',
@@ -350,7 +349,8 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
     };
 
     const blocked = preview ? mergeBlock(preview, direction) : undefined;
-    const canMerge = selection !== undefined && preview !== undefined && preview.mode !== 'up-to-date' && !blocked;
+    const upToDate = preview?.mode === 'up-to-date';
+    const canMerge = selection !== undefined && preview !== undefined && !upToDate && !blocked;
 
     const merge = () => {
         if (!selection || !preview || !canMerge) return;
@@ -365,6 +365,13 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
     };
 
     const actionLabel = STRATEGIES[strategy].label;
+    const actionStatus = !selection
+        ? 'Select a branch'
+        : upToDate
+          ? 'Already up to date'
+          : !preview && !failure
+            ? 'Comparing branches…'
+            : undefined;
     const replay = preview?.replayCommits ?? 0;
     const isWorking = pending !== undefined;
     const modeDisabled = isWorking || !selection;
@@ -421,25 +428,15 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
                 </div>
             )}
             {!result && fetchFailed && <FailureText failure={fetchFailed} />}
-            {!result && selected && !preview && !failure && (
-                <Text variant="sm" color="secondary" role="status">
-                    Comparing branches…
-                </Text>
-            )}
-            {!result && preview && (
+            {!result && preview && preview.mode !== 'up-to-date' && (
                 <div className={styles.detail} role="status">
                     <Text variant="sm">
                         {preview.mode === 'rebase'
                             ? replay > 0
                                 ? `Replay ${commitsWords(replay)} from ${target} on top of ${source}`
                                 : `Fast-forward ${target} to ${source}`
-                            : preview.mode === 'up-to-date'
-                              ? MODES[preview.mode]
-                              : commitsWords(preview.commits)}
-                        {preview.mode !== 'up-to-date' &&
-                            preview.mode !== 'rebase' &&
-                            !blocked &&
-                            ` · ${MODES[preview.mode]}`}
+                            : commitsWords(preview.commits)}
+                        {preview.mode !== 'rebase' && !blocked && ` · ${MODES[preview.mode]}`}
                     </Text>
                     {direction === 'into' && preview.targetPath && (
                         <Text color="secondary" variant="xs" title={preview.targetPath}>
@@ -482,6 +479,9 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
             <div className={styles.actions}>
                 {!result && (
                     <div className={styles.split}>
+                        <span className={styles.visuallyHidden} role="status">
+                            {selection ? actionStatus : undefined}
+                        </span>
                         <Button
                             size="md"
                             color="contrast"
@@ -490,7 +490,8 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
                             isPending={pending === 'merge'}
                             onPress={merge}
                         >
-                            {autoSync && hasOrigin && canMerge ? `${actionLabel} & Sync` : actionLabel}
+                            {actionStatus ??
+                                (autoSync && hasOrigin && canMerge ? `${actionLabel} & Sync` : actionLabel)}
                         </Button>
                         <MenuTrigger>
                             <Button

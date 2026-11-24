@@ -638,7 +638,7 @@ describe('merging branches from the sync menu', () => {
         expect(branches).toHaveBeenCalledTimes(1);
         expect(fetch.mock.invocationCallOrder[0]!).toBeLessThan(branches.mock.invocationCallOrder[0]!);
         expect(merge).not.toHaveBeenCalled();
-        expect(button('Create a merge commit').disabled).toBe(true);
+        expect(button('Select a branch').disabled).toBe(true);
         expect(modeTrigger().disabled).toBe(true);
         expect(heading()).toBe('Merge … to clowdy/ab12cd34');
         expect(option('origin/main')).toBeUndefined();
@@ -675,6 +675,39 @@ describe('merging branches from the sync menu', () => {
         expect(success).toHaveBeenCalledWith({ message: 'Pushed clowdy/ab12cd34 to origin' });
     });
 
+    it('puts comparison and up-to-date states on the disabled merge button', async () => {
+        await start({ gitWrites: { clean: true, remote: 'level' } });
+        const readPreview = transport.branchMergeGit.bind(transport);
+        let finish = () => {};
+        const merge = vi.spyOn(transport, 'branchMergeGit').mockImplementationOnce(async (...args) => {
+            const preview = await readPreview(...args);
+            if (preview.state !== 'preview') throw new Error('Expected a merge preview');
+
+            return new Promise(resolve => {
+                finish = () => resolve({ ...preview, mode: 'up-to-date', commits: 0 });
+            });
+        });
+
+        await open('Merge from branch…');
+        await press(option('main'));
+        await settle();
+
+        expect(button('Comparing branches…').disabled).toBe(true);
+        expect(dialog().querySelectorAll('[role="status"]')).toHaveLength(1);
+
+        await act(async () => finish());
+        await settle();
+
+        expect(button('Already up to date').disabled).toBe(true);
+        expect(dialog().querySelectorAll('[role="status"]')).toHaveLength(1);
+        expect(modeTrigger().disabled).toBe(false);
+        expect(merge.mock.calls.map(call => call[2].action)).toEqual(['preview']);
+
+        await press(option('main'));
+        await settle();
+        expect(button('Create a merge commit & Sync').disabled).toBe(false);
+    });
+
     it('filters the destination branches with text entered while they were loading', async () => {
         await start();
         const place = { folderId: WORKTREE.folderId, workspaceId: WORKTREE.workspaceId };
@@ -693,7 +726,7 @@ describe('merging branches from the sync menu', () => {
         const input = filter();
 
         expect(spinner()).not.toBeNull();
-        expect(button('Create a merge commit').disabled).toBe(true);
+        expect(button('Select a branch').disabled).toBe(true);
         await act(async () => {
             Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, 'main');
             input.dispatchEvent(new Event('input', { bubbles: true }));
