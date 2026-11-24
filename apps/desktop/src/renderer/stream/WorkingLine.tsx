@@ -1,5 +1,4 @@
 import { ProgressLoader } from '@clowdy/icons/assets';
-import { cn } from '@clowdy/lib';
 
 import styles from './ToolCard.module.css';
 import { describeTool } from './toolView';
@@ -23,8 +22,10 @@ export function WorkingLine({
                 <span className={styles.icon}>
                     <ProgressLoader size={14} aria-hidden />
                 </span>
-                <span className={cn(styles.label, styles.shrinks)}>{label}</span>
-                {view?.target && <code className={styles.chip}>{view.target}</code>}
+                <span className={styles.headerText}>
+                    <span className={styles.label}>{label}</span>
+                    {view?.target && <code className={styles.chip}>{view.target}</code>}
+                </span>
             </div>
         </div>
     );
