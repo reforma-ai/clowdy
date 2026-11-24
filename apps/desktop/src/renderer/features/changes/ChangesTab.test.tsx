@@ -477,7 +477,7 @@ describe('the Changes tab of a chat in a worktree', () => {
         expect(write).toHaveBeenCalledExactlyOnceWith('src/booking/price.ts');
     });
 
-    it('folds a card on a press on its header, and opens it again, and has a button to fold every card and one to open them all', async () => {
+    it('folds individual cards and uses one button to collapse a mixed list or expand a folded list', async () => {
         await start();
         await draw();
         await bringNear();
@@ -490,13 +490,20 @@ describe('the Changes tab of a chat in a worktree', () => {
         await press(button('Unfold src/booking/price.ts'));
         expect(card('src/booking/price.ts').hasAttribute('data-open')).toBe(true);
 
-        await press(button('Collapse all files'));
-        expect(cards().some(element => element.hasAttribute('data-open'))).toBe(false);
-        expect(button('Collapse all files').disabled).toBe(true);
+        await press(button('Fold src/booking/price.ts'));
+        const foldAll = button('Collapse all files');
 
-        await press(button('Expand all files'));
+        expect(foldAll.disabled).toBe(false);
+        expect(button('Expand all files')).toBeNull();
+        await press(foldAll);
+        expect(cards().some(element => element.hasAttribute('data-open'))).toBe(false);
+        expect(button('Collapse all files')).toBeNull();
+        expect(button('Expand all files')).toBe(foldAll);
+
+        await press(foldAll);
         expect(cards().every(element => element.hasAttribute('data-open'))).toBe(true);
-        expect(button('Expand all files').disabled).toBe(true);
+        expect(button('Expand all files')).toBeNull();
+        expect(button('Collapse all files')).toBe(foldAll);
     });
 });
 
@@ -716,6 +723,8 @@ describe('the filter', () => {
         await type('*.rs');
 
         expect(cards()).toHaveLength(0);
+        expect(button('Collapse all files').disabled).toBe(true);
+        expect(button('Expand all files')).toBeNull();
         expect(container.textContent).toContain('No files match the filter');
         expect(container.querySelector('[aria-label="Changed files"]')?.textContent).toContain(
             'No files match the filter'
@@ -1117,15 +1126,13 @@ describe('the viewed files', () => {
         await draw();
         await tick('notes.md');
 
-        expect(button('Expand all files').disabled).toBe(false);
+        expect(button('Expand all files')).toBeNull();
+        await press(button('Collapse all files'));
+        expect(cards().every(element => !element.hasAttribute('data-open'))).toBe(true);
 
         await press(button('Expand all files'));
         expect(cards().every(element => element.hasAttribute('data-open'))).toBe(true);
-        expect(button('Expand all files').disabled).toBe(true);
-
-        await press(button('Collapse all files'));
-        expect(cards().every(element => !element.hasAttribute('data-open'))).toBe(true);
-        expect(button('Collapse all files').disabled).toBe(true);
+        expect(button('Collapse all files').disabled).toBe(false);
     });
 
     it('does not read the texts of a file because it was ticked: the state of the tick is out of the cache and the diff', async () => {
