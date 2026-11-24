@@ -27,13 +27,16 @@ bun install
 
 ## Develop Clowdy with Clowdy
 
-1. `./clowdy dev`, then in the app: project select (top left) → **Add project…** → **Add folders…** → choose this repository → **Add project**.
-2. **Chats** → **New chat**, and describe what you want changed. The orchestrator reads the repo and the docs, answers questions without touching anything, and for real work creates tasks and runs agents in parallel. Pick *Semi-manual* in the composer if you want it to ask you about significant decisions first.
-3. Watch **Tasks** (board), **Agents** (the run tree and each agent's stream) and the **Docs** tab of the side panel (`.clowdy/docs/`, plain Markdown in the repo).
-4. The renderer is rebuilt as agents edit it and the window reloads a few seconds later. A change under `apps/desktop/src/main` restarts the app window but not the daemon, so running work continues. A change to the daemon (`apps/daemon/src`, `packages/protocol/src`) is picked up by the app itself: when the daemon has no runs in progress it is replaced and the window reconnects without a reload; while runs are in progress it waits, so nothing is interrupted. `CLOWDY_PROFILE=dev bun run --cwd apps/daemon stop` stops it by hand (live runs then show as *Interrupted*; send a message in the chat to resume).
-5. Agents edit this checkout directly unless they decide to work in a copy. The system skills tell them to use a copy for changes to Clowdy itself.
+Run the app from `main` or `next`. Do the work in a worktree, then merge that branch back into the checkout the app is running from. That merge is what refreshes the open window.
 
-`CLOWDY_ENGINE=fake ./clowdy dev` plays a scripted demo without spending any quota. A daemon that is already running keeps the engine it started with, so stop it first (step 4) or the app attaches to it and its agents run on your subscription.
+1. Check out `main` or `next` and start the app from that folder: `./clowdy dev`.
+
+2. In the app, select the Clowdy project (this folder). If it is not there yet: project select (top left) → **Add project…** → **Add folders…** → this folder → **Add project**.
+3. On a new chat, open the menu under the message box and choose **New worktree**, or pick a worktree that already exists. One shared worktree is fine, and so is a separate one per task.
+4. Work there, not in the folder `./clowdy dev` is running from. Describe the change in the chat. Pick *Semi-manual* in the composer if you want a question before a significant decision. Watch **Tasks**, **Agents**, and the **Docs** tab (`.clowdy/docs/`).
+5. In the main folder, merge the worktree's branch into `main` or `next`. The renderer rebuilds and the window reloads a few seconds later. A change under `apps/desktop/src/main` restarts the window but not the daemon. A change to the daemon (`apps/daemon/src`, `packages/protocol/src`) replaces it when no run is in progress, and the window reconnects without a reload; while a run is in progress it waits. `CLOWDY_PROFILE=dev bun run --cwd apps/daemon stop` stops it by hand (live runs then show as *Interrupted*; send a message in the chat to resume).
+
+`CLOWDY_ENGINE=fake ./clowdy dev` plays a scripted demo without spending any quota. A daemon that is already running keeps the engine it started with, so stop it first (step 5) or the app attaches to it and its agents run on your subscription.
 
 ## Daemon
 
