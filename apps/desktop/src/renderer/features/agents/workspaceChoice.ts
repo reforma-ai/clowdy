@@ -25,7 +25,7 @@ export function pickableWorktrees(repository: Repository): GitWorktree[] {
 }
 
 /** How a worktree is named in a list: its branch, or on a detached HEAD the commit it is on. */
-export function worktreeLabel(worktree: Pick<GitWorktree, 'branch' | 'head'>): string {
+export function worktreeLabel(worktree: { branch?: string; head?: string }): string {
     return worktree.branch ?? (worktree.head ? `Detached at ${worktree.head}` : 'Detached HEAD');
 }
 

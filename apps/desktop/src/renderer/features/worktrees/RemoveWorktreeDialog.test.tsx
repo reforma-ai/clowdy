@@ -475,16 +475,14 @@ describe('Remove in Manage worktrees', () => {
     });
 
     describe('a worktree that cannot be removed', () => {
-        it('has no Remove to choose while a chat works in it, archived ones included, and the row lists the chats', async () => {
+        it('has no Remove to choose while a chat works in it and counts archived chats in the row', async () => {
             await open();
 
             const remove = await removeItem(CLOWDY_WORKTREE);
 
             expect(remove.getAttribute('aria-disabled')).toBe('true');
             expect(remove.textContent).toContain('A chat works in it');
-            expect(row(CLOWDY_WORKTREE)!.querySelector('[aria-label="Chats"]')!.textContent).toContain(
-                'Weekend surcharge in a worktree'
-            );
+            expect(row(CLOWDY_WORKTREE)!.textContent).toContain('2 chats');
 
             await click(remove);
             await settle();

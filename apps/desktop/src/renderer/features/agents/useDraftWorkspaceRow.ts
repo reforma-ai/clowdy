@@ -8,7 +8,7 @@ import type { ChatWorkspace, ChatWorkspaceChoice, FolderId, ProjectId } from '@c
 /**
  * Asks the daemon for the row of the worktree the new-chat page has chosen, when it is one that exists (`workspace.open`), and keeps it for the window's places
  * (`ProjectUi.draftWorkspaceRow`): the tabs and the `@` list show the worktree's files before the chat exists, and the first message makes a chat that shares that same row, so
- * nothing changes under them when it starts. `choice` is what the folder's read bears out (`effectiveChoice`), so a worktree that is gone is not asked for, and the row of one is
+ * nothing changes under them when it starts. The selected path is checked by the daemon even while the folder listing is refreshing. The row is
  * dropped when the choice goes. A new worktree has no row until the first message makes it. A refusal or a daemon that cannot be reached leaves the page in the folder's own
  * checkout without a word: the chat's creation says what is wrong when it comes to it. An answer for a choice that changed meanwhile is dropped. The daemon drops a worktree's row
  * with the last chat that works in it, so a row that had a chat and has none now is gone: it is asked for again, and the page's place and its first message share the new one.
