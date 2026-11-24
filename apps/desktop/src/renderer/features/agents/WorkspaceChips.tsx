@@ -24,9 +24,16 @@ import { ChipTrigger } from './ChipTrigger';
 import { MainBranchPicker } from './MainBranchPicker';
 import { type MainBranchBlock } from './mainBranch';
 import styles from './WorkspaceChips.module.css';
-import { chatsUsing, pickableWorktrees, type Repository, repositoryOf, worktreeLabel } from './workspaceChoice';
+import {
+    chatsUsing,
+    pickableWorktrees,
+    type Repository,
+    repositoryOf,
+    samePath,
+    worktreeLabel,
+} from './workspaceChoice';
 
-import type { Chat, ChatId, ChatWorkspaceChoice, GitWorktree } from '@clowdy/protocol';
+import type { Chat, ChatId, ChatWorkspace, ChatWorkspaceChoice, GitWorktree } from '@clowdy/protocol';
 import type { BranchListing } from '../changes/branchChoices';
 import type { FolderGit } from '../openWith';
 import type { FolderRepository } from './useFolderRepository';
@@ -143,6 +150,7 @@ interface WorkspaceChipProps {
     git: Repository;
     /** What the chat is sent with: `undefined` for the folder's own checkout. */
     choice: ChatWorkspaceChoice | undefined;
+    workspaceRow?: ChatWorkspace;
     chats: ReadonlyMap<ChatId, Chat>;
     /** The branch of the folder's own checkout: without it the row only says which branch the folder is on. */
     main?: MainBranchControls;
@@ -162,7 +170,7 @@ interface WorkspaceChipProps {
  * check: the row that is on is the one the menu highlights. `Manage worktrees…` ends the menu behind a separator: it shuts the menu and opens the dialog of the project's worktrees (`onManage`), and chooses
  * nothing. The list of branches is drawn inside the menu's popover, as its child, so that focus moving into it does not shut the menu; picking a branch chooses a new worktree from it and shuts both.
  */
-function WorkspaceChip({ git, choice, chats, main, onChoose, onManage }: WorkspaceChipProps) {
+function WorkspaceChip({ git, choice, workspaceRow, chats, main, onChoose, onManage }: WorkspaceChipProps) {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     // The row of a new worktree while the list of its base branches is open beside the menu.
     const [listAnchor, setListAnchor] = useState<HTMLElement | null>(null);
@@ -205,11 +213,14 @@ function WorkspaceChip({ git, choice, chats, main, onChoose, onManage }: Workspa
             description={usersLine(chatsUsing(chats.values(), worktree.path))}
         />
     );
-    const chosen = choice?.mode === 'existing' ? worktrees.find(worktree => worktree.path === choice.path) : undefined;
+    const chosen =
+        choice?.mode === 'existing'
+            ? (worktrees.find(worktree => samePath(worktree.path, choice.path)) ?? workspaceRow)
+            : undefined;
     const base = choice?.mode === 'new' ? (choice.base ?? git.defaultBranch) : git.defaultBranch;
     const canMakeOne = git.defaultBranch !== undefined;
     const branch = git.branch;
-    const selected = choice?.mode === 'new' ? 'new' : chosen ? 'existing' : 'checkout';
+    const selected = choice?.mode === 'new' || choice?.mode === 'existing' ? choice.mode : 'checkout';
     // The base at the end of the row is pressed, and so is the row under it: react-aria's row takes the release of a press that began on the base as its own and acts. The row's
     // action then leaves the choice alone, since the press was the base's, which opens the list itself.
     const baseHeld = useRef(false);
@@ -244,7 +255,6 @@ function WorkspaceChip({ git, choice, chats, main, onChoose, onManage }: Workspa
     const shown = picked ?? branch;
     const why = main?.refusal ?? main?.block;
     const whyWords = why && (why.hint ? `${why.message} (${why.hint})` : why.message);
-    // What `effectiveChoice` hands over is a worktree the folder lists, so an existing choice always has its row; anything else is the folder's own checkout.
     const trigger =
         choice?.mode === 'new'
             ? {
@@ -252,11 +262,13 @@ function WorkspaceChip({ git, choice, chats, main, onChoose, onManage }: Workspa
                   trail: base === undefined ? undefined : `from ${base}`,
                   ariaLabel: `Where it runs: New worktree${base === undefined ? '' : ` from ${base}`}`,
               }
-            : chosen
+            : choice?.mode === 'existing'
               ? {
-                    lead: 'Worktree',
-                    label: worktreeLabel(chosen),
-                    ariaLabel: `Where it runs: Worktree, ${chosen.branch ? `branch ${chosen.branch}` : worktreeLabel(chosen).toLowerCase()}`,
+                    lead: chosen ? 'Worktree' : undefined,
+                    label: chosen ? worktreeLabel(chosen) : 'Worktree',
+                    ariaLabel: chosen
+                        ? `Where it runs: Worktree, ${chosen.branch ? `branch ${chosen.branch}` : worktreeLabel(chosen).toLowerCase()}`
+                        : 'Where it runs: Worktree',
                 }
               : picked !== undefined
                 ? {
@@ -534,8 +546,10 @@ function RowButton({
 export interface WorkspaceChipsProps {
     /** What the daemon says of the folder the new chat is for. */
     repository: FolderRepository;
-    /** What the chat will be sent with (`effectiveChoice`): the control shows this and never what the repository does not bear out. */
+    /** What the chat will be sent with, including an existing path while the listing is being refreshed. */
     choice: ChatWorkspaceChoice | undefined;
+    /** The selected checkout from `workspace.open`, which can answer before the listing does. */
+    workspaceRow?: ChatWorkspace;
     /** The project's chats, which the list of worktrees names the users of each by. */
     chats: ReadonlyMap<ChatId, Chat>;
     /** The branch of the folder's own checkout (`useMainBranch`); without it the main worktree's row only says which branch the folder is on. */
@@ -551,7 +565,15 @@ export interface WorkspaceChipsProps {
  * folder that is no repository, or whose read is still on its way, has nothing here, and one that git could not be asked about has a dim `Main worktree` that says why on
  * hover. The lists come from `useFolderRepository`.
  */
-export function WorkspaceChips({ repository, choice, chats, main, onChoose, onManage }: WorkspaceChipsProps) {
+export function WorkspaceChips({
+    repository,
+    choice,
+    workspaceRow,
+    chats,
+    main,
+    onChoose,
+    onManage,
+}: WorkspaceChipsProps) {
     const git = repositoryOf(repository);
 
     if (git)
@@ -559,10 +581,19 @@ export function WorkspaceChips({ repository, choice, chats, main, onChoose, onMa
             <WorkspaceChip
                 git={git}
                 choice={choice}
+                workspaceRow={workspaceRow}
                 chats={chats}
                 main={main}
                 onChoose={onChoose}
                 onManage={onManage}
+            />
+        );
+
+    if (choice?.mode === 'existing')
+        return (
+            <WorkspaceLabel
+                worktree={choice.path}
+                git={workspaceRow?.branch ? { branch: workspaceRow.branch } : undefined}
             />
         );
 
