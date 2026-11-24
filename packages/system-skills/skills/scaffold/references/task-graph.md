@@ -17,7 +17,7 @@ Take only slices the first milestone needs. Each is a coherent outcome built and
 | Demo data and an example account | seed script | the data slice |
 | Background jobs, email, file uploads, payments | their own folder each | only when the milestone needs them |
 
-Split by owned paths, not by activity. "Write tests" and "write docs" are not slices: tests belong to the code's slice, and each slice updates `product.md` and `architecture.md` for what it changes.
+Split by outcome, dependencies and reviewability; assign compatible owned paths to parallel slices. "Write tests" and "write docs" are not slices: tests belong to the code's slice, and each slice updates `product.md` and `architecture.md` for what it changes.
 
 ## Description of each task
 
@@ -26,7 +26,7 @@ Use the five-part template of clowdy:orchestrate (Outcome, Owns, Needs, Check, O
 ## Dependencies
 
 - `--depends-on` only for real ordering: the task needs another's output, or must edit the same files after it.
-- Prefer removing a dependency by fixing the contract first. Write the API routes, the data tables and the shared types into `architecture.md` (Contracts). Then the API, the UI and the data slice do not wait for each other: the UI builds against the contract with fixture data, the API against the schema.
+- Prefer removing a dependency by fixing the contract first. Write shared API routes, data tables and types into `architecture.md` (Contracts). Parallelize only when the slices can be built and checked against those contracts without disposable production scaffolding.
 - The skeleton is Done before any slice starts, so listing it in `--depends-on` costs nothing and shows the order to the user.
 - A slice that others wait on is checked and set Done by you before its dependents start.
 
@@ -41,9 +41,8 @@ Lockfile, dependency manifest, route or module index, navigation, global styles,
 
 ## Size
 
-- Four to eight tasks for a first milestone. Past about twelve, group or stop at the milestone.
-- Each task is 30 to 120 minutes of agent work. Fold small parts into the slice that owns the code, or hand them to engine sub-agents inside it.
-- A task that would end as "partly done", or has no single Check, is too big. Split it by owned paths.
+- Size slices by outcome, dependencies and reviewability, not a target count. Fold small parts into the slice that owns the code, or delegate compatible work inside it.
+- A task that would end as "partly done", or has no single Check, is too big. Split it into coherent outcomes.
 
 ## Example: bakery ordering
 

@@ -18,15 +18,15 @@ A task without a Check is not ready to start. A task without Owns cannot be shar
 
 ## Size
 
-One task is a coherent outcome built and checked as one piece. Typical: 30-120 minutes of agent work, one area, a handful to a dozen files.
+One stage is a coherent outcome and an implementation, verification, review and commit boundary. It need not be independently deployable; leave the repository internally consistent and pass its scoped checks. Size by outcome, dependencies and reviewability, not file count. A task is a stage or another independently tracked outcome.
 
 - Too small: rename a function, add one test, update imports, "write docs" for code another task writes. Merge it into the task that owns the code.
-- Too big: spans unrelated areas, has no single Check, or would end as "partly done". Split by ownership (area or file set), not by activity (code, tests, docs).
-- Typical larger work is 3-8 tasks. More than about 12 means the pieces are too fine or the request is several milestones; group, or finish the first milestone and report.
+- Too big: spans unrelated outcomes, has no single Check, or would end as "partly done". Split by outcome, dependency and reviewability, not by activity (code, tests, docs). Give concurrent work compatible ownership.
+- Task count is a warning that the work may need regrouping, not a target or an automatic reason to split.
 
 ## Dependencies
 
-Use `--depends-on` only for real ordering: a task needs another's output (a schema, a type, an API) or must edit the same files after it. Everything else can be done in any order. Prefer removing a dependency by fixing the contract up front.
+Use `--depends-on` only for real ordering: a task needs another's output (a schema, a type, an API) or must edit the same files after it. Fix shared contracts up front where possible. Run ready stages in parallel only when their independence, ownership and contracts are established; otherwise preserve their written order. The coordinator chooses direct or delegated execution, integrates the results and keeps the graph current.
 
 Common shapes:
 
@@ -55,7 +55,7 @@ Statuses are the project's columns; the default is To do, In progress, Review, D
 | --- | --- |
 | To do -> In progress | You start the work |
 | In progress -> Review | The work is built and its own narrow check passed; Review means built, not yet verified |
-| Review -> Done | Verification passed (the gates for a task others wait on; the full steps for the final result) |
+| Review -> Done | Verification and review passed (separate reviewer when available); commit the stage or stage its files as project rules require. For the final result, also run the full integrated checks |
 | Any -> Canceled | The task is dropped; leave the reason as a comment |
 | Review or Done -> In progress | Verification failed; leave the failure as a comment |
 

@@ -2,6 +2,7 @@
 
 ## Decisions
 
+- [Stage coordination follows Briefback](decisions/2026-11-24-briefback-stage-coordination.md) records the stage, review and delegation model. Status: accepted.
 - [Manual chat order](decisions/2026-11-24-use-manual-chat-order.md) records why the sidebar uses one saved order and puts new chats first. Status: accepted.
 - [Switch branches in a merged chat worktree](decisions/2026-11-24-switch-merged-worktree-branches.md) describes which branch switches are allowed. Status: accepted.
 - [Merge into existing checkouts](decisions/2026-11-24-merge-into-existing-checkouts.md) describes conflict checks for outgoing merges and how to resolve conflicts in an existing checkout. Status: accepted.
@@ -9,6 +10,7 @@
 
 ## Checks
 
+- [Briefback stage coordination](checks/2026-11-24-briefback-stage-coordination.md) covers skill validation, prompt tests and the daemon typecheck baseline. Status: passed with limits.
 - [System skill edits](checks/2026-11-24-system-skill-edit.md) covers validation, integration tests and semantic review. Status: passed with limits.
 
 - [Manual chat ordering](checks/2026-11-24-manual-chat-order.md) covers native drag, grouping, and saved order after reload. Status: passed.

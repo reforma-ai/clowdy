@@ -28,7 +28,7 @@ const TASKS =
 /** What every chat's orchestrator is told about threads; clowdy:orchestrate says how to delegate. */
 const THREADS = [
     'Threads: you can hand work to other agents as threads, chats below yours that run alongside you, with the shell command `clowdy thread` (`clowdy thread --help` lists its commands; `"$CLOWDY_CLI"` is the same command if your shell does not find `clowdy`). It reaches the Clowdy daemon over a loopback connection: if a sandboxed shell refuses it (`EPERM`), run the same command again with escalated permissions, outside the sandbox.',
-    'Delegate only when the person asked for it or the work really splits into independent pieces. A thread does not see this conversation, so give it a self-contained brief.',
+    'Choose delegation when it improves execution or provides a separate review. A thread does not see this conversation, so give it a self-contained brief.',
     'Its last message of a turn is its report, which the daemon delivers to you as a message each time it stops: end your turn instead of waiting, and never poll. Never send a thread acknowledgements or thanks.',
 ].join(' ');
 

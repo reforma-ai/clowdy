@@ -9,10 +9,10 @@ A thread is a chat below yours with an agent of its own. You start it with a bri
 | Choice | Use when | Cost and limits |
 | --- | --- | --- |
 | **You** | The default: a task's coherent piece, the glue between pieces, a conflict, a one-line contract fix, anything that needs the whole picture. | Uses your context; keep it for decisions. |
-| **Engine sub-agent** (Claude's `Agent` tool; Codex's own sub-agent facility if it has one) | Read-only research and review; file-disjoint edits small enough for one sub-agent turn; many similar probes, one item each. The result is only needed by you. | Cheap, in-process, shares your cache. Launch 5-15 per wave in one message. They end with your session. |
+| **Engine sub-agent** (Claude's `Agent` tool; Codex's own sub-agent facility if it has one) | Research, review and file-disjoint edits when the result is only needed by you. | In-process; ends with your session. Choose the number by the work and available capacity. |
 | **Thread** (`clowdy thread spawn`) | A coarse piece worth an agent of its own: a task of 30 minutes or more, long-running work that should not hold your turn, an independent check of what you built, or a piece for another agent or model. | A full agent session and a turn of yours for each of its reports. It keeps its chat after a restart and the person can follow it. 2-6 at once is normal. |
 
-Rules of thumb: research and review are sub-agents; implementation of a task that splits off cleanly is a thread or yours; an independent check is a fresh thread. Delegate only when the person asked for it or the work really splits into independent pieces. Do not start a thread for something you or a sub-agent would finish in a few minutes, and do not hand off a piece whose result you could not check.
+Choose direct work, sub-agents or threads when the gain in speed, quality or context justifies coordination. Each completed stage needs a separate reviewer when available; the stage owner can arrange one, including a nested thread within the depth limit. Review yourself and report the limit if no reviewer is available. A fresh thread may independently check a user flow or risky change. Do not hand off work whose result you cannot check.
 
 ## 2. The brief
 
@@ -35,7 +35,7 @@ Leave the agent and the model unset unless the person asked or you have a reason
 
 ## 3. Start, then end your turn
 
-1. Start every thread that is ready in one step, then go on. A brief belongs in a heredoc, so quotes and `$` stay as written:
+1. Start the selected ready, compatible threads in one step, then go on. A brief belongs in a heredoc, so quotes and `$` stay as written:
 
    ```bash
    clowdy thread spawn --title "CSV export endpoint" --tasks CLW-21 --prompt-file - <<'EOF'
@@ -58,7 +58,7 @@ Leave the agent and the model unset unless the person asked or you have a reason
 
 ## 5. Check what a thread built
 
-A thread's "done" is a claim. Cheap gates (build, typecheck, tests) you run yourself on the integrated result. For a user flow or a risky change, start a fresh thread that checks it: give it the claim in the manager's words, the acceptance criteria, where the result is and the commands, never the author's report or reasoning, and tell it to fix nothing and write a check report (clowdy:docs). Its findings come back as its report: a failure goes back to the author with the repro, then a new check. See [verification](verification.md) for the steps the checking thread follows: put "follow the steps of clowdy:orchestrate references/verification.md" in its brief.
+A thread's "done" is a claim. Run the relevant gates on the integrated result. Each completed stage gets a separate reviewer when available; the owner may arrange its review and report the evidence. For a user flow or risky change, a fresh checking thread may additionally run [verification](verification.md): give it the claim, acceptance criteria, location and commands, never the author's reasoning. Ask it to fix nothing and write a check report. Return a failure with its repro to the owner, then check again.
 
 ## 6. File ownership
 

@@ -4,9 +4,9 @@ Load this when you are about to hand work to the engine's own sub-agents. Who do
 
 ## 1. What they are for
 
-An engine sub-agent (Claude's `Agent` tool; Codex's own sub-agent facility if it has one) runs inside your session: cheap, in-process, sharing your cache. Use it for read-only research and review, for file-disjoint edits small enough for one sub-agent turn, and for many similar probes, one item each (the same check over many modules, a review of many files). Launch 5-15 per wave in one message; the engine allows about 20 at once. They end with your session, and with it if the daemon restarts.
+An engine sub-agent (Claude's `Agent` tool; Codex's own sub-agent facility if it has one) runs inside your session and ends with it, including when the daemon restarts. Use it for research, review, compatible edits or similar probes. Choose the number by the work and available capacity; do not split work just to distribute it.
 
-Rules of thumb: research and review are sub-agents; implementation of a task is yours or a thread's. Do not hand a piece to a sub-agent when you could not check its result, and do not hide hours of work in one: that is a thread.
+Choose direct work, sub-agents or threads by the work and coordination cost. Coordinate overlapping edits and review fixes; do not hand off a piece whose result you cannot check.
 
 ## 2. The prompt
 

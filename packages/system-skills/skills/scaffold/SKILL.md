@@ -77,12 +77,12 @@ Plan after the skeleton passes its check, when Owns paths are real. Slice catalo
 - Slice by what can be built and verified on its own: data model, API, UI shell, each feature screen, auth, deployment script, demo data. Not by layer for its own sake.
 - Create tasks with `clowdy task create`, in dependency order, each description in the five-part template of clowdy:orchestrate (Outcome, Owns, Needs, Check, Out of scope).
 - Two tasks are independent when they own different paths and neither needs the other's output. A contract both need is written into `architecture.md` first, so the two can be built against it in any order, or by threads side by side.
-- Aim for 4 to 8 tasks for the first milestone, each about an hour of agent work. Small parts inside a slice go to engine sub-agents.
+- Size the first milestone's tasks by outcome, dependency and reviewability. Delegate compatible parts inside a slice when useful.
 - Verification is not a task: you verify the first milestone on the combined result (step 6). Move the skeleton task to Done only after you saw its check pass.
 
 ### 6. Build the slices
 
-Continue the loop in clowdy:orchestrate at step 4. The skeleton fixed the layout and the contracts, so the ready slices with disjoint Owns paths fan out through threads: one thread per slice, all started in one step (`clowdy thread spawn --tasks <key> --prompt-file - <<'EOF'`), each brief with the task key, the mode line, the owned paths, the contracts, a pointer to `architecture.md`, the check command and the report it ends with (clowdy:orchestrate, "Delegating with threads"). Build a slice yourself when it is the one the others wait on. Then end your turn; as each thread reports, check its slice, start the slices that became ready, and replan when a slice reveals a fact. When the slices are Done, run the milestone flow from `product.md` on the combined result yourself or through a fresh checking thread (clowdy:orchestrate, Verify). Then move the verified behavior to Implemented in `product.md` and let the check report go to `checks/`.
+Continue the loop in clowdy:orchestrate at step 4. The skeleton fixed the layout and contracts. Choose direct or delegated work; run ready slices in parallel when their ownership and contracts are compatible. Each thread brief carries the task key, mode, owned paths, contracts, `architecture.md`, check command and report format. Start ready threads together and end your turn; as each reports, check its slice, start newly ready work and replan when a slice reveals a fact. Review and commit each stage as clowdy:orchestrate says. When the slices are Done, run the milestone flow from `product.md` on the combined result yourself or through a fresh checking thread. Move verified behavior to Implemented in `product.md` and write the check report to `checks/`.
 
 ### 7. Tell the user
 
@@ -102,7 +102,7 @@ Autopilot differs only in step 2 of the example: no cards, it decides and writes
 
 ## Avoid
 
-- Starting slices, threads or sub-agents before the skeleton passes its own check.
+- Starting implementation slices before the skeleton passes its own check; read-only research may run alongside it.
 - Adding features the milestone does not need (payments, roles, admin panels) because the template had them. Delete generator output the product does not use.
 - Fashionable or exotic stacks, two languages without a reason, services that need an account before anything runs.
 - Asking the manager technology questions, or asking in autopilot at all.

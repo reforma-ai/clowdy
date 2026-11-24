@@ -39,7 +39,7 @@ Left: <what is not done, risks, a fork you could not decide, what you need; or "
 
 ## Threads of your own
 
-You may start threads while the depth limit allows; `clowdy thread spawn` says when it does not. Follow clowdy:orchestrate, "Delegating with threads". Collect their results in your report; your parent sees only that report.
+You may choose sub-agents or start threads while the depth limit allows, including a separate reviewer for your assigned stage. Stay within your brief and ownership, and coordinate concurrent edits. `clowdy thread spawn` says when the depth limit prevents a thread. Follow clowdy:orchestrate, "Delegating with threads". Integrate and verify their work and collect their results in your report; your parent sees only that report. If no separate reviewer is available, review yourself and report that limit.
 
 ## Shared files and git
 
