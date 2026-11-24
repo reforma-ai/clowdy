@@ -162,6 +162,18 @@
         --clowdy-select-border-focus: var(--color-primary);
     }
 
+    .trigger[data-variant='filling'] {
+        --clowdy-select-bg: transparent;
+        --clowdy-select-bg-hover: var(--color-secondary-muted-light);
+        --clowdy-select-color: var(--color-text);
+        --clowdy-select-border-hover: transparent;
+        --clowdy-select-border-focus: transparent;
+    }
+
+    .trigger[data-variant='filling']:is([data-hovered], [data-pressed]):not([data-disabled]) {
+        background-color: var(--clowdy-select-bg-hover);
+    }
+
     .trigger[data-variant='bordered'] {
         --clowdy-select-bg: transparent;
         --clowdy-select-border: var(--color-secondary-border);
@@ -190,6 +202,12 @@
     .trigger[data-color='primary'][data-variant='filled'] {
         --clowdy-select-bg: var(--color-primary-muted-light);
         --clowdy-select-border-hover: var(--color-primary-muted-border);
+    }
+
+    .trigger[data-color='primary'][data-variant='filling'] {
+        --clowdy-select-bg-hover: var(--color-primary-muted-light);
+        --clowdy-select-color: var(--color-primary-text);
+        --clowdy-select-border-focus: transparent;
     }
 
     .trigger[data-color='primary'][data-variant='bordered'] {

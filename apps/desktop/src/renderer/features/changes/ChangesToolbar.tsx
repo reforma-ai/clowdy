@@ -7,6 +7,7 @@ import { CollapseAll, ExpandAll, EyeOff } from '@clowdy/icons/14';
 import { observer } from 'mobx-react-lite';
 
 import styles from './ChangesToolbar.module.css';
+import viewStyles from './ChangesView.module.css';
 import { isRunScope, LAST_RUN_TOOLTIP, scopeOptions } from './changeScopes';
 import { summaryOf } from './summary';
 import { VIEWED_TEXT } from './viewedMarks';
@@ -68,13 +69,13 @@ export function ChangesToolbar({ model, end }: { model: PlaceChanges; end?: Reac
 
     return (
         <>
-            <PanelHeader>
+            <PanelHeader className={viewStyles.pickerHeader}>
                 {/* The tooltip of the run's scope is the wrapper's, which has no box of its own: the button keeps the place it had. */}
                 <span className={styles.titled} title={isRunScope(model.effectiveScope) ? LAST_RUN_TOOLTIP : undefined}>
                     <Select
                         aria-label="Changes to show"
                         size="sm"
-                        variant="transparent"
+                        variant="filling"
                         valueDisplay="text"
                         className={styles.scope}
                         triggerClassName={styles.scopeTrigger}

@@ -7,6 +7,7 @@ import { openEffects, useFolderGit } from '../openWith';
 import { githubLink } from '../openWith/openTarget';
 import { BranchPicker } from './BranchPicker';
 import styles from './ChangesSidebar.module.css';
+import viewStyles from './ChangesView.module.css';
 import { CommitBox } from './CommitBox';
 import { CreatePullRequest } from './CreatePullRequest';
 import { accessHint, accessHintTitle, aheadBehindCounts } from './gitSummary';
@@ -48,6 +49,7 @@ export function ChangesSidebar({
     const git = useFolderGit(projectId, place.folder.id, place.workspace);
     const status = facts.status.value;
     const branch = headName(status);
+    const canPickBranch = branch !== undefined && status?.isRepository === true && status.head.kind !== 'unborn';
     const base = facts.base?.state === 'ready' ? facts.base : undefined;
     const counts = aheadBehindCounts(base);
     const { pr } = facts;
@@ -55,8 +57,8 @@ export function ChangesSidebar({
     const repositoryLink = githubLink(git, { relative: '', kind: 'directory' });
     return (
         <Panel side="right" className={styles.sidebar} aria-label="Changes sidebar">
-            <PanelHeader>
-                {branch !== undefined && status?.isRepository === true && status.head.kind !== 'unborn' ? (
+            <PanelHeader className={canPickBranch ? viewStyles.pickerHeader : undefined}>
+                {canPickBranch ? (
                     <BranchPicker facts={facts} label={branch} />
                 ) : (
                     <span className={styles.branch}>

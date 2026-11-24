@@ -17,6 +17,11 @@
     min-height: 0;
 }
 
+/* Match the inset of the tabs in the file editor. */
+.pickerHeader {
+    padding-inline-start: var(--spacing-4);
+}
+
 /* The icon of the 14 pack has its narrow part at the left; the sidebar is at the right. */
 .toggleIcon {
     scale: -1 1;

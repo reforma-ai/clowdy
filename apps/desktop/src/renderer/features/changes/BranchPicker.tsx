@@ -38,7 +38,7 @@ export function BranchPicker({ facts, label }: BranchPickerProps) {
     };
     const trigger = (
         <Button
-            variant="transparent"
+            variant="filling"
             color="secondary"
             size="sm"
             className={styles.trigger}
