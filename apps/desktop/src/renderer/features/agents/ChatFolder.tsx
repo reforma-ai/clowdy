@@ -86,6 +86,8 @@ export interface ChatFolderProps {
     missing: boolean;
     /** The worktree the chat works in, if it does. */
     workspace?: ChatWorkspace;
+    /** Whether to show the folder alongside the workspace. */
+    showFolder?: boolean;
 }
 
 /**
@@ -93,19 +95,21 @@ export interface ChatFolderProps {
  * checked out now, with `Worktree` before it for a chat in a worktree, as the new-chat page's control (`WorkspaceChips`) had it. The branch is read live, with the folder's `git` (see `useFolderGit`): an agent may switch
  * branches in a worktree, so the name the chat was made with is not shown once the worktree exists. A worktree that is gone from the disk makes the folder pill the warning colour.
  */
-export function ChatFolder({ name, folder, missing, workspace }: ChatFolderProps) {
+export function ChatFolder({ name, folder, missing, workspace, showFolder = true }: ChatFolderProps) {
     const project = useProjectState();
     const git = useFolderGit(project.id, folder.id, workspace);
 
     return (
         <>
-            <FolderPill
-                name={name}
-                folder={folder}
-                missing={missing || git?.gone === true}
-                git={git}
-                workspace={workspace}
-            />
+            {showFolder && (
+                <FolderPill
+                    name={name}
+                    folder={folder}
+                    missing={missing || git?.gone === true}
+                    git={git}
+                    workspace={workspace}
+                />
+            )}
             <WorkspaceLabel worktree={workspace?.path} git={git} />
         </>
     );

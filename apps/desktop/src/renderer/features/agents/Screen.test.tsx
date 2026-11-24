@@ -840,7 +840,7 @@ describe('grouped by folder', () => {
             expect(made[0]?.folderId).toBe(API.id);
         });
 
-        it('is only on the new-chat page, grouped or flat, and a project of one folder has its folder read only in its place', async () => {
+        it('is only on the new-chat page for projects with multiple folders', async () => {
             await restart();
             await draw(() => ui().openChat('c-2'));
 
@@ -854,7 +854,7 @@ describe('grouped by folder', () => {
 
             expect(folderSelect()).not.toBeNull();
 
-            // The fixture project has one folder: nothing to pick, so the line only says where the chat will work.
+            // The fixture project has one folder: there is no folder control to pick or display.
             act(() => reactRoot.unmount());
             store.dispose();
             reactRoot = createRoot(container);
@@ -866,7 +866,7 @@ describe('grouped by folder', () => {
             });
 
             expect(folderSelect()).toBeNull();
-            expect(folderLine()?.textContent).toBe(SINGLE);
+            expect(folderLine()).toBeNull();
             expect(container.textContent).toContain('What should we work on?');
         });
 
@@ -965,7 +965,7 @@ describe('grouped by folder', () => {
             expect(folderLine()?.hasAttribute('data-missing')).toBe(false);
         });
 
-        it('is there in a chat that is made, grouped or flat, and in a project of one folder', async () => {
+        it('shows a chat folder only in a project with multiple folders, grouped or flat', async () => {
             await restart({ grouping: false });
             await draw(() => ui().openChat('c-2'));
 
@@ -986,7 +986,7 @@ describe('grouped by folder', () => {
                 ui().openChat('c-1');
             });
 
-            expect(folderLine()?.textContent).toBe(SINGLE);
+            expect(folderLine()).toBeNull();
         });
     });
 

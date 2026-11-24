@@ -35,7 +35,7 @@ export function Screen() {
     const projectInfo = info.get(project.id);
     const missing = new Set(projectInfo?.folders.filter(folder => !folder.exists).map(folder => folder.folderId));
 
-    // The line under a chat's message box holds its folder and where it works in it (the branch, with `Worktree` before it in a worktree), read only, where the new-chat page had the select and the one control of its place; it is always there, whatever the project's folders.
+    // Show the folder only when the project has several; the workspace label remains available for every chat.
     const where = chat ? chatFolder(project.chats, project.project.folders, chat.id) : undefined;
 
     return (
@@ -70,6 +70,7 @@ export function Screen() {
                                     folder={where.folder}
                                     missing={missing.has(where.folder.id)}
                                     workspace={chat.workspace}
+                                    showFolder={project.project.folders.length > 1}
                                 />
                             )
                         }
