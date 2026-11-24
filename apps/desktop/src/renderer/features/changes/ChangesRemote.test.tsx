@@ -467,6 +467,7 @@ describe('the sync button in the sidebar', () => {
 describe('merging branches from the sync menu', () => {
     const dialog = () => document.querySelector<HTMLElement>('[data-modal-window] [role="dialog"]')!;
     const heading = () => dialog().querySelector('h2')?.textContent;
+    const modeTrigger = () => dialog().querySelector<HTMLButtonElement>('button[aria-label="Choose merge mode"]')!;
     const options = () => [...dialog().querySelectorAll<HTMLElement>('[role="option"]')];
     const option = (name: string) => options().find(candidate => candidate.textContent?.trim() === name)!;
     const button = (name: string) =>
@@ -480,7 +481,7 @@ describe('merging branches from the sync menu', () => {
         await open('Merge from branch…');
         await press(option('origin/feature/search'));
         await settle();
-        await press(button('Create merge commit & Sync'));
+        await press(button('Merge & Sync'));
         await settle();
     };
     const confirmButton = (name: string) =>
@@ -512,7 +513,7 @@ describe('merging branches from the sync menu', () => {
         await press(option('main'));
         await settle();
         expect(heading()).toBe('Merge main to clowdy/ab12cd34');
-        expect(button('Fast-forward & Sync').disabled).toBe(false);
+        expect(button('Merge & Sync').disabled).toBe(false);
         expect(fetch).toHaveBeenCalledTimes(1);
 
         reply.resolve({ state: 'done', action: 'fetch' });
@@ -539,7 +540,7 @@ describe('merging branches from the sync menu', () => {
         await settle();
 
         expect(heading()).toBe('Merge clowdy/ab12cd34 to main');
-        expect(button('Fast-forward & Sync').disabled).toBe(false);
+        expect(button('Merge & Sync').disabled).toBe(false);
         reply.resolve({ state: 'done', branch: 'clowdy/ab12cd34', pulled: 0, pushed: true });
         await settle();
     });
@@ -579,6 +580,7 @@ describe('merging branches from the sync menu', () => {
         expect(fetch.mock.invocationCallOrder[0]!).toBeLessThan(branches.mock.invocationCallOrder[0]!);
         expect(merge).not.toHaveBeenCalled();
         expect(button('Merge').disabled).toBe(true);
+        expect(modeTrigger().disabled).toBe(true);
         expect(heading()).toBe('Merge … to clowdy/ab12cd34');
         expect(option('origin/main')).toBeUndefined();
         expect(option('origin/dev')).toBeUndefined();
@@ -587,7 +589,7 @@ describe('merging branches from the sync menu', () => {
         await settle();
 
         expect(heading()).toBe('Merge main to clowdy/ab12cd34');
-        expect(dialog().textContent).toContain('Fast-forward');
+        expect(dialog().textContent).toContain('Moves the branch forward without a merge commit');
         expect(merge).toHaveBeenCalledTimes(1);
         expect(merge.mock.calls[0]?.[2]).toEqual({
             action: 'preview',
@@ -596,7 +598,7 @@ describe('merging branches from the sync menu', () => {
             branch: 'main',
         });
 
-        await press(button('Fast-forward & Sync'));
+        await press(button('Merge & Sync'));
         await settle();
 
         expect(merge.mock.calls[1]?.[2]).toMatchObject({
@@ -649,8 +651,7 @@ describe('merging branches from the sync menu', () => {
         await start({ gitWrites: { clean: true, remote: 'level' }, branches: ['remote'] });
         const merge = vi.spyOn(transport, 'branchMergeGit');
         const chooseMode = async (mode: string) => {
-            const trigger = dialog().querySelector('button[aria-label="Choose merge mode"]')!;
-            await press(trigger);
+            await press(modeTrigger());
             await settle();
             const choice = [...document.querySelectorAll('[role="menuitemradio"]')].find(row =>
                 row.textContent?.startsWith(mode)
@@ -662,11 +663,13 @@ describe('merging branches from the sync menu', () => {
         await open('Merge from branch…');
         await press(option('origin/feature/search'));
         await settle();
-        expect(button('Create merge commit & Sync').disabled).toBe(false);
+        expect(button('Merge & Sync').disabled).toBe(false);
+        expect(dialog().textContent).toContain('Creates a merge commit');
         const originalPreview = await merge.mock.results[0]!.value;
 
         await chooseMode('Fast-forward only');
         expect(button('Fast-forward only').disabled).toBe(true);
+        expect(modeTrigger().disabled).toBe(false);
         expect(dialog().textContent).toContain('the branches have diverged');
 
         merge.mockResolvedValueOnce(originalPreview);
@@ -696,7 +699,7 @@ describe('merging branches from the sync menu', () => {
         await open('Merge into branch…');
         await press(option('main'));
         await settle();
-        await press(button('Fast-forward & Sync'));
+        await press(button('Merge & Sync'));
         await settle();
 
         expect(merge.mock.calls.map(call => call[2].action)).toEqual(['preview', 'merge']);
@@ -730,7 +733,7 @@ describe('merging branches from the sync menu', () => {
         await open('Merge into branch…');
         await press(option('main'));
         await settle();
-        await press(button('Fast-forward & Sync'));
+        await press(button('Merge & Sync'));
         await settle();
 
         expect(dialog().textContent).toContain('Merged into main');
@@ -755,7 +758,7 @@ describe('merging branches from the sync menu', () => {
         await open('Merge into branch…');
         await press(option('main'));
         await settle();
-        await press(button('Fast-forward & Sync'));
+        await press(button('Merge & Sync'));
         await settle();
 
         expect(dialog().querySelector('[role="status"]')?.textContent).toContain('1 conflict in main');
@@ -785,7 +788,7 @@ describe('merging branches from the sync menu', () => {
         await settle();
         expect(heading()).toBe('Merge clowdy/ab12cd34 to main');
 
-        await press(button('Fast-forward'));
+        await press(button('Merge'));
         await settle();
         expect(merge.mock.calls.map(call => call[2].action)).toEqual(['preview', 'merge']);
         expect(sync).not.toHaveBeenCalled();
@@ -806,7 +809,7 @@ describe('merging branches from the sync menu', () => {
         await open('Merge into branch…');
         await press(option('main'));
         await settle();
-        await press(button('Fast-forward'));
+        await press(button('Merge'));
         await settle();
 
         expect(merge.mock.calls.map(call => call[2].action)).toEqual(['preview', 'merge']);
@@ -827,14 +830,14 @@ describe('merging branches from the sync menu', () => {
         expect(alert?.textContent).toContain('In a chat on main, use Merge from branch to merge clowdy/ab12cd34');
         expect(dialog().textContent).toContain('3 commits');
         expect(dialog().textContent).not.toContain('Creates a merge commit');
-        expect(button('Create merge commit').disabled).toBe(true);
+        expect(button('Merge').disabled).toBe(true);
 
         await press(option('dev'));
         await settle();
 
         alert = dialog().querySelector('[role="alert"]');
         expect(alert?.textContent).toBe('Check out dev before merging into it');
-        expect(button('Create merge commit').disabled).toBe(true);
+        expect(button('Merge').disabled).toBe(true);
         expect(merge.mock.calls.map(call => call[2].action)).toEqual(['preview', 'preview']);
     });
 
@@ -858,7 +861,7 @@ describe('merging branches from the sync menu', () => {
         await settle();
 
         merge.mockRejectedValueOnce(new TransportError('The branches moved since the preview', 409));
-        await press(button('Fast-forward & Sync'));
+        await press(button('Merge & Sync'));
         await settle();
 
         const alert = dialog().querySelector('[role="alert"][data-color="danger"]');
@@ -872,7 +875,7 @@ describe('merging branches from the sync menu', () => {
 
         expect(merge.mock.calls.map(call => call[2].action)).toEqual(['preview', 'merge', 'preview']);
         expect(dialog().querySelector('[role="alert"]')).toBeNull();
-        expect(button('Fast-forward & Sync').disabled).toBe(false);
+        expect(button('Merge & Sync').disabled).toBe(false);
     });
 
     it('identifies the destination checkout after a conflict and aborts only that merge', async () => {

@@ -85,17 +85,17 @@ const failureOf = (error: unknown): Failure => ({
 
 const MODES: Record<GitBranchMergePreview['mode'], string> = {
     'up-to-date': 'Already up to date',
-    'fast-forward': 'Fast-forward',
+    'fast-forward': 'Moves the branch forward without a merge commit',
     'merge-commit': 'Creates a merge commit',
     squash: 'Creates one commit',
     rebase: 'Rebase',
 };
 
 const STRATEGIES: Record<GitBranchMergeStrategy, { label: string; description: string }> = {
-    merge: { label: 'Merge', description: 'Fast-forward or create a merge commit' },
-    'fast-forward-only': { label: 'Fast-forward only', description: 'Only if the branches have not diverged' },
-    squash: { label: 'Squash and merge', description: 'Combine changes into one commit' },
-    rebase: { label: 'Rebase', description: 'Replay commits on the selected branch' },
+    merge: { label: 'Merge', description: 'Fast-forward when possible, otherwise create a merge commit' },
+    'fast-forward-only': { label: 'Fast-forward only', description: 'Stop if a merge commit would be needed' },
+    squash: { label: 'Squash and merge', description: 'Combine incoming changes into one new commit' },
+    rebase: { label: 'Rebase', description: 'Replay the current branch’s commits on the selected branch' },
 };
 
 function mergeBlock(
@@ -348,9 +348,10 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
     };
 
     const blocked = preview ? mergeBlock(preview, strategy, direction) : undefined;
+    const canMerge = selection !== undefined && preview !== undefined && preview.mode !== 'up-to-date' && !blocked;
 
     const merge = () => {
-        if (!selection || !preview || preview.mode === 'up-to-date' || blocked) return;
+        if (!selection || !preview || !canMerge) return;
 
         void run({
             action: 'merge',
@@ -360,16 +361,10 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
         });
     };
 
-    const actionLabel =
-        strategy !== 'merge'
-            ? STRATEGIES[strategy].label
-            : preview?.mode === 'merge-commit'
-              ? 'Create merge commit'
-              : preview?.mode === 'fast-forward'
-                ? 'Fast-forward'
-                : 'Merge';
+    const actionLabel = STRATEGIES[strategy].label;
     const replay = preview?.replayCommits ?? 0;
     const isWorking = pending !== undefined;
+    const modeDisabled = isWorking || !selection;
     const syncLabel = syncPhase ? SYNC_WORDS[syncPhase] : 'Syncing…';
     const empty = loading ? (
         <Spinner
@@ -488,22 +483,20 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
                             size="md"
                             color="contrast"
                             className={styles.primary}
-                            isDisabled={!preview || preview.mode === 'up-to-date' || blocked !== undefined}
+                            isDisabled={!canMerge}
                             isPending={pending === 'merge'}
                             onPress={merge}
                         >
-                            {autoSync && hasOrigin && preview && preview.mode !== 'up-to-date' && !blocked
-                                ? `${actionLabel} & Sync`
-                                : actionLabel}
+                            {autoSync && hasOrigin && canMerge ? `${actionLabel} & Sync` : actionLabel}
                         </Button>
                         <MenuTrigger>
                             <Button
                                 size="md"
-                                color="contrast"
+                                color={canMerge || modeDisabled ? 'contrast' : 'secondary'}
                                 iconOnly
                                 className={styles.mode}
                                 aria-label="Choose merge mode"
-                                isDisabled={isWorking}
+                                isDisabled={modeDisabled}
                             >
                                 <ChevronDown aria-hidden="true" />
                             </Button>
