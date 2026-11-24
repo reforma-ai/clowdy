@@ -97,7 +97,7 @@ export function ComposerBannerHeader({
     toggleLabel,
 }: ComposerBannerHeaderProps) {
     return (
-        <div className={styles.status}>
+        <div className={cn(styles.status, styles.header)}>
             <Text variant="xs" weight="medium" className={styles.text}>
                 {children}
             </Text>

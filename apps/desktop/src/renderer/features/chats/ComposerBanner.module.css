@@ -31,6 +31,10 @@
     isolation: isolate;
 }
 
+.header {
+    min-height: var(--spacing-28);
+}
+
 .icon {
     display: flex;
     flex-shrink: 0;
