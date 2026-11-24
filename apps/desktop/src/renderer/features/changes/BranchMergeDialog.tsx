@@ -10,7 +10,6 @@ import { type Transport, TransportError } from '../../daemon/transport';
 import { tildePath } from '../../shared/displayPath';
 import { homeFolder } from '../../shared/homeFolder';
 import { PickerList, type PickerOption } from '../../shared/PickerPopover';
-import { canOpenPaths, chosenPrograms, openEffects, useOpenApps } from '../openWith';
 import styles from './BranchMergeDialog.module.css';
 import { commitsWords } from './changesActions';
 import { confirmAbortMerge } from './confirmAbortMerge';
@@ -119,7 +118,6 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
     const [result, setResult] = useState<MergeOutcome>();
     const [failure, setFailure] = useState<Failure>();
     const previewRound = useRef(0);
-    const apps = useOpenApps();
 
     const fetchOrigin = direction === 'from' && hasOrigin;
     const choices = useMemo(
@@ -229,8 +227,6 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
     const source = preview?.source ?? (direction === 'from' ? (choice?.label ?? '…') : current);
     const target = preview?.target ?? (direction === 'into' ? (choice?.label ?? '…') : current);
     const isWorking = pending !== undefined;
-    const { editor, fileManager } = chosenPrograms(apps);
-    const openIn = canOpenPaths() ? (editor ?? fileManager) : undefined;
     const empty = loading ? (
         <Spinner
             size="xxs"
@@ -344,33 +340,18 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
                         Abort merge
                     </Button>
                 )}
-                {(result?.state !== 'conflicts' || !openIn) && (
-                    <Button
-                        size="sm"
-                        variant="filled"
-                        color="secondary"
-                        isDisabled={isWorking}
-                        onPress={() => modal.cancel()}
-                    >
-                        {result ? 'Done' : 'Cancel'}
-                    </Button>
-                )}
+                <Button
+                    size="sm"
+                    variant="filled"
+                    color="secondary"
+                    isDisabled={isWorking}
+                    onPress={() => modal.cancel()}
+                >
+                    {result ? 'Done' : 'Cancel'}
+                </Button>
                 {!result && choice && failure && (
                     <Button size="sm" variant="bordered" onPress={() => void pick(choice.id)}>
                         Refresh preview
-                    </Button>
-                )}
-                {result?.state === 'conflicts' && openIn && (
-                    <Button
-                        className={styles.action}
-                        size="sm"
-                        color="contrast"
-                        isDisabled={isWorking}
-                        onPress={() =>
-                            openEffects.openPath(result.targetPath, editor ? 'editor' : 'fileManager', openIn)
-                        }
-                    >
-                        {`Open ${result.target}`}
                     </Button>
                 )}
                 {result?.state === 'done' && direction === 'into' && result.canPush && (

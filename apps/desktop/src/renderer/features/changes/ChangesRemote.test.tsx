@@ -755,9 +755,8 @@ describe('merging branches from the sync menu', () => {
         // The nested confirmation needs a visible parent window. Happy DOM has no layout.
         vi.spyOn(Element.prototype, 'getClientRects').mockReturnValue([{}] as unknown as DOMRectList);
         vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 640, 480));
-        const openPath = vi.fn();
         vi.stubGlobal('desktop', {
-            openPath,
+            openPath: vi.fn(),
             getOpenApps: async () => ({
                 editors: [{ id: 'cursor', name: 'Cursor' }],
                 terminals: [],
@@ -773,9 +772,8 @@ describe('merging branches from the sync menu', () => {
         expect(merge.mock.calls[0]?.[2]).toMatchObject({ branch: 'feature/search', remote: true });
         expect(dialog().querySelector('[role="status"]')?.textContent).toContain('1 conflict in clowdy/ab12cd34');
         expect(dialog().querySelector('[role="status"]')?.textContent).toContain(currentPlace.workspace?.path);
-        expect(button('Done')).toBeUndefined();
-        await press(button('Open clowdy/ab12cd34'));
-        expect(openPath).toHaveBeenCalledWith(currentPlace.workspace?.path, { kind: 'editor', id: 'cursor' });
+        expect(button('Done')).toBeDefined();
+        expect(button('Open clowdy/ab12cd34')).toBeUndefined();
 
         await press(button('Abort merge'));
         const cancel = await confirmButton('Cancel');
@@ -804,10 +802,10 @@ describe('merging branches from the sync menu', () => {
         const abort = vi.spyOn(transport, 'abortGit').mockResolvedValue({ state: 'done', action: 'abort' });
 
         await conflict();
-        expect(button('Done')).toBeDefined();
-        expect(button('Open clowdy/ab12cd34')).toBeUndefined();
-        await press(dialog().querySelector('button[aria-label="Close"]')!);
+        await press(button('Done'));
         await settle();
+        expect(dialog()).toBeNull();
+        expect(abort).not.toHaveBeenCalled();
         await press(buttonOf('Abort merge')!);
         const cancel = await confirmButton('Cancel');
         expect(cancel.dataset.variant).toBe('filled');
