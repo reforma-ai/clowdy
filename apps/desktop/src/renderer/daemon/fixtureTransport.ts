@@ -1,5 +1,8 @@
 import { MemoryFileSystem } from '@clowdy/file-manager/memory';
 import {
+    branchNameProblem,
+    branchPrefixOf,
+    branchPrefixProblem,
     folderNames,
     isBusyRunStatus,
     isTerminalRunStatus,
@@ -21,6 +24,7 @@ import {
     FIXTURE_LIVE_TEXT_ID,
     FIXTURE_LIVE_TOOL_ID,
     FIXTURE_PULL_REQUEST_UNAVAILABLE,
+    FIXTURE_WORKSPACES_ROOT,
     type FixtureData,
     fixtureChatWorkspace,
     fixtureFolderGit,
@@ -350,7 +354,7 @@ export class FixtureTransport implements Transport {
                 folder.path,
                 this.#data.git[folder.path],
                 folder.settings?.baseBranch,
-                this.#data.removed?.[folder.path]
+                this.#data.worktreeEdits?.[folder.path]
             )
         );
     }
@@ -692,6 +696,53 @@ export class FixtureTransport implements Transport {
         };
     }
 
+    #worktreeEdits(path: string) {
+        const edits = (this.#data.worktreeEdits ??= {});
+
+        return (edits[path] ??= { created: [], removed: [], deleted: [], kept: [] });
+    }
+
+    #createWorktree(command: Extract<CommandInput, { type: 'workspace.create' }>): Outcome {
+        const project = this.#data.projects.find(candidate => candidate.id === command.projectId);
+
+        if (!project) return fail('not_found', `Project ${command.projectId} does not exist`);
+
+        const problem = branchPrefixProblem(command.branchPrefix) ?? branchNameProblem(command.branchName);
+
+        if (problem) return fail('invalid', problem);
+
+        const folder = project.folders.find(candidate => candidate.id === command.folderId);
+
+        if (!folder) return fail('invalid', `Folder ${command.folderId} does not belong to project ${project.id}`);
+
+        const group = fixtureProjectWorktrees(project, this.#data).find(candidate => candidate.folderId === folder.id);
+        const edits = this.#worktreeEdits(folder.path);
+        const git = fixtureFolderGit(folder.path, this.#data.git[folder.path], folder.settings?.baseBranch, edits);
+
+        if (!git.isRepository)
+            return fail('invalid', 'A worktree needs the root of a git repository, and this folder is not one');
+
+        const branch = `${branchPrefixOf(command.branchPrefix)}/${command.branchName}`;
+
+        if (
+            group?.worktrees.some(worktree => worktree.branch === branch) ||
+            git.branches.some(candidate => !candidate.remote && candidate.name === branch)
+        )
+            return fail('conflict', `The branch name ${branch} is taken`);
+
+        const id = this.#id('wks');
+        const path = `${FIXTURE_WORKSPACES_ROOT}/${id}/${group?.name ?? 'folder'}`;
+
+        edits.deleted = edits.deleted.filter(name => name !== branch);
+        edits.created.push({ path, branch });
+        this.#opened.set(id, {
+            projectId: project.id,
+            workspace: { id, path, branch, folderId: folder.id, managed: false, ready: true },
+        });
+
+        return ok({ path, branch });
+    }
+
     /**
      * `workspace.remove` as the daemon answers it, from what `getProjectWorktrees` describes: a worktree the folder's repository lists goes, and the reads then answer as if git no
      * longer had it (`FixtureData.removed`). Refused, in the daemon's words, for the folder's own checkout, a locked worktree, one a chat works in and a changed tree without
@@ -736,14 +787,12 @@ export class FixtureTransport implements Transport {
             );
         }
 
-        const removals = data.removed?.[folder.path] ?? { worktrees: [], deleted: [], kept: [] };
+        const edits = this.#worktreeEdits(folder.path);
         const deleted = command.deleteBranch === true && worktree.branch !== undefined;
 
-        removals.worktrees.push(worktree.path);
+        edits.removed.push(worktree.path);
 
-        if (worktree.branch !== undefined) (deleted ? removals.deleted : removals.kept).push(worktree.branch);
-
-        data.removed = { ...data.removed, [folder.path]: removals };
+        if (worktree.branch !== undefined) (deleted ? edits.deleted : edits.kept).push(worktree.branch);
 
         for (const [id, opened] of this.#opened) {
             if (opened.workspace.path === worktree.path) this.#opened.delete(id);
@@ -1596,7 +1645,7 @@ export class FixtureTransport implements Transport {
                         chatId: '',
                         head: data.git[folder.path],
                         known,
-                        removed: data.removed?.[folder.path],
+                        edits: data.worktreeEdits?.[folder.path],
                     }
                 );
 
@@ -1611,6 +1660,8 @@ export class FixtureTransport implements Transport {
                 // Like the daemon: `{ workspace }`.
                 return ok({ workspace });
             }
+            case 'workspace.create':
+                return this.#createWorktree(command);
             case 'workspace.remove':
                 return this.#removeWorktree(command);
             case 'chat.create': {
@@ -1645,8 +1696,11 @@ export class FixtureTransport implements Transport {
                         folder,
                         chatId: id,
                         head: data.git[folder.path],
-                        known: data.chats.flatMap(chat => (chat.workspace ? [chat.workspace] : [])),
-                        removed: data.removed?.[folder.path],
+                        known: [
+                            ...data.chats.flatMap(chat => (chat.workspace ? [chat.workspace] : [])),
+                            ...[...this.#opened.values()].map(entry => entry.workspace),
+                        ],
+                        edits: data.worktreeEdits?.[folder.path],
                     });
 
                     if ('error' in made) return fail('invalid', made.error);

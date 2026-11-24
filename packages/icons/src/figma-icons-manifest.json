@@ -2741,6 +2741,18 @@
                     "fingerprint": "e8af934c71e4f970ea4fb1a25a68937be86c64671938dcdc347772758996102d",
                     "name": "no-panel",
                     "sourceHash": "26b89b07a4ae9ebe60414f7737385597d7074bd91fc3deef58f1331fd7e32a4b"
+                },
+                "16608:129151": {
+                    "file": "expand-all.svg",
+                    "fingerprint": "b8361cfceb875f308cf5a1243f7b0c9b48f1b052d3adf86f8e901071a43f0ceb",
+                    "name": "expand-all",
+                    "sourceHash": "524ed0384e8a89873209afee4593c6ecdee808197f8363671c9ac963f9045e9c"
+                },
+                "16608:129156": {
+                    "file": "collapse-all.svg",
+                    "fingerprint": "d47351ad4bce85c9515763d502763da667ff651746b9535af4ab0b5ffbd34fa6",
+                    "name": "collapse-all",
+                    "sourceHash": "0814d82c5924642198843b36c3103c6bc0f6d2334092643debb39a36a8129897"
                 }
             },
             "nodeId": "12522:118247"

@@ -26,7 +26,7 @@ export function ProjectWorktrees({ project }: { project: Project }) {
                     description="Every worktree of the project's folders, and the chats that work in each"
                 >
                     <Button
-                        variant="filling"
+                        variant="filled"
                         color="secondary"
                         size="sm"
                         onPress={() => openManageWorktrees({ root, projectId: project.id })}

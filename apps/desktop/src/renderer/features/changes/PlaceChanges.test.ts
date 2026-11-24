@@ -345,10 +345,11 @@ describe('the filter and the cards', () => {
     it('has every card open, shuts them all and opens them all, and a press on a file in the sidebar opens its card', async () => {
         const model = await filled();
 
-        expect([model.isFolded('src/a.ts'), model.allFolded, model.noneFolded]).toEqual([false, false, true]);
+        expect(model.allFolded).toBe(false);
+        expect(model.files.every(file => !model.isFolded(file.path))).toBe(true);
 
         model.toggleFolded('src/a.ts');
-        expect([model.isFolded('src/a.ts'), model.noneFolded]).toEqual([true, false]);
+        expect([model.isFolded('src/a.ts'), model.allFolded]).toEqual([true, false]);
 
         model.foldAll();
         expect(model.allFolded).toBe(true);
@@ -361,7 +362,7 @@ describe('the filter and the cards', () => {
         ]);
 
         model.unfoldAll();
-        expect(model.noneFolded).toBe(true);
+        expect(model.files.every(file => !model.isFolded(file.path))).toBe(true);
     });
 
     it('shuts only the cards the filter shows, and opens every card the filter hides too', async () => {
@@ -693,10 +694,10 @@ describe('the viewed files', () => {
     it('shut and open the viewed cards with the others when asked to, and start a tab with the viewed ones shut and the rest open', async () => {
         const { model } = await viewedModel([{ path: 'src/a.ts', revision: 'r1' }]);
 
-        expect([model.allFolded, model.noneFolded]).toEqual([false, false]);
+        expect([model.isFolded('src/a.ts'), model.allFolded]).toEqual([true, false]);
 
         model.unfoldAll();
-        expect([model.isFolded('src/a.ts'), model.noneFolded]).toEqual([false, true]);
+        expect(model.files.every(file => !model.isFolded(file.path))).toBe(true);
 
         model.foldAll();
         expect([model.isFolded('src/b.ts'), model.allFolded]).toEqual([true, true]);

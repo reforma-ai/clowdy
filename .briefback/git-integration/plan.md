@@ -462,6 +462,8 @@
 
 **Landed beside the stages (2026-11-23), the design-system cleanup of the Changes UI.** The sidebar's own markup (the file rows, the commit list, the commit box, the Last run plate, the branch popover's words) was redrawn on the design system's lists. `Commits on branch` is a bar at the foot, shut by default (`Commits on branch · N`), and open it grows up from that bar: the top edge drags (`Resizable`), two to five rows and never more than about 40% of the column, remembered in `clowdy:changes-commits-open` and `clowdy:changes-commits-height`. Discard is that list's row action, and after a discard that went through the focus goes to the next row or card (`discardFocus.ts`, `1c7e966`), which is the follow-up Stage 13 left. Merged by `2f86da9`. The agent died on the rate limit after the commits, so this pass did not get the independent review the stages had. `DiscardChanges`, the spoiler's layout and the pill were re-run together on the merged tree: 63 pass.
 
+**CLO-3 follow-up:** Changes now lists commits in the scope menu in the header. The sidebar keeps the changed files and the commit form.
+
 ## Stage 14 — Update from the base, and a pull that merges
 
 The shape is the one `research/github-desktop.md` marked take now: merge, not rebase. A pull and Update from the base share one merge (`git merge --no-edit`), on the place's write line, in the write environment, about 120 s, signing left on. Fetch once, then merge locally. A fast-forward when the branch has nothing of its own; a merge commit when it does. No `--force`, no rebase, no stash, no conflict editor.

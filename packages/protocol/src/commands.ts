@@ -133,6 +133,15 @@ export const commandSchema = z.discriminatedUnion('type', [
         folderId: z.string().min(1).optional(),
         path: z.string().min(1),
     }),
+    /** Creates a checkout on a new, prefixed branch of the chosen folder and answers `CreatedWorktree` once Git finishes. */
+    z.object({
+        ...base,
+        type: z.literal('workspace.create'),
+        projectId: z.string(),
+        folderId: z.string().min(1),
+        branchName: z.string(),
+        branchPrefix: z.string().optional(),
+    }),
     /**
      * Removes a worktree `git worktree list` names for a folder of the project, whoever made it, and answers `{ path, branchDeleted }`. Refused (`conflict`, nothing removed) for the
      * folder's own checkout, another folder of the project and the repository's primary working tree; a locked worktree; one that a chat works in, an archived chat included; a path

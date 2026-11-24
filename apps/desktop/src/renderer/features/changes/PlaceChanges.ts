@@ -252,11 +252,6 @@ export class PlaceChanges {
         return files.length > 0 && files.every(file => this.isFolded(file.path));
     }
 
-    /** No card of the list is shut. */
-    get noneFolded(): boolean {
-        return !(this.changes?.files ?? []).some(file => this.isFolded(file.path));
-    }
-
     /** The scope the person picked in the menu. The open chat's run (the one entry of the menu that is no choice of `scope`) is followed, so a newer run of the chat replaces it. */
     setScope(scope: GitScope): void {
         if (turnScopeTrees(scope)) {

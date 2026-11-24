@@ -202,6 +202,13 @@ export interface GitWorktree {
     dirty: boolean;
 }
 
+/** A worktree created by `workspace.create`, with a warning if Git reported a failure after the checkout. */
+export interface CreatedWorktree {
+    path: string;
+    branch: string;
+    warning?: string;
+}
+
 /** What `GET /v1/projects/:id/git` says about a folder: a repository's branches and worktrees, or that the folder is no repository. */
 export type FolderGit =
     | { isRepository: false }
