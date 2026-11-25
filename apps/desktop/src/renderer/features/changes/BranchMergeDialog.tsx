@@ -572,21 +572,18 @@ function BranchMergeDialog({
                                         if (choice) void compare(choice, next);
                                     }}
                                 >
-                                    {(Object.keys(STRATEGIES) as DialogStrategy[]).map(id => (
-                                        <MenuItem
-                                            key={id}
-                                            id={id}
-                                            text={STRATEGIES[id].label}
-                                            description={
-                                                id === 'rebase' && direction === 'into'
-                                                    ? 'Open a chat on the destination branch'
-                                                    : STRATEGIES[id].description
-                                            }
-                                            endAffix={strategy === id ? <Check aria-hidden="true" /> : undefined}
-                                            stacked
-                                            isDisabled={id === 'rebase' && direction === 'into'}
-                                        />
-                                    ))}
+                                    {(Object.keys(STRATEGIES) as DialogStrategy[])
+                                        .filter(id => direction === 'from' || id !== 'rebase')
+                                        .map(id => (
+                                            <MenuItem
+                                                key={id}
+                                                id={id}
+                                                text={STRATEGIES[id].label}
+                                                description={STRATEGIES[id].description}
+                                                endAffix={strategy === id ? <Check aria-hidden="true" /> : undefined}
+                                                stacked
+                                            />
+                                        ))}
                                 </Menu>
                             </Popover>
                         </MenuTrigger>

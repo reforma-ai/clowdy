@@ -806,6 +806,27 @@ describe('merging branches from the sync menu', () => {
         expect(sidebar().querySelector('[aria-label="Commit"]')?.textContent).toContain('Rebase paused');
     });
 
+    it.each(['Merge into branch…', 'Merge into main worktree…'])(
+        'omits rebase from the mode menu for %s',
+        async label => {
+            await start({ gitWrites: { clean: true, remote: 'level' } });
+            await open(label);
+            if (label === 'Merge into branch…') {
+                await press(option('main'));
+                await settle();
+            }
+
+            await press(modeTrigger());
+            await settle();
+
+            const modes = [...document.querySelectorAll('[role="menuitemradio"]')];
+            expect(modes).toHaveLength(2);
+            expect(modes[0]?.textContent).toMatch(/^Merge/);
+            expect(modes[1]?.textContent).toMatch(/^Squash and merge/);
+            expect(modes.every(mode => mode.getAttribute('aria-disabled') !== 'true')).toBe(true);
+        }
+    );
+
     it('syncs only the destination at the tip returned by Merge into', async () => {
         await start({ gitWrites: { clean: true, remote: 'level' } });
         const merge = vi.spyOn(transport, 'branchMergeGit');
