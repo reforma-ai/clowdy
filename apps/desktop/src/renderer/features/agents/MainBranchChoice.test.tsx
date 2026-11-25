@@ -121,6 +121,79 @@ async function openBranches() {
     await settle();
 }
 
+describe('creating a branch from a workspace choice', () => {
+    it('does not select a branch after leaving the creation form', async () => {
+        let finish: ((value: Awaited<ReturnType<FixtureTransport['createGitBranch']>>) => void) | undefined;
+        vi.spyOn(transport, 'createGitBranch').mockImplementation(
+            () =>
+                new Promise(resolve => {
+                    finish = resolve;
+                })
+        );
+        await openBranches();
+        await press(
+            [...document.body.querySelectorAll('button')].find(button => button.textContent === 'New branch…')!
+        );
+        const input = document.body.querySelector<HTMLInputElement>('input[placeholder="feature/new-thing"]')!;
+        await act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'feature/late');
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        await press(
+            [...document.body.querySelectorAll('button')].find(button => button.textContent === 'Create branch')!
+        );
+        await press(document.body.querySelector<HTMLButtonElement>('button[aria-label="Back to the branches"]')!);
+        await act(async () =>
+            finish!({ head: { kind: 'branch', name: 'main', commit: 'a'.repeat(40) }, created: true })
+        );
+        await settle();
+        expect(ui().draftWorkspace).toBeNull();
+    });
+
+    for (const mode of ['main', 'new'] as const) {
+        it(`creates a branch and selects it for ${mode}`, async () => {
+            const createBranch = vi.spyOn(transport, 'createGitBranch');
+            await press(chip()!);
+            if (mode === 'main') await press(branchButton()!);
+            else await press(document.body.querySelector<HTMLButtonElement>('button[aria-label^="Start from"]')!);
+            await settle();
+            await settle();
+            const create = [...document.body.querySelectorAll('button')].find(
+                button => button.textContent === 'New branch…'
+            );
+            expect(create?.disabled).toBe(false);
+            await press(create!);
+            const input = document.body.querySelector<HTMLInputElement>('input[placeholder="feature/new-thing"]')!;
+            await act(async () => {
+                Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(
+                    input,
+                    'feature/from-chat'
+                );
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+            });
+            const submit = [...document.body.querySelectorAll('button')].find(
+                button => button.textContent === 'Create branch'
+            )!;
+            await press(submit);
+            await settle();
+            await settle();
+            expect(createBranch).toHaveBeenCalledWith(
+                FIXTURE_PROJECT_ID,
+                { folderId: 'fld_car_rental' },
+                'feature/from-chat',
+                { start: 'default' }
+            );
+            expect(await folderBranch()).toBe('main');
+            expect(ui().draftWorkspace).toEqual(
+                mode === 'main'
+                    ? { mode: 'main', branch: 'feature/from-chat' }
+                    : { mode: 'new', base: 'feature/from-chat' }
+            );
+            expect(document.body.querySelector('[data-picker-popover]')).toBeNull();
+        });
+    }
+});
+
 async function send(words: string) {
     act(() => {
         editor().commands.insertContent(words);

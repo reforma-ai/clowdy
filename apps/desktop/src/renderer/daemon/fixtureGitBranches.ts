@@ -270,7 +270,8 @@ export class FixtureGitBranches {
     /** `POST git/switch` of a place, answered as the daemon answers it; the place's branch is `answer.head.name` afterwards (the caller keeps it). */
     async switch(
         place: FixtureBranchPlace,
-        request: Pick<GitSwitchRequest, 'branch' | 'create'>
+        request: Pick<GitSwitchRequest, 'branch' | 'create'>,
+        createOnly = false
     ): Promise<GitSwitchResult> {
         const { branch: name, create } = request;
 
@@ -288,6 +289,14 @@ export class FixtureGitBranches {
             if (found) throw new TransportError(`A branch called ${name} exists already`, 400);
 
             if (remoteOnly) throw new TransportError(`origin has a branch called ${name} already`, 400);
+            if (createOnly) {
+                const local = this.#local.get(place.key) ?? new Set<string>();
+                local.add(name);
+                this.#local.set(place.key, local);
+                const current = listing.local.find(branch => branch.current)?.name;
+                if (!current) throw new TransportError('The repository has no commits yet', 400);
+                return { head: { kind: 'branch', name: current, commit: FIXTURE_BASE_COMMIT }, created: true };
+            }
         } else if (found?.current) {
             return { head: { kind: 'branch', name, commit: FIXTURE_BASE_COMMIT } };
         } else if (found?.heldBy) {

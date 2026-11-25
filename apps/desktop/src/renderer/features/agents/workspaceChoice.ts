@@ -29,14 +29,10 @@ export function worktreeLabel(worktree: { branch?: string; head?: string }): str
     return worktree.branch ?? (worktree.head ? `Detached at ${worktree.head}` : 'Detached HEAD');
 }
 
-/** Whether a ref may be a new worktree's base: one of the folder's branches, or the default branch (a short hash on a detached HEAD, which no branch has). */
-const hasBase = (repository: Repository, base: string) =>
-    base === repository.defaultBranch || repository.branches.some(branch => branch.name === base);
-
 /**
  * What the new chat is made with: the person's choice, as far as the folder's repository allows it, and `undefined` for Project checkout. The daemon refuses a worktree of a
  * folder that is no repository, a base that is no ref, and a path that is no worktree of the folder, so a choice that the read does not bear out (nothing read yet, the read
- * failed, the folder is no repository, the worktree is gone since, the folder has no commit to start from) is never sent. A base that has gone is dropped, which is the default one.
+ * failed, the folder is no repository, the worktree is gone since, the folder has no commit to start from) is never sent. A chosen base is validated by the daemon, since the listing may be stale.
  * A branch of the folder's own checkout (`main`) is kept while the folder is not on it: the branch it is on already is no change, so nothing is sent. Whether the branch is still there
  * is the daemon's to say when the chat is made (`There is no branch called x`): the list it was picked from is only as old as the popover.
  */
@@ -56,7 +52,7 @@ export function effectiveChoice(
         return worktree && { mode: 'existing', path: worktree.path };
     }
 
-    const base = choice.base !== undefined && hasBase(git, choice.base) ? choice.base : undefined;
+    const base = choice.base;
 
     if (base === undefined && git.defaultBranch === undefined) return undefined;
 
