@@ -119,16 +119,16 @@ Once the Apple Developer account is verified:
 `scripts/install.sh` (macOS) and `scripts/install.ps1` (Windows) install the newest release for someone who pastes one line:
 
 ```sh
-curl -fsSL https://<site>/install.sh | bash
+curl -fsSL https://reforma-ai.github.io/clowdy/install.sh | bash
 ```
 
 ```powershell
-irm https://<site>/install.ps1 | iex
+irm https://reforma-ai.github.io/clowdy/install.ps1 | iex
 ```
 
 The macOS script downloads the zip for the computer's processor, checks its SHA-512 against `latest-mac.yml`, checks the app's signature, and puts `Clowdy.app` in `/Applications` (`~/Applications` when that is not writable), with no `sudo`. It stops when Clowdy is running. The Windows script checks `Clowdy-Setup.exe` against `latest.yml` and runs it; the installer then downloads the package of that computer from the release, as it always does. The app updates itself afterwards, so a person runs a script once.
 
-Serve them from the site as static files copied from `scripts/`, or redirect the site's address to the raw file on `main`. Nothing in them changes with a release: they read the newest release's feed, so they are not published again for one. They work once the repository is public ([step 5](#5-open-the-repository)); a build that is not signed and notarized installs too, but cannot update itself.
+GitHub Pages serves them: `.github/workflows/pages.yml` publishes both files whenever a push to `main` changes them, or by hand from **Actions → Publish install scripts → Run workflow**. Turn Pages on once, before the first run: **Settings → Pages → Build and deployment → Source: GitHub Actions** (a run that finds it off fails, and the manual run repeats it). A custom domain (**Settings → Pages → Custom domain**, with a `CNAME` record at the DNS provider) turns the same files into `https://<domain>/install.sh`, and the old address redirects to it, so a line written in a README keeps working. The raw file works without Pages too: `https://raw.githubusercontent.com/reforma-ai/clowdy/main/scripts/install.sh`. Nothing in the scripts changes with a release: they read the newest release's feed, so they are not published again for one. They work once the repository is public ([step 5](#5-open-the-repository)); a build that is not signed and notarized installs too, but cannot update itself.
 
 Settings, as environment variables, all optional: `CLOWDY_VERSION` (install that version, for example `0.1.2`), `CLOWDY_SILENT` (Windows: run the installer without its window), `CLOWDY_INSTALL_DIR` and `CLOWDY_NO_OPEN` (macOS: the folder to install into, and do not start the app), `CLOWDY_REPO` (another repository), and `CLOWDY_RELEASE_URL` (a folder that holds the feed and the files, in place of the release).
 
