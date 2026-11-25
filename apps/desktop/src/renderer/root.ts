@@ -4,6 +4,7 @@ import { createTransport, resolveDaemonConfig } from './daemon/config';
 import { HttpTransport } from './daemon/httpTransport';
 import { type Notice, RootStore } from './stores/RootStore';
 import { initialUiFromSearch } from './stores/UiStore';
+import { watchUpdates } from './updateOffer';
 
 const TOAST_KIND = { info: 'info', warn: 'warning', error: 'error' } as const;
 
@@ -22,6 +23,9 @@ const stopFollowing = window.desktop?.onDaemonChange(address => {
     else if (config.kind === 'none') location.reload();
 });
 
+// An OTA update starts at the next launch, and the app may stay open for weeks: a toast offers the restart once nothing runs.
+const stopUpdates = window.desktop && watchUpdates(window.desktop, transport);
+
 /** The app's one store. It starts loading when the module is first imported. */
 export const root = new RootStore(transport, {
     notify: showNotice,
@@ -38,5 +42,6 @@ if (import.meta.env.DEV) {
 // A replaced module must not leave its event feed open next to the new one.
 import.meta.hot?.dispose(() => {
     stopFollowing?.();
+    stopUpdates?.();
     root.dispose();
 });
