@@ -1,6 +1,7 @@
 name: Gate
 # The checks a change has to pass to reach main: build, lint, typecheck and test of every package, then lint and typecheck of the root scripts.
 # ci.yml calls it on a pull request into main. Nothing runs it again after the merge. Rules: GITFLOW.md (Pull Requests).
+# The jobs share no `needs`, so they run side by side on their own runners and a red one never hides another: the run takes as long as the slowest test job.
 
 on:
     workflow_call: {}
@@ -9,9 +10,9 @@ permissions:
     contents: read
 
 jobs:
-    gate:
+    check:
         runs-on: ubuntu-latest
-        timeout-minutes: 20
+        timeout-minutes: 10
         steps:
             - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
               with:
@@ -28,10 +29,40 @@ jobs:
             - run: bunx turbo run build typecheck --continue
             - if: ${{ !cancelled() }}
               run: bunx turbo run lint --continue
-            # One package at a time: the daemon's tests wait on timers, and the other packages' workers starve them on a small runner.
-            - if: ${{ !cancelled() }}
-              run: bunx turbo run test --continue --concurrency=1
             - if: ${{ !cancelled() }}
               run: bun run lint:root
             - if: ${{ !cancelled() }}
               run: bunx tsc --noEmit -p scripts
+
+    # The daemon and the desktop app take most of the time, so each has a runner of its own, and every other package shares a third.
+    # The daemon's tests wait on timers, and other packages' workers starve them on a small runner: a package never shares its runner with the daemon,
+    # and the packages of `rest` run one at a time. `fail-fast: false` keeps a red package from cancelling the others.
+    test:
+        name: test (${{ matrix.name }})
+        runs-on: ubuntu-latest
+        timeout-minutes: 15
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    - name: daemon
+                      filters: --filter=@clowdy/daemon
+                    - name: desktop
+                      filters: --filter=@clowdy/desktop
+                    - name: rest
+                      filters: --filter=!@clowdy/daemon --filter=!@clowdy/desktop
+        steps:
+            - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+              with:
+                  persist-credentials: false
+            - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+              with:
+                  node-version: 24
+            - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+              with:
+                  bun-version-file: package.json
+            - run: bun install --frozen-lockfile
+            # Through turbo, which builds the workspace packages the tests import. $FILTERS stays unquoted: it is several arguments.
+            - run: bunx turbo run test --continue --concurrency=1 $FILTERS
+              env:
+                  FILTERS: ${{ matrix.filters }}
