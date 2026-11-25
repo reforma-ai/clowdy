@@ -554,7 +554,7 @@ describe('a chat whose orchestrator waits for background work', () => {
         // The commands are folded under one line that counts them. Opened, each has a row, and only the first can be stopped alone: the other is counted.
         const commands = [
             ...container.querySelectorAll<HTMLButtonElement>('[aria-label="Work in progress"] button[aria-expanded]'),
-        ].find(button => button.textContent === 'Commands2 running')!;
+        ].find(button => button.textContent === 'Background commands2 running')!;
 
         expect(commands.getAttribute('aria-expanded')).toBe('false');
 

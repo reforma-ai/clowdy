@@ -116,7 +116,8 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
     const current = status?.isRepository && status.head.kind === 'branch' ? status.head.name : undefined;
     const hasOrigin = status?.isRepository === true && status.origin;
     const updateBlocked = !hasOrigin || facts.switching || remote.isPending('update');
-    const detail = !off && view.title !== view.label ? view.title : undefined;
+    const tip = off || running !== undefined ? undefined : view.title;
+    const detail = off ? undefined : (tip ?? view.line);
     const sync = () => {
         if (current !== undefined) void remote.sync({ branch: current });
     };
@@ -142,11 +143,7 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
         <div className={styles.root}>
             <div className={styles.split}>
                 <Unavailable label={view.label} hint={off ? offHint : undefined} className={styles.host}>
-                    <Tooltip
-                        content={off || running !== undefined ? undefined : view.title}
-                        isDisabled={off || running !== undefined}
-                        placement="bottom"
-                    >
+                    <Tooltip content={tip} isDisabled={!tip} placement="bottom">
                         <Button
                             variant="filled"
                             color="secondary"

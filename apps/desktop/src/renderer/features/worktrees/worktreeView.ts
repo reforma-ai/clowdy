@@ -109,7 +109,7 @@ function branchChoice(name: string, merged: boolean | undefined, base: string | 
 /**
  * What the confirmation of a removal asks and says, from the worktree as the list read it. `record`: the folder is gone from the disk, so only git's record of the worktree
  * goes. `discard`: something in the tree is not committed (a new file, an initialised submodule), which only a red confirmation removes (`discard: true`). `plain`: nothing is
- * lost with the folder but what git ignores. `changes` counts git's status entries, an untracked folder as one, so the button says changes and not files.
+ * lost with the folder but what git ignores. `changes` counts git's status entries, an untracked folder as one, so the warning counts changes and not files.
  */
 export interface RemovalPlan {
     kind: 'record' | 'discard' | 'plain';
@@ -121,11 +121,6 @@ export interface RemovalPlan {
     branch?: BranchChoice;
     /** A detached HEAD whose commits are not in the base, and so may be in no branch: they can be lost with the worktree. */
     stranded: boolean;
-}
-
-/** The red button of a changed tree: how many entries git's status counts go with it. */
-export function discardLabel(changes: number): string {
-    return `Discard ${countOf(changes)} and remove`;
 }
 
 /** What removing this worktree asks and says. The folder's own checkout has no removal, so it never gets here. */
@@ -144,50 +139,34 @@ export function removalPlan({
         return {
             ...common,
             kind: 'record',
-            title: 'Remove the record?',
+            title: 'Remove record?',
             confirmLabel: 'Remove record',
-            notes: ['Git still lists it, but its folder is gone from the disk', "Only git's record of it is removed"],
+            notes: ['The worktree folder is missing. This removes its record from Git.'],
         };
     }
 
-    if (changes > 0) {
-        const notes = [`${changes} uncommitted ${changes === 1 ? 'change' : 'changes'} will be deleted for good`];
+    const notes: string[] = [];
 
-        if (submodules) notes.push('Its checked-out submodules are removed with it');
+    if (changes > 0) notes.push(`${changes} uncommitted ${changes === 1 ? 'change' : 'changes'} will be lost`);
 
-        return {
-            ...common,
-            kind: 'discard',
-            title: 'Discard changes and remove?',
-            confirmLabel: discardLabel(changes),
-            notes,
-        };
-    }
+    if (submodules) notes.push('Checked-out submodules and any uncommitted changes in them will be removed');
 
-    if (submodules) {
-        return {
-            ...common,
-            kind: 'discard',
-            title: 'Remove with its submodules?',
-            confirmLabel: 'Remove with submodules',
-            notes: ['Its checked-out submodules are removed with it, along with anything uncommitted in them'],
-        };
-    }
+    if (notes.length === 0) notes.push('The worktree folder will be deleted');
 
     return {
         ...common,
-        kind: 'plain',
-        title: 'Remove the worktree?',
-        confirmLabel: 'Remove',
-        notes: ['Its folder is removed from the disk'],
+        kind: changes > 0 || submodules ? 'discard' : 'plain',
+        title: 'Remove worktree?',
+        confirmLabel: 'Remove worktree',
+        notes,
     };
 }
 
 const BRANCH_WARNINGS: Record<BranchChoice['standing'], string | undefined> = {
     merged: undefined,
-    unmerged: 'Its unmerged commits are lost with the branch',
-    unknown: "Can't tell whether its commits are merged, so they may be lost",
-    base: 'It is the base branch itself',
+    unmerged: 'Unmerged commits may be lost if you delete this branch',
+    unknown: 'Couldn’t verify that this branch is merged. Deleting it may lose commits.',
+    base: 'This is the base branch',
 };
 
 /** What a branch that may be lost says beside its box, or `undefined` when its work is in the base. */
@@ -196,7 +175,7 @@ export function branchWarning({ standing }: BranchChoice): string | undefined {
 }
 
 /** What a detached HEAD whose commits are not in the base says: git may know no branch that keeps them once the worktree is gone. */
-export const STRANDED_WARNING = 'Its commits may be in no branch, so they can be lost with the worktree';
+export const STRANDED_WARNING = 'Commits that aren’t on a branch may be lost';
 
 /**
 /** The groups of the project that are repositories and whose folder is still in the project, each with its folder, in the project's order. */

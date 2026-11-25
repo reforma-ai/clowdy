@@ -214,11 +214,13 @@ describe('the sync button in the sidebar', () => {
         await start({ key: CHECKOUT });
 
         expect(syncCopy()).toBe('Fetch originLast fetched 3 minutes ago');
+        expect(syncDetail()).toBe('Last fetched 3 minutes ago');
         await press(syncButton());
         await settle();
 
         expect(status()).toBeNull();
         expect(syncCopy()).toBe('Fetch originLast fetched just now');
+        expect(syncDetail()).toBe('Last fetched just now');
 
         act(() => root.unmount());
         stop();
@@ -266,25 +268,20 @@ describe('the sync button in the sidebar', () => {
     });
 
     it.each([
-        ['ahead', 'Push origin', 2, 0],
-        ['behind', 'Pull origin', 0, 2],
-        ['diverged', 'Sync', 1, 2],
+        ['ahead', 'Push origin', 2, 0, '2 commits to push'],
+        ['behind', 'Pull origin', 0, 2, '2 commits to pull'],
+        ['diverged', 'Sync', 1, 2, '2 commits to pull and 1 commit to push'],
     ] as const)(
         'recommends the upstream action before updating the base for a branch that is %s',
-        async (remote, label, ahead, behind) => {
+        async (remote, label, ahead, behind, detail) => {
             await start({ gitWrites: { clean: true, remote } });
             const sync = vi.spyOn(transport, 'syncGit');
             const pull = vi.spyOn(transport, 'pullGit');
             const pr = vi.spyOn(transport, 'getGitPullRequest');
 
             expect(syncCopy()).toBe(`${label}Last fetched 3 minutes ago`);
-            expect(syncDetail()).toContain(
-                ahead > 0 ? `${ahead} commit${ahead === 1 ? '' : 's'} to push` : '2 commits to pull'
-            );
+            expect(syncDetail()).toBe(detail);
             expect(buttonOf(updateLabel)).toBeUndefined();
-            if (behind > 0) {
-                expect(syncDetail()).toContain(`${behind} commits to pull`);
-            }
 
             await press(syncButton());
             await settle();
@@ -451,6 +448,7 @@ describe('the sync button in the sidebar', () => {
         expect(syncButton()).toBe(primary);
         expect(primary.getAttribute('aria-label')).toBe(updateLabel);
         expect(primary.querySelector('[data-commit-count="down"]')?.textContent).toBe('1');
+        expect(syncDetail()).toBe('1 commit to merge from main');
 
         const release = Promise.withResolvers<void>();
         sync.mockImplementationOnce(async (project, place, target, progress) => {

@@ -97,7 +97,7 @@ export async function openDeleteBranch(
                 onConfirm: async () => {
                     try {
                         if (model.busy) throw new Error('A branch operation is running');
-                        const result = await model.around(branch, () =>
+                        const result = await model.around(undefined, () =>
                             transport.deleteGitBranch(key.projectId, place, {
                                 action: 'delete',
                                 branch,

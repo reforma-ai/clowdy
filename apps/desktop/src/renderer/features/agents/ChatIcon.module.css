@@ -20,3 +20,12 @@
 .draft {
     color: var(--color-secondary-muted-text);
 }
+
+.command {
+    color: var(--color-success);
+    fill: none;
+}
+
+.command path {
+    stroke: currentColor;
+}

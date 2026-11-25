@@ -54,9 +54,9 @@ export class BranchSwitch {
         });
     }
 
-    /** A switch is running. */
+    /** A branch write is running, including a deletion without switch progress. */
     get busy(): boolean {
-        return this.running !== undefined;
+        return this.facts.switching;
     }
 
     /** Reads the branches of the place. An answer that comes after a newer read was started is dropped; a failed read keeps what was known and says why. */
@@ -93,7 +93,7 @@ export class BranchSwitch {
      * with nothing sent. The daemon judges everything (the tree, the runs, the name, the other worktrees); this only asks, and keeps the reason it gives.
      */
     async switchTo(branch: string, create?: GitSwitchRequest['create']): Promise<SwitchOutcome> {
-        if (this.running !== undefined) return { ok: false, failure: { message: 'A switch is running' } };
+        if (this.busy) return { ok: false, failure: { message: 'A switch is running' } };
 
         const { key } = this.facts;
 
@@ -131,10 +131,11 @@ export class BranchSwitch {
      * Runs `run`, the making of a chat that switches the place's checkout itself (`chat.create` with `{ mode: 'main', branch }`, the new chat's pill), as a switch of the place: while it
      * is on its way the place is `running` and its facts are `switching`, so the Changes sidebar's button spins and the moves to and from `origin` are off, and when it ends, however it
      * ends, the list of branches is dropped and the facts and the folder's branch are read again (`refresh`). What `run` answers is handed back as it is, and what the daemon said of a
-     * refusal is the caller's to keep. Another switch of the place that is running already (the daemon runs them one at a time) is the one that marks it: `run` is simply waited for.
+     * refusal is the caller's to keep. Pass no branch for a deletion, whose progress belongs in its own dialog. Another branch write that is running already (the daemon runs them
+     * one at a time) is the one that marks the place: `run` is simply waited for.
      */
-    async around<T>(branch: string, run: () => Promise<T>): Promise<T> {
-        if (this.running !== undefined) return await run();
+    async around<T>(branch: string | undefined, run: () => Promise<T>): Promise<T> {
+        if (this.busy) return await run();
 
         this.#begin(branch);
 
@@ -148,8 +149,8 @@ export class BranchSwitch {
         }
     }
 
-    /** A switch to `branch` starts: the place is busy and what the last one said is out of date. */
-    #begin(branch: string): void {
+    /** A branch write starts: the place is busy and what the last one said is out of date. */
+    #begin(branch: string | undefined): void {
         runInAction(() => {
             this.running = branch;
             this.facts.switching = true;

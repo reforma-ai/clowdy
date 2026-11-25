@@ -149,36 +149,57 @@ describe('syncButton', () => {
             kind: 'no_origin',
             label: 'No origin',
             line: 'Nothing to sync with',
+            title: 'Add an origin remote to sync this repository',
         });
         expect(sync(status({ head: { kind: 'detached', commit: 'a'.repeat(40) } }, null))).toMatchObject({
             kind: 'blocked',
             line: 'HEAD is detached',
+            title: 'Check out a branch before syncing',
         });
         expect(sync(status({ head: { kind: 'unborn', name: 'main' } }, null))).toMatchObject({
             kind: 'blocked',
             line: 'No commits yet',
+            title: 'Make your first commit before syncing',
         });
         expect(sync(status({ merging: { conflicts: 0 } }))).toMatchObject({
             kind: 'blocked',
-            line: 'Complete or abort the merge first',
+            line: 'Merge in progress',
+            title: 'Complete or abort the merge first',
         });
         expect(sync(status({ rebasing: true }))).toMatchObject({
             kind: 'blocked',
-            line: 'Continue or abort the rebase first',
+            line: 'Rebase in progress',
+            title: 'Continue or abort the rebase first',
         });
     });
 
     it('prefers upstream work to a base update, then fetches when both are level', () => {
-        const base = { ...READY, behind: 5 };
+        const base = { ...READY, behind: 6 };
         expect(sync(status())).toMatchObject({
             kind: 'fetch',
             label: 'Fetch origin',
             action: 'fetch',
             line: 'Never fetched',
         });
-        expect(sync(status({ base }))).toMatchObject({ kind: 'update', action: 'update', behind: 5 });
-        expect(sync(status({ base }, { ahead: 3 }))).toMatchObject({ kind: 'push', action: 'sync', ahead: 3 });
-        expect(sync(status({ base }, { behind: 2 }))).toMatchObject({ kind: 'pull', action: 'sync', behind: 2 });
+        expect(sync(status())?.title).toBeUndefined();
+        expect(sync(status({ base }))).toMatchObject({
+            kind: 'update',
+            action: 'update',
+            behind: 6,
+            title: '6 commits to merge from main',
+        });
+        expect(sync(status({ base }, { ahead: 3 }))).toMatchObject({
+            kind: 'push',
+            action: 'sync',
+            ahead: 3,
+            title: '3 commits to push',
+        });
+        expect(sync(status({ base }, { behind: 2 }))).toMatchObject({
+            kind: 'pull',
+            action: 'sync',
+            behind: 2,
+            title: '2 commits to pull',
+        });
         expect(sync(status({ lastFetchedAt: FETCHED }, { ahead: 1, behind: 2 }))).toMatchObject({
             kind: 'sync',
             label: 'Sync',
@@ -186,6 +207,7 @@ describe('syncButton', () => {
             line: 'Last fetched 3 minutes ago',
             ahead: 1,
             behind: 2,
+            title: '2 commits to pull and 1 commit to push',
         });
     });
 
@@ -208,6 +230,7 @@ describe('syncButton', () => {
             action: 'fetch',
             line: 'Tracks upstream/feature, not origin',
         });
+        expect(sync(status({}, { name: 'upstream/feature' }))?.title).toBeUndefined();
         expect(sync(status({ base: { ...READY, behind: 2 } }, { name: 'upstream/feature' }))).toMatchObject({
             kind: 'update',
             action: 'update',
@@ -340,6 +363,7 @@ describe('update from the base', () => {
         expect(updateFromBase(status({ base: { ...READY, behind: 2 } }))).toEqual({
             label: 'Update from main',
             behind: 2,
+            title: '2 commits to merge from main',
         });
         expect(updateFromBase(status())).toBeUndefined();
         for (const name of ['main', 'origin/main']) {

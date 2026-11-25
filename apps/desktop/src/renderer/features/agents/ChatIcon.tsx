@@ -1,4 +1,4 @@
-import { Edit } from '@clowdy/icons/12';
+import { BoltBordered, Edit } from '@clowdy/icons/12';
 import { Message } from '@clowdy/icons/14';
 import { shownRunStatus } from '@clowdy/protocol';
 
@@ -67,17 +67,26 @@ export function ChatStatus({
             : undefined;
     const ownStatus = own && shownRunStatus(own);
     const showDraft = draft && tone === 'neutral' && ownStatus === undefined;
-    const label = ownStatus
-        ? RUN_STATUS_VIEW[ownStatus].label
-        : showDraft
-          ? 'Unsent draft'
-          : threads === 'asking'
-            ? 'A thread is waiting for you'
-            : 'Threads working';
+    const showCommand = ownStatus === 'waiting_background' && own?.background?.some(item => item.kind === 'command');
+    const label = showCommand
+        ? 'Background command running'
+        : ownStatus
+          ? RUN_STATUS_VIEW[ownStatus].label
+          : showDraft
+            ? 'Unsent draft'
+            : threads === 'asking'
+              ? 'A thread is waiting for you'
+              : 'Threads working';
 
     return (
         <span className={className} role="img" aria-label={label}>
-            {showDraft ? <Edit className={styles.draft} aria-hidden /> : <StatusDot status={ownStatus} tone={tone} />}
+            {showDraft ? (
+                <Edit className={styles.draft} aria-hidden />
+            ) : showCommand ? (
+                <BoltBordered className={styles.command} aria-hidden />
+            ) : (
+                <StatusDot status={ownStatus} tone={tone} />
+            )}
         </span>
     );
 }
