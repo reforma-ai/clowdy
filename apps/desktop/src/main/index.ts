@@ -461,7 +461,8 @@ async function connectDaemon(
 
         // A busy one this app cannot talk to stays until the keeper swaps it; the window shows that it cannot reach a daemon
         // and reloads on the swap.
-        if (outcome?.kind === 'busy' && outcome.protocol !== PROTOCOL_VERSION) return { ours: false };
+        if ((outcome?.kind === 'busy' || outcome?.kind === 'git-busy') && outcome.protocol !== PROTOCOL_VERSION)
+            return { ours: false };
 
         const { pid, port } = await ensureDaemon(context);
 

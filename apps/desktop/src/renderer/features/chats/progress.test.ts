@@ -43,7 +43,7 @@ describe('chatProgress', () => {
         );
 
         expect(progress?.summary).toBe('2 to do, 1 in progress, 1 in review, 1 in backlog, 2 done');
-        expect(progress?.tasks.map(item => item.key)).toEqual([
+        expect(progress?.rows.map(({ task }) => task.key)).toEqual([
             'CAR-5',
             'CAR-7',
             'CAR-2',
@@ -58,13 +58,40 @@ describe('chatProgress', () => {
         const progress = chatProgress([task(1, 'done'), task(2, 'canceled'), task(3, 'todo')], statuses);
 
         expect(progress?.summary).toBe('1 to do, 1 done');
-        expect(progress?.tasks.map(item => item.key)).toEqual(['CAR-3', 'CAR-1']);
+        expect(progress?.rows.map(({ task }) => task.key)).toEqual(['CAR-3', 'CAR-1']);
     });
 
     it('treats a task whose status left the workflow as not done', () => {
         expect(chatProgress([task(1, 'done'), task(2, 'removed-status')], statuses)?.summary).toBe(
             '1 with unknown status, 1 done'
         );
+    });
+
+    it('keeps descendants directly under their parent and sorts siblings by status', () => {
+        const progress = chatProgress(
+            [
+                task(1, 'todo'),
+                { ...task(2, 'done'), parentId: 't-1' },
+                task(3, 'todo'),
+                { ...task(4, 'todo'), parentId: 't-1' },
+                { ...task(5, 'review'), parentId: 't-4' },
+                { ...task(6, 'canceled'), parentId: 't-1' },
+                { ...task(7, 'active'), parentId: 't-6' },
+                { ...task(8, 'todo'), parentId: 'missing' },
+            ],
+            statuses
+        );
+
+        expect(progress?.summary).toBe('4 to do, 1 in progress, 1 in review, 1 done');
+        expect(progress?.rows.map(({ task, depth }) => [task.number, depth])).toEqual([
+            [1, 0],
+            [4, 1],
+            [5, 2],
+            [7, 1],
+            [2, 1],
+            [3, 0],
+            [8, 0],
+        ]);
     });
 
     it('has no progress without tasks, or with only canceled ones', () => {

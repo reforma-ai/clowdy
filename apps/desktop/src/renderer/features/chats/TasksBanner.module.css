@@ -16,3 +16,43 @@
 .key {
     margin-inline-end: var(--spacing-sm);
 }
+
+.row {
+    --guide-start: calc(var(--clowdy-listbox-item-padding-inline) + var(--spacing-xs));
+}
+
+.row:not([data-depth='0']) {
+    padding-inline-start: calc(var(--clowdy-listbox-item-padding-inline) + var(--depth) * var(--spacing-20));
+}
+
+.guide,
+.row[data-has-children]::after {
+    position: absolute;
+    pointer-events: none;
+    border-inline-start: 1px solid var(--color-secondary-muted-border);
+}
+
+.guide {
+    inset-inline-start: calc(var(--guide-start) + var(--column) * var(--spacing-20));
+    inset-block: calc(-1 * var(--clowdy-listbox-gap)) 0;
+    inline-size: var(--spacing-12);
+}
+
+.guide[data-branch='tee']::after {
+    content: '';
+    position: absolute;
+    inset-inline: 0;
+    inset-block-start: calc(50% + var(--clowdy-listbox-gap) / 2);
+    border-block-start: 1px solid var(--color-secondary-muted-border);
+}
+
+.guide[data-branch='end'] {
+    inset-block-end: 50%;
+    border-block-end: 1px solid var(--color-secondary-muted-border);
+}
+
+.row[data-has-children]::after {
+    content: '';
+    inset-inline-start: calc(var(--guide-start) + var(--depth) * var(--spacing-20));
+    inset-block: calc(50% + var(--spacing-10)) 0;
+}

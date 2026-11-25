@@ -36,7 +36,7 @@ jobs:
 
     ci-ok:
         needs: gate
-        # A failed or cancelled gate must fail this job too, not skip it.
+        # The gate's result is the worst of its jobs: any failed or cancelled one fails this job too, and so does a skipped gate, so none is lost in a skip.
         if: always()
         runs-on: ubuntu-latest
         env:

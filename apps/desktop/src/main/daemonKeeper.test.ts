@@ -103,6 +103,7 @@ function setup({
             world.daemons.delete(port);
             world.files.delete(INFO_FILE);
             world.endsAt.set(pid, world.clock + windDownMs);
+            return true;
         },
         alive: pid => (world.endsAt.get(pid) ?? 0) > world.clock,
         loginPath: async () => undefined,
@@ -318,6 +319,32 @@ describe('keepDaemonFresh', () => {
         expect(restarted).toHaveLength(1);
     });
 
+    test('waits for Git work to finish without asking to interrupt agents', async () => {
+        const { world, context } = setup({ startedAt: 1000 });
+        const stop = context.host.stop;
+        let syncing = true;
+        const busy = vi.fn();
+        const { keeper, changes, restarted } = watched({
+            context: {
+                ...context,
+                host: { ...context.host, stop: info => (syncing ? Promise.resolve(false) : stop(info)) },
+            },
+            isStale: sourcesChangedSince(async () => 2000),
+            onBusy: busy,
+        });
+
+        changes[0]('change', 'runs/driver.ts');
+        await vi.advanceTimersByTimeAsync(6000);
+        expect(world.stops).toBe(0);
+        expect(busy).not.toHaveBeenCalled();
+
+        syncing = false;
+        await vi.advanceTimersByTimeAsync(5000);
+        expect(world.stops).toBe(1);
+        expect(restarted).toHaveLength(1);
+        keeper.stop();
+    });
+
     test('a change saved while the daemon restarts leads to another restart', async () => {
         const { world, context } = setup({ startedAt: 1000 });
         let newest = 2000;
@@ -437,6 +464,31 @@ describe('a packaged app', () => {
         // The new daemon is the app's own: nothing more to do.
         await vi.advanceTimersByTimeAsync(10_000);
         expect(world.stops).toBe(1);
+        keeper.stop();
+    });
+
+    test('replaceNow remembers the choice to interrupt agents while waiting for Git operations', async () => {
+        const { world, context } = setup({ version: '411', activeRuns: 3 });
+        const stop = context.host.stop;
+        let syncing = true;
+        const restarted = vi.fn();
+        const keeper = keepDaemonFresh({
+            context: {
+                ...context,
+                host: { ...context.host, stop: info => (syncing ? Promise.resolve(false) : stop(info)) },
+            },
+            isStale: fromOlderBundle(412),
+            onRestarted: restarted,
+        });
+
+        expect((await keeper.checkNow()).kind).toBe('busy');
+        expect(await keeper.replaceNow()).toEqual({ kind: 'git-busy', protocol: PROTOCOL_VERSION });
+        expect(world.stops).toBe(0);
+
+        syncing = false;
+        await vi.advanceTimersByTimeAsync(5000);
+        expect(world.stops).toBe(1);
+        expect(restarted).toHaveBeenCalledOnce();
         keeper.stop();
     });
 });

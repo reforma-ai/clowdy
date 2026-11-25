@@ -96,6 +96,7 @@ function setup(
         stop: async ({ port }) => {
             world.daemons.delete(port);
             world.files.delete(INFO_FILE);
+            return true;
         },
         alive: pid => [...world.daemons.values()].some(daemon => daemon.health.pid === pid),
         loginPath: async () => {

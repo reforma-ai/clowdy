@@ -83,6 +83,8 @@ export type KeeperOutcome =
     | { kind: 'fresh' }
     /** The daemon is stale but has runs in progress; a restart would interrupt them. */
     | { kind: 'busy'; pid: number; protocol: number; activeRuns: number | undefined }
+    /** A Git operation or its follow-up sync needs to finish before the daemon is replaced. */
+    | { kind: 'git-busy'; protocol: number }
     | { kind: 'restarted'; info: DaemonInfo }
     /** Stopping the stale daemon or starting the new one failed. */
     | { kind: 'failed'; error: unknown };
@@ -107,7 +109,7 @@ export async function restartIfStale(
     // A daemon that does not say how many runs it has is not restarted either: it may be in the middle of some.
     if (!force && (activeRuns === undefined || activeRuns > 0)) return { kind: 'busy', pid, protocol, activeRuns };
 
-    await stopDaemon(context, running);
+    if (!(await stopDaemon(context, running))) return { kind: 'git-busy', protocol };
 
     return { kind: 'restarted', info: await ensureDaemon(context) };
 }
@@ -189,6 +191,10 @@ export function keepDaemonFresh({
                     reportedBusy = outcome.pid;
                     onBusy?.(outcome);
                 }
+            } else if (outcome.kind === 'git-busy') {
+                log('The daemon is stale; waiting for Git operations to finish before restarting it.');
+                force = forced;
+                schedule(busyRetryMs);
             }
 
             return outcome;

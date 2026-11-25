@@ -1,4 +1,7 @@
+import { TaskTree } from '../tasks/taskTree';
+
 import type { Task, TaskStatus } from '@clowdy/protocol';
+import type { TreeRow } from '../tasks/taskTree';
 
 const STATUS_LABELS = [
     ['todo', 'to do'],
@@ -10,39 +13,37 @@ const STATUS_LABELS = [
 ] as const;
 
 type CountedStatus = (typeof STATUS_LABELS)[number][0];
+const STATUS_ORDER = new Map<string, number>(STATUS_LABELS.map(([status], index) => [status, index]));
 
 export interface ChatProgress {
     summary: string;
-    /** The tasks that count, grouped by category with their original order inside each group. */
-    tasks: Task[];
+    /** The tasks that count, in tree order with siblings grouped by status. */
+    rows: TreeRow[];
 }
 
 /** Summarize the chat's tasks by status category, excluding canceled tasks. */
 export function chatProgress(tasks: Task[], statuses: TaskStatus[]): ChatProgress | undefined {
-    const categoryOf = new Map(statuses.map(status => [status.id, status.category]));
-    const byCategory = new Map<CountedStatus, Task[]>();
+    const categories = new Map(statuses.map(status => [status.id, status.category]));
+    const categoryOf = (task: Task) => categories.get(task.statusId) ?? 'unknown';
+    const counts = new Map<CountedStatus, number>();
 
     for (const task of tasks) {
-        const category = categoryOf.get(task.statusId) ?? 'unknown';
+        const category = categoryOf(task);
 
         if (category === 'canceled') continue;
 
-        const group = byCategory.get(category);
-
-        if (group) group.push(task);
-        else byCategory.set(category, [task]);
+        counts.set(category, (counts.get(category) ?? 0) + 1);
     }
 
-    if (byCategory.size === 0) return undefined;
+    if (counts.size === 0) return undefined;
 
-    const groups = STATUS_LABELS.flatMap(([status, label]) => {
-        const items = byCategory.get(status);
+    const summary = STATUS_LABELS.flatMap(([status, label]) => {
+        const count = counts.get(status);
 
-        return items ? [{ items, label }] : [];
-    });
+        return count ? [`${count} ${label}`] : [];
+    }).join(', ');
+    const rank = (task: Task) => STATUS_ORDER.get(categoryOf(task)) ?? STATUS_ORDER.size;
+    const tree = new TaskTree(tasks, statuses, (a, b) => rank(a) - rank(b) || a.number - b.number);
 
-    return {
-        summary: groups.map(({ items, label }) => `${items.length} ${label}`).join(', '),
-        tasks: groups.flatMap(({ items }) => items),
-    };
+    return { summary, rows: tree.rows(null, [], task => categoryOf(task) !== 'canceled') };
 }

@@ -3,7 +3,7 @@ import { client, methods, ndJsonStream, PROTOCOL_VERSION } from '@agentclientpro
 import { z } from 'zod';
 
 import { errorMessage } from '../../errors';
-import { spawnInOwnGroup } from '../process';
+import { spawnInOwnGroup, stderrOf } from '../process';
 import { toWebReadable } from './connection';
 import { buildAgentEnv } from './env';
 import { clientCapabilities } from './v1';
@@ -123,7 +123,7 @@ export async function probeAgent(
             ),
         };
     } catch (error) {
-        const tail = proc.stderr().trim().slice(-500);
+        const tail = (await stderrOf(proc)).trim().slice(-500);
 
         throw new Error(`${errorMessage(error)}${tail ? `\nThe agent wrote: ${tail}` : ''}`);
     } finally {

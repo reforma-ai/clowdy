@@ -13,6 +13,7 @@ import {
 } from '@agentclientprotocol/sdk/experimental/v2/unstable';
 
 import { EngineFailure, errorMessage } from '../../errors';
+import { stderrOf } from '../process';
 import { answeredInTime, Channel, ProcessEnded, toWebReadable, watchEnd } from './connection';
 import {
     advertisesSteering,
@@ -623,8 +624,8 @@ export class V2Layer implements ProtocolLayer {
 
             const { message, retryable, code } =
                 error instanceof ProcessEnded
-                    ? processEnded(context, `exit code ${proc.child.exitCode ?? 'unknown'}`, proc.stderr())
-                    : classifyThrown(error, context, proc.stderr());
+                    ? processEnded(context, `exit code ${proc.child.exitCode ?? 'unknown'}`, await stderrOf(proc))
+                    : classifyThrown(error, context, await stderrOf(proc));
 
             throw new EngineFailure(message, retryable, code);
         } finally {
@@ -851,13 +852,13 @@ export class V2Layer implements ProtocolLayer {
 
             if (error instanceof ProcessEnded) {
                 yield failureEvent(
-                    processEnded(context, `exit code ${proc.child.exitCode ?? 'unknown'}`, proc.stderr())
+                    processEnded(context, `exit code ${proc.child.exitCode ?? 'unknown'}`, await stderrOf(proc))
                 );
 
                 return;
             }
 
-            yield failureEvent(classifyThrown(error, context, proc.stderr()));
+            yield failureEvent(classifyThrown(error, context, await stderrOf(proc)));
         } finally {
             this.finished = true;
             this.disarm('handoff');
@@ -970,7 +971,7 @@ export class V2Layer implements ProtocolLayer {
                 // The agent leaving when nothing was open loses nothing, and the guard would have ended the session about now.
                 if (!this.quiet(course)) {
                     yield failureEvent(
-                        processEnded(context, `exit code ${proc.child.exitCode ?? 'unknown'}`, proc.stderr())
+                        processEnded(context, `exit code ${proc.child.exitCode ?? 'unknown'}`, await stderrOf(proc))
                     );
                 }
 
@@ -978,7 +979,7 @@ export class V2Layer implements ProtocolLayer {
             case 'failed':
                 this.endTurn();
                 yield* mapper.close();
-                yield failureEvent(classifyThrown(item.error, context, proc.stderr()));
+                yield failureEvent(classifyThrown(item.error, context, await stderrOf(proc)));
 
                 return true;
             default:

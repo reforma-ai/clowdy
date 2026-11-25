@@ -8,7 +8,7 @@ import { Text } from '@clowdy/components/Text';
 import { toast } from '@clowdy/components/Toast';
 import { AttentionCircle, Check, ChevronDown, Close } from '@clowdy/icons/14';
 import { errorMessage } from '@clowdy/lib';
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 
 import { type Transport, TransportError } from '../../daemon/transport';
 import { tildePath } from '../../shared/displayPath';
@@ -49,6 +49,8 @@ interface MergeOptions {
     current: string;
     direction: MergeDirection;
     hasOrigin: boolean;
+    /** Opens the outgoing merge directly on the folder's checkout, using this name until its current branch is read. */
+    checkoutBranch?: string;
 }
 
 interface MergeChoice extends PickerOption {
@@ -56,12 +58,12 @@ interface MergeChoice extends PickerOption {
     remote?: true;
 }
 
+const localChoice = (name: string): MergeChoice => ({ id: `refs/heads/${name}`, label: name, branch: name });
+
 function choicesOf(listing: GitBranches | undefined, current: string, includeOrigin: boolean): MergeChoice[] {
     if (!listing?.isRepository) return [];
 
-    const local = listing.local
-        .filter(branch => branch.name !== current)
-        .map(({ name }) => ({ id: `refs/heads/${name}`, label: name, branch: name }));
+    const local = listing.local.filter(branch => branch.name !== current).map(({ name }) => localChoice(name));
     const origin = includeOrigin
         ? listing.remote.map(({ name }) => ({
               id: `refs/remotes/origin/${name}`,
@@ -148,10 +150,19 @@ export function openBranchMergeDialog(options: MergeOptions): void {
     });
 }
 
-function BranchMergeDialog({ transport, remote, placeKey, current, direction, hasOrigin }: MergeOptions) {
+function BranchMergeDialog({
+    transport,
+    remote,
+    placeKey,
+    current,
+    direction,
+    hasOrigin,
+    checkoutBranch,
+}: MergeOptions) {
     const { modal } = useModalContext();
     const headingId = useId();
     const [listing, setListing] = useState<GitBranches>();
+    const [checkoutChoice, setCheckoutChoice] = useState<MergeChoice>();
     const [fetchFailed, setFetchFailed] = useState<Failure>();
     const [loading, setLoading] = useState(true);
     const [selected, setSelected] = useState<string>();
@@ -170,7 +181,7 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
         [listing, current, fetchOrigin, fetchFailed]
     );
     const { projectId } = placeKey;
-    const choice = choices.find(candidate => candidate.id === selected);
+    const choice = checkoutBranch ? checkoutChoice : choices.find(candidate => candidate.id === selected);
     const selection = choice && {
         direction,
         current,
@@ -179,12 +190,59 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
         ...(strategy !== 'merge' && { strategy }),
     };
 
+    const compare = useCallback(
+        async (picked: MergeChoice, method: DialogStrategy) => {
+            const round = ++previewRound.current;
+
+            setPreview(undefined);
+            setFailure(undefined);
+
+            try {
+                const response = await transport.branchMergeGit(projectId, placeRef(placeKey), {
+                    action: 'preview',
+                    direction,
+                    current,
+                    branch: picked.branch,
+                    ...(picked.remote && { remote: true as const }),
+                    ...(method !== 'merge' && { strategy: method }),
+                });
+
+                if (response.state !== 'preview') throw new Error("Couldn't compare the branches");
+                if (
+                    (method === 'squash' || method === 'rebase') &&
+                    response.mode !== method &&
+                    response.mode !== 'up-to-date'
+                )
+                    throw new Error(`Update Clowdy to use ${STRATEGIES[method].label}`);
+                if (round === previewRound.current) setPreview(response);
+            } catch (error) {
+                if (round === previewRound.current) setFailure(failureOf(error));
+            }
+        },
+        [transport, projectId, placeKey, direction, current]
+    );
+
     useEffect(() => {
         let active = true;
 
         const load = async () => {
             const place = placeRef(placeKey);
             try {
+                if (checkoutBranch) {
+                    const projects = await transport.getProjectsInfo(projectId);
+                    if (!active) return;
+                    const folder = projects
+                        .find(project => project.projectId === projectId)
+                        ?.folders.find(folder => folder.folderId === placeKey.folderId);
+                    if (!folder?.exists || folder.detached || !folder.branch || folder.branch === current)
+                        throw new Error('The main checkout is no longer on a different branch');
+
+                    const picked = localChoice(folder.branch);
+                    setCheckoutChoice(picked);
+                    await compare(picked, 'merge');
+                    return;
+                }
+
                 if (fetchOrigin) {
                     const wasSyncing = remote.running !== undefined;
                     const fetching = remote.run('fetch', { report: false });
@@ -219,46 +277,21 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
             active = false;
             previewRound.current++;
         };
-    }, [fetchOrigin, placeKey, projectId, remote, transport]);
+    }, [fetchOrigin, placeKey, projectId, remote, transport, checkoutBranch, current, compare]);
 
-    const pick = async (id: string, method = strategy) => {
+    const pick = (id: string) => {
         if (pending) return;
 
         const picked = choices.find(option => option.id === id);
 
         if (!picked) return;
 
-        const round = ++previewRound.current;
-
         setSelected(id);
-        setPreview(undefined);
-        setFailure(undefined);
-
-        try {
-            const response = await transport.branchMergeGit(projectId, placeRef(placeKey), {
-                action: 'preview',
-                direction,
-                current,
-                branch: picked.branch,
-                ...(picked.remote && { remote: true as const }),
-                ...(method !== 'merge' && { strategy: method }),
-            });
-
-            if (response.state !== 'preview') throw new Error("Couldn't compare the branches");
-            if (
-                (method === 'squash' || method === 'rebase') &&
-                response.mode !== method &&
-                response.mode !== 'up-to-date'
-            )
-                throw new Error(`Update Clowdy to use ${STRATEGIES[method].label}`);
-            if (round === previewRound.current) setPreview(response);
-        } catch (error) {
-            if (round === previewRound.current) setFailure(failureOf(error));
-        }
+        void compare(picked, strategy);
     };
 
     const source = preview?.source ?? (direction === 'from' ? (choice?.label ?? '…') : current);
-    const target = preview?.target ?? (direction === 'into' ? (choice?.label ?? '…') : current);
+    const target = preview?.target ?? (direction === 'into' ? (choice?.label ?? checkoutBranch ?? '…') : current);
     const mergeMessage = (branch: string) =>
         strategy === 'rebase'
             ? `Rebased ${branch} onto ${source}`
@@ -366,7 +399,11 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
 
     const actionLabel = STRATEGIES[strategy].label;
     const actionStatus = !selection
-        ? 'Select a branch'
+        ? checkoutBranch
+            ? loading
+                ? 'Comparing branches…'
+                : undefined
+            : 'Select a branch'
         : upToDate
           ? 'Already up to date'
           : !preview && !failure
@@ -414,7 +451,7 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
             >
                 <Close />
             </Button>
-            {!result && (loading || listing) && (
+            {!result && !checkoutBranch && (loading || listing) && (
                 <div inert={isWorking}>
                     <PickerList
                         options={choices}
@@ -423,7 +460,7 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
                         placeholder="Filter branches"
                         empty={empty}
                         listClassName={styles.branches}
-                        onPick={id => void pick(id)}
+                        onPick={pick}
                     />
                 </div>
             )}
@@ -515,7 +552,7 @@ function BranchMergeDialog({ transport, remote, placeKey, current, direction, ha
                                         const next = key as DialogStrategy;
                                         if (next === strategy) return;
                                         setStrategy(next);
-                                        if (selected) void pick(selected, next);
+                                        if (choice) void compare(choice, next);
                                     }}
                                 >
                                     {(Object.keys(STRATEGIES) as DialogStrategy[]).map(id => (

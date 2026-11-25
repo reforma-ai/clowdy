@@ -10,7 +10,7 @@
     border-top-left-radius: calc(var(--radius-md) * var(--squircle-radius-factor));
     border-top-right-radius: calc(var(--radius-md) * var(--squircle-radius-factor));
     corner-shape: superellipse(var(--squircle-value)) superellipse(var(--squircle-value)) square square;
-    background-color: var(--color-secondary-muted-light);
+    background-color: color-mix(in srgb, var(--color-dark) 5%, var(--color-light));
     overflow: hidden;
 }
 

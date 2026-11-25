@@ -18,6 +18,7 @@ it('opens the task list, updates progress, and navigates to a selected task', as
     await store.load();
     const project = store.selectedProject!;
     const progress = chatProgress(project.tasksOfChat('c-1'), project.statuses)!;
+    const tasks = progress.rows.map(({ task }) => task);
     const container = document.createElement('div');
     document.body.append(container);
     const root = createRoot(container);
@@ -31,24 +32,24 @@ it('opens the task list, updates progress, and navigates to a selected task', as
     const header = container.querySelector<HTMLButtonElement>('button[aria-expanded]')!;
     expect(header.getAttribute('aria-expanded')).toBe('false');
     expect(header.textContent).toBe(`Tasks${progress.summary}`);
-    expect(container.textContent).not.toContain(progress.tasks[0].title);
+    expect(container.textContent).not.toContain(tasks[0].title);
     await act(async () => header.click());
     const row = [...container.querySelectorAll<HTMLElement>('[role="row"]')].find(item =>
-        item.textContent?.includes(progress.tasks[0].title)
+        item.textContent?.includes(tasks[0].title)
     )!;
-    expect(row.textContent).toContain(progress.tasks[0].key);
-    expect(row.textContent).toContain(project.statuses.find(status => status.id === progress.tasks[0].statusId)!.name);
+    expect(row.textContent).toContain(tasks[0].key);
+    expect(row.textContent).toContain(project.statuses.find(status => status.id === tasks[0].statusId)!.name);
     const done = project.statuses.find(status => status.category === 'done')!;
     const completed = chatProgress(
-        progress.tasks.map(task => ({ ...task, statusId: done.id })),
+        tasks.map(task => ({ ...task, statusId: done.id })),
         project.statuses
     )!;
     await act(async () => render(completed));
-    expect(header.textContent).toBe(`Tasks${progress.tasks.length} done`);
+    expect(header.textContent).toBe(`Tasks${tasks.length} done`);
     await act(async () => row.click());
-    expect(store.ui.forProject(FIXTURE_PROJECT_ID).taskId).toBe(progress.tasks[0].id);
+    expect(store.ui.forProject(FIXTURE_PROJECT_ID).taskId).toBe(tasks[0].id);
     await act(async () => header.click());
-    expect(container.textContent).not.toContain(progress.tasks[0].title);
+    expect(container.textContent).not.toContain(tasks[0].title);
     act(() => root.unmount());
     container.remove();
 });

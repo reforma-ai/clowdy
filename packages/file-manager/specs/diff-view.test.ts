@@ -2,6 +2,7 @@
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { codeLanguage } from '@clowdy/components/codeLanguages';
 import { language } from '@codemirror/language';
 import { getChunks } from '@codemirror/merge';
 import { EditorView, ViewPlugin } from '@codemirror/view';
@@ -15,6 +16,13 @@ import { estimateDiffLines } from '../src/react/diff/estimateDiffLines';
 import type { Extension } from '@codemirror/state';
 import type { Root } from 'react-dom/client';
 import type { DiffViewProps } from '../src/react/diff/DiffView';
+
+// The real loader, spied on: a test holds the language of a path back with `holdLanguage` to see what the editor does while it waits.
+vi.mock('@clowdy/components/codeLanguages', async importOriginal => {
+    const actual = await importOriginal<typeof import('@clowdy/components/codeLanguages')>();
+
+    return { ...actual, codeLanguage: vi.fn(actual.codeLanguage) };
+});
 
 let host: HTMLDivElement;
 let root: Root;
@@ -67,11 +75,42 @@ function render(props: Partial<DiffViewProps> = {}, strict = false) {
     });
 }
 
-/** Lets the language pack of a path finish loading. */
+/** Lets what the view does on a timer run, such as the lazy view's observer. */
 function settle() {
     return act(async () => {
         await new Promise(resolve => setTimeout(resolve, 20));
     });
+}
+
+/**
+ * Waits until `done` says so, for the first load of a language pack: it is a dynamic import, which a loaded machine delays past any fixed pause.
+ * Each pause is inside `act`, which draws what the load asked for; it fails with its own message before the test's limit.
+ */
+async function until(done: () => unknown) {
+    const deadline = Date.now() + 4000;
+
+    while (!done()) {
+        if (Date.now() > deadline) throw new Error('The language did not load');
+
+        await act(async () => {
+            await new Promise(resolve => setTimeout(resolve, 10));
+        });
+    }
+}
+
+/** Holds the language of an extension back until the returned function is called, so a test sees the editor while it waits however fast the import is. */
+async function holdLanguage(extension: string) {
+    const { codeLanguage: actual } = await vi.importActual<typeof import('@clowdy/components/codeLanguages')>(
+        '@clowdy/components/codeLanguages'
+    );
+    let release = () => {};
+    const held = new Promise<void>(resolve => {
+        release = resolve;
+    }).then(() => actual(extension));
+
+    vi.mocked(codeLanguage).mockImplementation(name => (name === extension ? held : actual(name)));
+
+    return () => act(async () => release());
 }
 
 const editorDom = () => host.querySelector<HTMLElement>('.cm-editor');
@@ -106,6 +145,7 @@ afterEach(async () => {
     await act(async () => root.unmount());
     host.remove();
     vi.unstubAllGlobals();
+    vi.mocked(codeLanguage).mockReset();
 });
 
 describe('DiffView', () => {
@@ -324,11 +364,15 @@ describe('DiffView', () => {
     });
 
     it('should use the language of the path', async () => {
+        const release = await holdLanguage('ts');
+
         await render({ path: 'src/app.ts', original: 'const a = 1', modified: 'const a = 2' });
 
+        // The text is not drawn plain first: the editor waits for the language.
         expect(editorDom()).toBeNull();
 
-        await settle();
+        await release();
+        await until(editorDom);
 
         expect(view().state.facet(language)).toBeTruthy();
     });
@@ -348,7 +392,7 @@ describe('DiffView', () => {
 
         expect(view()).toBe(editor);
 
-        await settle();
+        await until(() => editor.state.facet(language));
 
         expect(view()).toBe(editor);
         expect(editor.state.facet(language)).toBeTruthy();
@@ -444,7 +488,7 @@ describe('DiffView', () => {
             expect(editorDom()).toBeNull();
 
             await act(async () => FakeIntersectionObserver.lazy[0].show(true));
-            await settle();
+            await until(editorDom);
 
             expect(view().state.facet(language)).toBeTruthy();
         });

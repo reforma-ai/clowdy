@@ -248,6 +248,8 @@ export class LoginSessions {
 
         proc.child.stdout?.setEncoding('utf8').on('data', onData);
         proc.child.stderr?.setEncoding('utf8').on('data', onData);
+        // The process reads its stderr from the start: what a program that failed at once wrote can be there before this listener is.
+        onData(proc.stderr());
         proc.child.stdin?.on('error', () => undefined);
         entry.session.step = 'waiting';
         this.options.announce();

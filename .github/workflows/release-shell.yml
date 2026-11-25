@@ -160,7 +160,27 @@ jobs:
                       apps/desktop/release/*.blockmap
                       apps/desktop/release/latest-mac.yml
 
-    # Unsigned for now, so no secret. Clowdy has no other CI, so the desktop tests run here on Windows first.
+    # CI tests on Linux only, so a release runs the desktop tests on Windows. They have a job of their own beside the packaging, not a step before it:
+    # the release takes as long as the longer of the two, and `publish` still waits for both.
+    windows-test:
+        needs: decide
+        if: needs.decide.outputs.decision == 'build'
+        runs-on: windows-latest
+        steps:
+            # The tests read no git history, so the default shallow checkout is enough.
+            - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+            - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+              with:
+                  node-version: ${{ env.NODE_VERSION }}
+            - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+              with:
+                  bun-version-file: package.json
+            - run: bun install --frozen-lockfile
+            # Through turbo, which builds the workspace packages the tests import.
+            - name: Test the desktop app
+              run: bunx turbo run test --filter=@clowdy/desktop
+
+    # Unsigned for now, so no secret.
     windows:
         needs: decide
         if: needs.decide.outputs.decision == 'build'
@@ -176,9 +196,6 @@ jobs:
               with:
                   bun-version-file: package.json
             - run: bun install --frozen-lockfile
-            # Through turbo, which builds the workspace packages the tests import.
-            - name: Test the desktop app
-              run: bunx turbo run test --filter=@clowdy/desktop
             - name: Build the app
               run: bun scripts/build.ts win32-x64 win32-arm64
               working-directory: apps/desktop
@@ -201,9 +218,9 @@ jobs:
                       apps/desktop/release/nsis-web/*.exe
                       apps/desktop/release/nsis-web/*.7z
 
-    # Runs only after every build job succeeded: a skipped or failed one skips it.
+    # Runs only after every build job and the Windows tests succeeded: a skipped or failed one skips it.
     publish:
-        needs: [macos, windows]
+        needs: [macos, windows, windows-test]
         runs-on: ubuntu-latest
         permissions:
             contents: write

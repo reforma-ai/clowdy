@@ -55,12 +55,14 @@ export class TaskTree {
     readonly #categories: Map<string, TaskStatusCategory>;
     readonly #compare: (a: Task, b: Task) => number;
 
-    constructor(tasks: readonly Task[], statuses: readonly TaskStatus[]) {
+    constructor(tasks: readonly Task[], statuses: readonly TaskStatus[], compare?: (a: Task, b: Task) => number) {
         const rank = new Map(statuses.map((status, index) => [status.id, index]));
 
         // A task whose status the workflow no longer has comes after every status.
-        this.#compare = (a, b) =>
-            (rank.get(a.statusId) ?? rank.size) - (rank.get(b.statusId) ?? rank.size) || a.number - b.number;
+        this.#compare =
+            compare ??
+            ((a, b) =>
+                (rank.get(a.statusId) ?? rank.size) - (rank.get(b.statusId) ?? rank.size) || a.number - b.number);
         this.#categories = new Map(statuses.map(status => [status.id, status.category]));
         this.#byId = new Map(tasks.map(task => [task.id, task]));
 

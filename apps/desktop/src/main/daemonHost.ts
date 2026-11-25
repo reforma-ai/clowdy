@@ -38,8 +38,8 @@ export interface DaemonHost {
     probe(port: number): Promise<Health | undefined>;
     /** Starts the daemon detached from the app, so it survives the app. Settles when that process ends. */
     launch(launch: DaemonLaunch): Promise<DaemonExit>;
-    /** Asks the daemon to shut down gracefully. Does not wait for it to end; a daemon that cannot be reached is taken as stopped. */
-    stop(info: DaemonInfo): Promise<void>;
+    /** Asks the daemon to shut down. Returns false if Git work must finish first; a daemon that cannot be reached is taken as stopped. */
+    stop(info: DaemonInfo): Promise<boolean>;
     /** Whether the process `pid` still runs. */
     alive(pid: number): boolean;
     /** The user's login-shell PATH, or `undefined` when it cannot be had. */
@@ -94,12 +94,14 @@ function launch({ bun, entry, cwd, env, logPath }: DaemonLaunch): Promise<Daemon
  * The daemon's own protocol in the header, not this app's: the daemon refuses another major, and the one being stopped is
  * often one an update left behind, on the protocol before.
  */
-async function stop({ port, token, protocol }: DaemonInfo): Promise<void> {
-    await fetch(`http://127.0.0.1:${port}${ROUTES.shutdown}`, {
+async function stop({ port, token, protocol }: DaemonInfo): Promise<boolean> {
+    const response = await fetch(`http://127.0.0.1:${port}${ROUTES.shutdown}?ifGitIdle=1`, {
         method: 'POST',
         headers: { authorization: `Bearer ${token}`, [PROTOCOL_HEADER]: String(protocol) },
         signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS * 5),
     }).catch(() => undefined);
+
+    return response?.status !== 409;
 }
 
 export function processAlive(pid: number): boolean {

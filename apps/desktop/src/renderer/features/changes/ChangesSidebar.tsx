@@ -98,7 +98,7 @@ export function ChangesSidebar({
             <div className={styles.body}>
                 {(pr || hint || status?.isRepository === true) && (
                     <div className={styles.facts}>
-                        <RemoteMenu facts={facts} />
+                        <RemoteMenu facts={facts} checkoutBranch={git?.checkoutBranch} />
                         {pr ? (
                             <PullRequestChip pr={pr} stale={facts.pullRequest.stale} />
                         ) : (

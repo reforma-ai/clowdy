@@ -346,7 +346,7 @@ describe('picking a branch', () => {
         await settle();
 
         expect(ui().draftWorkspace).toEqual({ mode: 'new' });
-        expect(chip()?.textContent).toBe('New worktreefrom origin/main');
+        expect(chip()?.textContent).toBe('Worktreefrom origin/main');
     });
 });
 

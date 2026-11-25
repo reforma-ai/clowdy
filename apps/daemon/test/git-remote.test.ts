@@ -425,12 +425,33 @@ describe('POST /v1/projects/:id/git/sync', () => {
 });
 
 withScripts('Git sync progress', () => {
-    test('delivers the push phase while git is still waiting in the pre-push hook', async () => {
+    test('keeps the destination merge and its streamed sync alive during an automatic restart', async () => {
         const { path, origin } = repository();
         const before = git(origin, 'rev-parse', 'refs/heads/main');
-        const tip = commitFile(path, 'ahead.txt');
+        const source = join(tempDir('git-sync'), 'source');
+        git(path, 'worktree', 'add', '-q', '-b', 'topic', source);
+        const tip = commitFile(source, 'ahead.txt');
         const h = await start();
-        const { project } = h.ok('project.add', { folders: [path] });
+        const { project } = h.ok('project.add', { folders: [source] });
+        const folderId = project.folders[0].id;
+        const shutdown = () => h.fetch('/v1/shutdown?ifGitIdle=1', { method: 'POST' });
+        const merged = await h.fetch(`/v1/projects/${project.id}/git/merge`, {
+            method: 'POST',
+            body: JSON.stringify({
+                folderId,
+                action: 'merge',
+                direction: 'into',
+                current: 'topic',
+                branch: 'main',
+                sourceCommit: tip,
+                targetCommit: before,
+                expectedMode: 'fast-forward',
+            }),
+        });
+        expect(merged.status).toBe(200);
+        expect(await merged.json()).toMatchObject({ state: 'done', target: 'main', commit: tip, canPush: true });
+        // The watcher can see the new files before the client starts the follow-up sync.
+        expect((await shutdown()).status).toBe(409);
         const hold = join(tempDir('git-sync'), 'wait');
         writeFileSync(hold, '');
         hook(path, 'pre-push', `while test -f "${hold}"; do sleep 0.01; done`);
@@ -439,7 +460,7 @@ withScripts('Git sync progress', () => {
         try {
             const response = await h.fetch(`/v1/projects/${project.id}/git/sync`, {
                 method: 'POST',
-                body: JSON.stringify({ folderId: project.folders[0].id, branch: 'main' }),
+                body: JSON.stringify({ folderId, branch: 'main', commit: tip, destination: true }),
                 signal: AbortSignal.timeout(4000),
             });
             const reader = response.body?.getReader();
@@ -456,12 +477,16 @@ withScripts('Git sync progress', () => {
             expect(output).toStartWith('data: {"type":"phase","phase":"fetch"}\n\n');
             expect(output).not.toContain('"type":"result"');
             expect(git(origin, 'rev-parse', 'refs/heads/main')).toBe(before);
+            expect((await shutdown()).status).toBe(409);
 
             rmSync(hold);
             for (let next = await reader.read(); !next.done; next = await reader.read())
                 output += decoder.decode(next.value, { stream: true });
             expect(output).toContain('"pushed":true');
             expect(git(origin, 'rev-parse', 'refs/heads/main')).toBe(tip);
+            expect(git(source, 'rev-parse', 'HEAD')).toBe(tip);
+            await Bun.sleep(1050);
+            expect((await shutdown()).status).toBe(200);
         } finally {
             rmSync(hold, { force: true });
         }

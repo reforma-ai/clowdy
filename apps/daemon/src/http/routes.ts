@@ -24,7 +24,7 @@ import { taskCommentsPage } from '../domain/taskComments';
 import { DEFAULT_LIMIT } from '../domain/taskQuery';
 import { workspaceRemoval } from '../domain/workspaceRemoval';
 import { projectWorktrees } from '../domain/worktrees';
-import { CommandError, invalid, notFound } from '../errors';
+import { CommandError, invalid, notFound, unavailable } from '../errors';
 import { placeBranches } from '../git/branches';
 import { placeChanges, placeFile } from '../git/changes';
 import { projectFolderGit } from '../git/state';
@@ -183,6 +183,23 @@ function integerParam(raw: string | null, name: string, fallback: number): numbe
 export function createRoutes(context: RouteContext): Route[] {
     const { services } = context;
     const { store, files, skills, attachments } = services;
+    let gitOperations = 0;
+    let gitFinishedAt = -Infinity;
+    let shuttingDown = false;
+
+    // A merge or a commit can be followed by a second request to sync. Allow it to arrive before replacing the daemon.
+    const gitBusy = () => gitOperations > 0 || Date.now() - gitFinishedAt < 1000;
+    const gitOperation = async <T>(work: () => Promise<T>): Promise<T> => {
+        if (shuttingDown) throw unavailable('Clowdy is restarting. Try again');
+
+        gitOperations++;
+        try {
+            return await work();
+        } finally {
+            gitOperations--;
+            gitFinishedAt = Date.now();
+        }
+    };
     /** The worktree a request of the documents or the file names asks for (`workspaceId`), in place of its folder's own checkout; none when it names no workspace. */
     const workspacePlaceOf = (project: Project, url: URL) => {
         const workspaceId = url.searchParams.get('workspaceId');
@@ -239,7 +256,11 @@ export function createRoutes(context: RouteContext): Route[] {
         {
             method: 'POST',
             pattern: /^\/v1\/shutdown$/,
-            handle: () => {
+            handle: (_request, url) => {
+                if (url.searchParams.get('ifGitIdle') === '1' && gitBusy())
+                    return failure('conflict', 'Git operations are in progress');
+
+                shuttingDown = true;
                 context.shutdown();
 
                 return json({ ok: true });
@@ -541,7 +562,7 @@ export function createRoutes(context: RouteContext): Route[] {
                 // A commit may wait for a fingerprint (a signing key that asks for one), longer than the connection's idle timeout.
                 context.keepOpen(request);
 
-                return json(await services.gitWrites.commit(place, body));
+                return gitOperation(async () => json(await services.gitWrites.commit(place, body)));
             },
         },
         {
@@ -555,7 +576,9 @@ export function createRoutes(context: RouteContext): Route[] {
                 // The copy of a few files and a restore are quick, but a filter that has to fetch (Git LFS) may take longer than the connection's idle timeout.
                 context.keepOpen(request);
 
-                return json(await services.gitDiscard.discard(place, { projectId: project.id, paths: body.paths }));
+                return gitOperation(async () =>
+                    json(await services.gitDiscard.discard(place, { projectId: project.id, paths: body.paths }))
+                );
             },
         },
         {
@@ -569,8 +592,10 @@ export function createRoutes(context: RouteContext): Route[] {
 
                 return new Response(
                     gitSyncStream(progress =>
-                        services.gitRemote.sync(place, body, progress, target =>
-                            services.pullRequests.forget(target).catch(() => undefined)
+                        gitOperation(() =>
+                            services.gitRemote.sync(place, body, progress, target =>
+                                services.pullRequests.forget(target).catch(() => undefined)
+                            )
                         )
                     ),
                     {
@@ -593,17 +618,19 @@ export function createRoutes(context: RouteContext): Route[] {
                 // A fetch or a push over SSH may wait for a fingerprint, longer than the connection's idle timeout.
                 context.keepOpen(request);
 
-                try {
-                    const remote = services.gitRemote;
-                    return json(
-                        action === 'push'
-                            ? await remote.push(place, body.expectedHead)
-                            : await remote[action as Exclude<GitRemoteAction, 'push'>](place)
-                    );
-                } finally {
-                    // What GitHub says of the branch moves with what was sent (a pull request opened, its checks started): the next read of it asks again, not after the short while it is kept.
-                    await services.pullRequests.forget(place).catch(() => undefined);
-                }
+                return gitOperation(async () => {
+                    try {
+                        const remote = services.gitRemote;
+                        return json(
+                            action === 'push'
+                                ? await remote.push(place, body.expectedHead)
+                                : await remote[action as Exclude<GitRemoteAction, 'push'>](place)
+                        );
+                    } finally {
+                        // What GitHub says of the branch moves with what was sent (a pull request opened, its checks started): the next read of it asks again, not after the short while it is kept.
+                        await services.pullRequests.forget(place).catch(() => undefined);
+                    }
+                });
             },
         },
         {
@@ -615,11 +642,13 @@ export function createRoutes(context: RouteContext): Route[] {
 
                 context.keepOpen(request);
 
-                try {
-                    return json(await services.gitBranchMerge.run(place, body));
-                } finally {
-                    if (body.action !== 'preview') await services.pullRequests.forget(place).catch(() => undefined);
-                }
+                return gitOperation(async () => {
+                    try {
+                        return json(await services.gitBranchMerge.run(place, body));
+                    } finally {
+                        if (body.action !== 'preview') await services.pullRequests.forget(place).catch(() => undefined);
+                    }
+                });
             },
         },
         {
@@ -633,7 +662,7 @@ export function createRoutes(context: RouteContext): Route[] {
                 // A `post-checkout` hook of the person's may take a while, longer than the connection's idle timeout.
                 context.keepOpen(request);
 
-                return json(await services.gitSwitch.switch(project, place, body));
+                return gitOperation(async () => json(await services.gitSwitch.switch(project, place, body)));
             },
         },
         {
@@ -646,11 +675,13 @@ export function createRoutes(context: RouteContext): Route[] {
 
                 context.keepOpen(request);
 
-                try {
-                    return json(await services.gitSwitch.deleteBranch(project, place, body));
-                } finally {
-                    if (body.action === 'delete') await services.pullRequests.forget(place).catch(() => undefined);
-                }
+                return gitOperation(async () => {
+                    try {
+                        return json(await services.gitSwitch.deleteBranch(project, place, body));
+                    } finally {
+                        if (body.action === 'delete') await services.pullRequests.forget(place).catch(() => undefined);
+                    }
+                });
             },
         },
         {

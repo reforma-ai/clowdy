@@ -6,8 +6,9 @@ export function formatTime(at: number): string {
 }
 
 const stamp = { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' } as const;
-const sameYearStamp = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', ...stamp });
-const otherYearStamp = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', ...stamp });
+// The day and the clock are formatted apart and joined here: the word ICU puts between a date and a time (`,` or `at`) differs by version.
+const sameYearDay = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' });
+const otherYearDay = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 const fullStamp = new Intl.DateTimeFormat('en-GB', {
     weekday: 'long',
     day: 'numeric',
@@ -26,7 +27,9 @@ export function formatMessageTime(at: number, now = Date.now()): string {
 
     if (written.toDateString() === today.toDateString()) return formatTime(at);
 
-    return (written.getFullYear() === today.getFullYear() ? sameYearStamp : otherYearStamp).format(written);
+    const day = written.getFullYear() === today.getFullYear() ? sameYearDay : otherYearDay;
+
+    return `${day.format(written)}, ${formatTime(at)}`;
 }
 
 /** The whole date and time of a moment, for a tooltip: `Wednesday, 19 November 2025 at 22:54`. */
