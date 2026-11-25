@@ -41,14 +41,20 @@
 .guide[data-branch='tee']::after {
     content: '';
     position: absolute;
-    inset-inline: 0;
-    inset-block-start: calc(50% + var(--clowdy-listbox-gap) / 2);
-    border-block-start: 1px solid var(--color-secondary-muted-border);
+    inset-inline: -1px 0;
+    inset-block-end: calc(50% - var(--clowdy-listbox-gap) / 2);
+    block-size: var(--radius-xs);
+    border-inline-start: 1px solid var(--color-secondary-muted-border);
 }
 
 .guide[data-branch='end'] {
     inset-block-end: 50%;
+}
+
+.guide[data-branch='tee']::after,
+.guide[data-branch='end'] {
     border-block-end: 1px solid var(--color-secondary-muted-border);
+    border-end-start-radius: var(--radius-xs);
 }
 
 .row[data-has-children]::after {
