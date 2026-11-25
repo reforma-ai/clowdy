@@ -76,6 +76,12 @@ export function ChangesSidebar({
         historyBranch ? { projectId, folderId: place.folder.id, branch: historyBranch } : undefined
     );
     const pr = currentBranch && facts.pr?.head === currentBranch ? facts.pr : undefined;
+    const repo = facts.repo;
+    const prStale = facts.pullRequest.stale;
+    // The open PR can be discovered before the separately cached history catches up.
+    useEffect(() => {
+        if (history && repo && pr && !prStale) history.noteCurrent(repo, pr);
+    }, [history, repo, pr, prStale]);
     const rows = pullRequestRows(
         history?.value?.pullRequests ?? [],
         history?.stale ?? false,

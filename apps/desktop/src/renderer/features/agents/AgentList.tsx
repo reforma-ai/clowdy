@@ -56,6 +56,7 @@ import {
     agentRows,
     ancestorChats,
     asksThePerson,
+    chatDotTone,
     groupFolderOf,
     isActiveThread,
     orchestratorOf,
@@ -390,14 +391,10 @@ export function AgentList({
               ? ('working' as const)
               : undefined;
         const draft = messageOf(draftOf(chat.id)) !== '' || filesOf(chat.id).length > 0;
+        const unread = ui.hasUnreadCompletion(run);
+        const showPullRequests = chatDotTone(run, threads, draft, unread) === undefined;
         const status = (
-            <ChatStatus
-                run={run}
-                threads={threads}
-                draft={draft}
-                unread={ui.hasUnreadCompletion(run)}
-                className={styles.archiveStatus}
-            />
+            <ChatStatus run={run} threads={threads} draft={draft} unread={unread} className={styles.archiveStatus} />
         );
         const icon = <ChatIcon chat={chat} run={run} threads={threads} showStatus={false} />;
 
@@ -436,6 +433,7 @@ export function AgentList({
                             actions={actions}
                             busy={busy}
                             status={status}
+                            showPullRequests={showPullRequests}
                             isOpen={menuOpenId === chat.id}
                             onOpenChange={open => setMenuOpenId(open ? chat.id : null)}
                             move={menuOpenId === chat.id ? order.actions(chat.id) : undefined}
@@ -628,6 +626,7 @@ function RowEnd({
     onOpenChange,
     move,
     branchKey,
+    showPullRequests,
 }: {
     chat: Chat;
     actions: ChatActions;
@@ -637,6 +636,7 @@ function RowEnd({
     onOpenChange: (isOpen: boolean) => void;
     move?: { onMoveUp?: () => void; onMoveDown?: () => void };
     branchKey?: BranchPullRequestKey;
+    showPullRequests: boolean;
 }) {
     const close = () => onOpenChange(false);
 
@@ -644,7 +644,7 @@ function RowEnd({
         // The buttons and the popover are React children of the row, so their clicks and keys would reach the row through the tree.
         <span className={styles.chatActions} {...ownEvents}>
             {status}
-            <BranchPullRequestBadge branchKey={branchKey} />
+            <BranchPullRequestBadge branchKey={branchKey} visible={showPullRequests} />
             {!busy && (
                 <Button
                     className={styles.rowAction}
@@ -710,12 +710,14 @@ function chatBranchKey(
 /** A status, not another action: every chat observing the same branch shares the count and archive state. */
 const BranchPullRequestBadge = observer(function BranchPullRequestBadge({
     branchKey,
+    visible,
 }: {
     branchKey?: BranchPullRequestKey;
+    visible: boolean;
 }) {
     const fact = useBranchPullRequests(branchKey);
-    const pullRequests = fact?.value?.pullRequests.filter(pr => !pr.archived) ?? [];
-    if (pullRequests.length === 0) return null;
+    const pullRequests = fact?.pullRequests.filter(pr => !pr.archived) ?? [];
+    if (!visible || pullRequests.length === 0) return null;
 
     const state = pullRequests.some(pr => pr.state === 'open')
         ? 'open'
@@ -731,6 +733,7 @@ const BranchPullRequestBadge = observer(function BranchPullRequestBadge({
         })
         .join(', ');
     const label = `${pullRequests.length} pull request${pullRequests.length === 1 ? '' : 's'}: ${detail}${fact?.stale ? ' (last known)' : ''}`;
+    const count = pullRequests.filter(pr => pr.state === state).length;
 
     return (
         <span
@@ -741,8 +744,8 @@ const BranchPullRequestBadge = observer(function BranchPullRequestBadge({
             aria-label={label}
             title={label}
         >
-            <Merge aria-hidden="true" />
-            {pullRequests.length > 1 && <span>{pullRequests.length}</span>}
+            <Merge size={12} aria-hidden="true" />
+            <span>{count}</span>
         </span>
     );
 });

@@ -128,7 +128,8 @@
     }
 }
 
-.chatRow:is(:hover, :focus-visible, :has(.rowAction:focus), [data-hovered], [data-open]) .archiveStatus {
+.chatRow:is(:hover, :focus-visible, :has(.rowAction:focus), [data-hovered], [data-open])
+    :is(.archiveStatus, .pullRequests) {
     display: none;
 }
 
