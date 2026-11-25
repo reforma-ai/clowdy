@@ -34,9 +34,20 @@ Start a chat in the main checkout, reuse an existing Git worktree or create a ne
 
 An orchestrator can delegate work to child threads. Each is a regular chat with its own agent, context, assignment and, when needed, worktree. Children report back to their parent when they finish and can use different agents. Provider-native subagents are still available.
 
-Open any child thread to see its progress or talk to the agent directly. You can edit, remove or send queued messages, or steer a running agent mid-turn. If the agent can't accept steering, Clowdy keeps the message queued.
+Open any child thread to see its progress or talk to the agent directly, even while it's working.
 
 A Claude Code coordinator can delegate implementation to Codex and review to Cursor, with both reporting back to the parent chat. You can also fork a conversation or hand its transcript to another agent in a new chat, without explaining the whole task again.
+
+### Steer and Queue
+
+You don't have to wait for an agent to finish before giving it more instructions.
+
+- **Steer:** redirect the agent during its current turn without stopping its work.
+- **Queue:** line up follow-up messages to run in order after the current turn finishes.
+
+Clowdy shows pending messages above the composer, where you can edit, remove or send them as a steer. The queue is stored by the daemon, so it isn't lost when you reload the app. If a run fails or you stop it, the queue pauses until you're ready to resume. If an agent can't take a steer mid-turn, Clowdy delivers it on the next turn instead.
+
+The same controls work across agent providers, including child threads.
 
 ### Files, documents and terminals
 
