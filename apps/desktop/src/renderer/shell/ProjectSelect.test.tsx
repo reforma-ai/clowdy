@@ -88,14 +88,13 @@ afterEach(async () => {
 });
 
 describe('ProjectSelect', () => {
-    it('lists the personal space on top, then the projects, then the actions', async () => {
+    it('lists the personal space on top, then the projects, then Manage projects…, with no Add project…', async () => {
         await open();
 
         expect(labels()).toEqual([
             expect.stringContaining('Personal'),
             expect.stringContaining('Car Rental'),
             expect.stringContaining('Clowdy'),
-            'Add project…',
             'Manage projects…',
         ]);
         // The menu has a separator between the personal space and the projects, and one before the actions.
@@ -125,7 +124,7 @@ describe('ProjectSelect', () => {
         // Every project has its icon and its settings button; the open one is the one chosen of the list.
         expect(items()[1].querySelectorAll('svg, img')).toHaveLength(2);
         expect(items()[2].querySelectorAll('svg, img')).toHaveLength(2);
-        expect(items().map(item => item.getAttribute('aria-checked'))).toEqual(['false', 'true', 'false', null, null]);
+        expect(items().map(item => item.getAttribute('aria-checked'))).toEqual(['false', 'true', 'false', null]);
         expect(items()[1].hasAttribute('data-selected')).toBe(true);
         expect(items()[2].hasAttribute('data-selected')).toBe(false);
         expect(store.selectedProjectId).toBe(FIXTURE_PROJECT_ID);
@@ -242,31 +241,13 @@ describe('ProjectSelect', () => {
         ]);
     });
 
-    it('opens the Add project form with Add project…', async () => {
-        await open();
-        await act(async () =>
-            items()
-                .find(item => item.textContent === 'Add project…')!
-                .click()
-        );
-        await act(async () => {
-            await new Promise(resolve => setTimeout(resolve, 60));
-        });
-
-        const form = document.body.querySelector('form');
-
-        expect(form?.textContent).toContain('Add project');
-        expect(form?.querySelector('[aria-label="Name"]')).not.toBeNull();
-        expect(form?.textContent).toContain('Folders');
-    });
-
     it('lists no separator before the projects when the personal space is all there is', async () => {
         const data = createFixtureData();
 
         data.projects = data.projects.filter(project => project.personal);
         await open(data);
 
-        expect(labels()).toEqual([expect.stringContaining('Personal'), 'Add project…', 'Manage projects…']);
+        expect(labels()).toEqual([expect.stringContaining('Personal'), 'Manage projects…']);
         expect(document.body.querySelectorAll('[role="separator"]')).toHaveLength(1);
     });
 });

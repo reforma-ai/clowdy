@@ -2,7 +2,7 @@ import { Button } from '@clowdy/components/Button';
 import { Menu, MenuItem, MenuSection, MenuSeparator, MenuTrigger } from '@clowdy/components/List';
 import { Popover } from '@clowdy/components/Popover';
 import { Text } from '@clowdy/components/Text';
-import { AddFolder, ChevronDown, Folder, Home, Sliders } from '@clowdy/icons/14';
+import { ChevronDown, Folder, Home, Sliders } from '@clowdy/icons/14';
 import { mainFolder } from '@clowdy/protocol';
 import { useRef, useState } from 'react';
 
@@ -11,12 +11,10 @@ import { ProjectIcon } from '../shared/ProjectIcon';
 import { SCREEN_TITLE } from '../shared/screenTitle';
 import { useRootStore } from '../stores';
 import styles from './ProjectSelect.module.css';
-import { openAddProject } from './projectDialogs';
 
 import type { Project } from '@clowdy/protocol';
 import type { RefObject } from 'react';
 
-const ADD = 'add-project';
 const MANAGE = 'manage-projects';
 
 /** Where a project is: its main folder (the path gives way to the count), and `+N` for the folders it has besides. */
@@ -65,7 +63,7 @@ function SettingsButton({
 /**
  * The project switcher, which is the title of the list of chats: the project's icon, its name set as a screen's title is, and a chevron, with a plate only while the
  * pointer is over it. Its menu has the personal space on top, then the projects in the person's order, the open one on a plate and each with a button for its page in
- * Settings > Projects, then "Add project…" and "Manage projects…", which opens the list there.
+ * Settings > Projects, then "Manage projects…", which opens the list there, where a project is added.
  */
 export function ProjectSelect() {
     const root = useRootStore();
@@ -107,8 +105,7 @@ export function ProjectSelect() {
                             return;
                         }
 
-                        if (key === ADD) openAddProject(root);
-                        else if (key === MANAGE) root.ui.openProjectSettings();
+                        if (key === MANAGE) root.ui.openProjectSettings();
                         else {
                             root.selectProject(String(key));
                             setIsOpen(false);
@@ -150,7 +147,6 @@ export function ProjectSelect() {
                         ))}
                     </MenuSection>
                     {root.projects.length > 0 && <MenuSeparator />}
-                    <MenuItem id={ADD} text="Add project…" icon={<AddFolder />} />
                     <MenuItem id={MANAGE} text="Manage projects…" icon={<Sliders />} />
                 </Menu>
             </Popover>
