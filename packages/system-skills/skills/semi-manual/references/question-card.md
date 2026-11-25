@@ -2,7 +2,7 @@
 
 Read this before your first card in a cycle, and again when a round feels clumsy.
 
-A card is one `ask_user` call: `{question, options: [{id, label, consequence?}], recommended?}`. The user sees the question text, the options with their consequences, the recommended one marked, and a field for their own answer. The call returns the chosen option's label, or the user's own words. The run waits.
+A card is one `ask_user` call: `{question, options: [{id, label, consequence?}], recommended?}`. The user sees the question text, the options with their consequences, the recommended one marked, a field for their own answer and a Skip button. The call returns the chosen option's label, the user's own words, or `Skipped`. The run waits.
 
 ## Parts
 
@@ -16,7 +16,7 @@ A card is one `ask_user` call: `{question, options: [{id, label, consequence?}],
 
 **Recommended.** Always set, exactly one: the `id` of your pick, copied character for character.
 
-**Custom answer.** The card has its own field. Do not add "Other", "Something else" or "You decide".
+**Custom answer.** The card has its own field and a Skip button. Do not add "Other", "Something else" or "You decide".
 
 **Round.** Cards in one round must not depend on each other. Ask at most four, one at a time: each call waits for its answer, and a second call while a card is open is refused.
 

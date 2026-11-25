@@ -475,6 +475,29 @@ describe('runs of tool calls', () => {
         expect(container.querySelectorAll('button[aria-label="Next"]')).toHaveLength(1);
     });
 
+    it('draws the question the box below holds as a line, and the others as they are', async () => {
+        const open = item(3, {
+            kind: 'question',
+            questionId: 'open',
+            text: 'Which one?\n\nA fact about it.',
+            options: [{ id: 'a', label: 'A' }],
+        });
+        const done = item(4, {
+            kind: 'question',
+            questionId: 'done',
+            text: 'Earlier?\n\nAn earlier fact.',
+            options: [],
+            answer: 'Yes',
+        });
+        await act(async () =>
+            root.render(<StreamView items={[asked, done, open]} active onAnswer={vi.fn()} dockedQuestionId="open" />)
+        );
+        expect(container.textContent).toContain('Answer in the box below');
+        expect(container.textContent).not.toContain('A fact about it.');
+        expect(container.textContent).toContain('An earlier fact.');
+        expect(container.querySelector('button[aria-label="Next"]')).toBeNull();
+    });
+
     it('does not offer an answer while the agent is being stopped', async () => {
         const question = item(3, {
             kind: 'question',

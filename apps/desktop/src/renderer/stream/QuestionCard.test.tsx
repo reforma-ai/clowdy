@@ -30,130 +30,47 @@ const question = (fields: Partial<Question> = {}): Question => ({
     questionId: 'q1',
     text: 'Who can export orders?\n\nThe orders page is visible to every signed-in user.\n\nMy pick: Admins only.',
     options: [
-        { id: 'admins', label: 'Admins only', consequence: 'Nobody gains access to personal data' },
+        { id: 'admins', label: 'Admins only' },
         { id: 'everyone', label: 'Everyone who sees orders' },
     ],
     recommended: 'admins',
     ...fields,
 });
-const draw = (fields?: Partial<Question>, onAnswer?: (answer: string) => void | Promise<void>) =>
-    act(async () => root.render(<QuestionCard question={question(fields)} onAnswer={onAnswer} />));
-const rows = () => [...container.querySelectorAll<HTMLElement>('[role="row"]')];
-const row = (label: string) => rows().find(candidate => candidate.textContent?.includes(label));
-const send = () => container.querySelector<HTMLButtonElement>('button[aria-label="Next"]');
-const field = () => container.querySelector<HTMLTextAreaElement>('textarea')!;
-const typeInField = async (text: string) => {
-    await act(async () => field().focus());
-    await act(async () => {
-        Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(field(), text);
-        field().dispatchEvent(new Event('input', { bubbles: true }));
-    });
-};
-const press = (key: string, init: KeyboardEventInit = {}) =>
-    act(async () => {
-        field().dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init }));
-    });
+const draw = (fields?: Partial<Question>, props: { docked?: boolean; onAnswer?: () => void } = {}) =>
+    act(async () => root.render(<QuestionCard question={question(fields)} {...props} />));
 
 describe('QuestionCard', () => {
-    it('lists the options as numbered rows with their consequence and the recommended one preselected', async () => {
-        await draw(undefined, vi.fn());
+    it('frames the form of a question that waits for an answer', async () => {
+        await draw(undefined, { onAnswer: vi.fn() });
 
-        expect(container.querySelector('form')?.textContent).toContain('Who can export orders?');
-        expect(rows().map(candidate => candidate.textContent)).toEqual([
-            expect.stringMatching(/^1Admins onlyRecommendedNobody gains access to personal data$/),
-            '2Everyone who sees orders',
-            '',
-        ]);
-        expect(row('Admins only')?.getAttribute('aria-selected')).toBe('true');
-        expect(row('Everyone')?.getAttribute('aria-selected')).toBe('false');
+        expect(container.querySelector('form')).not.toBeNull();
+        expect(container.textContent).toContain('The orders page is visible to every signed-in user.');
     });
 
-    it('sends the label of the preselected option', async () => {
-        const onAnswer = vi.fn();
+    it('is a line saying where to answer while the box under the chat holds the form', async () => {
+        await draw(undefined, { docked: true });
 
-        await draw(undefined, onAnswer);
-        await act(async () => send()!.click());
-
-        expect(onAnswer).toHaveBeenCalledWith('Admins only');
+        expect(container.querySelector('form')).toBeNull();
+        expect(container.textContent).toBe('Answer in the box below');
     });
 
-    it('sends the label of the option the person picked', async () => {
-        const onAnswer = vi.fn();
+    it('shows the answer in place of the form once answered, docked or not', async () => {
+        await draw({ answer: 'Admins only' }, { docked: true });
 
-        await draw(undefined, onAnswer);
-        await act(async () => row('Everyone')!.click());
-
-        expect(row('Everyone')?.getAttribute('aria-selected')).toBe('true');
-
-        await act(async () => send()!.click());
-
-        expect(onAnswer).toHaveBeenCalledWith('Everyone who sees orders');
-    });
-
-    it('takes the person own words once they start typing, and sends them trimmed', async () => {
-        const onAnswer = vi.fn();
-
-        await draw(undefined, onAnswer);
-        await typeInField('  Only the owner  ');
-
-        expect(row('Admins only')?.getAttribute('aria-selected')).toBe('false');
-
-        await act(async () => send()!.click());
-
-        expect(onAnswer).toHaveBeenCalledWith('Only the owner');
-    });
-
-    it('offers no send while the field is picked and empty', async () => {
-        await draw(undefined, vi.fn());
-        await act(async () => field().focus());
-
-        expect(send()?.disabled).toBe(true);
-
-        await typeInField('Something');
-
-        expect(send()?.disabled).toBe(false);
-    });
-
-    it('sends on Enter in the field, and starts a new line on Shift+Enter', async () => {
-        const onAnswer = vi.fn();
-
-        await draw(undefined, onAnswer);
-        await typeInField('Only the owner');
-        await press('Enter', { shiftKey: true });
-
-        expect(onAnswer).not.toHaveBeenCalled();
-
-        await press('Enter');
-
-        expect(onAnswer).toHaveBeenCalledOnce();
-        expect(onAnswer).toHaveBeenCalledWith('Only the owner');
-    });
-
-    it('is only the field when the question has no options', async () => {
-        const onAnswer = vi.fn();
-
-        await draw({ options: [], recommended: undefined }, onAnswer);
-
-        expect(rows()).toHaveLength(1);
-        expect(send()?.disabled).toBe(true);
-
-        await typeInField('Our own plan');
-        await act(async () => send()!.click());
-
-        expect(onAnswer).toHaveBeenCalledWith('Our own plan');
-    });
-
-    it('is read-only without a way to answer', async () => {
-        await draw();
-
-        expect(send()?.disabled).toBe(true);
-    });
-
-    it('shows the answer in place of the options once answered', async () => {
-        await draw({ answer: 'Admins only' }, vi.fn());
-
+        expect(container.querySelector('form')).toBeNull();
+        expect(container.textContent).toContain('The orders page is visible to every signed-in user.');
         expect(container.textContent).toContain('Admins only');
-        expect(rows()).toHaveLength(0);
-        expect(send()).toBeNull();
+        expect(container.textContent).not.toContain('Answer in the box below');
+    });
+
+    it.each([
+        ['preparing', 'Stopping the agent…'],
+        ['expired', 'Question expired'],
+        ['cancelled', 'Question withdrawn'],
+    ] as const)('says a %s question is not waiting any more', async (state, line) => {
+        await draw({ state }, { docked: true });
+
+        expect(container.querySelector('form')).toBeNull();
+        expect(container.textContent).toContain(line);
     });
 });

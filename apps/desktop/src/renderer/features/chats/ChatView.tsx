@@ -8,7 +8,7 @@ import { shownRunStatus } from '@clowdy/protocol';
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { useAgents, useChatStream, useProjectState, useProjectUi, useRootStore } from '../../stores';
-import { type ForkAgent, StreamView, type StreamViewHandle } from '../../stream';
+import { type ForkAgent, openQuestion, QuestionPanel, StreamView, type StreamViewHandle } from '../../stream';
 import { useRefreshGitFactsAtRunEnd } from '../changes/useRefreshGitFactsAtRunEnd';
 import { ProviderIcon } from '../settings/providers/ProviderIcon';
 import { openChat } from './archiveChat';
@@ -103,6 +103,8 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
     const writability = chatWritability(chat, run, agents, agentsStatus);
     const progress = chatProgress(project.tasksOfChat(chat.id), project.statuses);
     const items = stream?.items ?? [];
+    // The question the orchestrator waits on is answered in the box under the chat, in place of the message field. A chat that is read only has no box, so its question stays in the stream.
+    const asked = run?.status === 'waiting_user' && writability.writable ? openQuestion(items) : undefined;
     const edit = useEditMessage({
         chat,
         items,
@@ -196,6 +198,7 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
                     forkedFrom={origin}
                     emptyState={<EmptyChat />}
                     errorAction={item => (item.id === overflowAt ? <CompactAction chatId={chat.id} /> : null)}
+                    dockedQuestionId={asked?.questionId}
                     // A question the orchestrator no longer waits on (stopped, interrupted) is shown but cannot be answered.
                     onAnswer={
                         run?.status === 'waiting_user'
@@ -240,6 +243,22 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
                             run={run}
                             controls={controls}
                             onSendMessage={() => streamView.current?.followLatest()}
+                            question={
+                                asked && run ? (
+                                    <QuestionPanel
+                                        key={asked.questionId}
+                                        question={asked}
+                                        onAnswer={async answer => {
+                                            await perform(root, {
+                                                type: 'run.answer',
+                                                runId: run.id,
+                                                questionId: asked.questionId,
+                                                answer,
+                                            });
+                                        }}
+                                    />
+                                ) : undefined
+                            }
                         />
                     ) : (
                         <>
