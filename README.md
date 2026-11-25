@@ -2,7 +2,7 @@
 
 **The desktop workspace for agentic software development.**
 
-Run AI agents across your projects, repositories and worktrees from one app. Give an agent a task, let it coordinate other agents, and follow the work through chats, a task board, project documents and Git. Step in whenever you need to.
+Run AI agents across your projects, repositories and worktrees from one app. Give an agent a goal and follow its plan on a shared task board as it delegates work, reviews changes and verifies results. Open the chats, documents and Git changes behind each task, and step in whenever you need to.
 
 <!-- Add a screenshot of the workspace showing a chat, child threads and the task board. -->
 
@@ -14,19 +14,21 @@ I wanted a workspace where agents could work independently and I could still see
 
 ## Available now
 
+### Plans become tasks
+
+Tasks are at the heart of Clowdy. When an agent plans a feature, that plan can become a parent task with subtasks, checklists and dependencies on the project's board. Agents and people create, edit and track the same tasks. There is no separate plan to copy from the chat into a tracker.
+
+Start an agent directly from a task, or let an orchestrator create tasks and assign them to child threads. Independent stages can run in parallel, and threads assigned to blocked tasks wait for their dependencies. The board shows where work is happening, what needs review and how much is left.
+
+Use the list or Kanban view to manage work, drill into a parent task, and jump from a task to the agents working on it. Task history can include comments, commits, diffs, checks and documents. Task references in chat are clickable, so you can go straight from an agent's progress report to the work it describes.
+
+<!-- Add a screenshot of the task board and task detail panel. -->
+
 ### Projects, repositories and worktrees
 
 A project can contain several repositories and folders. Switch between products, side projects and non-coding work without mixing their chats, files or tasks.
 
 Start a chat in the main checkout, reuse an existing Git worktree or create a new one from a branch of your choice. New chats can inherit the current worktree. Manage worktrees from the app, remove them with or without their branches, and access the same files and changes as the agent.
-
-### Plans become tasks
-
-An agent's plan belongs on the task board, not buried in a conversation. Agents can break a large request into a parent task and subtasks with checklists and dependencies, then work on independent stages in parallel. They use Clowdy's task commands to update the same board you see, and its thread commands to coordinate the work.
-
-See what's in progress, under review or blocked in a list or Kanban board. Open a task to read its description, comments, linked agent runs, commits, diffs, checks and documents.
-
-<!-- Add a screenshot of the task board and task detail panel. -->
 
 ### Threads you can actually talk to
 
