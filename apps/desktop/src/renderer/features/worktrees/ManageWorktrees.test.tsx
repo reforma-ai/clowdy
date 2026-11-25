@@ -374,7 +374,9 @@ describe('Manage worktrees', () => {
         const worktree = row(CLOWDY_WORKTREE);
         const count = textButton(worktree, '2 chats')!;
 
-        expect(worktree.textContent).toContain('3 changes·2 chats');
+        expect(worktree.textContent).toContain('3 changes');
+        expect(worktree.textContent).toContain('2 chats');
+        expect(worktree.textContent).not.toContain('·');
         expect(worktree.textContent).not.toContain('Weekend surcharge in a worktree');
         expect(textButton(row(FOUND_WORKTREE), '0 chats')).toBeUndefined();
 

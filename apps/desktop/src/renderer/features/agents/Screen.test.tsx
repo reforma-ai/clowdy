@@ -924,7 +924,7 @@ describe('grouped by folder', () => {
             await restart();
             await draw(() => ui().openChat('c-2'));
 
-            expect(folderLine()?.textContent).toBe('car-rental-api · feature/payments');
+            expect(folderLine()?.textContent).toBe('car-rental-api, feature/payments');
             expect(folderLine()?.getAttribute('title')).toBe('~/car-rental-api');
             // Read only: nothing in it opens a list or takes a press.
             expect(folderSelect()).toBeNull();
@@ -933,7 +933,7 @@ describe('grouped by folder', () => {
             // A chat with no folder works in the main one.
             await draw(() => ui().openChat('c-1'));
 
-            expect(folderLine()?.textContent).toBe('car-rental · main');
+            expect(folderLine()?.textContent).toBe('car-rental, main');
         });
 
         it('is under the message box of the chat the page made, in the folder picked there', async () => {
@@ -953,7 +953,7 @@ describe('grouped by folder', () => {
 
             expect([...project().chats.keys()].some(id => !before.has(id))).toBe(true);
             expect(folderSelect()).toBeNull();
-            expect(folderLine()?.textContent).toBe('car-rental-api · feature/payments');
+            expect(folderLine()?.textContent).toBe('car-rental-api, feature/payments');
         });
 
         it('says when the folder is gone from the disk', async () => {
@@ -985,11 +985,11 @@ describe('grouped by folder', () => {
             await restart({ grouping: false });
             await draw(() => ui().openChat('c-2'));
 
-            expect(folderLine()?.textContent).toBe('car-rental-api · feature/payments');
+            expect(folderLine()?.textContent).toBe('car-rental-api, feature/payments');
 
             await draw(() => ui().setGroupByFolder(true));
 
-            expect(folderLine()?.textContent).toBe('car-rental-api · feature/payments');
+            expect(folderLine()?.textContent).toBe('car-rental-api, feature/payments');
 
             // The fixture project has one folder.
             act(() => reactRoot.unmount());

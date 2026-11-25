@@ -223,8 +223,8 @@ export const BACKGROUND_KINDS: Record<BackgroundItem['kind'], string> = {
     task: 'task',
 };
 
-/** The title of a task that the engine holds the session for until a time the agent scheduled in the call (a `Monitor`, a `ScheduleWakeup`, a one-shot cron job): `Monitor · <what>`, `Wakeup · <why>`. */
-const SCHEDULED_TITLE = /^(Monitor|Wakeup) · (.+)$/;
+/** A scheduled task title, including the format used by existing saved runs. */
+const SCHEDULED_TITLE = /^(Monitor|Wakeup)(?: · |: )(.+)$/;
 
 /** The longest title of a background item that goes into a sentence. */
 const MAX_NAMED_TITLE = 80;
@@ -238,11 +238,15 @@ export const namedTitle = (title: string) => clip(title.replace(/\s+/g, ' ').tri
  * `Wakeup due: <why>`.
  */
 export function backgroundNote(item: BackgroundItem, stopped: boolean): string {
-    const scheduled = item.kind === 'task' && !stopped ? SCHEDULED_TITLE.exec(item.title) : null;
+    const scheduled = item.kind === 'task' ? SCHEDULED_TITLE.exec(item.title) : null;
 
-    return scheduled
-        ? `${scheduled[1] === 'Monitor' ? 'Monitor ended' : 'Wakeup due'}: ${namedTitle(scheduled[2])}`
-        : `Background ${BACKGROUND_KINDS[item.kind]} ${stopped ? 'stopped' : 'finished'}: ${namedTitle(item.title)}`;
+    if (scheduled) {
+        const label = stopped ? `${scheduled[1]} stopped` : scheduled[1] === 'Monitor' ? 'Monitor ended' : 'Wakeup due';
+
+        return `${label}: ${namedTitle(scheduled[2])}`;
+    }
+
+    return `Background ${BACKGROUND_KINDS[item.kind]} ${stopped ? 'stopped' : 'finished'}: ${namedTitle(item.title)}`;
 }
 
 /**

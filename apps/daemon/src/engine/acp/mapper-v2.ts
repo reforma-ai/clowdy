@@ -117,7 +117,7 @@ export class UpdateMapperV2 {
     private adopted = new Set<string>();
     /** The calls of a tool that holds the session that were looked at once they completed. */
     private seen = new Set<string>();
-    /** What a call that holds the session is called, `Monitor · <description>`: the name it keeps when the agent's own list names it too. */
+    /** What a call that holds the session is called, `Monitor: <description>`: the name it keeps when the agent's own list names it too. */
     private names = new Map<string, string>();
     /** The turn that follows a steer that landed may say the answer again: a message identical to the one before it is not shown twice. */
     private folding = false;
@@ -239,7 +239,7 @@ export class UpdateMapperV2 {
      * The items of the session's list of background work, each named from what the mapper heard of it: a terminal by its command, a sub-agent by its title,
      * a tool call (`Workflow`, `Monitor`) by its title. A kind of work the draft adds later names nothing the runtime could show and is left out. After
      * them come the completed calls that hold the session until a time they named and that the list does not name (see `armed`): a `Monitor` is
-     * `Monitor · <description>`, a wakeup `Wakeup · <reason>`. An adapter that lists such a call itself (a monitor, until it ends) is the one that knows:
+     * `Monitor: <description>`, a wakeup `Wakeup: <reason>`. An adapter that lists such a call itself (a monitor, until it ends) is the one that knows:
      * its entry stands for the call from then on, and the mapper holds no item of its own for it.
      */
     background(list: readonly BackgroundWork[]): BackgroundItem[] {
@@ -563,7 +563,7 @@ export class UpdateMapperV2 {
         if (timing) {
             const timed = {
                 id,
-                title: timing.what ? titled(`${timing.label} · ${timing.what}`, timing.label) : timing.label,
+                title: timing.what ? titled(`${timing.label}: ${timing.what}`, timing.label) : timing.label,
                 ms: timing.ms,
             };
 

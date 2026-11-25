@@ -140,12 +140,12 @@ describe('the folder of a chat', () => {
     it('tells the branch that is checked out after its name, as one label with no word for the mode, and nothing for a folder git does not know', async () => {
         await draw({});
 
-        expect(container.textContent).toBe('web · main');
+        expect(container.textContent).toBe('web, main');
 
         const label = container.querySelector<HTMLElement>('[aria-label="Current place: web, branch main"]');
 
         // The git mark and the branch, in one label that says on hover and to a screen reader where it runs.
-        expect(label?.textContent).toBe('web · main');
+        expect(label?.textContent).toBe('web, main');
         expect(label?.title).toBe('~/car-rental');
         expect(label?.querySelector('svg')).not.toBeNull();
 
@@ -191,7 +191,7 @@ describe('the folder of a chat', () => {
         ]);
         await draw({});
 
-        expect(container.textContent).toBe('web · 5c4d3e2');
+        expect(container.textContent).toBe('web, 5c4d3e2');
         expect(
             container.querySelector<HTMLElement>('[aria-label="Current place: web, detached at 5c4d3e2"]')?.title
         ).toBe('~/car-rental\nDetached HEAD');
@@ -202,7 +202,7 @@ describe('the folder of a chat', () => {
 
         const line = container.querySelector<HTMLElement>('[role="group"][aria-label^="Current place:"]');
 
-        expect(line?.textContent).toBe('web · main');
+        expect(line?.textContent).toBe('web, main');
         expect(line?.title).toBe('~/car-rental');
         expect(container.querySelector('button')).toBeNull();
     });
@@ -517,13 +517,13 @@ describe('the folder of a chat that works in a worktree', () => {
     it('says it is a worktree, with its path on hover, and the branch the tree has checked out now', async () => {
         await draw({ workspace });
 
-        expect(container.textContent).toBe('web · Worktree clowdy/ab12cd34');
+        expect(container.textContent).toBe('web, Worktree clowdy/ab12cd34');
 
         const label = container.querySelector<HTMLElement>(
             '[aria-label="Current place: web, Worktree, branch clowdy/ab12cd34"]'
         );
 
-        expect(label?.textContent).toBe('web · Worktree clowdy/ab12cd34');
+        expect(label?.textContent).toBe('web, Worktree clowdy/ab12cd34');
         expect(label?.title).toBe('~/Clowdy/workspaces/car-rental/ab12cd34/car-rental');
         expect(container.querySelector('[data-missing]')).toBeNull();
     });
@@ -533,7 +533,7 @@ describe('the folder of a chat that works in a worktree', () => {
 
         await draw({ workspace });
 
-        expect(container.textContent).toBe('web · Worktree feature/other');
+        expect(container.textContent).toBe('web, Worktree feature/other');
 
         info.mockImplementation(async () => [
             {
@@ -548,7 +548,7 @@ describe('the folder of a chat that works in a worktree', () => {
         act(() => void window.dispatchEvent(new Event('focus')));
         await settle();
 
-        expect(container.textContent).toBe('web · Worktree 5c4d3e2');
+        expect(container.textContent).toBe('web, Worktree 5c4d3e2');
         // The hash stands in a branch's place, and the label says it is a commit: on hover with the worktree's path, and to a screen reader.
         expect(
             container.querySelector<HTMLElement>('[aria-label="Current place: web, Worktree, detached at 5c4d3e2"]')
@@ -562,13 +562,13 @@ describe('the folder of a chat that works in a worktree', () => {
         await draw({ workspace });
 
         // The name the chat was made with may be out of date by now: it is not shown in its place.
-        expect(container.textContent).toBe('web · Worktree');
+        expect(container.textContent).toBe('web, Worktree');
 
         never.mockRestore();
         reads([]);
         await draw({ workspace: { ...workspace, id: 'wks_other' } });
 
-        expect(container.textContent).toBe('web · Worktree');
+        expect(container.textContent).toBe('web, Worktree');
     });
 
     it('shows the worktree prefix in the same muted style as the new-chat selector', async () => {
@@ -594,20 +594,20 @@ describe('the folder of a chat that works in a worktree', () => {
         reads([]);
         await draw({ workspace: { ...workspace, ready: false } });
 
-        expect(container.textContent).toBe('web · Worktree clowdy/ab12cd34');
+        expect(container.textContent).toBe('web, Worktree clowdy/ab12cd34');
     });
 
     it('reads the branch again when the worktree gets made', async () => {
         const info = reads([{ workspaceId: workspace.id, exists: true, branch: 'feature/other' }]);
 
         await draw({ workspace: { ...workspace, ready: false } });
-        expect(container.textContent).toBe('web · Worktree clowdy/ab12cd34');
+        expect(container.textContent).toBe('web, Worktree clowdy/ab12cd34');
 
         info.mockClear();
         await draw({ workspace });
 
         expect(info).toHaveBeenCalled();
-        expect(container.textContent).toBe('web · Worktree feature/other');
+        expect(container.textContent).toBe('web, Worktree feature/other');
     });
 
     it('marks the folder as gone when the worktree is no longer on the disk', async () => {

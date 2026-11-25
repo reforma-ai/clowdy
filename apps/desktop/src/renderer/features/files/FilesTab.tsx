@@ -1,8 +1,11 @@
 import { FileManagerView } from '@clowdy/file-manager/react';
+import { Message } from '@clowdy/icons/14';
 import { useEffect } from 'react';
 
 import { useCommands, useHotkeyScope } from '../../hotkeys';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
+import { mentionFilesIntoComposer, useCanMentionFiles } from '../chats/composerBridge';
+import { FILE_REFERENCE_DRAG_TYPE, fileReferences } from '../chats/fileReferences';
 import { useAddToChat } from '../chats/useAddToChat';
 import { chosenPrograms, useFolderGit, useOpenApps } from '../openWith';
 import { currentPlace, isPlaceReady, type Place, placeKey } from '../sidePanel/currentPlace';
@@ -19,12 +22,21 @@ import { useFilesStore } from './useFilesStore';
 function PlaceFiles({ place, variant }: { place: Place; variant: 'files' | 'docs' }) {
     const root = useRootStore();
     const project = useProjectState();
+    const ui = useProjectUi();
     const files = useFilesStore();
     const manager = files.managerOf(project.project.id, place, variant);
     const apps = useOpenApps();
     const git = useFolderGit(project.id, place.folder.id, place.workspace);
     // Add to chat over words selected in the open file's source; the file is read when the words are quoted, since the one editor shows every tab.
     const addToChat = useAddToChat(() => manager.tabs.active?.path);
+    const canMentionFiles = useCanMentionFiles();
+    const openItems = openInMenuItems({
+        projectId: project.id,
+        place,
+        programs: chosenPrograms(apps),
+        git,
+        inTerminal: relative => void openInTerminal(root, project.id, place, relative),
+    });
 
     // The tree of every place follows the one choice of the window; a place that was not on show when it changed catches up here.
     useEffect(() => manager.tree.setShowHidden(treeLayout.showHidden), [manager, treeLayout.showHidden]);
@@ -41,13 +53,29 @@ function PlaceFiles({ place, variant }: { place: Place; variant: 'files' | 'docs
             filterPlaceholder={variant === 'docs' ? 'Filter documents' : undefined}
             emptyText={variant === 'docs' ? 'No documents found' : 'No files found'}
             editorExtensions={addToChat}
-            menuItems={openInMenuItems({
-                projectId: project.id,
-                place,
-                programs: chosenPrograms(apps),
-                git,
-                inTerminal: relative => void openInTerminal(root, project.id, place, relative),
-            })}
+            menuItems={targets => [
+                ...(canMentionFiles && targets.length > 0
+                    ? [
+                          {
+                              id: 'add-to-chat',
+                              label: 'Add to chat',
+                              icon: <Message />,
+                              onAction: () => {
+                                  if (mentionFilesIntoComposer(fileReferences(place, targets))) ui.showChat();
+                              },
+                          },
+                      ]
+                    : []),
+                ...openItems(targets),
+            ]}
+            onEntryDragStart={
+                canMentionFiles
+                    ? (targets, transfer) => {
+                          transfer.setData(FILE_REFERENCE_DRAG_TYPE, JSON.stringify(fileReferences(place, targets)));
+                          transfer.effectAllowed = 'copyMove';
+                      }
+                    : undefined
+            }
             sidebarOpen={treeLayout.open}
             sidebarWidth={treeLayout.width}
             onSidebarToggle={() => treeLayout.toggle()}

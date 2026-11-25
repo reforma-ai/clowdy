@@ -1829,12 +1829,12 @@ describe('an ACP v2 session that outlives its turn', () => {
         const monitor = (title: string, id = MONITOR): BackgroundItem => ({
             id,
             kind: 'task',
-            title: `Monitor · ${title}`,
+            title: `Monitor: ${title}`,
         });
         const wakeup = (title: string, id = 'toolu-wakeup-1'): BackgroundItem => ({
             id,
             kind: 'task',
-            title: `Wakeup · ${title}`,
+            title: `Wakeup: ${title}`,
         });
         const indexOfBackground = (events: EngineEvent[], items: BackgroundItem[]) =>
             events.findIndex(

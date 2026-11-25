@@ -52,11 +52,11 @@ describe('CompactionLine', () => {
     it('says what the compaction saved when the agent reported it, as JSON text or as an object', async () => {
         await draw({ output: JSON.stringify(facts) });
 
-        expect(line().textContent).toBe('Context compacted · 22.1K → 6.1K');
+        expect(line().textContent).toBe('Context compacted from 22.1K to 6.1K tokens');
 
         await draw({ output: { ...facts, preTokens: 1_200_000, postTokens: 940 } });
 
-        expect(line().textContent).toBe('Context compacted · 1.2M → 940');
+        expect(line().textContent).toBe('Context compacted from 1.2M to 940 tokens');
     });
 
     it('says only that it compacted when there are no counts, as for Codex', async () => {

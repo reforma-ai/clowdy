@@ -76,8 +76,8 @@ describe('remoteLink', () => {
 
 describe('holdingsLine', () => {
     it('counts chats and tasks, with the right plural', () => {
-        expect(holdingsLine({ chats: 12, tasks: 5 })).toBe('12 chats · 5 tasks');
-        expect(holdingsLine({ chats: 1, tasks: 1 })).toBe('1 chat · 1 task');
+        expect(holdingsLine({ chats: 12, tasks: 5 })).toBe('12 chats, 5 tasks');
+        expect(holdingsLine({ chats: 1, tasks: 1 })).toBe('1 chat, 1 task');
         expect(holdingsLine({ chats: 0, tasks: 0 })).toBe('No chats or tasks yet');
         expect(holdingsLine(undefined)).toBeUndefined();
     });

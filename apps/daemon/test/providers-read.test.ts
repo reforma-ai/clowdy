@@ -549,7 +549,7 @@ describe('Codex', () => {
         };
 
         expect(codexWindows({ rateLimitsByLimitId: { spark } }).map(window => window.label)).toEqual([
-            'Session · Codex Spark',
+            'Session (Codex Spark)',
             'Codex Spark',
         ]);
     });

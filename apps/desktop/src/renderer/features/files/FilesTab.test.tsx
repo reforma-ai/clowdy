@@ -271,3 +271,66 @@ describe('Add to chat over the open file', () => {
         again();
     });
 });
+
+describe('Add to chat from the tree', () => {
+    const rowFor = (name: string) =>
+        [...container.querySelectorAll<HTMLElement>('[role="treeitem"] [draggable="true"]')].find(
+            row => row.textContent === name
+        )!;
+    const openMenu = (row: HTMLElement) =>
+        act(async () => {
+            row.dispatchEvent(
+                new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 20, clientY: 20 })
+            );
+        });
+    const menuItem = () =>
+        [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+            item => item.textContent === 'Add to chat'
+        );
+    const press = (target: HTMLElement) =>
+        act(async () => {
+            target.dispatchEvent(
+                new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+            );
+            target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+            target.dispatchEvent(
+                new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, isPrimary: true })
+            );
+            target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
+            target.click();
+        });
+
+    it('adds paths of a file and folder from the chat worktree, and returns to a covered chat', async () => {
+        const mention = vi.fn(() => true);
+        const unregister = registerComposer(vi.fn(), mention);
+
+        try {
+            ui().openChat(FIXTURE_WORKSPACE_CHAT_ID);
+            ui().sidePanelOpen = true;
+            ui().sidePanelExpanded = true;
+            await draw();
+
+            await openMenu(rowFor('README.md'));
+            await press(menuItem()!);
+            expect(mention).toHaveBeenLastCalledWith([
+                { path: `${FIXTURE_WORKTREE_PATH}/README.md`, name: 'README.md', kind: 'file' },
+            ]);
+            expect(ui().sidePanelOpen).toBe(false);
+
+            await openMenu(rowFor('src'));
+            await press(menuItem()!);
+            expect(mention).toHaveBeenLastCalledWith([
+                { path: `${FIXTURE_WORKTREE_PATH}/src`, name: 'src', kind: 'directory' },
+            ]);
+            expect(mention).toHaveBeenCalledTimes(2);
+        } finally {
+            await act(async () => unregister());
+        }
+    });
+
+    it('does not offer the action when there is no composer', async () => {
+        await draw();
+        await openMenu(rowFor('README.md'));
+        expect(menuItem()).toBeUndefined();
+    });
+});

@@ -43,7 +43,7 @@ export function SkillRow({ skill, isPending, onToggle }: SkillRowProps) {
                 </Text>
                 <span className={styles.source}>
                     <Text variant="xs" color="secondary" className={styles.engines}>
-                        {path ? `${engineLabel(engines)} ·` : engineLabel(engines)}
+                        {engineLabel(engines)}
                     </Text>
                     {path && <PathText path={path} variant="xs" color="secondary" />}
                 </span>

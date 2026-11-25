@@ -57,8 +57,8 @@ describe('the scope menu', () => {
             commitScope(OLDEST.sha),
         ]);
         expect(options[3]?.commit).toBe(NEWEST);
-        expect(options[3]?.note).toBe('12:00 · bbbbbbb');
-        expect(options[4]?.note).toBe('19 Nov, 23:59 · aaaaaaa');
+        expect(options[3]?.note).toBe('12:00 (bbbbbbb)');
+        expect(options[4]?.note).toBe('19 Nov, 23:59 (aaaaaaa)');
     });
 
     it('includes the year for older commits and keeps the hash if the timestamp is invalid', () => {
@@ -74,7 +74,7 @@ describe('the scope menu', () => {
             now
         );
 
-        expect(options[3]?.note).toBe('20 Nov 2025, 09:05 · bbbbbbb');
+        expect(options[3]?.note).toBe('20 Nov 2025, 09:05 (bbbbbbb)');
         expect(options[4]?.note).toBe('aaaaaaa');
     });
 

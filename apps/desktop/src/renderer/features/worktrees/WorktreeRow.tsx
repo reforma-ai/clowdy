@@ -139,7 +139,6 @@ export function WorktreeRow({ projectId, group, folder, worktree, onNewChat, onO
                         )}
                         {worktree.chats.length > 0 && (
                             <Text as="span" variant="sm" color="secondary" className={styles.chatFact}>
-                                {!worktree.missing && <span aria-hidden="true">·</span>}
                                 <WorktreeChats chats={worktree.chats} onOpenChat={onOpenChat} />
                             </Text>
                         )}

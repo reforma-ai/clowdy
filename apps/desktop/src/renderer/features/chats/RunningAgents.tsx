@@ -48,7 +48,7 @@ function AgentRow({ run, now }: { run: Run; now: number }) {
         if (calls > 0) metrics.push(`${calls} ${calls === 1 ? 'call' : 'calls'}`);
     }
     const detail = waiting ? 'Waiting for you' : undefined;
-    const progress = metrics.join(' · ');
+    const progress = metrics.join(', ');
     const name = agentRowLabel(run);
     const stoppable = canStopAlone(run);
 
@@ -76,7 +76,7 @@ function threadStatus(run: Run): string | undefined {
         case 'queued':
             return 'Waiting for a free slot';
         case 'blocked':
-            return run.statusReason ? `Blocked · ${run.statusReason}` : 'Blocked';
+            return run.statusReason ? `Blocked: ${run.statusReason}` : 'Blocked';
         default:
             return undefined;
     }
@@ -95,7 +95,7 @@ function ThreadRow({ chat, run, now }: ThreadAtWork & { now: number }) {
         calls === undefined ? undefined : `${calls} ${calls === 1 ? 'call' : 'calls'} total`,
     ]
         .filter(Boolean)
-        .join(' · ');
+        .join(', ');
 
     return (
         <ComposerBannerStatus
@@ -135,19 +135,20 @@ function AgentsHeader({ count }: { count: number }) {
  */
 function BackgroundItemRow({ runId, item }: { runId: RunId; item: BackgroundItem }) {
     const root = useRootStore();
+    const title = backgroundItemText(item);
 
     return (
         <ComposerBannerStatus
             icon={<Terminal />}
             action={item.canStopAlone ? 'Stop' : undefined}
-            actionLabel={item.canStopAlone ? `Stop ${item.kind}: ${item.title}` : undefined}
+            actionLabel={item.canStopAlone ? `Stop ${title.charAt(0).toLowerCase()}${title.slice(1)}` : undefined}
             onAction={
                 item.canStopAlone
                     ? () => void perform(root, { type: 'run.stopBackground', runId, itemId: item.id })
                     : undefined
             }
         >
-            <Shimmer duration={1}>{backgroundItemText(item)}</Shimmer>
+            <Shimmer duration={1}>{title}</Shimmer>
         </ComposerBannerStatus>
     );
 }

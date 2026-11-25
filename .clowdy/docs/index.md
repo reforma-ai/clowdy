@@ -2,6 +2,8 @@
 
 ## Decisions
 
+- [Interface copy and automatic sync](decisions/2026-11-25-interface-copy-and-automatic-sync.md) records the merge and commit labels, preview layout and copy conventions. Status: accepted.
+
 - [Pull request history by branch](decisions/2026-11-25-branch-pull-request-history.md) records shared branch history, archive and chat list indicators. Status: accepted.
 
 - [Delete branches from Source Control](decisions/2026-11-24-delete-branches.md) records the branch menu, confirmation and origin option. Status: accepted.
@@ -18,7 +20,6 @@
 - [Manual chat order](decisions/2026-11-24-use-manual-chat-order.md) records why the sidebar uses one saved order and puts new chats first. Status: accepted.
 - [Switch branches in a merged chat worktree](decisions/2026-11-24-switch-merged-worktree-branches.md) describes which branch switches are allowed. Status: accepted.
 - [Merge into existing checkouts](decisions/2026-11-24-merge-into-existing-checkouts.md) describes conflict checks for outgoing merges and how to resolve conflicts in an existing checkout. Status: accepted.
-- [Branch merge choices](decisions/2026-11-24-branch-merge-choices.md) records the three choices and the destination's fast-forward policy. Status: accepted.
 - [One provider for commit messages](decisions/2026-11-24-choose-one-commit-provider.md) records the Source Control selector and how older settings map to it. Status: accepted.
 - [CI: red runs and run time](decisions/2026-11-25-ci-red-runs-and-speed.md) records that CI stays a report for now, how the red tests are sorted and fixed, and how the gate and the Windows release tests get faster. Status: accepted.
 
@@ -65,6 +66,8 @@
 - [Stop commit message generation](checks/2026-11-24-stop-commit-message-generation.md) covers the stop control, retry and provider process cancellation. Status: passed.
 
 ## Superseded
+
+- [Branch merge choices](decisions/2026-11-24-branch-merge-choices.md) records the earlier label for regular merge. Status: superseded.
 
 - [Select the branch operation](decisions/2026-11-24-select-branch-merge-mode.md) records the earlier four choices. Status: superseded.
 

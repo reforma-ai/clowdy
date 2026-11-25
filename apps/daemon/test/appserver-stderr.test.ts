@@ -30,15 +30,21 @@ function context(program: string): ProbeContext {
 }
 
 describe('a program that ends before the app-server answers', () => {
-    test('says why it went: the end of what it wrote to stderr is read after it exits, however much it wrote', async () => {
+    test('says why it went: the last of what it wrote to stderr is read after it exits', async () => {
         const path = join(root, 'app-server-dying');
 
+        // The program leaves at once, as soon as it is asked. A process it started in a group of its own (it survives the program's group being killed)
+        // holds stderr open and writes the last words a moment later: the pipe closes after the exit.
         writeFileSync(
             path,
             `#!${process.execPath}
 process.stdin.once('data', () => {
-    console.error('x'.repeat(60_000));
-    console.error('why it went');
+    require('node:child_process')
+        .spawn(process.execPath, ['-e', "setTimeout(() => console.error('why it went'), 300)"], {
+            detached: true,
+            stdio: ['ignore', 'ignore', 'inherit'],
+        })
+        .unref();
     process.exit(2);
 });
 `
@@ -46,7 +52,7 @@ process.stdin.once('data', () => {
         chmodSync(path, 0o755);
 
         await expect(withAppServer(context(path), rpc => rpc.call('initialize'), 20_000)).rejects.toThrow(
-            /ended before it answered \(it wrote: .*why it went\)/s
+            'ended before it answered (it wrote: why it went)'
         );
     });
 });

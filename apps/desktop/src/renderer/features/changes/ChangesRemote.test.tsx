@@ -551,7 +551,7 @@ describe('merging branches from the sync menu', () => {
         await open('Merge from branch…');
         await press(option('origin/feature/search'));
         await settle();
-        await press(button('Create a merge commit & Sync'));
+        await press(button('Merge'));
         await settle();
     };
     const confirmButton = (name: string) =>
@@ -578,18 +578,18 @@ describe('merging branches from the sync menu', () => {
         expect(syncCopy()).toBe('Fetching origin');
 
         await open('Merge from branch…');
-        expect(heading()).toBe('Merge … to clowdy/ab12cd34');
+        expect(heading()).toBe('Merge … into clowdy/ab12cd34');
         expect(option('origin/feature/search')).toBeUndefined();
         await press(option('main'));
         await settle();
-        expect(heading()).toBe('Merge main to clowdy/ab12cd34');
-        expect(button('Create a merge commit & Sync').disabled).toBe(false);
+        expect(heading()).toBe('Merge main into clowdy/ab12cd34');
+        expect(button('Merge').disabled).toBe(false);
         expect(fetch).toHaveBeenCalledTimes(1);
 
         reply.resolve({ state: 'done', action: 'fetch' });
         await settle();
         expect(option('origin/feature/search')).toBeDefined();
-        expect(heading()).toBe('Merge main to clowdy/ab12cd34');
+        expect(heading()).toBe('Merge main into clowdy/ab12cd34');
     });
 
     it('lets the user open the destination picker during the push phase of Sync', async () => {
@@ -609,8 +609,8 @@ describe('merging branches from the sync menu', () => {
         await press(option('main'));
         await settle();
 
-        expect(heading()).toBe('Merge clowdy/ab12cd34 to main');
-        expect(button('Create a merge commit & Sync').disabled).toBe(false);
+        expect(heading()).toBe('Merge clowdy/ab12cd34 into main');
+        expect(button('Merge').disabled).toBe(false);
         reply.resolve({ state: 'done', branch: 'clowdy/ab12cd34', pulled: 0, pushed: true });
         await settle();
     });
@@ -651,15 +651,15 @@ describe('merging branches from the sync menu', () => {
         expect(merge).not.toHaveBeenCalled();
         expect(button('Select a branch').disabled).toBe(true);
         expect(modeTrigger().disabled).toBe(true);
-        expect(heading()).toBe('Merge … to clowdy/ab12cd34');
+        expect(heading()).toBe('Merge … into clowdy/ab12cd34');
         expect(option('origin/main')).toBeUndefined();
         expect(option('origin/dev')).toBeUndefined();
 
         await press(option('main'));
         await settle();
 
-        expect(heading()).toBe('Merge main to clowdy/ab12cd34');
-        expect(dialog().textContent).toContain('Moves the branch forward without a merge commit');
+        expect(heading()).toBe('Merge main into clowdy/ab12cd34');
+        expect(dialog().textContent).toContain('Fast-forward without a merge commit');
         expect(merge).toHaveBeenCalledTimes(1);
         expect(merge.mock.calls[0]?.[2]).toEqual({
             action: 'preview',
@@ -668,7 +668,7 @@ describe('merging branches from the sync menu', () => {
             branch: 'main',
         });
 
-        await press(button('Create a merge commit & Sync'));
+        await press(button('Merge'));
         await settle();
 
         expect(merge.mock.calls[1]?.[2]).toMatchObject({
@@ -716,7 +716,7 @@ describe('merging branches from the sync menu', () => {
 
         await press(option('main'));
         await settle();
-        expect(button('Create a merge commit & Sync').disabled).toBe(false);
+        expect(button('Merge').disabled).toBe(false);
     });
 
     it('filters the destination branches with text entered while they were loading', async () => {
@@ -768,7 +768,7 @@ describe('merging branches from the sync menu', () => {
         await open('Merge from branch…');
         await press(option('origin/feature/search'));
         await settle();
-        expect(button('Create a merge commit & Sync').disabled).toBe(false);
+        expect(button('Merge').disabled).toBe(false);
         expect(dialog().textContent).toContain('Creates a merge commit');
         const originalPreview = await merge.mock.results[0]!.value;
 
@@ -776,13 +776,13 @@ describe('merging branches from the sync menu', () => {
         merge.mockResolvedValueOnce({ ...originalPreview, fastForwardOnly: true });
         await press(option('origin/feature/search'));
         await settle();
-        expect(button('Create a merge commit').disabled).toBe(true);
+        expect(button('Merge').disabled).toBe(true);
         expect(modeTrigger().disabled).toBe(false);
         expect(dialog().textContent).toContain('Git is configured to require a fast-forward');
 
         await openModes();
         expect(modes()).toHaveLength(3);
-        expect(modes()[0]?.textContent).toMatch(/^Create a merge commit/);
+        expect(modes()[0]?.textContent).toMatch(/^Merge/);
         expect(modes()[1]?.textContent).toMatch(/^Squash and merge/);
         expect(modes()[2]?.textContent).toMatch(/^Rebase/);
         merge.mockResolvedValueOnce(originalPreview);
@@ -794,8 +794,9 @@ describe('merging branches from the sync menu', () => {
         await chooseMode('Rebase');
         expect(merge.mock.calls.every(call => call[2].action === 'preview')).toBe(true);
         expect(merge.mock.calls.at(-1)?.[2]).toMatchObject({ strategy: 'rebase', branch: 'feature/search' });
-        expect(dialog().textContent).toContain('Replay 2 commits from clowdy/ab12cd34 on top of origin/feature/search');
-        await press(button('Rebase & Sync'));
+        expect(heading()).toBe('Rebase clowdy/ab12cd34 onto origin/feature/search');
+        expect(dialog().textContent).toContain('2 commits to replay');
+        await press(button('Rebase'));
         await settle();
         expect(merge.mock.calls.at(-1)?.[2]).toMatchObject({ action: 'merge', strategy: 'rebase' });
         expect(button('Abort rebase')).toBeDefined();
@@ -813,7 +814,7 @@ describe('merging branches from the sync menu', () => {
         await open('Merge into branch…');
         await press(option('main'));
         await settle();
-        await press(button('Create a merge commit & Sync'));
+        await press(button('Merge'));
         await settle();
 
         expect(merge.mock.calls.map(call => call[2].action)).toEqual(['preview', 'merge']);
@@ -845,7 +846,7 @@ describe('merging branches from the sync menu', () => {
 
         await open('Merge into main worktree…');
 
-        expect(heading()).toBe('Merge clowdy/ab12cd34 to next');
+        expect(heading()).toBe('Merge clowdy/ab12cd34 into next');
         expect(dialog().querySelector('input[placeholder="Filter branches"]')).toBeNull();
         expect(dialog().querySelector(`[title="${CAR_RENTAL}"]`)).not.toBeNull();
         expect(merge.mock.calls.map(call => call[2])).toEqual([
@@ -853,7 +854,7 @@ describe('merging branches from the sync menu', () => {
         ]);
         expect(sync).not.toHaveBeenCalled();
 
-        await press(button('Create a merge commit & Sync'));
+        await press(button('Merge'));
         await settle();
 
         expect(merge.mock.calls[1]?.[2]).toMatchObject({ action: 'merge', direction: 'into', branch: 'next' });
@@ -871,7 +872,7 @@ describe('merging branches from the sync menu', () => {
         await press(item('Merge into main worktree…'));
         await settle();
 
-        expect(heading()).toBe('Merge clowdy/ab12cd34 to dev');
+        expect(heading()).toBe('Merge clowdy/ab12cd34 into dev');
         expect(merge.mock.calls[0]?.[2]).toMatchObject({ action: 'preview', branch: 'dev' });
         expect(merge).toHaveBeenCalledTimes(1);
     });
@@ -910,7 +911,7 @@ describe('merging branches from the sync menu', () => {
         await open('Merge into branch…');
         await press(option('main'));
         await settle();
-        await press(button('Create a merge commit & Sync'));
+        await press(button('Merge'));
         await settle();
 
         expect(dialog().textContent).toContain('Merged into main');
@@ -935,7 +936,7 @@ describe('merging branches from the sync menu', () => {
         await open('Merge into branch…');
         await press(option('main'));
         await settle();
-        await press(button('Create a merge commit & Sync'));
+        await press(button('Merge'));
         await settle();
 
         expect(dialog().querySelector('[role="status"]')?.textContent).toContain('1 conflict in main');
@@ -959,13 +960,13 @@ describe('merging branches from the sync menu', () => {
         expect(fetch).not.toHaveBeenCalled();
         expect(option('origin/main')).toBeUndefined();
         expect(option('origin/feature/search')).toBeUndefined();
-        expect(heading()).toBe('Merge clowdy/ab12cd34 to …');
+        expect(heading()).toBe('Merge clowdy/ab12cd34 into …');
 
         await press(option('main'));
         await settle();
-        expect(heading()).toBe('Merge clowdy/ab12cd34 to main');
+        expect(heading()).toBe('Merge clowdy/ab12cd34 into main');
 
-        await press(button('Create a merge commit'));
+        await press(button('Merge'));
         await settle();
         expect(merge.mock.calls.map(call => call[2].action)).toEqual(['preview', 'merge']);
         expect(sync).not.toHaveBeenCalled();
@@ -986,7 +987,7 @@ describe('merging branches from the sync menu', () => {
         await open('Merge into branch…');
         await press(option('main'));
         await settle();
-        await press(button('Create a merge commit'));
+        await press(button('Merge'));
         await settle();
 
         expect(merge.mock.calls.map(call => call[2].action)).toEqual(['preview', 'merge']);
@@ -1007,14 +1008,14 @@ describe('merging branches from the sync menu', () => {
         expect(alert?.textContent).toContain('In a chat on main, use Merge from branch to merge clowdy/ab12cd34');
         expect(dialog().textContent).toContain('3 commits');
         expect(dialog().textContent).not.toContain('Creates a merge commit');
-        expect(button('Create a merge commit').disabled).toBe(true);
+        expect(button('Merge').disabled).toBe(true);
 
         await press(option('dev'));
         await settle();
 
         alert = dialog().querySelector('[role="alert"]');
         expect(alert?.textContent).toBe('Check out dev before merging into it');
-        expect(button('Create a merge commit').disabled).toBe(true);
+        expect(button('Merge').disabled).toBe(true);
         expect(merge.mock.calls.map(call => call[2].action)).toEqual(['preview', 'preview']);
     });
 
@@ -1038,21 +1039,21 @@ describe('merging branches from the sync menu', () => {
         await settle();
 
         merge.mockRejectedValueOnce(new TransportError('The branches moved since the preview', 409));
-        await press(button('Create a merge commit & Sync'));
+        await press(button('Merge'));
         await settle();
 
         const alert = dialog().querySelector('[role="alert"][data-color="danger"]');
         expect(alert?.textContent).toContain('The branches moved');
-        expect(button('Create a merge commit').disabled).toBe(true);
+        expect(button('Merge').disabled).toBe(true);
         expect(
             [...dialog().querySelectorAll('button')].map(button => button.textContent?.trim()).filter(Boolean)
-        ).toEqual(['Create a merge commit', 'Cancel']);
+        ).toEqual(['Merge', 'Cancel']);
         await press(option('main'));
         await settle();
 
         expect(merge.mock.calls.map(call => call[2].action)).toEqual(['preview', 'merge', 'preview']);
         expect(dialog().querySelector('[role="alert"]')).toBeNull();
-        expect(button('Create a merge commit & Sync').disabled).toBe(false);
+        expect(button('Merge').disabled).toBe(false);
     });
 
     it('identifies the destination checkout after a conflict and aborts only that merge', async () => {
@@ -1073,7 +1074,7 @@ describe('merging branches from the sync menu', () => {
 
         await conflict();
 
-        expect(heading()).toBe('Merge origin/feature/search to clowdy/ab12cd34');
+        expect(heading()).toBe('Merge origin/feature/search into clowdy/ab12cd34');
         expect(merge.mock.calls[0]?.[2]).toMatchObject({ branch: 'feature/search', remote: true });
         expect(dialog().querySelector('[role="status"]')?.textContent).toContain('1 conflict in clowdy/ab12cd34');
         expect(dialog().querySelector('[role="status"]')?.textContent).toContain(currentPlace.workspace?.path);

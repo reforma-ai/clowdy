@@ -154,8 +154,12 @@ describe('the rows of background items', () => {
     });
 
     it('names a row by what the item is and what it runs', () => {
-        expect(backgroundItemText({ kind: 'command', title: 'bun run test' })).toBe('Command · bun run test');
-        expect(backgroundItemText({ kind: 'task', title: 'Workflow: verify' })).toBe('Task · Workflow: verify');
+        expect(backgroundItemText({ kind: 'command', title: 'bun run test' })).toBe('Command: bun run test');
+        expect(backgroundItemText({ kind: 'task', title: 'Workflow: verify' })).toBe('Task: Workflow: verify');
+        expect(backgroundItemText({ kind: 'task', title: 'Monitor · Build' })).toBe('Monitor: Build');
+        expect(backgroundItemText({ kind: 'task', title: 'Wakeup: Check deployment' })).toBe(
+            'Wakeup: Check deployment'
+        );
     });
 });
 

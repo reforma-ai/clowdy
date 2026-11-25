@@ -250,8 +250,8 @@ describe('RunningAgents, the header', () => {
 
         expect(header()).toBeUndefined();
         expect(lines().map(line => line.textContent)).toEqual([
-            'Command · bun run testStop',
-            'Command · bun run typecheck',
+            'Command: bun run testStop',
+            'Command: bun run typecheck',
             'Background task runningStop run',
         ]);
     });
@@ -327,7 +327,7 @@ describe('RunningAgents, folding the rows', () => {
                         .querySelector('button[aria-label]')
                         ?.getAttribute('aria-label')
                         ?.replace(/^Open /, '')
-                        .split('.')[0] ?? row.textContent?.split(' · ')[0]
+                        .split('.')[0] ?? row.textContent?.split(', ')[0]
             )
         ).toEqual(['Fix the price rounding', 'Load test the checkout']);
     });
@@ -339,13 +339,13 @@ describe('RunningAgents, folding the rows', () => {
         });
         ui().toggleAgentsFolded();
         await draw();
-        expect(rows().map(row => row.textContent)).toEqual(['Command · command 1Stop']);
+        expect(rows().map(row => row.textContent)).toEqual(['Command: command 1Stop']);
 
         await draw('c-5');
         expect(header()).toBeUndefined();
         expect(rows().map(row => row.textContent)).toEqual([
-            'Command · bun run testStop',
-            'Command · bun run typecheck',
+            'Command: bun run testStop',
+            'Command: bun run typecheck',
             'Background task runningStop run',
         ]);
     });
@@ -358,7 +358,7 @@ describe('RunningAgents, a sub-agent of a session that waits', () => {
 
         expect(rows().map(row => row.textContent)).toEqual([
             'Explore agentStop',
-            'Command · bun run test',
+            'Command: bun run test',
             'Background task runningStop run',
         ]);
         // One agent: its own Stop is enough, so there is no Stop all.
@@ -394,7 +394,7 @@ describe('RunningAgents, a sub-agent of a session that waits', () => {
         await draw('c-5');
 
         expect(rows().map(row => row.textContent)).toEqual([
-            'Command · bun run test',
+            'Command: bun run test',
             '2 background tasks runningStop run',
         ]);
         expect(header()).toBeUndefined();
@@ -440,8 +440,8 @@ describe('RunningAgents, the background row', () => {
         await draw('c-5');
 
         expect(rows().map(row => row.textContent)).toEqual([
-            'Command · bun run test',
-            'Command · bun run typecheck',
+            'Command: bun run test',
+            'Command: bun run typecheck',
             '2 background tasks runningStop run',
         ]);
     });
@@ -450,8 +450,8 @@ describe('RunningAgents, the background row', () => {
         await draw('c-5');
 
         expect(rows().map(row => row.textContent)).toEqual([
-            'Command · bun run testStop',
-            'Command · bun run typecheck',
+            'Command: bun run testStop',
+            'Command: bun run typecheck',
             'Background task runningStop run',
         ]);
     });
@@ -461,7 +461,7 @@ describe('RunningAgents, the background row', () => {
         await draw('c-5');
 
         expect(rows().map(row => row.textContent)).toEqual([
-            'Command · bun run test',
+            'Command: bun run test',
             'Background task runningStop run',
         ]);
     });
@@ -488,7 +488,7 @@ describe('RunningAgents, the background row', () => {
         expect(rows().map(row => row.textContent)).toEqual([
             expect.stringContaining('General agent'),
             expect.stringContaining('Explore agent'),
-            'Command · bun run test',
+            'Command: bun run test',
             'Background task runningStop run',
         ]);
     });
@@ -499,8 +499,8 @@ describe('RunningAgents, the background row', () => {
         await draw('c-5');
 
         expect(rows().map(row => row.textContent)).toEqual([
-            'Command · bun run test',
-            'Command · bun run typecheck',
+            'Command: bun run test',
+            'Command: bun run typecheck',
             '2 background tasks runningStop run',
         ]);
     });
@@ -545,9 +545,9 @@ describe('RunningAgents, threads', () => {
         await draw('c-6');
 
         expect(rows().map(row => buttons(row))).toEqual([
-            [expect.stringMatching(/^Fix the price rounding\d+m \d+s · 4 calls total$/), 'Stop'],
+            [expect.stringMatching(/^Fix the price rounding\d+m \d+s, 4 calls total$/), 'Stop'],
             [
-                expect.stringMatching(/^Load test the checkoutWaiting for background work\d+m \d+s · 2 calls total$/),
+                expect.stringMatching(/^Load test the checkoutWaiting for background work\d+m \d+s, 2 calls total$/),
                 'Stop',
             ],
         ]);
@@ -566,9 +566,9 @@ describe('RunningAgents, threads', () => {
                 activeSince: now - (20 * 60 + 5) * 60 * 1000,
             });
             await draw('c-6');
-            expect(rows()[0].textContent).toContain('20h 05m · 4 calls total');
+            expect(rows()[0].textContent).toContain('20h 05m, 4 calls total');
             await act(async () => vi.advanceTimersByTime(60_000));
-            expect(rows()[0].textContent).toContain('20h 06m · 4 calls total');
+            expect(rows()[0].textContent).toContain('20h 06m, 4 calls total');
 
             put({ ...run, activeSince: undefined });
             await render('c-6');
@@ -612,9 +612,9 @@ describe('RunningAgents, threads', () => {
 
         put({ ...thread, status: 'blocked', statusReason: 'Usage limit until 14:00' });
         await draw('c-6');
-        expect(rows()[0].textContent).toContain('Blocked · Usage limit until 14:00');
+        expect(rows()[0].textContent).toContain('Blocked: Usage limit until 14:00');
         expect(rows()[0].querySelector('button')?.getAttribute('aria-label')).toContain(
-            'Blocked · Usage limit until 14:00'
+            'Blocked: Usage limit until 14:00'
         );
 
         put({ ...thread, status: 'blocked', statusReason: undefined });
@@ -627,8 +627,8 @@ describe('RunningAgents, threads', () => {
         await draw('c-6');
 
         expect(rows().map(row => buttons(row))).toEqual([
-            [expect.stringMatching(/^Load test the checkoutWaiting for you\d+m \d+s · 2 calls total$/), 'Stop'],
-            [expect.stringMatching(/^Fix the price rounding\d+m \d+s · 4 calls total$/), 'Stop'],
+            [expect.stringMatching(/^Load test the checkoutWaiting for you\d+m \d+s, 2 calls total$/), 'Stop'],
+            [expect.stringMatching(/^Fix the price rounding\d+m \d+s, 4 calls total$/), 'Stop'],
         ]);
     });
 
@@ -638,7 +638,7 @@ describe('RunningAgents, threads', () => {
         await draw('c-6');
 
         expect(rows().map(row => buttons(row))).toEqual([
-            [expect.stringMatching(/^Load test the checkoutWaiting for you\d+m \d+s · 2 calls total$/), 'Stop'],
+            [expect.stringMatching(/^Load test the checkoutWaiting for you\d+m \d+s, 2 calls total$/), 'Stop'],
         ]);
         expect(header()!.textContent).toBe('Agents2 running');
 
@@ -695,7 +695,7 @@ describe('RunningAgents, threads', () => {
         await draw('c-6');
         const button = rows()[0].querySelector('button')!;
         expect(button.getAttribute('aria-label')).toContain(`Open ${title}. Waiting for you. `);
-        expect(button.getAttribute('aria-label')).toMatch(/\d+m \d+s · 2 calls total$/);
+        expect(button.getAttribute('aria-label')).toMatch(/\d+m \d+s, 2 calls total$/);
         expect(button.textContent).toContain('Waiting for you');
     });
 
@@ -729,7 +729,7 @@ describe('RunningAgents, threads', () => {
                             .querySelector('button[aria-label]')
                             ?.getAttribute('aria-label')
                             ?.replace(/^Open /, '')
-                            .split('.')[0] ?? row.textContent?.split(' ·')[0]
+                            .split('.')[0] ?? row.textContent?.split(', ')[0]
                 )
         ).toEqual(['General agent', 'Explore agent', 'Thread 1', 'Thread 2', 'Thread 3']);
         expect(buttons(rows().at(-1)).at(-1)).toBe('Stop');
@@ -752,11 +752,11 @@ describe('RunningAgents, a command that can be stopped alone', () => {
             button => button.textContent === 'Background commands2 running'
         )!;
         expect(disclosure.getAttribute('aria-expanded')).toBe('false');
-        expect(container.textContent).not.toContain('Command · command 1');
+        expect(container.textContent).not.toContain('Command: command 1');
         await act(async () => disclosure.click());
         expect(disclosure.getAttribute('aria-expanded')).toBe('true');
-        expect(container.textContent).toContain('Command · command 1');
-        expect(container.textContent).toContain('Command · command 2');
+        expect(container.textContent).toContain('Command: command 1');
+        expect(container.textContent).toContain('Command: command 2');
     });
 
     it('lists stoppable and non-stoppable commands with clear stop actions', async () => {
@@ -772,8 +772,8 @@ describe('RunningAgents, a command that can be stopped alone', () => {
         expect(container.textContent).not.toContain('Background task running');
         await act(async () => disclosure.click());
         expect(rows().map(row => row.textContent)).toEqual([
-            'Command · command 1Stop',
-            'Command · command 2',
+            'Command: command 1Stop',
+            'Command: command 2',
             'Background task runningStop run',
         ]);
         expect(rows()[0].querySelector('button')?.getAttribute('aria-label')).toBe('Stop command: command 1');
@@ -787,8 +787,8 @@ describe('RunningAgents, a command that can be stopped alone', () => {
         await draw('c-5');
 
         expect(rows().map(row => row.textContent)).toEqual([
-            'Command · bun run testStop',
-            'Command · bun run typecheck',
+            'Command: bun run testStop',
+            'Command: bun run typecheck',
             'Background task runningStop run',
         ]);
         expect(rows()[0].querySelector('svg')).not.toBeNull();
@@ -809,7 +809,7 @@ describe('RunningAgents, a command that can be stopped alone', () => {
         );
         await draw('c-5');
         expect(rows().map(row => row.textContent)).toEqual([
-            'Command · bun run typecheck',
+            'Command: bun run typecheck',
             'Background task runningStop run',
         ]);
         expect(runs().get('r-orch-5')?.status).toBe('waiting_background');
@@ -820,7 +820,7 @@ describe('RunningAgents, a command that can be stopped alone', () => {
         await draw('c-5');
 
         expect(header()).toBeUndefined();
-        expect(rows().map(row => row.textContent)).toEqual(['Command · command 1Stop', 'Command · command 2Stop']);
+        expect(rows().map(row => row.textContent)).toEqual(['Command: command 1Stop', 'Command: command 2Stop']);
         expect(container.textContent).not.toContain('Stop all');
 
         // Beside agents, it comes after them and keeps its own Stop.
@@ -834,7 +834,7 @@ describe('RunningAgents, a command that can be stopped alone', () => {
                         .querySelector('button[aria-label]')
                         ?.getAttribute('aria-label')
                         ?.replace(/^Open /, '')
-                        .split('.')[0] ?? row.textContent?.split(' · ')[0]
+                        .split('.')[0] ?? row.textContent?.split(', ')[0]
             )
         ).toEqual(['General agent', 'Explore agent', 'Stop command: command 1']);
         expect(buttons(header())).toEqual([toggle().textContent]);
@@ -851,8 +851,8 @@ describe('RunningAgents, a command that can be stopped alone', () => {
         await draw('c-5');
 
         expect(rows().map(row => row.textContent)).toEqual([
-            ...Array.from({ length: 7 }, (_, index) => `Command · command ${index + 1}Stop`),
-            'Command · plain',
+            ...Array.from({ length: 7 }, (_, index) => `Command: command ${index + 1}Stop`),
+            'Command: plain',
             'Background task runningStop run',
         ]);
     });
@@ -860,10 +860,14 @@ describe('RunningAgents, a command that can be stopped alone', () => {
     it('is a task when the agent lets a task be stopped alone, and is not drawn once the run is over', async () => {
         put({
             ...runs().get('r-orch-5')!,
-            background: [{ id: 'wf-1', kind: 'task', title: 'Workflow: verify', canStopAlone: true }],
+            background: [
+                { id: 'wf-1', kind: 'task', title: 'Workflow: verify', canStopAlone: true },
+                { id: 'monitor-1', kind: 'task', title: 'Monitor · Build', canStopAlone: true },
+            ],
         });
         await draw('c-5');
-        expect(rows().map(row => row.textContent)).toEqual(['Task · Workflow: verifyStop']);
+        expect(rows().map(row => row.textContent)).toEqual(['Task: Workflow: verifyStop', 'Monitor: BuildStop']);
+        expect(rows()[1].querySelector('button')?.getAttribute('aria-label')).toBe('Stop monitor: Build');
 
         put({ ...runs().get('r-orch-5')!, status: 'cancelled' });
         await draw('c-5');

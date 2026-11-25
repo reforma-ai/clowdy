@@ -127,7 +127,7 @@ function noteOf(provider: PickerProvider): { busy: true } | { busy: false; text:
 function Trigger({ choice, providers }: { choice: ModelChoice; providers: readonly PickerProvider[] }) {
     const isOpen = use(OverlayTriggerStateContext)!.isOpen;
     const held = holdOf(choice, providers);
-    const label = held.level ? `${held.title} · ${levelLabel(held.level)}` : held.title;
+    const label = held.level ? `${held.title}, ${levelLabel(held.level)}` : held.title;
 
     return (
         <Button

@@ -404,7 +404,7 @@ describe('the notes of finished background work', () => {
 
 describe('the notes of a monitor and a wakeup whose time came', () => {
     const monitor: BackgroundItem = { id: 'toolu-monitor-1', kind: 'task', title: 'Monitor · Tick monitor probe' };
-    const wakeup: BackgroundItem = { id: 'toolu-wakeup-2', kind: 'task', title: 'Wakeup · Check the deploy' };
+    const wakeup: BackgroundItem = { id: 'toolu-wakeup-2', kind: 'task', title: 'Wakeup: Check the deploy' };
 
     test('say that its time is over, as nothing tells what came of it, and a task of another sort is a task that finished', async () => {
         const other: BackgroundItem = { id: 'wf-1', kind: 'task', title: 'Workflow: verify' };

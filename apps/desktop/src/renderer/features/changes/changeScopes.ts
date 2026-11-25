@@ -29,7 +29,7 @@ export const LAST_RUN_TOOLTIP =
 function commitNote({ shortSha, committedAt }: GitCommit, now: number): string {
     const date = new Date(committedAt);
 
-    return Number.isNaN(date.getTime()) ? shortSha : `${formatMessageTime(committedAt, now)} · ${shortSha}`;
+    return Number.isNaN(date.getTime()) ? shortSha : `${formatMessageTime(committedAt, now)} (${shortSha})`;
 }
 
 /** The base the branch is compared with is there: the branch's own scope and its commits make sense. */

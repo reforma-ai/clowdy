@@ -1,6 +1,7 @@
 # Match GitHub Desktop's branch merge choices
 
-- Status: accepted
+- Status: superseded
+- Superseded by: [Interface copy and automatic sync](2026-11-25-interface-copy-and-automatic-sync.md)
 - Date: 2026-11-24
 - Decided by: user (semi-manual)
 - Related task: CLO-153

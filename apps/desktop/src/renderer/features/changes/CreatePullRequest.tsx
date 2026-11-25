@@ -32,8 +32,7 @@ export function CreatePullRequest({ facts, git }: { facts: PlaceFacts; git: Fold
     if (!link) return null;
 
     const ahead = status.base.state === 'ready' ? status.base.ahead : 0;
-    const comparison = ahead ? `${commitsWords(ahead)} ahead of the base` : undefined;
-    const tooltip = 'Open the pull request page on GitHub';
+    const comparison = ahead ? `${commitsWords(ahead)} to include in the pull request` : undefined;
 
     return (
         <Button
@@ -45,7 +44,7 @@ export function CreatePullRequest({ facts, git }: { facts: PlaceFacts; git: Fold
             isDisabled={facts.switching}
             aria-label="Create PR"
             aria-description={comparison}
-            tooltip={comparison ? `${tooltip} · ${comparison}` : tooltip}
+            tooltip={comparison ?? 'Open GitHub to create a pull request'}
             tooltipPlacement="bottom"
             onPress={() => openEffects.openUrl(link)}
         >

@@ -1312,9 +1312,9 @@ describe('updates of ACP v2', () => {
         test('a completed Monitor is a task item named by its description, told once with how long it holds, and gone when its time lapses', () => {
             const mapper = mapped(monitor());
 
-            expect(mapper.armed()).toEqual([{ id: 'mon-1', title: 'Monitor · Tick monitor', ms: 40_000 }]);
+            expect(mapper.armed()).toEqual([{ id: 'mon-1', title: 'Monitor: Tick monitor', ms: 40_000 }]);
             expect(mapper.armed()).toEqual([]);
-            expect(mapper.background([])).toEqual([{ id: 'mon-1', kind: 'task', title: 'Monitor · Tick monitor' }]);
+            expect(mapper.background([])).toEqual([{ id: 'mon-1', kind: 'task', title: 'Monitor: Tick monitor' }]);
             expect(mapper.lapse('mon-1')).toBe(true);
             expect(mapper.background([])).toEqual([]);
             expect(mapper.lapse('mon-1')).toBe(false);
@@ -1330,9 +1330,9 @@ describe('updates of ACP v2', () => {
                 )
             );
 
-            expect(mapper.armed()).toEqual([{ id: 'wake-1', title: 'Wakeup · Wake probe requested', ms: 96_000 }]);
+            expect(mapper.armed()).toEqual([{ id: 'wake-1', title: 'Wakeup: Wake probe requested', ms: 96_000 }]);
             expect(mapper.background([])).toEqual([
-                { id: 'wake-1', kind: 'task', title: 'Wakeup · Wake probe requested' },
+                { id: 'wake-1', kind: 'task', title: 'Wakeup: Wake probe requested' },
             ]);
         });
 
@@ -1356,7 +1356,7 @@ describe('updates of ACP v2', () => {
                 )
             );
 
-            expect(once.armed()).toEqual([{ id: 'cron-1', title: 'Wakeup · cron-probe', ms: 140_000 }]);
+            expect(once.armed()).toEqual([{ id: 'cron-1', title: 'Wakeup: cron-probe', ms: 140_000 }]);
             expect(repeating.armed()).toEqual([]);
             expect(repeating.background([])).toEqual([]);
         });
@@ -1427,7 +1427,7 @@ describe('updates of ACP v2', () => {
             const after = mapped(monitor());
 
             expect(after.armed()).toHaveLength(1);
-            expect(after.background(work)).toEqual([{ id: 'mon-1', kind: 'task', title: 'Monitor · Tick monitor' }]);
+            expect(after.background(work)).toEqual([{ id: 'mon-1', kind: 'task', title: 'Monitor: Tick monitor' }]);
             expect(after.background([])).toEqual([]);
             expect(after.lapse('mon-1')).toBe(false);
 
@@ -1437,7 +1437,7 @@ describe('updates of ACP v2', () => {
             expect(before.background(work)).toEqual([{ id: 'mon-1', kind: 'task', title: 'Monitor' }]);
             before.update(monitor()[2]);
             expect(before.armed()).toEqual([]);
-            expect(before.background(work)).toEqual([{ id: 'mon-1', kind: 'task', title: 'Monitor · Tick monitor' }]);
+            expect(before.background(work)).toEqual([{ id: 'mon-1', kind: 'task', title: 'Monitor: Tick monitor' }]);
             expect(before.background([])).toEqual([]);
         });
     });

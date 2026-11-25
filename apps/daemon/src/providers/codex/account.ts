@@ -104,13 +104,13 @@ export function windowLabel(minutes: unknown, fallback: string): string {
     return minutes % 60 === 0 ? `${minutes / 60}h` : `${minutes}m`;
 }
 
-/** The weekly limit of one model is named for the model, as Claude's is (`Fable`); another window of it says which one it is (`Session · Codex Spark`). */
+/** The weekly limit of one model is named for the model, as Claude's is (`Fable`); another window of it says which one it is (`Session (Codex Spark)`). */
 function modelWindowLabel(window: string, model: string | undefined): string {
     if (model === undefined) {
         return window;
     }
 
-    return window === 'Week' ? model : `${window} · ${model}`;
+    return window === 'Week' ? model : `${window} (${model})`;
 }
 
 /** `account/rateLimits/read` as windows: the main bucket first, then the buckets of single models. Every window is optional. */

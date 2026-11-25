@@ -35,7 +35,7 @@ export function ChatFolder({ name, folder, missing, workspace, showFolder = true
     const branch = git?.branch;
     const place = [workspace ? 'Worktree' : undefined, branch].filter(Boolean).join(' ');
     // A non-git folder still needs a name when it is the project's only folder.
-    const label = [showFolder || !place ? name : undefined, place].filter(Boolean).join(' · ');
+    const label = [showFolder || !place ? name : undefined, place].filter(Boolean).join(', ');
     const detail = branch ? (git?.detached ? `detached at ${branch}` : `branch ${branch}`) : undefined;
     const ariaLabel = `Current place: ${[showFolder || !place ? name : undefined, workspace ? 'Worktree' : undefined, detail].filter(Boolean).join(', ')}`;
     const title = [

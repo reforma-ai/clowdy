@@ -248,6 +248,7 @@ export interface ExplorerHandle {
 export interface ExplorerProps {
     manager: FileManager;
     menuItems?: (targets: readonly FileEntry[]) => FileMenuItem[];
+    onEntryDragStart?: (targets: readonly FileEntry[], transfer: DataTransfer) => void;
     dndManager?: Parameters<typeof Tree<ExplorerItem>>[0]['dndManager'];
     /** Draws a part of the tree: the entries below a folder, by rules of its own. Keep the value stable. */
     scope?: ExplorerScope;
@@ -266,6 +267,7 @@ export interface ExplorerProps {
 export const Explorer = observer(function Explorer({
     manager,
     menuItems,
+    onEntryDragStart,
     dndManager,
     scope,
     filter,
@@ -407,6 +409,7 @@ export const Explorer = observer(function Explorer({
         draftParent: draft?.parent ?? null,
         dropFolder,
         menuItems,
+        onEntryDragStart,
         create: (parent, kind) => {
             if (!isRootFolder(parent)) {
                 treeApi.current?.openParents(parent);

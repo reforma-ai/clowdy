@@ -67,9 +67,13 @@ export function backgroundRows(
     return { own, counted: unlisted.filter(item => item.canStopAlone !== true || item.kind === 'subagent') };
 }
 
-/** What a row of its own says of a background item: what kind it is and what it runs, `Command · bun run test`. */
+/** What a row of its own says of a background item: what kind it is and what it runs, `Command: bun run test`. */
 export function backgroundItemText(item: Pick<BackgroundItem, 'kind' | 'title'>): string {
-    return `${item.kind === 'task' ? 'Task' : item.kind === 'subagent' ? 'Sub-agent' : 'Command'} · ${item.title}`;
+    const scheduled = item.kind === 'task' ? /^(Monitor|Wakeup)(?: · |: )(.+)$/.exec(item.title) : null;
+
+    if (scheduled) return `${scheduled[1]}: ${scheduled[2]}`;
+
+    return `${item.kind === 'task' ? 'Task' : item.kind === 'subagent' ? 'Sub-agent' : 'Command'}: ${item.title}`;
 }
 
 /**

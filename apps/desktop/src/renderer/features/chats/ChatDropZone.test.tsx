@@ -4,6 +4,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ChatDropZone } from './ChatDropZone';
+import { registerComposer } from './composerBridge';
+import { FILE_REFERENCE_DRAG_TYPE } from './fileReferences';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -34,6 +36,57 @@ function dragEvent(type: string, files: File[] = []) {
 }
 
 describe('ChatDropZone', () => {
+    it('takes project references before the editor can handle the drop, without uploading files', async () => {
+        const mention = vi.fn(() => true);
+        const unregister = registerComposer(vi.fn(), mention);
+        const onFiles = vi.fn();
+        const editorDrop = vi.fn();
+        const entries = [
+            { path: '/project/src/a.ts', name: 'a.ts', kind: 'file' },
+            { path: '/project/docs', name: 'docs', kind: 'directory' },
+        ];
+        const render = (disabled = false) =>
+            act(async () =>
+                root.render(
+                    <ChatDropZone onFiles={onFiles} disabled={disabled}>
+                        <div data-editor="" onDrop={editorDrop} />
+                    </ChatDropZone>
+                )
+            );
+        const dispatch = (type: string) => {
+            const event = new Event(type, { bubbles: true, cancelable: true });
+            Object.defineProperty(event, 'dataTransfer', {
+                value: {
+                    types: [FILE_REFERENCE_DRAG_TYPE],
+                    getData: () => JSON.stringify(entries),
+                    dropEffect: 'none',
+                },
+            });
+            act(() => container.querySelector('[data-editor]')!.dispatchEvent(event));
+
+            return event;
+        };
+
+        try {
+            await render();
+            expect(dispatch('dragover').defaultPrevented).toBe(true);
+            expect(veil()).toBe(true);
+            expect(dispatch('drop').defaultPrevented).toBe(true);
+            expect(veil()).toBe(false);
+            expect(mention).toHaveBeenCalledExactlyOnceWith(entries);
+            expect(editorDrop).not.toHaveBeenCalled();
+            expect(onFiles).not.toHaveBeenCalled();
+
+            await render(true);
+            expect(dispatch('dragover').defaultPrevented).toBe(false);
+            expect(veil()).toBe(false);
+            expect(dispatch('drop').defaultPrevented).toBe(false);
+            expect(mention).toHaveBeenCalledOnce();
+        } finally {
+            unregister();
+        }
+    });
+
     it('shows the veil while files are dragged over, and hands the dropped files over', async () => {
         const onFiles = vi.fn();
         const file = new File(['a'], 'a.txt');

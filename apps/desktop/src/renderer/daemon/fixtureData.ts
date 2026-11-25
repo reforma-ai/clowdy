@@ -255,7 +255,7 @@ function fixtureAgentModels(now: number): Record<string, AgentModels> {
                 {
                     id: 'default',
                     name: 'Default (recommended)',
-                    description: 'Opus 5.5 · Best for complex work',
+                    description: 'Best for complex work',
                     isDefault: true,
                     resolvedId: 'claude-opus-5-5',
                     efforts: CLAUDE_EFFORTS,
