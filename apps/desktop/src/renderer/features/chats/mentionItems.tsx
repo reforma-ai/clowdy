@@ -2,10 +2,20 @@ import { FileIcon } from '@clowdy/components/FileIcon';
 import { folderNames } from '@clowdy/protocol';
 
 import { compareDocs } from '../files/docsScope';
+import { StatusIcon } from '../tasks/status';
 import { mentionIcon } from './MentionChip';
 
 import type { RichInputTriggerItem } from '@clowdy/components/RichInput';
-import type { DocNode, DocsTree, FolderId, ProjectFileMatch, ProjectFolder, SkillEntry, Task } from '@clowdy/protocol';
+import type {
+    DocNode,
+    DocsTree,
+    FolderId,
+    ProjectFileMatch,
+    ProjectFolder,
+    SkillEntry,
+    Task,
+    TaskStatus,
+} from '@clowdy/protocol';
 
 /** How many of each kind the `@` menu lists: it is a pick list, not a search page. */
 export const TASKS_SHOWN = 6;
@@ -21,7 +31,11 @@ const baseName = (path: string) => path.slice(path.lastIndexOf('/') + 1);
 const folderOf = (path: string) => path.slice(0, Math.max(0, path.lastIndexOf('/')));
 
 /** Tasks whose key or title has every word typed, the newest first. */
-export function taskItems(tasks: readonly Task[], query: string): RichInputTriggerItem[] {
+export function taskItems(
+    tasks: readonly Task[],
+    query: string,
+    statuses: readonly TaskStatus[] = []
+): RichInputTriggerItem[] {
     const words = wordsOf(query);
 
     return tasks
@@ -30,12 +44,13 @@ export function taskItems(tasks: readonly Task[], query: string): RichInputTrigg
         .slice(0, TASKS_SHOWN)
         .map(task => {
             const data = { key: task.key, title: task.title };
+            const status = statuses.find(status => status.id === task.statusId);
 
             return {
                 value: `task:${task.key}`,
                 label: task.key,
                 description: task.title,
-                icon: mentionIcon({ kind: 'task', data }, 14),
+                icon: status && <StatusIcon category={status.category} />,
                 section: 'Tasks',
                 kind: 'task',
                 displayText: task.key,

@@ -21,8 +21,17 @@
     transition: background-color 150ms ease-out;
 }
 
-.chip:hover {
+button.chip:hover {
     background-color: var(--color-secondary-muted);
+}
+
+.chip[data-tone] {
+    background-color: var(--clowdy-status-bg);
+    color: var(--clowdy-status-color);
+}
+
+button.chip[data-tone]:hover {
+    background-color: var(--clowdy-status-hover);
 }
 
 .icon {

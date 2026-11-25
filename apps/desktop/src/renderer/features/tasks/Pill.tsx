@@ -1,5 +1,6 @@
 import { cn } from '@clowdy/lib';
 
+import toneStyles from '../../shared/StatusTone.module.css';
 import styles from './Pill.module.css';
 
 import type { ReactNode } from 'react';
@@ -16,7 +17,7 @@ export interface PillProps {
 /** A small rounded label tinted by tone: a task status, a verdict. */
 export function Pill({ tone = 'neutral', children, className }: PillProps) {
     return (
-        <span className={cn(styles.pill, className)} data-tone={tone}>
+        <span className={cn(styles.pill, toneStyles.tone, className)} data-tone={tone}>
             {children}
         </span>
     );

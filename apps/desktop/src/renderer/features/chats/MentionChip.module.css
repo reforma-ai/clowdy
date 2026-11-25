@@ -2,7 +2,3 @@
 .chip {
     cursor: inherit;
 }
-
-.chip:hover {
-    background-color: var(--color-secondary-muted-light);
-}
