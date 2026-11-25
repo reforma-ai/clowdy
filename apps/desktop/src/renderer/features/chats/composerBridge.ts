@@ -4,7 +4,7 @@ import type { ClipboardFile } from '../../../shared/bridge';
 
 /**
  * The door from the rest of the window to the message box. `Composer` is a component and the side panel (Files, Changes) must not import it, so the box
- * that is on the page registers what it takes here while it is mounted, and the panel puts words into it through `quoteIntoComposer`. A module-level
+ * that is on the page registers what it takes here while it is mounted, so the panel can add quotes and file references. A module-level
  * registry beside the drafts, as `composerQuotes` and `filesStoreOf` are. The box of the open chat (`ChatView`) and the new-chat page's (`DraftChat`) register;
  * the box of an edit frame does not, and a chat that is read only has no box, so it registers nothing. The last box registered is the one asked.
  */
@@ -26,7 +26,7 @@ function subscribe(listener: () => void): () => void {
     return () => void listeners.delete(listener);
 }
 
-/** A message box that takes quotes, until the returned function is called (a box that unmounts calls it). */
+/** A message box that takes quotes and optionally file references, until the returned function is called. */
 export function registerComposer(quote: Quote, mentionFiles?: MentionFiles): () => void {
     const composer = { quote, mentionFiles };
     composers.push(composer);
@@ -71,8 +71,7 @@ export function useCanMentionFiles(): boolean {
 }
 
 /**
- * Registers a message box's quote while it is mounted, unless it is `undefined` (the box of an edit frame). The box's `quote` is a new function each render, so the door
- * calls the latest one through a ref and the registration is made once.
+ * Registers the message box while it is mounted, except the box of an edit frame. The bridge calls the latest callbacks through a ref.
  */
 export function useRegisterComposer(quote: Quote | undefined, mentionFiles?: MentionFiles): void {
     const latest = useRef({ quote, mentionFiles });

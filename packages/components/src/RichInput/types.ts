@@ -83,7 +83,7 @@ export type RichInputHandle = {
     focus: () => void;
     getDoc: () => ComposerDoc;
     getPlainText: () => string;
-    insertMention: (attrs: ComposerMentionAttrs) => void;
+    insertMentions: (attrs: readonly ComposerMentionAttrs[]) => void;
     appendText: (text: string) => void;
     appendBlocks: (blocks: ComposerDoc[]) => void;
 };

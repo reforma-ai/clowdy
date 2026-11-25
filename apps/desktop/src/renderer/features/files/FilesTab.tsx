@@ -87,8 +87,8 @@ function PlaceFiles({ place, variant }: { place: Place; variant: 'files' | 'docs
 /**
  * The side panel's Files tab: the editor with the files that are open in tabs, and at its right the tree of the place the window is working in: the folder, or the worktree
  * of the open chat when it works in one (the same place the Info and Terminal tabs name). Each place keeps its own tabs, so the tree and the tabs change with the place, and come
- * back with it; two chats in one worktree share them. A chat whose worktree is not made yet gets a note in place of the view. A row's menu has, after its own items,
- * Open in Terminal (a folder), Copy path (absolute or relative) and Open in… (the editor, the file manager, the terminal program, GitHub).
+ * back with it; two chats in one worktree share them. A chat whose worktree is not made yet gets a note in place of the view. Add to chat in a row menu or a drag to the
+ * chat adds path mentions for the selected files and folders. The menu also offers Open in Terminal (a folder), Copy path and Open in….
  *
  * The Docs tab is this same view over a file manager of its own for the place: the tabs, the editor and the buffers are the Docs tab's, so the documents open there
  * are not the files open in the Files tab, and the tree at the right draws the place's document sources (`docsScopeOf`: Briefback, `.clowdy/docs`, Spec Kit, OpenSpec, Kiro) in place of every file. The component stays mounted when

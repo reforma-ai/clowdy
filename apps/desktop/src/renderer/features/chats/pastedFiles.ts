@@ -49,8 +49,8 @@ export interface PasteTargets {
     folders: readonly ProjectFolder[];
     /** Where the message is written: its paths are from there. The main folder when absent. */
     place?: Place;
-    /** Puts a chip in the message, where the caret is. */
-    mention: (mention: ComposerMentionAttrs) => void;
+    /** Puts the chips in the message, at the caret, in one edit. */
+    mention: (mentions: readonly ComposerMentionAttrs[]) => void;
     /** Attaches files to the message, to be uploaded. */
     attach: (files: readonly File[]) => void;
 }
@@ -82,7 +82,7 @@ export async function pasteFiles(
         if (index !== -1) rest.splice(index, 1);
     }
 
-    for (const chip of chips) mention(chip);
+    if (chips.length > 0) mention(chips);
 
     if (rest.length > 0) attach(rest);
 }
