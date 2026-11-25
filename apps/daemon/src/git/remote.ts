@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { gitAnswer, gitRead } from '../domain/git';
 import { exclusive } from '../domain/workspaces';
 import { CommandError, conflict, invalid, unavailable } from '../errors';
-import { runProgram } from '../providers/exec';
+import { LEFTOVER_GRACE_MS, runProgram } from '../providers/exec';
 import { printedLines, shownLine, writeLine } from './commit';
 import { rememberFetch } from './lastFetch';
 import { checkoutOf, workingTreeRoot } from './state';
@@ -99,6 +99,7 @@ export function runGitWrite(
         maxChars: MAX_PRINTED_CHARS,
         signal,
         stopSignal: 'SIGTERM',
+        leftoverGraceMs: LEFTOVER_GRACE_MS,
     });
 }
 
