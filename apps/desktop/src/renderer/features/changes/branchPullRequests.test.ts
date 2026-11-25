@@ -149,3 +149,43 @@ it('limits concurrent branch reads and does not read queued branches that are no
         for (const [branch, request] of requests) request.resolve(history(branch));
     }
 });
+
+it('shares a newly discovered current PR until history catches up without duplicating it', () => {
+    const store = new BranchPullRequests({ getGitBranchPullRequests: vi.fn(), setGitPullRequestArchived: vi.fn() });
+    const fact = store.of(key);
+    const before = history();
+    const open = {
+        ...before.pullRequests[0]!,
+        number: 45,
+        state: 'open' as const,
+        url: 'https://github.com/acme/app/pull/45',
+        updatedAt: 2,
+    };
+    fact.accept(before);
+    fact.noteCurrent(before.repo!, open);
+    expect(fact.pullRequests).toEqual([before.pullRequests[0], open]);
+    fact.accept(before);
+    expect(fact.pullRequests).toEqual([before.pullRequests[0], open]);
+    fact.noteCurrent(before.repo!, { ...open, updatedAt: 1, state: 'closed' });
+    expect(fact.pullRequests).toEqual([before.pullRequests[0], open]);
+    fact.accept({ ...before, pullRequests: [open, ...before.pullRequests] });
+    expect(fact.current).toBeUndefined();
+    expect(fact.pullRequests).toEqual([open, before.pullRequests[0]]);
+});
+
+it('keeps archive marks and separates current PRs from a different branch or origin', () => {
+    const store = new BranchPullRequests({ getGitBranchPullRequests: vi.fn(), setGitPullRequestArchived: vi.fn() });
+    const fact = store.of(key);
+    const before = history(key.branch, true);
+    const merged = { ...before.pullRequests[0]!, updatedAt: 2, archived: undefined };
+    fact.accept(before);
+    fact.noteCurrent(before.repo!, merged);
+    expect(fact.pullRequests[0]?.archived).toBe(true);
+    fact.noteCurrent(before.repo!, { ...merged, head: 'feature/other' });
+    expect(fact.pullRequests[0]?.head).toBe(key.branch);
+    const otherRepo = { ...before.repo!, name: 'other' };
+    fact.accept({ ...before, repo: otherRepo, pullRequests: [] });
+    expect(fact.pullRequests).toEqual([]);
+    fact.noteCurrent(before.repo!, merged);
+    expect(fact.pullRequests).toEqual([]);
+});

@@ -1147,14 +1147,16 @@ describe('Create PR in the sidebar', () => {
                 };
             },
         });
-        const row = (number: number) => container.querySelector(`button[aria-label^="Open pull request ${number} "]`);
+        const row = (number: number) =>
+            container.querySelector(`[role="row"][aria-label^="Open pull request ${number} "]`);
 
         expect(row(128)?.querySelector('[data-check="passed"]')?.textContent).toBe('3');
         expect(row(125)?.textContent).toContain('Release booking form');
         expect(row(125)?.querySelector('svg[data-state="merged"]')).not.toBeNull();
         expect(row(124)?.querySelector('svg[data-state="closed"]')).not.toBeNull();
         expect(buttonOf('Archive PR #128')).toBeUndefined();
-        expect(buttonOf('Archive PR #125')).toBeDefined();
+        expect(row(125)?.contains(buttonOf('Archive PR #125')!)).toBe(true);
+        expect(buttonOf('Archive PR #125')?.getAttribute('data-show')).toBe('item-both');
         expect(buttonOf('Archive PR #124')).toBeDefined();
 
         await press(row(124)!);
@@ -1171,6 +1173,7 @@ describe('Create PR in the sidebar', () => {
         });
         expect(row(125)).toBeNull();
         expect(row(124)).not.toBeNull();
+        expect(opened).toEqual(['https://github.com/acme/car-rental/pull/124']);
 
         await press(buttonOf('Archived (1)')!);
         await settle();
@@ -1180,6 +1183,23 @@ describe('Create PR in the sidebar', () => {
         expect(row(125)).not.toBeNull();
         expect(buttonOf('Archived (1)')).toBeUndefined();
         expect(archive.mock.calls[1]?.[1]).toMatchObject({ number: 125, archived: false });
+    });
+
+    it('shares the current open PR before the branch history includes it', async () => {
+        await start({
+            tweak: data => {
+                data.branchPullRequests = {
+                    [CAR_RENTAL]: { [historyBranch]: [historyPr(125, 'merged', 'Previous release')] },
+                };
+            },
+        });
+        const fact = branchPullRequestsOf(transport).of({
+            projectId: FIXTURE_PROJECT_ID,
+            folderId: WORKTREE.folderId,
+            branch: historyBranch,
+        });
+        expect(fact.value?.pullRequests.map(pr => pr.number)).toEqual([125]);
+        expect(fact.pullRequests.map(pr => pr.number)).toEqual([125, 128]);
     });
 
     it('still offers Create PR when the branch moved past completed pull requests', async () => {
@@ -1193,7 +1213,7 @@ describe('Create PR in the sidebar', () => {
             gitWrites: { clean: true, remote: 'level' },
         });
 
-        expect(container.querySelector('button[aria-label^="Open pull request 125 "]')).not.toBeNull();
+        expect(container.querySelector('[role="row"][aria-label^="Open pull request 125 "]')).not.toBeNull();
         expect(createPRButton()).toBeDefined();
     });
 
@@ -1238,7 +1258,7 @@ describe('Create PR in the sidebar', () => {
             await model.facts.status.refresh();
         });
         await vi.waitFor(() =>
-            expect(container.querySelector('button[aria-label^="Open pull request 190 "]')).not.toBeNull()
+            expect(container.querySelector('[role="row"][aria-label^="Open pull request 190 "]')).not.toBeNull()
         );
         expect(
             branchPullRequestsOf(transport).workspaceHistoryBranch(FIXTURE_PROJECT_ID, currentPlace.workspace!, {
@@ -1254,20 +1274,21 @@ describe('Create PR in the sidebar', () => {
         });
         await settle();
 
-        expect(container.querySelector('button[aria-label^="Open pull request 190 "]')).not.toBeNull();
-        expect(container.querySelector('button[aria-label^="Open pull request 125 "]')).toBeNull();
-        expect(container.querySelector('button[aria-label^="Open pull request 128 "]')).toBeNull();
+        expect(container.querySelector('[role="row"][aria-label^="Open pull request 190 "]')).not.toBeNull();
+        expect(container.querySelector('[role="row"][aria-label^="Open pull request 125 "]')).toBeNull();
+        expect(container.querySelector('[role="row"][aria-label^="Open pull request 128 "]')).toBeNull();
         expect(syncButton()).toBeNull();
         expect(createPRButton()).toBeUndefined();
         expect(buttonOf('Archive PR #190')).toBeDefined();
     });
 
-    it('shows one standard pull request button with failed and passed check counts', async () => {
+    it('shows a pull request row with its title, number and check counts', async () => {
         await start();
 
-        const pr = container.querySelector('button[aria-label^="Open pull request 128"]')!;
-        expect(pr.textContent).toBe('PR #12813');
-        expect(pr.getAttribute('data-size')).toBe('sm');
+        const pr = container.querySelector('[role="row"][aria-label^="Open pull request 128"]')!;
+        expect(pr.textContent).toContain('Charge a weekend surcharge');
+        expect(pr.textContent).toContain('PR #128');
+        expect(pr.closest('[role="grid"]')?.getAttribute('data-size')).toBe('sm');
         expect(pr.querySelector('svg[data-state="open"]')).not.toBeNull();
         expect(pr.getAttribute('aria-label')).toContain('1 failed, 3 passed');
         expect(pr.querySelector('[data-check="failed"]')?.textContent).toBe('1');
@@ -1284,7 +1305,7 @@ describe('Create PR in the sidebar', () => {
             },
         });
 
-        const pr = container.querySelector('button[aria-label^="Open pull request 31"]')!;
+        const pr = container.querySelector('[role="row"][aria-label^="Open pull request 31"]')!;
 
         expect(pr.querySelector('svg[data-state="merged"]')).not.toBeNull();
         expect(pr.getAttribute('aria-label')).toContain('3 passed');
@@ -1299,9 +1320,9 @@ describe('Create PR in the sidebar', () => {
             },
         });
 
-        const pr = container.querySelector('button[aria-label^="Open pull request 54"]')!;
+        const pr = container.querySelector('[role="row"][aria-label^="Open pull request 54"]')!;
 
-        expect(pr.textContent).toBe('PR #54Draft');
+        expect(pr.textContent).toContain('PR #54Draft');
         expect(pr.querySelector('[data-check]')).toBeNull();
     });
 

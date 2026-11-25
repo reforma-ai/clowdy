@@ -1,4 +1,5 @@
 import { Button } from '@clowdy/components/Button';
+import { GridList, listBoxItemDataShow } from '@clowdy/components/List';
 import { Archive, ArrowUp, ChevronDown, ChevronRight } from '@clowdy/icons/14';
 import { useState } from 'react';
 
@@ -55,33 +56,40 @@ export function BranchPullRequestList({
     const [expanded, setExpanded] = useState(false);
     const visible = rows.filter(pr => !pr.archived);
     const archived = rows.filter(pr => pr.archived);
-    const showTitle = rows.length > 1;
-
     if (!rows.length) return null;
 
     const row = (pr: PullRequestRow) => (
-        <div key={pr.url} className={styles.row}>
-            <PullRequestChip pr={pr} stale={pr.stale} showTitle={showTitle} />
-            {pr.archivable && (
-                <Button
-                    size="sm"
-                    color="secondary"
-                    variant="filling"
-                    iconOnly
-                    aria-label={`${pr.archived ? 'Restore' : 'Archive'} PR #${pr.number}`}
-                    tooltip={pr.archived ? 'Restore pull request' : 'Archive pull request'}
-                    isDisabled={archiving}
-                    onPress={() => void onArchive(pr.number, !pr.archived)}
-                >
-                    {pr.archived ? <ArrowUp /> : <Archive />}
-                </Button>
-            )}
-        </div>
+        <PullRequestChip
+            key={pr.url}
+            pr={pr}
+            stale={pr.stale}
+            action={
+                pr.archivable && (
+                    <Button
+                        size="xs"
+                        color="secondary"
+                        variant="filling"
+                        iconOnly
+                        data-show={listBoxItemDataShow.itemBoth}
+                        aria-label={`${pr.archived ? 'Restore' : 'Archive'} PR #${pr.number}`}
+                        tooltip={pr.archived ? 'Restore pull request' : 'Archive pull request'}
+                        isDisabled={archiving}
+                        onPress={() => void onArchive(pr.number, !pr.archived)}
+                    >
+                        {pr.archived ? <ArrowUp /> : <Archive />}
+                    </Button>
+                )
+            }
+        />
     );
 
     return (
         <div className={styles.list} role="group" aria-label="Branch pull requests">
-            {visible.map(row)}
+            {visible.length > 0 && (
+                <GridList size="sm" aria-label="Pull requests">
+                    {visible.map(row)}
+                </GridList>
+            )}
             {archived.length > 0 && (
                 <>
                     <Button
@@ -95,7 +103,11 @@ export function BranchPullRequestList({
                         {expanded ? <ChevronDown /> : <ChevronRight />}
                         Archived ({archived.length})
                     </Button>
-                    {expanded && archived.map(row)}
+                    {expanded && (
+                        <GridList size="sm" aria-label="Archived pull requests">
+                            {archived.map(row)}
+                        </GridList>
+                    )}
                 </>
             )}
         </div>

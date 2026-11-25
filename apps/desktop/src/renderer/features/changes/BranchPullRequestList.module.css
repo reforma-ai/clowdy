@@ -8,13 +8,6 @@
     min-width: 0;
 }
 
-.row {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-4);
-    min-width: 0;
-}
-
 .archive {
     align-self: flex-start;
     color: var(--color-secondary-text);

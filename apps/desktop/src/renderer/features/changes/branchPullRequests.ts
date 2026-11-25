@@ -7,7 +7,7 @@ import { browserStorage, type KeyValueStorage, readStored, writeStored } from '.
 import { onFolderGitRefresh } from '../openWith/useFolderGit';
 import { keepEqual } from './keepEqual';
 
-import type { GitBranchPullRequests, GitHubRepo } from '@clowdy/protocol';
+import type { GitBranchPullRequests, GitHubRepo, GitPullRequestSummary } from '@clowdy/protocol';
 import type { Transport } from '../../daemon/transport';
 import type { WorkspaceHead, WorkspaceRef } from '../openWith/workspaceHead';
 
@@ -30,6 +30,8 @@ const hidden = () => typeof document !== 'undefined' && document.hidden;
 /** A branch has one history and one archive state, regardless of which chat is observing it. */
 export class BranchPullRequestFact {
     value: GitBranchPullRequests | undefined;
+    /** The current-PR read may see a new PR before the branch history cache does. */
+    current: { repo: GitHubRepo; pr: GitPullRequestSummary } | undefined;
     loading = false;
     stale = false;
     error: string | undefined;
@@ -52,7 +54,33 @@ export class BranchPullRequestFact {
         this.#read = () => read(this);
         this.#archive = archive;
         this.#changed = changed;
-        makeAutoObservable(this, { key: false, value: observableRef });
+        makeAutoObservable(this, { key: false, value: observableRef, current: observableRef });
+    }
+
+    /** Use all known PRs, including a current PR that has not appeared in history yet. */
+    get pullRequests(): readonly GitPullRequestSummary[] {
+        const list = this.value?.pullRequests ?? [];
+        const pr = this.current?.pr;
+        if (!pr) return list;
+
+        const known = list.find(item => item.url === pr.url);
+        if (known && known.updatedAt >= pr.updatedAt) return list;
+
+        return [
+            ...list.filter(item => item.url !== pr.url),
+            { ...pr, archived: pr.state === 'merged' || pr.state === 'closed' ? known?.archived : undefined },
+        ];
+    }
+
+    noteCurrent(repo: GitHubRepo, pr: GitPullRequestSummary): void {
+        if (pr.head !== this.key.branch) return;
+        if (this.value && (!this.value.repo || repoKey(this.value.repo) !== repoKey(repo))) return;
+
+        const known = this.value?.pullRequests.find(item => item.url === pr.url);
+        if (known && known.updatedAt >= pr.updatedAt) return;
+
+        if (this.current?.pr.url === pr.url && this.current.pr.updatedAt > pr.updatedAt) return;
+        this.current = keepEqual(this.current, { repo, pr });
     }
 
     /** Reads once for all callers sharing this branch. An archive answer supersedes a read already in flight. */
@@ -96,6 +124,12 @@ export class BranchPullRequestFact {
     /** Replaces the branch's known answer; also invalidates any older read on another matching view. */
     accept(value: GitBranchPullRequests): void {
         this.#revision++;
+        if (this.current) {
+            const { repo, pr } = this.current;
+            const known = value.pullRequests.find(item => item.url === pr.url);
+            if (!value.repo || repoKey(value.repo) !== repoKey(repo) || (known && known.updatedAt >= pr.updatedAt))
+                this.current = undefined;
+        }
         this.value = keepEqual(this.value, value);
         this.stale = value.stale === true;
         this.error = undefined;

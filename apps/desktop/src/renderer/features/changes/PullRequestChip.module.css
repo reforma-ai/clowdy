@@ -1,17 +1,12 @@
 @reference '@clowdy/styles/rulesets';
 
-.button[data-stale] {
+.row[data-stale] {
     opacity: var(--opacity-inactive);
 }
 
-.button {
-    flex: 1;
+.row {
     min-width: 0;
-}
-
-.content {
-    justify-content: flex-start;
-    min-width: 0;
+    padding-block: var(--spacing-xs);
 }
 
 .prMark {
@@ -32,12 +27,16 @@
     color: var(--color-danger-text);
 }
 
-.prNumber {
-    flex-shrink: 0;
+.copy {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
 }
 
-.prTitle {
-    flex: 1;
+.metadata {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
     min-width: 0;
 }
 
@@ -64,19 +63,7 @@
 }
 
 @container (max-width: 12rem) {
-    .button[data-size] {
-        padding-inline: var(--spacing-4);
-    }
-
-    .content {
-        gap: var(--spacing-2);
-    }
-
     .checkCounts {
         gap: var(--spacing-4);
-    }
-
-    .prState {
-        display: none;
     }
 }
