@@ -145,6 +145,7 @@ export function ChangesSidebar({
                 {(rows.length > 0 || hint || status?.isRepository === true) && (
                     <div className={styles.facts}>
                         {!git?.gone && <RemoteMenu facts={facts} checkoutBranch={git?.checkoutBranch} />}
+                        {!git?.gone && !pr && !hasOpen && <CreatePullRequest facts={facts} git={git} />}
                         <BranchPullRequestList
                             key={historyBranch}
                             rows={rows}
@@ -156,7 +157,6 @@ export function ChangesSidebar({
                                 return changed;
                             }}
                         />
-                        {!git?.gone && !pr && !hasOpen && <CreatePullRequest facts={facts} git={git} />}
                         {hint && (
                             <Text
                                 variant="xs"
