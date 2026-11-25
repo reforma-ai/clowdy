@@ -95,7 +95,7 @@ const isOff = (label: string) => item(label).getAttribute('aria-disabled') === '
 const alert = () => container.querySelector('[role="alert"]');
 const status = () => container.querySelector('[role="status"]:not([aria-label])');
 const updateLabel = 'Update from main';
-const mergeLabels = ['Merge from branch…', 'Merge into branch…', 'Merge into main…'];
+const mergeLabels = ['Merge from branch…', 'Merge into branch…', 'Merge into main worktree…'];
 
 async function openMenu() {
     await press(dropdown());
@@ -831,7 +831,7 @@ describe('merging branches from the sync menu', () => {
         const merge = vi.spyOn(transport, 'branchMergeGit');
         const sync = vi.spyOn(transport, 'syncGit');
 
-        await open('Merge into next…');
+        await open('Merge into main worktree…');
 
         expect(heading()).toBe('Merge clowdy/ab12cd34 to next');
         expect(dialog().querySelector('input[placeholder="Filter branches"]')).toBeNull();
@@ -854,9 +854,9 @@ describe('merging branches from the sync menu', () => {
         const merge = vi.spyOn(transport, 'branchMergeGit');
 
         await openMenu();
-        expect(item('Merge into main…')).toBeDefined();
+        expect(item('Merge into main worktree…')).toBeDefined();
         await transport.switchGitBranch(FIXTURE_PROJECT_ID, { folderId: CHECKOUT.folderId }, 'dev');
-        await press(item('Merge into main…'));
+        await press(item('Merge into main worktree…'));
         await settle();
 
         expect(heading()).toBe('Merge clowdy/ab12cd34 to dev');
@@ -868,7 +868,7 @@ describe('merging branches from the sync menu', () => {
         await start({ key: CHECKOUT });
         await openMenu();
 
-        expect(item('Merge into main…')).toBeUndefined();
+        expect(item('Merge into main worktree…')).toBeUndefined();
         expect(item('Merge into branch…')).toBeDefined();
     });
 
@@ -880,7 +880,7 @@ describe('merging branches from the sync menu', () => {
         });
         await openMenu();
 
-        expect(item('Merge into main…')).toBeUndefined();
+        expect(item('Merge into main worktree…')).toBeUndefined();
         expect(item('Merge into branch…')).toBeDefined();
     });
 
