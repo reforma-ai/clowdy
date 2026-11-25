@@ -12,7 +12,8 @@ import { ListKit, OrderedList } from '@tiptap/extension-list';
 import Paragraph from '@tiptap/extension-paragraph';
 import Placeholder from '@tiptap/extension-placeholder';
 import Text from '@tiptap/extension-text';
-import { PluginKey } from '@tiptap/pm/state';
+import { closeHistory } from '@tiptap/pm/history';
+import { PluginKey, Selection } from '@tiptap/pm/state';
 import { EditorContent, useEditor } from '@tiptap/react';
 import {
     createElement,
@@ -665,6 +666,32 @@ export function RichInput({
                 if (editor) {
                     rememberPos(editor);
                 }
+            },
+            appendBlocks: blocks => {
+                if (!editor || blocks.length === 0) return;
+
+                const { state, view } = editor;
+                const end = state.doc.content.size;
+                const empty =
+                    state.doc.childCount === 1 &&
+                    state.doc.firstChild?.isTextblock &&
+                    state.doc.firstChild.content.size === 0;
+                const last = state.doc.lastChild;
+                // Reuse the empty typing line after a quote, while keeping all other blank lines intact.
+                const emptyAfterQuote =
+                    state.doc.childCount > 1 &&
+                    last?.type.name === 'paragraph' &&
+                    last.content.size === 0 &&
+                    state.doc.child(state.doc.childCount - 2).type.name === 'composerQuote';
+                const nodes = blocks.map(block => state.schema.nodeFromJSON(block));
+                const from = empty ? 0 : emptyAfterQuote ? end - last.nodeSize : end;
+                const tr = closeHistory(state.tr).replaceWith(from, end, nodes);
+                tr.setSelection(Selection.near(tr.doc.resolve(tr.doc.content.size), -1));
+                view.dispatch(tr.scrollIntoView());
+                // Keep subsequent typing in its own undo step too.
+                view.dispatch(closeHistory(view.state.tr));
+                editor.commands.focus('end');
+                rememberPos(editor);
             },
         }),
         [editor, getBridge]

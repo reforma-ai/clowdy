@@ -127,6 +127,36 @@ it('turns a typed quote marker after Shift+Enter into a quote and sends the next
 });
 
 describe('ComposerHandle.quote', () => {
+    it('preserves trailing line breaks and blank paragraphs when appending a quote', async () => {
+        await mount();
+        type('Unfinished');
+        act(() => {
+            editor().commands.setHardBreak();
+            editor().commands.setHardBreak();
+            editor().commands.splitBlock();
+        });
+        const before = structuredClone(editor().getJSON().content!);
+        await quote('quoted');
+        expect(editor().getJSON().content?.slice(0, before.length)).toEqual(before);
+        expect(written()).toContain('Unfinished\n\n\n\n\n\n> quoted');
+    });
+
+    it('undoes and redoes quote insertion without losing the earlier edit history', async () => {
+        await mount();
+        type('Unfinished');
+        act(() => editor().commands.setHardBreak());
+        const before = editor().getJSON();
+        await quote('quoted');
+        const after = editor().getJSON();
+        act(() => editor().commands.undo());
+        expect(editor().getJSON()).toEqual(before);
+        act(() => editor().commands.redo());
+        expect(editor().getJSON()).toEqual(after);
+        act(() => editor().commands.undo());
+        act(() => editor().commands.undo());
+        expect(editor().getJSON()).not.toEqual(before);
+    });
+
     it('puts the quote in the field and in the draft of the chat', async () => {
         await mount();
         await quote('Use the blue one');

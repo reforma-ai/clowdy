@@ -3,7 +3,7 @@ import { Button } from '@clowdy/components/Button';
 import { ListBoxItem } from '@clowdy/components/List';
 import { type ComposerDoc, emptyComposerDoc, RichInput, type RichInputHandle } from '@clowdy/components/RichInput';
 import { Clip } from '@clowdy/icons/14';
-import { type MouseEvent, type Ref, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
+import { type MouseEvent, type Ref, useImperativeHandle, useRef, useState } from 'react';
 
 import { Unavailable } from '../../shared/Unavailable';
 import { useAgents, useProjectState, useRootStore } from '../../stores';
@@ -209,25 +209,10 @@ export function Composer({ chat, run, start, minLines, editMode, controls, onSen
         setShown({ key, doc: next });
     };
 
-    // Reply focuses the field once it holds the quote. The field takes a new draft in its own layout effect, which runs before this one, and the caret that
-    // replacing the text leaves is at its end (ProseMirror maps the selection to the end of what replaced it), where `focus` puts it: under the quote.
-    const focusAfterQuote = useRef(false);
-
-    useLayoutEffect(() => {
-        if (!focusAfterQuote.current) return;
-
-        focusAfterQuote.current = false;
-        field.current?.focus();
-    });
-
     const quote = (text: string) => {
-        const draft = draftOf(key);
-        const next = withQuoteLast(draft, text);
-
-        if (next === draft) return;
-
-        focusAfterQuote.current = true;
-        edit(next);
+        const empty = emptyComposerDoc();
+        const quoted = withQuoteLast(empty, text);
+        if (quoted !== empty) field.current?.appendBlocks(quoted.content ?? []);
     };
 
     const reply = (message: ReplyMessage) => {
