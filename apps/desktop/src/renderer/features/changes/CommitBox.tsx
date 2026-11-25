@@ -26,6 +26,7 @@ import { CHANGE_KIND_VIEW, splitPath } from './gitSummary';
 import { useRemoteActions } from './useRemoteActions';
 
 import type { GitChangedFile, GitStatusEntry } from '@clowdy/protocol';
+import type { ReactNode } from 'react';
 import type { CommitDraft } from './CommitDraft';
 import type { PlaceChanges } from './PlaceChanges';
 import type { RemoteActions } from './RemoteActions';
@@ -281,6 +282,30 @@ function ConflictActions({
     );
 }
 
+function CommitSectionHeading({
+    label,
+    count,
+    leading,
+}: {
+    label: string;
+    count?: string | number;
+    leading?: ReactNode;
+}) {
+    return (
+        <div className={styles.header}>
+            {leading}
+            <Text as="h3" variant="xs" weight="medium" color="secondary" truncate>
+                {label}
+            </Text>
+            {count !== undefined && (
+                <Text variant="xs" color="secondary" className={styles.count}>
+                    {count}
+                </Text>
+            )}
+        </div>
+    );
+}
+
 /**
  * The sidebar's commit checklist and message. Cmd or Ctrl and Enter uses the same action as the button.
  * Shift or the menu offers the other action for this commit.
@@ -343,8 +368,15 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
     const hasFiles = commitFiles.length > 0;
     const ticked = mergeFiles ? commitFiles.length : draft.ticked.length;
     const noStagedFiles = mergeStatus !== undefined && !hasFiles && !mergeStatus.truncated;
-    const heading =
-        !hasFiles && !mergeStatus ? '0 changed files' : noStagedFiles && conflicts === 0 ? 'No staged files' : 'Commit';
+    const heading = mergeFiles
+        ? noStagedFiles
+            ? 'No staged files'
+            : 'Files to commit'
+        : hasFiles
+          ? 'Commit'
+          : '0 changed files';
+    const count = hasFiles ? (mergeFiles ? commitFiles.length : `${ticked} of ${commitFiles.length}`) : undefined;
+    const showConflicts = mergeFiles !== undefined && conflicts > 0;
     const truncationNotice = mergeStatus
         ? mergeStatus.truncated && `Showing merge files from the first ${mergeStatus.entries.length} changed files`
         : draft.truncated && `Showing the first ${files.length} files`;
@@ -379,48 +411,38 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
                     Rebase paused. Continue or abort the rebase in this checkout
                 </Text>
             )}
-            <div className={styles.header}>
-                {!mergeFiles && (
-                    <Checkbox
-                        size="sm"
-                        isSelected={draft.allTicked}
-                        isIndeterminate={!draft.allTicked && !draft.noneTicked}
-                        isDisabled={!hasFiles || draft.writing}
-                        aria-label="Tick every file"
-                        onChange={on => draft.setAll(on)}
-                    />
-                )}
-                <Text variant="xs" weight="medium" color="secondary" truncate>
-                    {heading}
-                </Text>
-                {hasFiles && (
-                    <Text variant="xs" color="secondary" className={styles.count}>
-                        {mergeFiles ? commitFiles.length : `${ticked} of ${commitFiles.length}`}
-                    </Text>
-                )}
-            </div>
+            <CommitSectionHeading
+                label={showConflicts ? 'Conflicts' : heading}
+                count={
+                    showConflicts
+                        ? mergeFiles.conflicts.length < conflicts
+                            ? `${mergeFiles.conflicts.length} of ${conflicts}`
+                            : conflicts
+                        : count
+                }
+                leading={
+                    !mergeFiles && (
+                        <Checkbox
+                            size="sm"
+                            isSelected={draft.allTicked}
+                            isIndeterminate={!draft.allTicked && !draft.noneTicked}
+                            isDisabled={!hasFiles || draft.writing}
+                            aria-label="Tick every file"
+                            onChange={on => draft.setAll(on)}
+                        />
+                    )
+                }
+            />
+            {showConflicts && (
+                <ConflictActions conflicts={mergeFiles.conflicts} writing={draft.writing} remote={remote} />
+            )}
 
             {(hasFiles || conflicts > 0) && (
                 <Scrollable className={styles.list} contentClass={styles.rows}>
-                    {mergeFiles && conflicts > 0 && (
+                    {showConflicts && (
                         <>
-                            <div className={styles.fileGroupHeading}>
-                                <Text as="h3" variant="xs" weight="medium" color="secondary">
-                                    Conflicts
-                                </Text>
-                                <Text variant="xs" color="secondary" className={styles.count}>
-                                    {mergeFiles.conflicts.length < conflicts
-                                        ? `${mergeFiles.conflicts.length} of ${conflicts}`
-                                        : conflicts}
-                                </Text>
-                            </div>
-                            <ConflictActions conflicts={mergeFiles.conflicts} writing={draft.writing} remote={remote} />
                             <CommitFileList files={mergeFiles.conflicts} draft={draft} mergeGroup="conflicts" />
-                            <div className={styles.fileGroupHeading}>
-                                <Text as="h3" variant="xs" weight="medium" color="secondary">
-                                    {noStagedFiles ? 'No staged files' : 'Files to commit'}
-                                </Text>
-                            </div>
+                            <CommitSectionHeading label={heading} count={count} />
                         </>
                     )}
                     <CommitFileList files={commitFiles} draft={draft} mergeGroup={mergeFiles ? 'staged' : undefined} />
