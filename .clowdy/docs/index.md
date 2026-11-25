@@ -27,6 +27,8 @@
 
 ## Checks
 
+- [Clone a repository into a project](checks/2026-11-25-clone-repository.md) covers the clone dialog from a new and an existing project, the three target cases, a taken target, a bad address, cancel and Escape against a real daemon. Status: passed with limits.
+
 - [Interface copy and automatic sync](checks/2026-11-25-interface-copy.md) covers the action labels, merge preview, decorative separators and legacy scheduled titles. Status: passed with limits.
 
 - [Branch pull request history](checks/2026-11-25-branch-pull-request-history.md) covers GitHub reads, shared counts, archive and missing worktrees. Status: passed.
