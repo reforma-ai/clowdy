@@ -22,7 +22,7 @@ Start a chat in the main checkout, reuse an existing Git worktree or create a ne
 
 ### Plans become tasks
 
-An agent's plan belongs on the task board, not buried in a conversation. Agents can break a large request into subtasks with checklists and dependencies, then work on independent stages in parallel.
+An agent's plan belongs on the task board, not buried in a conversation. Agents can break a large request into a parent task and subtasks with checklists and dependencies, then work on independent stages in parallel. They use Clowdy's task commands to update the same board you see, and its thread commands to coordinate the work.
 
 See what's in progress, under review or blocked in a list or Kanban board. Open a task to read its description, comments, linked agent runs, commits, diffs, checks and documents.
 
@@ -32,21 +32,27 @@ See what's in progress, under review or blocked in a list or Kanban board. Open 
 
 An orchestrator can delegate work to child threads. Each is a regular chat with its own agent, context, assignment and, when needed, worktree. Children report back to their parent when they finish and can use different agents. Provider-native subagents are still available.
 
-Open any child thread to see its progress or talk to the agent directly. You can queue messages for the next turn or steer a running agent mid-turn. If the agent can't accept steering, Clowdy keeps the message queued.
+Open any child thread to see its progress or talk to the agent directly. You can edit, remove or send queued messages, or steer a running agent mid-turn. If the agent can't accept steering, Clowdy keeps the message queued.
 
-### Files and documents
+A Claude Code coordinator can delegate implementation to Codex and review to Cursor, with both reporting back to the parent chat. You can also fork a conversation or hand its transcript to another agent in a new chat, without explaining the whole task again.
+
+### Files, documents and terminals
 
 Browse, edit and manage the project's files in a side panel that expands when you need more room. The Docs tab brings Markdown specifications, plans, research and decisions together from Clowdy's own document directory, Briefback, Spec Kit, OpenSpec and Kiro.
+
+Open a terminal in the chat's worktree to run a test or inspect the agent's work yourself. Shells keep running when you switch chats or reload the window. Select output from a terminal, or code from a file, and send it straight to the chat.
+
+Quick Search finds chats, files, documents and matching lines of code in the current project context. Use keyboard shortcuts to move between them, and attach files, images or `@` references to your prompts.
 
 ### Git, without switching apps
 
 - Inspect file diffs and individual commits, and mark reviewed files as viewed.
 - Select part of a diff and send it to an agent.
-- Commit, fetch, pull and push changes.
+- Generate commit messages with a configured agent, then commit, fetch, pull and push changes.
 - Create, switch and merge branches.
 - Create GitHub pull requests and inspect their history and status.
 
-Source Control shows the relevant action for the current repository state, right next to the chat.
+Source Control shows the relevant action for the current repository state. You can also configure automatic sync after commits and merges.
 
 <!-- Add a screenshot of the Changes tab with a file diff and Source Control. -->
 
@@ -63,13 +69,15 @@ Clowdy follows [Briefback](./BRIEFBACK.md), a flexible, spec-driven development 
 Choose how involved you want to be:
 
 - **Hands-off:** describe the result and let the agent decide how to get there.
-- **Hands-on:** the agent asks about significant decisions and carries on once they're settled. You don't need to approve every stage.
+- **Hands-on:** the agent asks about significant decisions in question cards, with options and a recommendation, and carries on once they're settled. You don't need to approve every stage.
 
 ## Supported agents
 
 Clowdy connects to locally installed agents using the Agent Client Protocol (ACP). Claude Code, Codex and Cursor are the primary integrations. The built-in catalog also includes OpenCode, Gemini CLI, GitHub Copilot CLI, Grok Build, omp and Hermes Agent.
 
-You use your own agent installation and account. Available features, such as account information, model selection, steering and session operations, vary by provider.
+Bring your own agent installation and account. For providers that support them, choose the model, reasoning effort and permissions, check remaining subscription limits, and monitor or compact the conversation context.
+
+Clowdy discovers system, user and project skills and exposes them in Settings, including an estimate of their context cost. You can disable user skills you don't need. Provider capabilities vary; Clowdy also supports registering custom ACP commands through its daemon.
 
 ## Current status
 
