@@ -111,3 +111,83 @@ onPosix('runProgram, what a program leaves in its group', () => {
         await waitFor(() => !alive(pidIn(fake.dir)), 'the leftover to be killed', 5000);
     });
 });
+
+onPosix('runProgram, a program that is watched and waited for', () => {
+    test('hands over what the program prints on its error stream as it prints it, and a callback that throws changes nothing', async () => {
+        const fake = program('printf "one\\r" >&2; sleep 0.2; printf "two\\n" >&2');
+        const pieces: string[] = [];
+        const result = await run(fake, {
+            onStderr: text => {
+                pieces.push(text);
+
+                throw new Error('the reader failed');
+            },
+        });
+
+        expect(result.code).toBe(0);
+        expect(result.stderr).toBe('one\rtwo\n');
+        expect(pieces.length).toBeGreaterThanOrEqual(2);
+        expect(pieces.join('')).toBe('one\rtwo\n');
+    });
+
+    test('answers at the stop by default, and only once the program is gone with `untilGone`', async () => {
+        // The program takes the polite stop slowly and writes a file as it goes: a caller that cleans up must find it written.
+        const body =
+            'trap \'sleep 0.5; : > "$1/after-stop"; exit 0\' TERM\n: > "$1/started"\nwhile :; do sleep 0.05; done';
+
+        for (const untilGone of [false, true]) {
+            const fake = program(body);
+            const controller = new AbortController();
+            const running = run(fake, { signal: controller.signal, stopSignal: 'SIGTERM', untilGone });
+
+            // A script that was just written can take a while to start the first time it runs, and it handles the stop only once it has.
+            await waitFor(() => existsSync(join(fake.dir, 'started')), 'the program to start', 10_000);
+            controller.abort();
+
+            const result = await running;
+
+            expect(result.error).toBe('stopped');
+            expect(existsSync(join(fake.dir, 'after-stop'))).toBe(untilGone);
+            await waitFor(() => existsSync(join(fake.dir, 'after-stop')), 'the program to finish its stop', 5000);
+        }
+    });
+
+    test('says the deadline in the result with `untilGone`, after the program is gone', async () => {
+        const fake = program(
+            'trap \'sleep 0.3; : > "$1/after-stop"; exit 0\' TERM\n: > "$1/started"\nwhile :; do sleep 0.05; done'
+        );
+        const running = run(fake, { timeoutMs: 3000, stopSignal: 'SIGTERM', untilGone: true });
+
+        await waitFor(() => existsSync(join(fake.dir, 'started')), 'the program to start', 10_000);
+
+        const result = await running;
+
+        expect(result.timedOut).toBe(true);
+        expect(existsSync(join(fake.dir, 'after-stop'))).toBe(true);
+    });
+
+    test('does not wait on a descendant that left the group and holds the pipes, past the grace after the program exited', async () => {
+        const perl = Bun.which('perl');
+
+        if (!perl) return;
+
+        // The descendant starts a session of its own, so the group kill does not reach it, and it keeps the error stream open for eight seconds.
+        const fake = program(
+            `'${perl}' -MPOSIX -e 'POSIX::setsid(); sleep 8' &\n: > "$1/started"\nwhile :; do sleep 0.05; done`
+        );
+        const controller = new AbortController();
+        const running = run(fake, { signal: controller.signal, stopSignal: 'SIGTERM', untilGone: true });
+
+        await waitFor(() => existsSync(join(fake.dir, 'started')), 'the program to start', 10_000);
+        await Bun.sleep(300);
+
+        const stopped = Date.now();
+
+        controller.abort();
+
+        const result = await running;
+
+        expect(result.error).toBe('stopped');
+        expect(Date.now() - stopped).toBeLessThan(5000);
+    });
+});

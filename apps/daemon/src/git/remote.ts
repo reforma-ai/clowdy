@@ -22,7 +22,7 @@ import type {
     GitUpstream,
 } from '@clowdy/protocol';
 import type { Place } from '../domain/places';
-import type { RunResult } from '../providers/exec';
+import type { RunOptions, RunResult } from '../providers/exec';
 import type { Store } from '../store';
 import type { GitWritesOptions } from './commit';
 
@@ -84,13 +84,14 @@ export function remoteFailureLine(stderr: string, stdout: string, fallback: stri
     return shownLine(line);
 }
 
-/** Run the user's git with the write environment and give it a chance to clean locks after a timeout. */
+/** Run the user's git with the write environment and give it a chance to clean locks after a timeout. `watch` is what a caller that follows the run (a clone's progress) adds. */
 export function runGitWrite(
     cwd: string,
     args: string[],
     env: Record<string, string>,
     signal: AbortSignal,
-    timeoutMs = REMOTE_TIMEOUT_MS
+    timeoutMs = REMOTE_TIMEOUT_MS,
+    watch: Pick<RunOptions, 'onStderr' | 'untilGone'> = {}
 ): Promise<RunResult> {
     return runProgram('git', args, {
         env,
@@ -100,6 +101,7 @@ export function runGitWrite(
         signal,
         stopSignal: 'SIGTERM',
         leftoverGraceMs: LEFTOVER_GRACE_MS,
+        ...watch,
     });
 }
 

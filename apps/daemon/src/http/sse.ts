@@ -2,7 +2,15 @@ import { SSE_EVENT } from '@clowdy/protocol';
 
 import { CommandError, HTTP_STATUS } from '../errors';
 
-import type { ClowdyEvent, GitErrorDetails, GitSyncEvent, GitSyncProgress, GitSyncResult } from '@clowdy/protocol';
+import type {
+    ClowdyEvent,
+    GitCloneEvent,
+    GitErrorDetails,
+    GitSyncEvent,
+    GitSyncProgress,
+    GitSyncResult,
+} from '@clowdy/protocol';
+import type { CloneStep } from '../git/clone';
 import type { Store } from '../store';
 
 const HEARTBEAT_MS = 15_000;
@@ -50,6 +58,61 @@ export function gitSyncStream(
         },
         cancel() {
             cancelled = true;
+        },
+    });
+}
+
+/**
+ * The stream of a clone: git's progress as it comes, then the real path or the failure. Unlike a sync, a clone stops with its request: when the client closes the stream, or `request` (the
+ * connection) is aborted, `run` is told through its signal and ends git, and nothing more is sent.
+ */
+export function gitCloneStream(
+    run: (progress: (step: CloneStep) => void, signal: AbortSignal) => Promise<string>,
+    request: AbortSignal
+): ReadableStream<Uint8Array<ArrayBuffer>> {
+    const closed = new AbortController();
+    const stop = () => closed.abort();
+
+    request.addEventListener('abort', stop, { once: true });
+
+    return new ReadableStream<Uint8Array<ArrayBuffer>>({
+        start(controller) {
+            const send = (event: GitCloneEvent) => {
+                if (!closed.signal.aborted) controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+            };
+            const clone = async () => {
+                try {
+                    send({
+                        type: 'result',
+                        path: await run(step => send({ type: 'progress', ...step }), closed.signal),
+                    });
+                } catch (error) {
+                    if (error instanceof CommandError) {
+                        const hint = (error.details as GitErrorDetails | undefined)?.hint;
+                        send({
+                            type: 'error',
+                            status: HTTP_STATUS[error.code],
+                            message: error.message,
+                            ...(typeof hint === 'string' && { hint }),
+                        });
+                    } else {
+                        // Not the error itself: what a failed spawn or a failed read says may hold the address, and with it a credential.
+                        console.error('Git clone failed');
+                        send({ type: 'error', status: 500, message: "Couldn't clone the repository" });
+                    }
+                } finally {
+                    request.removeEventListener('abort', stop);
+
+                    if (!closed.signal.aborted) controller.close();
+                }
+            };
+
+            if (request.aborted) stop();
+
+            void clone();
+        },
+        cancel() {
+            stop();
         },
     });
 }

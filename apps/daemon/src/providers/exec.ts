@@ -38,6 +38,14 @@ export interface RunOptions {
      * when the daemon exits within the grace is left to finish.
      */
     leftoverGraceMs?: number;
+    /** Called with each piece of what the program prints on its error stream as it arrives (git's progress), cut anywhere; the output kept in the result is not changed by it. */
+    onStderr?: (text: string) => void;
+    /**
+     * Answer only when the program is gone, also after it was stopped (`timeoutMs`, `signal`), where the answer otherwise comes at the stop. A caller that cleans up after the program
+     * (a half-made clone) must not do it while the program is still writing; the wait is bounded: a program that was asked to stop is killed `STOP_GRACE_MS` later, and the answer comes `STOP_GRACE_MS` after it exited even if a descendant that left its group still holds the pipes. A stopped
+     * program's result has `error: 'stopped'` (and `timedOut`) as before, with the program's own `code`.
+     */
+    untilGone?: boolean;
 }
 
 /** How long a program that was asked to stop (`RunOptions.stopSignal`) has before it is killed. */
@@ -71,6 +79,8 @@ export function runProgram(
         signal,
         stopSignal = 'SIGKILL',
         leftoverGraceMs = 0,
+        onStderr,
+        untilGone = false,
     }: RunOptions
 ): Promise<RunResult> {
     return new Promise(resolve => {
@@ -111,6 +121,7 @@ export function runProgram(
         let stdout = '';
         let stderr = '';
         let timedOut = false;
+        let aborted = false;
         let settled = false;
         const finish = (result: Omit<RunResult, 'stdout' | 'stderr' | 'timedOut'>) => {
             if (settled) {
@@ -146,11 +157,14 @@ export function runProgram(
         const timer = setTimeout(() => {
             timedOut = true;
             stop();
-            finish({ code: null });
+
+            if (!untilGone) finish({ code: null });
         }, timeoutMs);
         const onAbort = () => {
+            aborted = true;
             stop();
-            finish({ code: null, error: 'stopped' });
+
+            if (!untilGone) finish({ code: null, error: 'stopped' });
         };
 
         signal?.addEventListener('abort', onAbort, { once: true });
@@ -164,14 +178,30 @@ export function runProgram(
             if (stderr.length < maxChars) {
                 stderr += text;
             }
+
+            try {
+                onStderr?.(text);
+            } catch {
+                // What reads the output must not take the daemon down with it.
+            }
         });
         child.once('error', error => finish({ code: null, error: error.message }));
         // What the program left running goes with it, at once: a leftover that holds the pipes open would keep `close` from ever coming. With a grace it goes at the end of it, and
         // the call is answered then too, with the program's own code, so a leftover that holds the pipes still cannot keep it waiting past the grace. A program that was stopped
         // (the deadline, the daemon stopping) is not spared: it was told to go, and what it left goes with it as before.
         child.once('exit', code => {
-            if (!spare || settled) {
+            if (!spare || settled || aborted || timedOut) {
                 killGroup();
+
+                // A program that was stopped and is waited for (`untilGone`) may have a descendant that left the group and holds the pipes: it is not waited for past the grace.
+                if (!settled && (aborted || timedOut)) {
+                    const bound = setTimeout(
+                        () => finish({ code, ...(aborted && { error: 'stopped' }) }),
+                        STOP_GRACE_MS
+                    );
+
+                    bound.unref();
+                }
 
                 return;
             }
@@ -192,7 +222,7 @@ export function runProgram(
                 clearTimeout(leftover);
             }
 
-            finish({ code });
+            finish({ code, ...(aborted && { error: 'stopped' }) });
         });
     });
 }

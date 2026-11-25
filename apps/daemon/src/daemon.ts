@@ -13,6 +13,7 @@ import { AgentRegistry } from './engine/acp/registry';
 import { FilesService } from './files/service';
 import { FsService } from './fs/service';
 import { GitBranchMerge } from './git/branchMerge';
+import { GitClone } from './git/clone';
 import { GitWrites } from './git/commit';
 import { GitDiscard } from './git/discard';
 import { pruneDiscardCopies } from './git/discardCopies';
@@ -161,6 +162,7 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
             pullRequests: options.pullRequests ?? new PullRequests(),
             gitWrites: new GitWrites({ store, environment: gitEnvironment }),
             gitRemote: new GitRemote({ store, environment: gitEnvironment }),
+            gitClone: new GitClone({ projectsDir: config.projectsDir, environment: gitEnvironment }),
             gitBranchMerge: new GitBranchMerge({
                 store,
                 environment: gitEnvironment,
@@ -188,6 +190,8 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
                 // Notices still in their window are lost: their timers must not write to a store that is closing.
                 notices.stop();
                 await server.stop(true);
+                // A clone that is stopped takes away what it made before the process may go.
+                await services.gitClone.stop();
                 services.terminals.stop();
                 services.pullRequests.stop();
                 services.gitWrites.stop();

@@ -104,21 +104,21 @@ export class WriteEnvironment {
         this.#fromShell = undefined;
     }
 
-    /** The environment a git write in `cwd` runs in. */
-    async of(cwd: string): Promise<Record<string, string>> {
+    /** The environment a git write in `cwd` runs in. `address` is the remote the write talks to when `cwd` has no `origin` to tell it (a clone, which has no repository yet). */
+    async of(cwd: string, address?: string): Promise<Record<string, string>> {
         const base = inherited(this.#env());
         const env = { ...base, GIT_TERMINAL_PROMPT: '0', LANGUAGE: 'C' };
 
         // Windows' OpenSSH keeps its agent on a named pipe that git finds by itself.
         if (this.#platform === 'win32') return env;
 
-        const socket = await this.#socketFor(cwd, base);
+        const socket = await this.#socketFor(cwd, base, address);
 
         return socket === undefined ? env : { ...env, SSH_AUTH_SOCK: socket };
     }
 
-    async #socketFor(cwd: string, env: Record<string, string>): Promise<string | undefined> {
-        const address = await gitLine(cwd, ['remote', 'get-url', 'origin']);
+    async #socketFor(cwd: string, env: Record<string, string>, given?: string): Promise<string | undefined> {
+        const address = given ?? (await gitLine(cwd, ['remote', 'get-url', 'origin']));
         const host = address === undefined ? '' : (remoteHost(address) ?? '');
         let asked = this.#fromSsh.get(host);
 
