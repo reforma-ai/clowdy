@@ -53,6 +53,11 @@ export type MenuItemProps<T extends object = object> = Omit<AriaMenuItemProps<T>
         className?: string;
         text?: string;
         isDanger?: boolean;
+        /**
+         * What the row stands for in full, beside it on the right while the pointer or the keyboard is on it: a card where the row has room for little.
+         * Rows in a list share one wait (`warmUp`), so moving to the next row shows its card at once. It takes the place of the tooltip a cut description gets.
+         */
+        tooltip?: ReactNode;
     };
 
 /** Command / action list (RAC **Menu**). For picker content in a popover, wrap **`ListBox`** in **`PopoverScroll`**. */
@@ -96,6 +101,7 @@ export function MenuItem<T extends object>({
     children,
     className,
     isDanger,
+    tooltip,
     ref,
     ...props
 }: MenuItemProps<T> & { ref?: Ref<HTMLDivElement> }) {
@@ -150,6 +156,14 @@ export function MenuItem<T extends object>({
             })}
         </AriaMenuItem>
     );
+
+    if (tooltip != null) {
+        return (
+            <Tooltip content={tooltip} placement="right" offset={8} warmUp>
+                {item}
+            </Tooltip>
+        );
+    }
 
     if (typeof description !== 'string' || description.length === 0) {
         return item;

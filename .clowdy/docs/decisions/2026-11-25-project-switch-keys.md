@@ -16,7 +16,8 @@ The person switches projects often and wanted keys for it: Cmd+Option and a digi
 
 - Cmd+Option+0 opens the personal space. Cmd+Option+1 to 9 open the projects in the order of the project menu and of Settings > Projects. The tenth project and later have no key. Off a Mac the keys are Ctrl+Alt and the digit.
 - The keys run from a text field, and over Settings alone, where the list shows them. They do not run over a confirmation, a picker or a menu, so the project never changes under what the person is answering. Opening a project this way closes Settings.
-- Settings > Projects shows a row's keys before its menu button. The project menu does not show them yet.
+- Settings > Projects shows a row's keys before its menu button.
+- In the project menu, a row's settings button shows only while the pointer is over the row. A card opens beside the row on the right, with the project's name, its keys and every folder in full, the main one first. The keyboard on a row opens it too.
 - Actual size moves to Cmd+0 (Ctrl+0), the usual key in a browser. The old reason to keep it off Cmd+0, the side panel's Info tab, is gone: the tabs use Cmd+1 to 5.
 
 ## Reason

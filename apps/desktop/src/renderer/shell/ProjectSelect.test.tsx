@@ -12,8 +12,10 @@ import {
     FIXTURE_PROJECT_ID,
 } from '../daemon/fixtureData';
 import { FixtureTransport } from '../daemon/fixtureTransport';
+import { hotkeys } from '../hotkeys';
 import { RootStore, RootStoreProvider } from '../stores';
 import { ProjectSelect } from './ProjectSelect';
+import { shellCommands } from './shellCommands';
 
 // The babel plugin that makes the app's components observers does not run under Vitest: `observer` stands in for it here.
 const Select = observer(ProjectSelect);
@@ -23,6 +25,13 @@ vi.mock('../shared/ProjectIcon', async importOriginal => {
     const mobx = await import('mobx-react-lite');
 
     return { ProjectIcon: mobx.observer(ProjectIcon) };
+});
+
+vi.mock('../hotkeys/CommandHotkey', async importOriginal => {
+    const { CommandHotkey } = await importOriginal<typeof import('../hotkeys/CommandHotkey')>();
+    const mobx = await import('mobx-react-lite');
+
+    return { CommandHotkey: mobx.observer(CommandHotkey) };
 });
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -133,6 +142,50 @@ describe('ProjectSelect', () => {
 
         expect(store.selectedProjectId).toBe(FIXTURE_EMPTY_PROJECT_ID);
         expect(items()).toHaveLength(0);
+    });
+
+    it('shows the settings button of a row only while the pointer is over it', async () => {
+        await open();
+
+        // The list's own rule (`data-show`) hides it until the row is hovered.
+        for (const name of ['Personal', 'Car Rental', 'Clowdy'])
+            expect(settingsButton(name).getAttribute('data-show')).toBe('item-hover');
+    });
+
+    it('shows a card beside the row the keyboard is on, with the name, the keys and every folder, the main one first', async () => {
+        const data = createFixtureData();
+
+        data.projects
+            .find(project => project.id === FIXTURE_PROJECT_ID)!
+            .folders.push({ id: 'fld_api', path: '/Users/dev/car-rental-api' });
+        await open(data);
+
+        let disposers: (() => void)[] = [];
+
+        act(() => {
+            disposers = shellCommands(store).map(command => hotkeys.defineCommand({ ...command, scope: 'app' }));
+        });
+
+        try {
+            items()[0].focus();
+            await act(async () =>
+                items()[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
+            );
+            await flush();
+
+            const card = document.body.querySelector<HTMLElement>('[role="tooltip"]')!;
+
+            expect(card.querySelector('[class*="tipName"]')!.textContent).toBe('Car Rental');
+            // The modifiers depend on the platform the test runs on (`Ctrl Alt`, `⌥ ⌘` on a Mac): the digit is the slot.
+            expect(card.querySelector('kbd')!.parentElement!.textContent).toMatch(/1$/);
+            // Written as the row writes them: the home folder the fixture daemon names is `~`.
+            expect([...card.querySelectorAll('li')].map(item => item.textContent)).toEqual([
+                '~/car-rental',
+                '~/car-rental-api',
+            ]);
+        } finally {
+            for (const dispose of disposers) dispose();
+        }
     });
 
     it('opens the page of a project in Settings from the button at the end of its row, without switching to it', async () => {
