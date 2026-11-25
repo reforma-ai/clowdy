@@ -15,7 +15,7 @@
     padding-inline-start: var(--spacing-sm);
 }
 
-/* The ring's 6px inset and the picker's 4px start padding match its 10px end padding. */
+/* The ring's glyph sits 8px inside its button; the picker's 4px start padding keeps the glyph and the model's icon together. */
 :global([data-context-ring]) + .trigger {
     padding-inline-start: var(--spacing-xs);
 }

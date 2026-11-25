@@ -303,6 +303,13 @@ describe('its tooltip', () => {
         expect(meter()?.getAttribute('data-tone')).toBe('normal');
     });
 
+    it('says that pressing it summarizes, when the agent can', async () => {
+        await mount({ chat: chatOn(), run: runOf() });
+        await focusRing();
+
+        expect(tooltip()!.textContent).toContain('Click to summarize');
+    });
+
     it('goes away with the reading', async () => {
         const { update } = await mount({ chat: chatOn(), run: runOf() });
 
@@ -337,6 +344,7 @@ describe('compaction from the ring', () => {
         expect(ring()?.getAttribute('aria-disabled')).toBe('true');
         expect(ring()?.getAttribute('aria-label')).toBe('Context usage, 21% full');
         expect(meter()?.getAttribute('aria-valuenow')).toBe('21');
+        expect(tooltip()!.textContent).not.toContain('summarize');
 
         await press(ring());
 
@@ -405,6 +413,7 @@ describe('compaction from the ring', () => {
         expect(arc()).not.toBeNull();
         await focusRing();
         expect(meter()?.getAttribute('aria-valuenow')).toBe('21');
+        expect(tooltip()!.textContent).toContain('Summary queued');
 
         await press(ring());
         expect(sent).toEqual([]);
