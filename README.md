@@ -112,7 +112,29 @@ The longer-term goal is a self-hosted software factory. These features are still
 
 ## Getting started
 
-To run from source, you'll need [Bun](https://bun.sh) 1.4+, Node.js 22.12+, Git on your PATH and a supported agent installed and signed in.
+### Install
+
+On macOS, run this in a terminal:
+
+```sh
+curl -fsSL https://reforma-ai.github.io/clowdy/install.sh | bash
+```
+
+On Windows, run this in PowerShell:
+
+```powershell
+irm https://reforma-ai.github.io/clowdy/install.ps1 | iex
+```
+
+The script downloads the latest release, checks it against the checksum the release publishes, and installs Clowdy for your user: no administrator or `sudo`. On macOS it installs for Apple silicon or Intel, whichever your Mac is, into `/Applications` (or `~/Applications` if that is not writable), and it stops if Clowdy is running. Clowdy updates itself afterwards, so you run the script once. You can also download an installer from the [latest release](https://github.com/reforma-ai/clowdy/releases/latest).
+
+### First steps
+
+Clowdy works with agents you already have installed and signed in. Add a project with one or more local folders, choose an agent and start a chat. Select a worktree and a Hands-on or Hands-off mode in the composer.
+
+### Run from source
+
+You'll need [Bun](https://bun.sh) 1.4+, Node.js 22.12+, Git on your PATH and a supported agent installed and signed in.
 
 From a checkout of the repository:
 
@@ -122,8 +144,6 @@ bun install
 ```
 
 On Windows, use `bun run clowdy dev` instead.
-
-Add a project with one or more local folders, choose an installed agent and start a chat. Select a worktree and a Hands-on or Hands-off mode in the composer.
 
 To build an unpacked app for your platform, run `./clowdy build`. The result is in `apps/desktop/release/`.
 
