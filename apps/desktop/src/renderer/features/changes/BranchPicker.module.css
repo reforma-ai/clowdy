@@ -81,16 +81,33 @@
 .form {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-md);
     min-width: 0;
-    padding: var(--spacing-xxs) var(--spacing-lg) var(--spacing-lg);
 }
 
 .formHeader {
     display: flex;
     align-items: center;
-    gap: var(--spacing-xs);
-    margin-inline-start: calc(var(--spacing-xs) * -1);
+    gap: var(--spacing-sm);
+    min-height: var(--spacing-30);
+    padding: var(--spacing-xxs);
+}
+
+.formTitle {
+    @ruleset typography-heading-6;
+    color: var(--color-text);
+}
+
+.formContent {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-lg);
+    padding: var(--spacing-sm) var(--spacing-md) var(--spacing-md);
+}
+
+.startField {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
 }
 
 .choices {
