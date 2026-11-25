@@ -2484,6 +2484,12 @@
                     "name": "version-2",
                     "sourceHash": "1cf1b6a45943b67a7b0d7656a3f59de03cf40bdde66f2c46a857881af4be298a"
                 },
+                "16678:11": {
+                    "file": "merge-cancel.svg",
+                    "fingerprint": "ae9e1e53333a583aadfab91b2330a4fc3ca944443cf6e8ecad5622b3de6ea700",
+                    "name": "merge-cancel",
+                    "sourceHash": "3f39a06bc80f4704326f0e2e417b3993d7083e2d705c337db74170fa7328ed24"
+                },
                 "12365:119400": {
                     "file": "camera.svg",
                     "fingerprint": "f1ee86043b42948dc8a6c84539c89e43668fd67d08956f926ad9770112a42d2b",
