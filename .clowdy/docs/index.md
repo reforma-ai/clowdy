@@ -22,6 +22,8 @@
 
 ## Checks
 
+
+- [CI: red runs and run time](checks/2026-11-25-ci-red-runs-and-speed.md) covers the gate in four Linux containers, twice, the fixed tests and the independent read; the GitHub run is still to come. Status: passed with limits.
 - [Branch deletion](checks/2026-11-24-delete-branches.md) covers the context menu, confirmation, branch switching and protection against stale or unsafe deletions. Status: passed.
 
 - [Branch merge choices](checks/2026-11-24-branch-merge-choices.md) verifies the three modes and the result of the destination's Git policy. Status: passed with limits.

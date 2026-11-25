@@ -4,7 +4,7 @@
 - Date: 2026-11-25
 - Decided by: user (semi-manual)
 - Scope: The gate in `.github/workflows/ci.yml` and `gate.yml`, the tests that fail in it, and the Windows tests in `release-shell.yml`. Does not cover signing or notarizing the macOS shell, or the role of CI as a release gate (kept as it is, see decision 1).
-- Related tasks: none yet
+- Related tasks: CLO-171, CLO-172, CLO-173, CLO-174, CLO-175
 - Supersedes: none
 - Superseded by: none
 
