@@ -1154,6 +1154,8 @@ describe('Create PR in the sidebar', () => {
         expect(row(125)?.textContent).toContain('Release booking form');
         expect(row(125)?.querySelector('svg[data-state="merged"]')).not.toBeNull();
         expect(row(124)?.querySelector('svg[data-state="closed"]')).not.toBeNull();
+        expect(row(124)?.textContent).toBe('Try a new booking flowPR #124');
+        expect(row(124)?.getAttribute('aria-label')).toContain('Closed');
         expect(buttonOf('Archive PR #128')).toBeUndefined();
         expect(row(125)?.contains(buttonOf('Archive PR #125')!)).toBe(true);
         expect(buttonOf('Archive PR #125')?.getAttribute('data-show')).toBe('item-both');
@@ -1322,7 +1324,10 @@ describe('Create PR in the sidebar', () => {
 
         const pr = container.querySelector('[role="row"][aria-label^="Open pull request 54"]')!;
 
-        expect(pr.textContent).toContain('PR #54Draft');
+        expect(pr.textContent).toContain('PR #54');
+        expect(pr.textContent).not.toContain('PR #54Draft');
+        expect(pr.querySelector('svg[data-state="draft"]')).not.toBeNull();
+        expect(pr.getAttribute('aria-label')).toContain('Draft');
         expect(pr.querySelector('[data-check]')).toBeNull();
     });
 
