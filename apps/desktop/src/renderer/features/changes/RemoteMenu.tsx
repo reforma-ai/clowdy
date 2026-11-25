@@ -4,7 +4,16 @@ import { Popover } from '@clowdy/components/Popover';
 import { Spinner } from '@clowdy/components/Spinner';
 import { Text } from '@clowdy/components/Text';
 import { Tooltip } from '@clowdy/components/Tooltip';
-import { ArrowDown, ArrowDownRight, ArrowUp, ArrowUpRight, ChevronDown, Merge, Refresh } from '@clowdy/icons/14';
+import {
+    ArrowDown,
+    ArrowDownRight,
+    ArrowUp,
+    ArrowUpRight,
+    ChevronDown,
+    Merge,
+    MergeInto,
+    Refresh,
+} from '@clowdy/icons/14';
 import { useId, useState } from 'react';
 
 import { Unavailable } from '../../shared/Unavailable';
@@ -230,7 +239,7 @@ export function RemoteMenu({ facts, checkoutBranch }: { facts: PlaceFacts; check
                             {destination && (
                                 <MenuItem
                                     id="merge-into-checkout"
-                                    icon={<ArrowUpRight />}
+                                    icon={<MergeInto />}
                                     text="Merge into main worktree…"
                                     isDisabled={current === undefined || facts.switching}
                                 />
