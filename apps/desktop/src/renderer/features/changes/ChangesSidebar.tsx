@@ -110,6 +110,7 @@ export function ChangesSidebar({
                     )}
                     {branchName !== undefined && (
                         <CopyButton
+                            className={styles.copy}
                             value={branchName}
                             size="xs"
                             variant="filling"

@@ -1,10 +1,12 @@
 import { Button } from '@clowdy/components/Button';
+import { copyWithFeedback } from '@clowdy/components/CopyButton';
 import { Menu, MenuItem } from '@clowdy/components/List';
 import { Popover, useContextMenu } from '@clowdy/components/Popover';
 import { Separator } from '@clowdy/components/Separator';
 import { Spinner } from '@clowdy/components/Spinner';
 import { Text } from '@clowdy/components/Text';
-import { Plus, Trash } from '@clowdy/icons/14';
+import { toast } from '@clowdy/components/Toast';
+import { Copy, Plus, Trash } from '@clowdy/icons/14';
 import { type KeyboardEvent, type MouseEvent, useEffect, useMemo, useState } from 'react';
 
 import { homeFolder } from '../../shared/homeFolder';
@@ -75,6 +77,13 @@ export function BranchList({
         onDelete(menuBranch, Boolean(remote));
     };
 
+    const copyBranchName = () => {
+        const branch = options.find(option => option.id === menuBranch);
+        if (!branch) return;
+        close();
+        copyWithFeedback(branch.label, () => toast.success({ message: 'Branch name copied' }));
+    };
+
     const pick = async (name: string) => {
         const outcome = await model.switchTo(name);
 
@@ -125,7 +134,15 @@ export function BranchList({
                     spacing="xs"
                     data-branch-context-menu=""
                 >
-                    <Menu aria-label="Branch actions" size="sm" onAction={deleteBranch}>
+                    <Menu
+                        aria-label="Branch actions"
+                        size="sm"
+                        onAction={key => {
+                            if (key === 'copy') copyBranchName();
+                            else if (key === 'delete') deleteBranch();
+                        }}
+                    >
+                        <MenuItem id="copy" icon={<Copy aria-hidden="true" />} text="Copy branch name" />
                         <MenuItem
                             id="delete"
                             icon={<Trash aria-hidden="true" />}

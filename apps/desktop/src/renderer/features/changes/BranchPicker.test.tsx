@@ -173,6 +173,7 @@ afterEach(async () => {
     store.dispose();
     document.body.innerHTML = '';
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     vi.useRealTimers();
 });
 
@@ -342,6 +343,40 @@ describe('deleting a branch from the branch picker', () => {
         await press(item!);
         await settle();
         expect(confirmation()?.textContent).toContain('Delete dev?');
+    });
+});
+
+describe('copying a branch from the branch picker', () => {
+    it.each([
+        ['dev', 'dev', false],
+        ['feature/search', 'origin/feature/search', false],
+        ['main', 'main', true],
+        ['clowdy/ab12cd34', 'clowdy/ab12cd34', true],
+    ])('copies %s without switching or deleting it', async (name, expected, deleteDisabled) => {
+        const write = vi.fn().mockResolvedValue(undefined);
+        vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText: write } });
+        await start({ branches: ['remote', 'held'], clean: true });
+        const remove = vi.spyOn(transport, 'deleteGitBranch');
+        const switchTo = vi.spyOn(transport, 'switchGitBranch');
+        await open();
+
+        await act(async () => {
+            row(name).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 }));
+        });
+        await settle();
+        const copy = document.querySelector('[role="menuitem"][data-key="copy"]')!;
+        const removeItem = document.querySelector('[role="menuitem"][data-key="delete"]')!;
+        expect(copy.textContent).toContain('Copy branch name');
+        expect(copy.getAttribute('aria-disabled')).not.toBe('true');
+        expect(removeItem.getAttribute('aria-disabled') === 'true').toBe(deleteDisabled);
+
+        await press(copy);
+        await settle();
+        expect(write).toHaveBeenCalledExactlyOnceWith(expected);
+        expect(remove).not.toHaveBeenCalled();
+        expect(switchTo).not.toHaveBeenCalled();
+        expect(trigger()?.textContent).toBe('main');
+        expect(document.querySelector('[data-branch-context-menu]')).toBeNull();
     });
 });
 
