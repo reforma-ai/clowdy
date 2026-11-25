@@ -2,6 +2,8 @@
 
 ## Decisions
 
+- [Pull request history by branch](decisions/2026-11-25-branch-pull-request-history.md) records shared branch history, archive and chat list indicators. Status: accepted.
+
 - [Delete branches from Source Control](decisions/2026-11-24-delete-branches.md) records the branch menu, confirmation and origin option. Status: accepted.
 
 - [Source Control action priority](decisions/2026-11-24-source-control-action-priority.md) records which action wins and how base updates follow automatic Sync. Status: accepted.
@@ -21,6 +23,8 @@
 - [CI: red runs and run time](decisions/2026-11-25-ci-red-runs-and-speed.md) records that CI stays a report for now, how the red tests are sorted and fixed, and how the gate and the Windows release tests get faster. Status: accepted.
 
 ## Checks
+
+- [Branch pull request history](checks/2026-11-25-branch-pull-request-history.md) covers GitHub reads, shared counts, archive and missing worktrees. Status: passed.
 
 
 - [CI: red runs and run time](checks/2026-11-25-ci-red-runs-and-speed.md) covers the gate in four Linux containers, twice, the fixed tests and the independent read; the GitHub run is still to come. Status: passed with limits.

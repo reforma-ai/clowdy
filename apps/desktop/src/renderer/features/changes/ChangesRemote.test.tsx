@@ -15,13 +15,14 @@ import {
 import { FixtureTransport, type FixtureTransportOptions } from '../../daemon/fixtureTransport';
 import { TransportError } from '../../daemon/transport';
 import { RootStore, RootStoreProvider } from '../../stores';
-import { openEffects } from '../openWith';
+import { openEffects, refreshFolderGit } from '../openWith';
+import { branchPullRequestsOf } from './branchPullRequests';
 import { ChangesSidebar } from './ChangesSidebar';
 import { type GitPlaceKey, gitFactsOf } from './gitFacts';
 import { placeChangesOf } from './PlaceChanges';
 import { sourceControlPreferences } from './sourceControlPreferences';
 
-import type { GitRemoteResult, GitSyncProgress, GitSyncResult } from '@clowdy/protocol';
+import type { GitPullRequestSummary, GitRemoteResult, GitSyncProgress, GitSyncResult } from '@clowdy/protocol';
 import type { FixtureGitWritesOptions } from '../../daemon/fixtureGitWrites';
 import type { Place } from '../sidePanel/currentPlace';
 import type { PlaceChanges } from './PlaceChanges';
@@ -152,6 +153,17 @@ async function draw(place = currentPlace) {
 const noPullRequest = (data: FixtureData) => {
     data.pullRequests[CAR_RENTAL] = { checkout: 'none', worktree: 'none' };
 };
+
+const historyBranch = 'clowdy/ab12cd34';
+const historyPr = (number: number, state: GitPullRequestSummary['state'], title: string): GitPullRequestSummary => ({
+    number,
+    state,
+    title,
+    url: `https://github.com/acme/car-rental/pull/${number}`,
+    head: historyBranch,
+    base: 'main',
+    updatedAt: Date.UTC(2026, 10, 22, 9, 30),
+});
 
 beforeEach(() => {
     const create = Modal.create.bind(Modal);
@@ -1120,6 +1132,135 @@ describe('merging branches from the sync menu', () => {
 });
 
 describe('Create PR in the sidebar', () => {
+    it('stacks the branch history and archives or restores only completed PRs', async () => {
+        await start({
+            tweak: data => {
+                data.branchPullRequests = {
+                    [CAR_RENTAL]: {
+                        [historyBranch]: [
+                            historyPr(128, 'open', 'Charge a weekend surcharge'),
+                            historyPr(125, 'merged', 'Release booking form'),
+                            historyPr(124, 'closed', 'Try a new booking flow'),
+                        ],
+                    },
+                };
+            },
+        });
+        const row = (number: number) => container.querySelector(`button[aria-label^="Open pull request ${number} "]`);
+
+        expect(row(128)?.querySelector('[data-check="passed"]')?.textContent).toBe('3');
+        expect(row(125)?.textContent).toContain('Release booking form');
+        expect(row(125)?.querySelector('svg[data-state="merged"]')).not.toBeNull();
+        expect(row(124)?.querySelector('svg[data-state="closed"]')).not.toBeNull();
+        expect(buttonOf('Archive PR #128')).toBeUndefined();
+        expect(buttonOf('Archive PR #125')).toBeDefined();
+        expect(buttonOf('Archive PR #124')).toBeDefined();
+
+        await press(row(124)!);
+        expect(opened).toEqual(['https://github.com/acme/car-rental/pull/124']);
+        const archive = vi.spyOn(transport, 'setGitPullRequestArchived');
+        await press(buttonOf('Archive PR #125')!);
+        await settle();
+        expect(archive).toHaveBeenCalledWith(FIXTURE_PROJECT_ID, {
+            folderId: WORKTREE.folderId,
+            branch: historyBranch,
+            number: 125,
+            archived: true,
+            repo: { host: 'github.com', owner: 'acme', name: 'car-rental' },
+        });
+        expect(row(125)).toBeNull();
+        expect(row(124)).not.toBeNull();
+
+        await press(buttonOf('Archived (1)')!);
+        await settle();
+        expect(row(125)).not.toBeNull();
+        await press(buttonOf('Restore PR #125')!);
+        await settle();
+        expect(row(125)).not.toBeNull();
+        expect(buttonOf('Archived (1)')).toBeUndefined();
+        expect(archive.mock.calls[1]?.[1]).toMatchObject({ number: 125, archived: false });
+    });
+
+    it('still offers Create PR when the branch moved past completed pull requests', async () => {
+        await start({
+            tweak: data => {
+                noPullRequest(data);
+                data.branchPullRequests = {
+                    [CAR_RENTAL]: { [historyBranch]: [historyPr(125, 'merged', 'Previous release')] },
+                };
+            },
+            gitWrites: { clean: true, remote: 'level' },
+        });
+
+        expect(container.querySelector('button[aria-label^="Open pull request 125 "]')).not.toBeNull();
+        expect(createPRButton()).toBeDefined();
+    });
+
+    it('keeps the last checked-out branch history when its worktree disappears', async () => {
+        await start({
+            tweak: data => {
+                data.branchPullRequests = {
+                    [CAR_RENTAL]: {
+                        [historyBranch]: [historyPr(125, 'merged', 'Original branch release')],
+                        'feature/switched': [
+                            { ...historyPr(190, 'merged', 'New branch release'), head: 'feature/switched' },
+                        ],
+                    },
+                };
+            },
+            gitWrites: { clean: true, remote: 'level' },
+        });
+        const place = { folderId: WORKTREE.folderId, workspaceId: WORKTREE.workspaceId };
+        const original = await transport.getGitStatus(FIXTURE_PROJECT_ID, place);
+        if (!original.isRepository) throw new Error('Fixture is not a repository');
+        const info = await transport.getProjectsInfo();
+        let exists = true;
+        vi.spyOn(transport, 'getProjectsInfo').mockImplementation(async projectId =>
+            info
+                .filter(project => !projectId || project.projectId === projectId)
+                .map(project => ({
+                    ...project,
+                    workspaces: project.workspaces?.map(workspace =>
+                        workspace.workspaceId === WORKTREE.workspaceId
+                            ? { ...workspace, exists, branch: exists ? 'feature/switched' : undefined }
+                            : workspace
+                    ),
+                }))
+        );
+        const readStatus = vi.spyOn(transport, 'getGitStatus').mockResolvedValue({
+            ...original,
+            head: { kind: 'branch', name: 'feature/switched', commit: 'f'.repeat(40) },
+        });
+
+        await act(async () => {
+            refreshFolderGit(FIXTURE_PROJECT_ID, WORKTREE.folderId);
+            await model.facts.status.refresh();
+        });
+        await vi.waitFor(() =>
+            expect(container.querySelector('button[aria-label^="Open pull request 190 "]')).not.toBeNull()
+        );
+        expect(
+            branchPullRequestsOf(transport).workspaceHistoryBranch(FIXTURE_PROJECT_ID, currentPlace.workspace!, {
+                gone: true,
+            })
+        ).toBe('feature/switched');
+
+        exists = false;
+        readStatus.mockRejectedValue(new TransportError('The worktree is missing', 503));
+        await act(async () => {
+            refreshFolderGit(FIXTURE_PROJECT_ID, WORKTREE.folderId);
+            await model.facts.status.refresh();
+        });
+        await settle();
+
+        expect(container.querySelector('button[aria-label^="Open pull request 190 "]')).not.toBeNull();
+        expect(container.querySelector('button[aria-label^="Open pull request 125 "]')).toBeNull();
+        expect(container.querySelector('button[aria-label^="Open pull request 128 "]')).toBeNull();
+        expect(syncButton()).toBeNull();
+        expect(createPRButton()).toBeUndefined();
+        expect(buttonOf('Archive PR #190')).toBeDefined();
+    });
+
     it('shows one standard pull request button with failed and passed check counts', async () => {
         await start();
 
