@@ -12,7 +12,7 @@ import {
 import { Panel, PanelContent } from '@clowdy/components/Panel';
 import { Popover, PopoverScroll, PopoverTrigger, useContextMenu } from '@clowdy/components/Popover';
 import { Show } from '@clowdy/components/Show';
-import { Archive, Check, ChevronDown, ChevronRight, Message, More, NewChat, Version } from '@clowdy/icons/14';
+import { Archive, Check, ChevronDown, ChevronRight, Merge, Message, More, NewChat } from '@clowdy/icons/14';
 import { observer } from 'mobx-react-lite';
 import {
     type CSSProperties,
@@ -741,7 +741,7 @@ const BranchPullRequestBadge = observer(function BranchPullRequestBadge({
             aria-label={label}
             title={label}
         >
-            <Version aria-hidden="true" />
+            <Merge aria-hidden="true" />
             {pullRequests.length > 1 && <span>{pullRequests.length}</span>}
         </span>
     );

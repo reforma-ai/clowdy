@@ -1,6 +1,6 @@
 import { Button } from '@clowdy/components/Button';
 import { Text } from '@clowdy/components/Text';
-import { CircleCheck, CircleWarning, Version } from '@clowdy/icons/14';
+import { CircleCheck, CircleWarning, Merge } from '@clowdy/icons/14';
 
 import { openEffects } from '../openWith';
 import { PULL_REQUEST_STATE_LABEL } from './gitSummary';
@@ -34,7 +34,7 @@ export function PullRequestChip({
             tooltipPlacement="bottom"
             onPress={() => openEffects.openUrl(pr.url)}
         >
-            <Version className={styles.prMark} data-state={pr.state} aria-hidden="true" />
+            <Merge className={styles.prMark} data-state={pr.state} aria-hidden="true" />
             <Text truncate className={showTitle ? styles.prNumber : undefined}>{`PR #${pr.number}`}</Text>
             {showTitle && (
                 <Text truncate variant="xs" color="secondary" className={styles.prTitle}>
