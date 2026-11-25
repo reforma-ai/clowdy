@@ -101,6 +101,38 @@ function snapshot(path: string) {
 /** The branch the place is on. */
 const branchOf = (path: string) => git(path, 'branch', '--show-current');
 
+test('creates a branch without changing the checkout and refuses invalid or existing names', async () => {
+    const h = await start();
+    const { path } = withOther();
+    const { project, folderId } = await open(path, h);
+    writeFileSync(join(path, 'untracked.txt'), 'keep');
+    const before = snapshot(path);
+    const create = (branch: string, start: string) =>
+        h.fetch(`/v1/projects/${project.id}/git/branch-create`, {
+            method: 'POST',
+            body: JSON.stringify({ folderId, branch, create: { start } }),
+        });
+    const answer = await create('feature/new', 'current');
+    expect(answer.status).toBe(200);
+    expect(await json<GitSwitchResult>(answer)).toMatchObject({
+        created: true,
+        head: { kind: 'branch', name: 'main' },
+    });
+    expect(git(path, 'rev-parse', 'feature/new')).toBe(before.head);
+    expect(branchOf(path)).toBe('main');
+    expect(left(path)).toEqual(before.status);
+    expect((await create('feature/new', 'current')).status).toBe(400);
+    expect((await create('bad name', 'current')).status).toBe(400);
+    expect((await create('other-new', 'wrong')).status).toBe(400);
+    expect(branchOf(path)).toBe('main');
+
+    git(path, 'switch', '-q', 'other');
+    const fromDefault = await create('feature/from-default', 'default');
+    expect(fromDefault.status).toBe(200);
+    expect(git(path, 'rev-parse', 'feature/from-default')).toBe(git(path, 'rev-parse', 'main'));
+    expect(branchOf(path)).toBe('other');
+});
+
 /** A repository on `main` with a branch `other` that has a file of its own. */
 function withOther() {
     const found = repository();

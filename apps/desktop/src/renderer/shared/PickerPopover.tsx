@@ -44,6 +44,8 @@ export interface PickerListProps {
 }
 
 export interface PickerPopoverProps extends Omit<PickerListProps, 'onPick'> {
+    /** An alternative pane inside the same popover. */
+    content?: ReactNode;
     /** Drawn under the list inside the popover: a reason the options are off, a way out. */
     footer?: ReactNode;
     /** The element the popover opens beside. Without one it opens near the top of the window. */
@@ -203,6 +205,7 @@ export function PickerPopover({
     empty,
     listClassName,
     footer,
+    content,
     placement,
     onPick,
     onClose,
@@ -233,16 +236,20 @@ export function PickerPopover({
                 className={styles.popover}
                 data-picker-popover=""
             >
-                <PickerList
-                    options={options}
-                    selectedIds={selectedIds}
-                    aria-label={ariaLabel}
-                    placeholder={placeholder}
-                    empty={empty}
-                    listClassName={listClassName}
-                    onPick={pick}
-                />
-                {footer}
+                {content ?? (
+                    <>
+                        <PickerList
+                            options={options}
+                            selectedIds={selectedIds}
+                            aria-label={ariaLabel}
+                            placeholder={placeholder}
+                            empty={empty}
+                            listClassName={listClassName}
+                            onPick={pick}
+                        />
+                        {footer}
+                    </>
+                )}
             </Popover>
         </>
     );

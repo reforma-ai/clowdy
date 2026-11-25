@@ -349,6 +349,19 @@ export class HttpTransport implements Transport {
         } satisfies GitSwitchRequest);
     }
 
+    createGitBranch(
+        projectId: ProjectId,
+        place: PlaceRef,
+        branch: string,
+        create: NonNullable<GitSwitchRequest['create']>
+    ): Promise<GitSwitchResult> {
+        return this.#write(ROUTES.projectGitBranchCreate(projectId), {
+            ...place,
+            branch,
+            create,
+        } satisfies GitSwitchRequest);
+    }
+
     branchMergeGit(
         projectId: ProjectId,
         place: PlaceRef,

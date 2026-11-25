@@ -2,13 +2,17 @@ import { Text } from '@clowdy/components/Text';
 import { useMemo } from 'react';
 
 import { homeFolder } from '../../shared/homeFolder';
-import { PickerPopover } from '../../shared/PickerPopover';
+import { BranchPickerWithCreate } from './BranchPickerWithCreate';
 import styles from './MainBranchPicker.module.css';
 import { currentBranchOf, type MainBranchBlock, mainBranchOptions } from './mainBranch';
 
+import type { GitHead } from '@clowdy/protocol';
+import type { BranchSwitch } from '../changes/BranchSwitch';
 import type { BranchListing } from '../changes/branchChoices';
 
 export interface MainBranchPickerProps {
+    model?: BranchSwitch;
+    head?: GitHead;
     /** The row of the menu the list opens beside. */
     anchor: Element;
     /** The folder's branches, once read. */
@@ -33,6 +37,8 @@ export interface MainBranchPickerProps {
  * after a refusal at send the daemon's reason is there, and stays until the choice changes.
  */
 export function MainBranchPicker({
+    model,
+    head,
     anchor,
     listing,
     loading,
@@ -52,7 +58,9 @@ export function MainBranchPicker({
     const why = refusal ?? block;
 
     return (
-        <PickerPopover
+        <BranchPickerWithCreate
+            model={model}
+            head={head}
             anchor={anchor}
             placement="right top"
             options={options}

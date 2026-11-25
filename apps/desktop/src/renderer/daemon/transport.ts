@@ -241,6 +241,12 @@ export interface Transport {
         branch: string,
         create?: GitSwitchRequest['create']
     ) => Promise<GitSwitchResult>;
+    createGitBranch: (
+        projectId: ProjectId,
+        place: PlaceRef,
+        branch: string,
+        create: NonNullable<GitSwitchRequest['create']>
+    ) => Promise<GitSwitchResult>;
     /** Previews or merges two branches of the place's repository, or finishes an action on the named destination. */
     branchMergeGit: (
         projectId: ProjectId,

@@ -34,11 +34,13 @@ export function NewBranchForm({
     starts,
     onBack,
     onSwitched,
+    createOnly = false,
 }: {
     model: BranchSwitch;
     starts: NewBranchStarts;
     onBack: () => void;
-    onSwitched: () => void;
+    onSwitched: (branch: string) => void;
+    createOnly?: boolean;
 }) {
     const [name, setName] = useState('');
     const [start, setStart] = useState<GitSwitchStart>(starts.default === undefined ? 'current' : 'default');
@@ -47,9 +49,9 @@ export function NewBranchForm({
     const create = async () => {
         if (!ready) return;
 
-        const outcome = await model.switchTo(name.trim(), { start });
+        const outcome = await model.switchTo(name.trim(), { start }, createOnly);
 
-        if (outcome.ok && outcome.result.warning === undefined) onSwitched();
+        if (outcome.ok && outcome.result.warning === undefined) onSwitched(name.trim());
     };
 
     return (

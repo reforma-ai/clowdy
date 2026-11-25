@@ -134,6 +134,40 @@ export class GitSwitch {
         });
     }
 
+    /** Create a branch without changing any checkout. */
+    async createBranch(place: Place, branch: string, create: { start: string }): Promise<GitSwitchResult> {
+        const start = startOf(create);
+        const name = await this.#nameOf(place, branch);
+        return exclusive(this.#store, writeLine(place), this.#stopper.signal, async () => {
+            const cwd = place.path;
+            if (!(await workingTreeRoot(cwd))) throw invalid('The folder is not the root of a git repository');
+            const repo = await switchRepositoryKey(cwd);
+            return exclusive(this.#store, repo, this.#stopper.signal, async () => {
+                const head = await gitAnswer(cwd, ['rev-parse', '--verify', '--quiet', 'HEAD']);
+                if (!head) throw invalid('The repository has no commits yet');
+                if (await refExists(cwd, `refs/heads/${name}`)) throw invalid(`A branch called ${name} exists already`);
+                if (await refExists(cwd, `refs/remotes/${ORIGIN}/${name}`))
+                    throw invalid(`${ORIGIN} has a branch called ${name} already`);
+                const commit = await startCommit(place, start, head);
+                const env = await this.environment.of(cwd);
+                const run = await runProgram('git', ['branch', '--no-track', '--', name, commit], {
+                    env,
+                    cwd,
+                    timeoutMs: this.#timeoutMs,
+                    maxChars: MAX_PRINTED_CHARS,
+                    signal: this.#stopper.signal,
+                    stopSignal: 'SIGTERM',
+                    leftoverGraceMs: LEFTOVER_GRACE_MS,
+                });
+                if (run.error === 'stopped') throw unavailable('The daemon is stopping');
+                if (run.timedOut) throw unavailable('Creating the branch did not finish in time');
+                if (run.error !== undefined) throw unavailable('git is not installed or not on PATH');
+                if (run.code !== 0) throw conflict(failureLine(run.stderr, run.stdout));
+                return { ...(await this.#where(cwd)), created: true };
+            });
+        });
+    }
+
     /** Preview or delete the named branch on the same write lines as a switch, including any switch needed to leave it. */
     async deleteBranch(
         project: Project,

@@ -11,8 +11,9 @@ import { OverlayTriggerStateContext, PopoverContext, type PressEvent } from 'rea
 
 import { tildePath } from '../../shared/displayPath';
 import { homeFolder } from '../../shared/homeFolder';
-import { isInPickerPopover, type PickerOption, PickerPopover } from '../../shared/PickerPopover';
+import { isInPickerPopover, type PickerOption } from '../../shared/PickerPopover';
 import { Unavailable } from '../../shared/Unavailable';
+import { BranchPickerWithCreate } from './BranchPickerWithCreate';
 import { ChipTrigger } from './ChipTrigger';
 import { MainBranchPicker } from './MainBranchPicker';
 import { type MainBranchBlock } from './mainBranch';
@@ -32,9 +33,11 @@ import type {
     ChatWorkspace,
     ChatWorkspaceChoice,
     FolderId,
+    GitHead,
     GitWorktree,
     ProjectFolder,
 } from '@clowdy/protocol';
+import type { BranchSwitch } from '../changes/BranchSwitch';
 import type { BranchListing } from '../changes/branchChoices';
 import type { FolderRepository } from './useFolderRepository';
 
@@ -107,6 +110,8 @@ const MANAGE_KEY = 'manage';
  * window knows, `block`; from the daemon when it refused at send, `refusal`), and the switch that is running while the daemon makes the chat.
  */
 export interface MainBranchControls {
+    model?: BranchSwitch;
+    head?: GitHead;
     listing: BranchListing | undefined;
     loading: boolean;
     listFailure: string | undefined;
@@ -253,6 +258,7 @@ function WorkspaceChip({
     const openList = (from: Element | null) => {
         setBranchAnchor(null);
         setListAnchor(rowOf(from));
+        main?.onOpen();
     };
     const openBranches = (from: Element | null) => {
         setListAnchor(null);
@@ -480,6 +486,8 @@ function WorkspaceChip({
                         <PopoverContext.Provider value={null}>
                             <OverlayTriggerStateContext.Provider value={null}>
                                 <MainBranchPicker
+                                    model={main.model}
+                                    head={main.head}
                                     anchor={branchAnchor}
                                     listing={main.listing}
                                     loading={main.loading}
@@ -502,7 +510,9 @@ function WorkspaceChip({
                     {listAnchor && (
                         <PopoverContext.Provider value={null}>
                             <OverlayTriggerStateContext.Provider value={null}>
-                                <PickerPopover
+                                <BranchPickerWithCreate
+                                    model={main?.model}
+                                    head={main?.head}
                                     anchor={listAnchor}
                                     placement="right top"
                                     options={baseOptions(git)}

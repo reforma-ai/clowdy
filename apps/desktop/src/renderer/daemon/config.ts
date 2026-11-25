@@ -128,6 +128,7 @@ const unconfigured: Transport = {
     getGitBranches: noDaemon,
     deleteGitBranch: noDaemon,
     switchGitBranch: noDaemon,
+    createGitBranch: noDaemon,
     branchMergeGit: noDaemon,
     getProjectWorktrees: noDaemon,
     getGitPullRequest: noDaemon,

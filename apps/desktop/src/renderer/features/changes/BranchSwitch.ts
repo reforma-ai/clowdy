@@ -8,7 +8,8 @@ import type { GitSwitchRequest, GitSwitchResult } from '@clowdy/protocol';
 import type { BranchListing } from './branchChoices';
 
 /** What the switch asks of the transport. */
-export type BranchTransport = Pick<Transport, 'getGitBranches' | 'switchGitBranch'>;
+export type BranchTransport = Pick<Transport, 'getGitBranches' | 'switchGitBranch'> &
+    Partial<Pick<Transport, 'createGitBranch'>>;
 
 /** Why a switch was not made: the daemon's short reason as it gave it (`Commit or discard the changes first`, `Checked out in ~/work/app`), and the line it adds under it (`3 files changed`). */
 export interface SwitchFailure {
@@ -92,7 +93,7 @@ export class BranchSwitch {
      * Switches the folder's checkout to a branch, or makes one (`create`) and switches to it, and says how it ended; it never rejects. One at a time: while one runs another is refused at once,
      * with nothing sent. The daemon judges everything (the tree, the runs, the name, the other worktrees); this only asks, and keeps the reason it gives.
      */
-    async switchTo(branch: string, create?: GitSwitchRequest['create']): Promise<SwitchOutcome> {
+    async switchTo(branch: string, create?: GitSwitchRequest['create'], createOnly = false): Promise<SwitchOutcome> {
         if (this.busy) return { ok: false, failure: { message: 'A switch is running' } };
 
         const { key } = this.facts;
@@ -100,7 +101,12 @@ export class BranchSwitch {
         this.#begin(branch);
 
         try {
-            const result = await this.transport.switchGitBranch(key.projectId, placeRef(key), branch, create);
+            if (createOnly && (!create || !this.transport.createGitBranch))
+                throw new Error('Branch creation is unavailable');
+            const result =
+                createOnly && create && this.transport.createGitBranch
+                    ? await this.transport.createGitBranch(key.projectId, placeRef(key), branch, create)
+                    : await this.transport.switchGitBranch(key.projectId, placeRef(key), branch, create);
 
             runInAction(() => {
                 // The old list says the old branch is the current one.

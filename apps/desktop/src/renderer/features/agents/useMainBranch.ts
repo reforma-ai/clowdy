@@ -59,6 +59,8 @@ export function useMainBranch(
 
     return {
         controls: {
+            model,
+            head: facts.status.value?.isRepository === true ? facts.status.value.head : undefined,
             listing: model.listing,
             loading: model.loading,
             listFailure: model.listFailure,

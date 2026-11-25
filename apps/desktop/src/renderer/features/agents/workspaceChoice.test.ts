@@ -66,8 +66,8 @@ describe('what a new chat is sent with', () => {
         });
     });
 
-    it('drops a base the repository no longer has, which is the default one, and takes the commit a detached HEAD gives as the default', () => {
-        expect(effectiveChoice({ mode: 'new', base: 'gone' }, ready(git))).toEqual({ mode: 'new' });
+    it('keeps a chosen base for the daemon to validate, and takes the commit a detached HEAD gives as the default', () => {
+        expect(effectiveChoice({ mode: 'new', base: 'gone' }, ready(git))).toEqual({ mode: 'new', base: 'gone' });
         expect(effectiveChoice({ mode: 'new', base: '5c4d3e2' }, ready({ ...git, defaultBranch: '5c4d3e2' }))).toEqual({
             mode: 'new',
             base: '5c4d3e2',

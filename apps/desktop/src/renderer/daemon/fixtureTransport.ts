@@ -722,6 +722,17 @@ export class FixtureTransport implements Transport {
         return { state: 'done', target, commit, canPush: this.#gitRemote.hasOrigin };
     }
 
+    async createGitBranch(
+        projectId: ProjectId,
+        place: PlaceRef,
+        branch: string,
+        create: NonNullable<GitSwitchRequest['create']>
+    ): Promise<GitSwitchResult> {
+        const { folder, head, workspace } = this.#gitPlace(projectId, place);
+        if (!head?.branch) throw new TransportError('The folder is not the root of a git repository', 400);
+        return this.#branches.switch(this.#branchPlace(projectId, folder, head, workspace), { branch, create }, true);
+    }
+
     async switchGitBranch(
         projectId: ProjectId,
         place: PlaceRef,

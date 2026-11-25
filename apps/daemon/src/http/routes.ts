@@ -706,6 +706,21 @@ export function createRoutes(context: RouteContext): Route[] {
         },
         {
             method: 'POST',
+            pattern: /^\/v1\/projects\/([^/]+)\/git\/branch-create$/,
+            handle: async (request, _url, [id]) => {
+                const body = await readJson(request, gitSwitchBody);
+                const project = requireProject(store, id);
+                const place = resolvePlace(store, project, body.folderId, body.workspaceId);
+                if (!body.create) throw invalid('Choose where the branch starts');
+                const create = body.create;
+                context.keepOpen(request);
+                return gitOperation(async () =>
+                    json(await services.gitSwitch.createBranch(place, body.branch, create))
+                );
+            },
+        },
+        {
+            method: 'POST',
             pattern: /^\/v1\/projects\/([^/]+)\/git\/branch-delete$/,
             handle: async (request, _url, [id]) => {
                 const body = await readJson(request, gitBranchDeleteBody);
