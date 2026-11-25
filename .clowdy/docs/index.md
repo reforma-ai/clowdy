@@ -2,6 +2,8 @@
 
 ## Decisions
 
+- [Clone a repository into a project](decisions/2026-11-25-clone-repository-into-projects.md) records that folders can be cloned from a git address, from the shared folder list, with no fork on GitHub. Status: accepted.
+
 - [Interface copy and automatic sync](decisions/2026-11-25-interface-copy-and-automatic-sync.md) records the merge and commit labels, preview layout and copy conventions. Status: accepted.
 
 - [Pull request history by branch](decisions/2026-11-25-branch-pull-request-history.md) records shared branch history, archive and chat list indicators. Status: accepted.

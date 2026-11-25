@@ -520,6 +520,32 @@ export type GitSyncEvent =
     | { type: 'error'; status: number; message: string; hint?: string };
 
 /**
+ * What `GET /v1/git/clone-target?url=&folder=` says of where a clone would go, so the window can show the whole path before anything is cloned. `folder` is the one the
+ * person chose (absent: the daemon's projects folder, where a folderless project goes). The target is `folder` itself when that is missing or an empty folder, which is
+ * what the person means by "clone into this folder", and `folder/<repository>` when it holds anything: the name is the last part of `url` without `.git`.
+ */
+export interface GitCloneTarget {
+    /** The folder the person chose, or the projects folder when none was: where the clone goes, in the person's words. */
+    folder: string;
+    /** The folder the repository would be cloned into, absolute. Absent while `url` names no repository (empty, or not an address git takes). */
+    path?: string;
+    /** Why a clone cannot go to `path` (it exists and is not an empty folder, it is a file); absent when it can. */
+    blocked?: string;
+}
+
+/** The body of `POST /v1/git/clone`: the address and the absolute folder to clone into (what `GitCloneTarget.path` said). */
+export interface GitCloneRequest {
+    url: string;
+    path: string;
+}
+
+/** SSE messages from `POST /v1/git/clone`. `progress` is git's own line (`Receiving objects`) with its percent when it gave one. Closing the request cancels the clone and removes what it made. */
+export type GitCloneEvent =
+    | { type: 'progress'; label: string; percent?: number }
+    | { type: 'result'; path: string }
+    | { type: 'error'; status: number; message: string; hint?: string };
+
+/**
  * What a remote action did, so the client reads what it changed again. `upstream` is the branch's upstream as the action left it, with how far apart the two are (a push leaves 0
  * and 0); absent when the branch has none (a fetch on a branch that tracks nothing, a detached HEAD).
  */
