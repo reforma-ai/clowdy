@@ -461,6 +461,30 @@ export type GitPullRequestInfo =
           pullRequest?: GitPullRequest;
       };
 
+/** A pull request opened from the branch, independent of the current checkout tip. Archive is local to Clowdy. */
+export type GitPullRequestSummary = Pick<
+    GitPullRequest,
+    'number' | 'title' | 'url' | 'state' | 'base' | 'head' | 'updatedAt'
+> & { archived?: true };
+
+/** All pull requests from a repository's branch, newest first. A stale answer is kept when GitHub cannot be reached. */
+export interface GitBranchPullRequests {
+    branch: string;
+    access: GitHubAccess;
+    repo?: GitHubRepo;
+    pullRequests: GitPullRequestSummary[];
+    stale?: true;
+}
+
+export interface GitPullRequestArchiveRequest {
+    folderId: string;
+    branch: string;
+    number: number;
+    archived: boolean;
+    /** The repository whose PR the user saw; a changed origin must not archive another repository's number. */
+    repo: GitHubRepo;
+}
+
 /**
  * How a branch is moved. `fetch`, `pull` and `push` go to and from `origin` (publishing is a `push` of a branch that is not on origin under its own name). `update` merges the place's base into
  * the branch. `abort` undoes a merge that is in progress.

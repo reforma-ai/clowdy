@@ -3,18 +3,33 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MAX_GIT_CHECKS } from '@clowdy/protocol';
 
+import {
+    canArchivePullRequest,
+    readPullRequestHistory,
+    repositoryKey,
+    setPullRequestArchive,
+    withPullRequestArchives,
+    writePullRequestHistory,
+} from '../db/pullRequests';
 import { gitAnswer, gitLine, gitRead } from '../domain/git';
-import { unavailable } from '../errors';
+import { CommandError, conflict, invalid, unavailable } from '../errors';
 import { runProgram } from '../providers/exec';
 import { parseRemote } from './githubRemote';
 import { asObject, asString, assemblePullRequest, choosePullRequest, readPullRequest } from './pullRequestRollup';
 import { workingTreeRoot } from './state';
 import { commitAt } from './status';
 
-import type { GitHubAccess, GitHubRepo, GitPullRequest, GitPullRequestInfo } from '@clowdy/protocol';
+import type {
+    GitBranchPullRequests,
+    GitHubAccess,
+    GitHubRepo,
+    GitPullRequest,
+    GitPullRequestInfo,
+    GitPullRequestSummary,
+} from '@clowdy/protocol';
 import type { Place } from '../domain/places';
-import type { CommandError } from '../errors';
 import type { RunResult } from '../providers/exec';
+import type { Store } from '../store';
 import type { Json } from './pullRequestRollup';
 
 type Env = Record<string, string | undefined>;
@@ -42,6 +57,16 @@ const READ_MAX_CHARS = 2 * 1024 * 1024;
 
 /** How many pull requests of one branch are read: a branch name that was used again and again has more, and the newest are what counts. */
 const PULL_REQUESTS_READ = 20;
+
+/** History reads are much cheaper than the current PR's check rollup; limit the concurrent branch reads across windows. */
+const HISTORY_READ_CONCURRENCY = 4;
+const HISTORY_TTL_MS = 30_000;
+const HISTORY_QUERY = [
+    'query($owner: String!, $name: String!, $head: String!, $cursor: String) { repository(owner: $owner, name: $name) {',
+    'pullRequests(headRefName: $head, first: 100, after: $cursor, orderBy: { field: CREATED_AT, direction: DESC }) {',
+    'nodes { number title state url isDraft baseRefName headRefName updatedAt isCrossRepository headRepositoryOwner { login } }',
+    'pageInfo { hasNextPage endCursor } } } }',
+].join(' ');
 
 /** The fields of a pull request that an older GitHub Enterprise may not have: a server that says it has none of one is asked again without it, and remembered. */
 const OPTIONAL_FIELDS = ['reviewDecision', 'mergeStateStatus', 'mergeable'];
@@ -219,6 +244,45 @@ function unanswered(run: RunResult, subject: string): CommandError | undefined {
 const answerKey = (repo: GitHubRepo, branch: string, commit: string): string =>
     `${repo.host}/${repo.owner}/${repo.name}#${branch}@${commit}`;
 
+const historyKey = (repo: GitHubRepo, branch: string): string => JSON.stringify([repositoryKey(repo), branch]);
+
+/** A branch history does not need its ref or checkout to still exist. Only the name must be a valid local branch name. */
+async function checkHistoryBranch(branch: string): Promise<void> {
+    if (
+        !branch ||
+        branch.length > 250 ||
+        branch === '@' ||
+        branch === 'HEAD' ||
+        branch.startsWith('-') ||
+        branch.includes('\0')
+    )
+        throw invalid('Choose a branch');
+
+    const read = await gitRead(tmpdir(), ['check-ref-format', `refs/heads/${branch}`]);
+
+    if (!read.ok) {
+        if (read.reason === 'unavailable') throw unavailable('git did not answer');
+
+        throw invalid('Choose a branch');
+    }
+}
+
+/** The summary does not carry any of the current tip's expensive CI or mergeability detail. */
+function summaryOf(node: unknown, repo: GitHubRepo, branch: string): GitPullRequestSummary | undefined {
+    const raw = readPullRequest(node, repo.owner);
+
+    if (!raw || !Number.isSafeInteger(raw.number) || raw.number <= 0) throw unavailable(UNREADABLE);
+    if (raw.fork || raw.head !== branch) return undefined;
+
+    // GitHub supplies a public web link to the PR, never an embedded credential.
+    const link = URL.parse(raw.url);
+    if (!link || link.username || link.password) throw unavailable(UNREADABLE);
+
+    const { number, title, url, state, base, head, updatedAt } = assemblePullRequest(raw);
+
+    return { number, title, url, state, base, head, updatedAt };
+}
+
 /**
  * Whether the place's HEAD has commits that the pull request's branch lacks, so the pull request is about work the branch has left behind. A commit the repository does
  * not have (the person has not fetched it), a git that cannot say, and a hash that is not one count as "not moved past", so the pull request stays.
@@ -243,6 +307,9 @@ export class PullRequests {
     readonly #presence: Cache<string | undefined>;
     readonly #logins: Cache<boolean>;
     readonly #answers: Cache<GitPullRequestInfo>;
+    readonly #historyAnswers: Cache<GitBranchPullRequests>;
+    #historyRunning = 0;
+    readonly #historyWaiting: Array<() => void> = [];
     /** The base of the pull request last found for a place, and the branch it was found for. */
     readonly #hints: Cache<{ branch: string; base: string }>;
     /** What a host's server does not have of `OPTIONAL_FIELDS`. */
@@ -255,6 +322,7 @@ export class PullRequests {
         this.#presence = new Cache(now, keep);
         this.#logins = new Cache(now, keep);
         this.#answers = new Cache(now, keep);
+        this.#historyAnswers = new Cache(now, keep);
         this.#hints = new Cache(now, keep);
     }
 
@@ -285,7 +353,125 @@ export class PullRequests {
     async forget(place: Place): Promise<void> {
         const { branch, commit, repo } = await this.#target(place.path);
 
-        if (repo && branch !== undefined && commit !== undefined) this.#answers.delete(answerKey(repo, branch, commit));
+        if (repo && branch !== undefined) {
+            if (commit !== undefined) this.#answers.delete(answerKey(repo, branch, commit));
+            this.#historyAnswers.delete(historyKey(repo, branch));
+        }
+    }
+
+    /** The repository of a folder, regardless of which branch it has checked out. Never takes a remote address from the client. */
+    async #historyRepository(place: Place, branch: string): Promise<GitHubRepo | undefined> {
+        await checkHistoryBranch(branch);
+        if (!(await workingTreeRoot(place.path))) return undefined;
+
+        const address = await gitAnswer(place.path, ['remote', 'get-url', 'origin']);
+
+        return address === undefined ? undefined : parseRemote(address);
+    }
+
+    /** One complete history per repository and branch, with the archives shared by every checkout and chat. */
+    async readHistory(store: Store, place: Place, branch: string): Promise<GitBranchPullRequests> {
+        const repo = await this.#historyRepository(place, branch);
+
+        if (!repo) return { branch, access: 'no_remote', pullRequests: [] };
+
+        const repository = repositoryKey(repo);
+        const history = await this.#historyAnswers.get(historyKey(repo, branch), () =>
+            this.#withHistorySlot(async () => {
+                const stale = (access: GitHubAccess) => {
+                    if (this.#stopper.signal.aborted) throw unavailable('The daemon is stopping');
+
+                    return {
+                        value: {
+                            branch,
+                            repo,
+                            access,
+                            pullRequests: readPullRequestHistory(store.db, repository, branch) ?? [],
+                            stale: true as const,
+                        },
+                        keepMs: ACCESS_MISS_TTL_MS,
+                    };
+                };
+                try {
+                    const access = await this.#accessTo(repo.host);
+                    if (access.kind !== 'ready') return stale(access.kind);
+
+                    const pullRequests = await this.#findHistory(access.gh, repo, branch);
+
+                    if (pullRequests === undefined) {
+                        this.#logins.delete(repo.host);
+                        return stale('not_signed_in');
+                    }
+
+                    if (this.#stopper.signal.aborted) throw unavailable('The daemon is stopping');
+                    store.tx(() => writePullRequestHistory(store.db, repository, branch, pullRequests));
+
+                    return { value: { branch, repo, access: 'ready' as const, pullRequests }, keepMs: HISTORY_TTL_MS };
+                } catch (error) {
+                    if (!(error instanceof CommandError) || this.#stopper.signal.aborted) throw error;
+                    return stale('ready');
+                }
+            })
+        );
+
+        if (this.#stopper.signal.aborted) throw unavailable('The daemon is stopping');
+
+        return { ...history, pullRequests: withPullRequestArchives(store.db, repository, history.pullRequests) };
+    }
+
+    /** A local, reversible archive. The last complete history judges membership and whether the PR has ended. */
+    async archiveHistory(
+        store: Store,
+        place: Place,
+        branch: string,
+        number: number,
+        archived: boolean,
+        expectedRepo: GitHubRepo
+    ): Promise<GitBranchPullRequests> {
+        const repo = await this.#historyRepository(place, branch);
+
+        if (!repo) throw invalid('This folder has no GitHub remote');
+        if (!Number.isSafeInteger(number) || number <= 0) throw invalid('Choose a pull request');
+        if (this.#stopper.signal.aborted) throw unavailable('The daemon is stopping');
+
+        const repository = repositoryKey(repo);
+        if (repository !== repositoryKey(expectedRepo)) throw conflict("The folder's origin has changed");
+        const cached = this.#historyAnswers.peek(historyKey(repo, branch));
+
+        return store.tx(() => {
+            const pullRequests = readPullRequestHistory(store.db, repository, branch) ?? [];
+            const pr = pullRequests.find(entry => entry.number === number);
+
+            if (!pr) throw conflict('This pull request is not in the branch history');
+            if (archived && !canArchivePullRequest(pr))
+                throw conflict('Only closed or merged pull requests can be archived');
+
+            setPullRequestArchive(store.db, repository, number, archived);
+
+            return {
+                branch,
+                repo,
+                access: cached?.access ?? 'ready',
+                pullRequests: withPullRequestArchives(store.db, repository, pullRequests),
+                ...((cached === undefined || cached.stale) && { stale: true as const }),
+            };
+        });
+    }
+
+    /** Keep the number of simultaneous complete history reads bounded, including their page reads. */
+    async #withHistorySlot<T>(read: () => Promise<T>): Promise<T> {
+        if (this.#historyRunning >= HISTORY_READ_CONCURRENCY)
+            await new Promise<void>(resolve => this.#historyWaiting.push(resolve));
+        else this.#historyRunning++;
+
+        try {
+            if (this.#stopper.signal.aborted) throw unavailable('The daemon is stopping');
+            return await read();
+        } finally {
+            const next = this.#historyWaiting.shift();
+            if (next) next();
+            else this.#historyRunning--;
+        }
     }
 
     /** The branch, the commit and the repository `origin` names, of the place at `cwd`: what an answer is kept by. */
@@ -485,6 +671,72 @@ export class PullRequests {
         }
 
         throw unavailable("Couldn't read the pull request");
+    }
+
+    /** Fetch every page, retaining only PRs from this repository's source branch. A partial read never replaces the stored history. */
+    async #findHistory(gh: string, repo: GitHubRepo, branch: string): Promise<GitPullRequestSummary[] | undefined> {
+        const entries = new Map<number, GitPullRequestSummary>();
+        const seen = new Set<string>();
+        let cursor: string | undefined;
+
+        do {
+            const args = [
+                'api',
+                'graphql',
+                '--hostname',
+                repo.host,
+                '--method',
+                'POST',
+                '-f',
+                `query=${HISTORY_QUERY}`,
+                '-f',
+                `owner=${repo.owner}`,
+                '-f',
+                `name=${repo.name}`,
+                '-f',
+                `head=${branch}`,
+                ...(cursor === undefined ? [] : ['-f', `cursor=${cursor}`]),
+            ];
+            const run = await this.#run(gh, args, READ_TIMEOUT_MS, READ_MAX_CHARS);
+            const failed = unanswered(run, 'GitHub');
+
+            if (failed) throw failed;
+
+            const body = bodyOf(run.stdout);
+            const errors = Array.isArray(body?.errors) ? body.errors : [];
+            const repository = asObject(asObject(body?.data)?.repository);
+
+            if (errors.length > 0 || run.code !== 0 || !repository) {
+                const type = asString(asObject(errors[0])?.type);
+                if (type === 'NOT_FOUND') throw unavailable(NOT_VISIBLE);
+                if (type === 'RATE_LIMITED') throw unavailable(RATE_LIMIT);
+
+                if (run.code !== 0) {
+                    const failure = failureOf(run);
+                    if (!failure.signedIn) return undefined;
+                    throw unavailable(failure.message);
+                }
+
+                throw unavailable(UNREADABLE);
+            }
+
+            const connection = asObject(repository.pullRequests);
+            const nodes = connection?.nodes;
+            const page = asObject(connection?.pageInfo);
+
+            if (!Array.isArray(nodes) || typeof page?.hasNextPage !== 'boolean') throw unavailable(UNREADABLE);
+
+            for (const node of nodes) {
+                const summary = summaryOf(node, repo, branch);
+                if (summary) entries.set(summary.number, summary);
+            }
+
+            cursor = page.hasNextPage ? asString(page.endCursor) : undefined;
+            if (page.hasNextPage && (!cursor || seen.has(cursor))) throw unavailable(UNREADABLE);
+            if (cursor) seen.add(cursor);
+        } while (cursor !== undefined);
+
+        return [...entries.values()].sort((a, b) => b.number - a.number);
     }
 
     /** The pull request that is the branch's own, or nothing: the choice among those found, less one that HEAD has moved past. */

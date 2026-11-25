@@ -2,13 +2,22 @@ import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:tes
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { openDatabase } from '../src/db/connection';
 import { CommandError } from '../src/errors';
 import { parseRemote } from '../src/git/githubRemote';
 import { PullRequests } from '../src/git/pullRequest';
 import { rollupChecks } from '../src/git/pullRequestRollup';
+import { Store } from '../src/store';
 import { cleanTempDirs, git, makeRepo, startHarness, tempDir } from './helpers';
 
-import type { GitChecks, GitHubRepo, GitPullRequest, GitPullRequestInfo, GitStatus } from '@clowdy/protocol';
+import type {
+    GitBranchPullRequests,
+    GitChecks,
+    GitHubRepo,
+    GitPullRequest,
+    GitPullRequestInfo,
+    GitStatus,
+} from '@clowdy/protocol';
 import type { Place } from '../src/domain/places';
 import type { Harness } from './helpers';
 
@@ -215,7 +224,8 @@ case "$1" in
         echo 'Logged in (stand-in)'; exit 0 ;;
     api)
         head=''
-        for arg in "$@"; do case "$arg" in head=*) head=\${arg#head=} ;; esac; done
+        cursor=''
+        for arg in "$@"; do case "$arg" in head=*) head=\${arg#head=} ;; cursor=*) cursor=\${arg#cursor=} ;; esac; done
         case "$*" in
             *mergeStateStatus*) if [ -f "$state/old-server" ]; then printf '%s' '{"errors":[{"type":"undefinedField","message":"Field '"'"'mergeStateStatus'"'"' doesn'"'"'t exist on type '"'"'PullRequest'"'"'","extensions":{"code":"undefinedField","typeName":"PullRequest","fieldName":"mergeStateStatus"}}]}'; exit 1; fi ;;
         esac
@@ -234,8 +244,8 @@ exit 64
     env = (): Record<string, string> => ({ PATH: this.bin });
 
     /** What the stand-in answers when asked for `branch`. */
-    reply(branch: string, reply: Reply): void {
-        this.#replies.set(branch, reply);
+    reply(branch: string, reply: Reply, cursor = ''): void {
+        this.#replies.set(`${branch}:${cursor}`, reply);
         this.#writeAnswers();
     }
 
@@ -248,7 +258,7 @@ exit 64
             return `    ${quoted(branch)}) ${say}${print}exit ${code ?? 0} ;;`;
         });
 
-        writeFileSync(join(this.root, 'answers.sh'), `case "$head" in\n${cases.join('\n')}\nesac\n`);
+        writeFileSync(join(this.root, 'answers.sh'), `case "$head:$cursor" in\n${cases.join('\n')}\nesac\n`);
     }
 
     signOut(): void {
@@ -338,6 +348,29 @@ function node(
 /** What GitHub's GraphQL answers to the read of a branch. */
 const graphql = (nodes: unknown[], defaultBranch = 'main') => ({
     data: { repository: { defaultBranchRef: { name: defaultBranch }, pullRequests: { nodes } } },
+});
+
+const historyPage = (nodes: unknown[], endCursor?: string) => ({
+    data: {
+        repository: {
+            pullRequests: { nodes, pageInfo: { hasNextPage: endCursor !== undefined, endCursor } },
+        },
+    },
+});
+
+/** GitHub's lightweight history node. History does not ask for head commit, checks or mergeability. */
+const historyNode = (number: number, state = 'OPEN', extra: Record<string, unknown> = {}) => ({
+    number,
+    title: `Pull request ${number}`,
+    state,
+    url: `https://github.com/acme/app/pull/${number}`,
+    isDraft: false,
+    baseRefName: 'main',
+    headRefName: 'feature',
+    updatedAt: '2026-11-20T10:00:00Z',
+    isCrossRepository: false,
+    headRepositoryOwner: { login: 'acme' },
+    ...extra,
 });
 
 const checkRun = (name: string, status: string, conclusion: string | null) => ({
@@ -1386,6 +1419,231 @@ withStandIn('PullRequests', () => {
     });
 });
 
+withStandIn('Branch pull request history', () => {
+    let gh: StandIn;
+    let now: number;
+    let pullRequests: PullRequests;
+    let store: Store;
+    let databasePath: string;
+
+    beforeEach(() => {
+        gh = new StandIn();
+        now = 1_000_000;
+        pullRequests = new PullRequests({ env: gh.env, fallbackPaths: [], now: () => now });
+        databasePath = join(tempDir('pull-request-history'), 'clowdy.db');
+        store = new Store(openDatabase(databasePath));
+    });
+
+    afterEach(() => {
+        pullRequests.stop();
+        store.db.close();
+    });
+
+    const read = (place: Place, branch = 'feature') => pullRequests.readHistory(store, place, branch);
+    const archive = (place: Place, number: number, archived: boolean) =>
+        pullRequests.archiveHistory(store, place, 'feature', number, archived, {
+            host: 'github.com',
+            owner: 'acme',
+            name: 'app',
+        });
+
+    test('reads all pages for the explicit branch, retains historical PRs, and excludes forks or other branches', async () => {
+        const { path, place } = repoOn();
+        git(path, 'checkout', '-q', 'main');
+        git(path, 'branch', '-D', 'feature');
+        gh.reply('feature', {
+            body: historyPage(
+                [
+                    historyNode(17, 'OPEN', { isDraft: true }),
+                    historyNode(16, 'MERGED'),
+                    historyNode(15, 'OPEN', { isCrossRepository: true }),
+                ],
+                'next-page'
+            ),
+        });
+        gh.reply(
+            'feature',
+            {
+                body: historyPage([
+                    historyNode(14, 'CLOSED'),
+                    historyNode(13, 'OPEN', { headRepositoryOwner: { login: 'another' } }),
+                    historyNode(12, 'OPEN', { headRefName: 'other' }),
+                    historyNode(11),
+                ]),
+            },
+            'next-page'
+        );
+
+        expect(await read(place)).toEqual({
+            branch: 'feature',
+            access: 'ready',
+            repo: { host: 'github.com', owner: 'acme', name: 'app' },
+            pullRequests: [
+                {
+                    number: 17,
+                    title: 'Pull request 17',
+                    url: 'https://github.com/acme/app/pull/17',
+                    state: 'draft',
+                    base: 'main',
+                    head: 'feature',
+                    updatedAt: Date.parse('2026-11-20T10:00:00Z'),
+                },
+                {
+                    number: 16,
+                    title: 'Pull request 16',
+                    url: 'https://github.com/acme/app/pull/16',
+                    state: 'merged',
+                    base: 'main',
+                    head: 'feature',
+                    updatedAt: Date.parse('2026-11-20T10:00:00Z'),
+                },
+                {
+                    number: 14,
+                    title: 'Pull request 14',
+                    url: 'https://github.com/acme/app/pull/14',
+                    state: 'closed',
+                    base: 'main',
+                    head: 'feature',
+                    updatedAt: Date.parse('2026-11-20T10:00:00Z'),
+                },
+                {
+                    number: 11,
+                    title: 'Pull request 11',
+                    url: 'https://github.com/acme/app/pull/11',
+                    state: 'open',
+                    base: 'main',
+                    head: 'feature',
+                    updatedAt: Date.parse('2026-11-20T10:00:00Z'),
+                },
+            ],
+        });
+        expect(gh.reads()).toEqual(['feature', 'feature']);
+        expect(
+            gh
+                .calls()
+                .filter(call => call[0] === 'api')
+                .at(1)
+        ).toContain('cursor=next-page');
+        expect(gh.text()).not.toContain('statusCheckRollup');
+    });
+
+    test('deduplicates simultaneous reads across worktrees and equivalent origin addresses, then invalidates on git changes', async () => {
+        const first = repoOn('https://github.com/ACME/App.git');
+        const second = repoOn('git@github.com:acme/app.git');
+        const tree = join(tempDir('git-pull-request'), 'shared-tree');
+        git(first.path, 'worktree', 'add', '-q', '-b', 'other', tree, 'main');
+        gh.reply('feature', { body: historyPage([historyNode(10, 'MERGED')]) });
+
+        const histories = await Promise.all([read(first.place), read(second.place), read(placeAt(tree))]);
+
+        expect(histories.map(history => history.pullRequests.map(pr => pr.number))).toEqual([[10], [10], [10]]);
+        expect(gh.reads()).toEqual(['feature']);
+        await archive(second.place, 10, true);
+        expect((await read(first.place)).pullRequests[0]?.archived).toBe(true);
+        expect(gh.reads()).toEqual(['feature']);
+
+        gh.reply('feature', { body: historyPage([historyNode(11), historyNode(10, 'MERGED')]) });
+        await pullRequests.forget(first.place);
+        expect((await read(second.place)).pullRequests.map(pr => pr.number)).toEqual([11, 10]);
+        expect(gh.reads()).toEqual(['feature', 'feature']);
+    });
+
+    test('keeps the complete stored history and archive across restarts, partial failures, offline reads and restores', async () => {
+        const { place } = repoOn();
+        gh.reply('feature', {
+            body: historyPage([historyNode(3, 'MERGED'), historyNode(2, 'CLOSED'), historyNode(1)]),
+        });
+        expect((await read(place)).pullRequests).toHaveLength(3);
+        expect((await archive(place, 2, true)).pullRequests.find(pr => pr.number === 2)?.archived).toBe(true);
+        await expect(archive(place, 1, true)).rejects.toThrow('Only closed or merged');
+        await expect(archive(place, 99, true)).rejects.toThrow('not in the branch history');
+
+        // A failure on page two must not leave a partial list as the last good answer.
+        gh.reply('feature', { body: historyPage([historyNode(4)], 'missing-page') });
+        gh.reply('feature', { stderr: 'gh: Bad gateway (HTTP 502)', code: 1 }, 'missing-page');
+        now += 31_000;
+        expect(await read(place)).toMatchObject({
+            access: 'ready',
+            stale: true,
+            pullRequests: [{ number: 3 }, { number: 2, archived: true }, { number: 1 }],
+        });
+
+        pullRequests.stop();
+        store.db.close();
+        store = new Store(openDatabase(databasePath));
+        pullRequests = new PullRequests({ env: () => ({ PATH: '' }), fallbackPaths: [], now: () => now });
+        expect(await read(place)).toMatchObject({
+            access: 'no_gh',
+            stale: true,
+            pullRequests: [{ number: 3 }, { number: 2, archived: true }, { number: 1 }],
+        });
+        expect((await archive(place, 2, false)).pullRequests.find(pr => pr.number === 2)?.archived).toBeUndefined();
+        expect((await read(place)).pullRequests.find(pr => pr.number === 2)?.archived).toBeUndefined();
+    });
+
+    test('a reopened PR loses its archive and stays visible if it closes again', async () => {
+        const { place } = repoOn();
+        gh.reply('feature', {
+            body: historyPage([historyNode(2, 'CLOSED'), historyNode(1, 'OPEN', { isDraft: true })]),
+        });
+        await read(place);
+        await archive(place, 2, true);
+        await expect(archive(place, 1, true)).rejects.toThrow('Only closed or merged');
+
+        now += 31_000;
+        gh.reply('feature', { body: historyPage([historyNode(2), historyNode(1, 'OPEN', { isDraft: true })]) });
+        expect((await read(place)).pullRequests.find(pr => pr.number === 2)).toMatchObject({ state: 'open' });
+        expect((await read(place)).pullRequests.find(pr => pr.number === 2)?.archived).toBeUndefined();
+        now += 31_000;
+        gh.reply('feature', { body: historyPage([historyNode(2, 'MERGED')]) });
+        expect((await read(place)).pullRequests[0]?.archived).toBeUndefined();
+    });
+
+    test('does not archive a different repository after the folder origin changes', async () => {
+        const { path, place } = repoOn();
+        gh.reply('feature', { body: historyPage([historyNode(1, 'MERGED')]) });
+        await read(place);
+
+        git(path, 'remote', 'set-url', 'origin', 'https://github.com/acme/another.git');
+        gh.reply('feature', {
+            body: historyPage([historyNode(1, 'MERGED', { url: 'https://github.com/acme/another/pull/1' })]),
+        });
+        await read(place);
+        await expect(archive(place, 1, true)).rejects.toThrow('origin has changed');
+        expect((await read(place)).pullRequests[0]?.archived).toBeUndefined();
+    });
+
+    test('distinguishes a successful empty history from a read that has never succeeded', async () => {
+        const { place } = repoOn();
+        gh.reply('feature', { stderr: 'gh: Bad gateway (HTTP 502)', code: 1 });
+        expect(await read(place)).toMatchObject({ stale: true, pullRequests: [] });
+        gh.reply('feature', { body: historyPage([]) });
+        now += 6000;
+        expect((await read(place)).stale).toBeUndefined();
+        expect((await read(place)).pullRequests).toEqual([]);
+
+        const noRemote = repoOn(null);
+        expect(await read(noRemote.place)).toEqual({ branch: 'feature', access: 'no_remote', pullRequests: [] });
+    });
+
+    test('does not replace a good history with an invalid link or a looping pagination cursor', async () => {
+        const { place } = repoOn();
+        gh.reply('feature', { body: historyPage([historyNode(1)]) });
+        const original = await read(place);
+
+        now += 31_000;
+        gh.reply('feature', {
+            body: historyPage([historyNode(2, 'OPEN', { url: 'https://user:secret@github.com/acme/app/pull/2' })]),
+        });
+        expect(await read(place)).toEqual({ ...original, stale: true });
+
+        now += 6_000;
+        gh.reply('feature', { body: historyPage([historyNode(3)], 'repeated') });
+        gh.reply('feature', { body: historyPage([historyNode(4)], 'repeated') }, 'repeated');
+        expect(await read(place)).toEqual({ ...original, stale: true });
+    });
+});
+
 withStandIn('GET /v1/projects/:id/git/pull-request', () => {
     let gh: StandIn;
     let now: number;
@@ -1405,6 +1663,52 @@ withStandIn('GET /v1/projects/:id/git/pull-request', () => {
     });
 
     const json = async <T>(response: Response) => (await response.json()) as T;
+
+    test('serves branch history and local archive behind the token, with folder and branch validation', async () => {
+        const { path } = repoOn();
+        const { project } = h.ok('project.add', { folders: [path] });
+        const folderId = project.folders[0].id as string;
+        const base = `/v1/projects/${project.id}/git/pull-requests`;
+        const request = `${base}?folderId=${folderId}&branch=feature`;
+
+        gh.reply('feature', { body: historyPage([historyNode(5, 'MERGED'), historyNode(2)]) });
+        const history = await json<GitBranchPullRequests>(await h.fetch(request));
+        expect(history.pullRequests.map(pr => pr.number)).toEqual([5, 2]);
+
+        const mark = (number: number, archived: boolean) =>
+            h.fetch(`${base}/archive`, {
+                method: 'POST',
+                body: JSON.stringify({ folderId, branch: 'feature', number, archived, repo: history.repo }),
+            });
+        expect((await json<GitBranchPullRequests>(await mark(5, true))).pullRequests[0]?.archived).toBe(true);
+        expect((await json<GitBranchPullRequests>(await h.fetch(request))).pullRequests[0]?.archived).toBe(true);
+        expect((await mark(2, true)).status).toBe(409);
+        expect((await mark(5, false)).status).toBe(200);
+        expect((await json<GitBranchPullRequests>(await h.fetch(request))).pullRequests[0]?.archived).toBeUndefined();
+
+        expect((await fetch(`${h.url}${request}`)).status).toBe(401);
+        expect((await h.fetch(`${base}?branch=feature`)).status).toBe(400);
+        expect((await h.fetch(`${base}?folderId=${folderId}`)).status).toBe(400);
+        expect((await h.fetch(`${base}?folderId=${folderId}&branch=bad..name`)).status).toBe(400);
+        expect((await h.fetch(`${base}?folderId=unknown&branch=feature`)).status).toBe(404);
+        expect(
+            (await h.fetch(`/v1/projects/unknown/git/pull-requests?folderId=${folderId}&branch=feature`)).status
+        ).toBe(404);
+        expect(
+            (
+                await fetch(`${h.url}${base}/archive`, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        folderId,
+                        branch: 'feature',
+                        number: 5,
+                        archived: true,
+                        repo: history.repo,
+                    }),
+                })
+            ).status
+        ).toBe(401);
+    });
 
     test("answers the pull request of a folder's checkout and of a chat's worktree, each for its own branch, behind the token", async () => {
         const { path, head } = repoOn();
