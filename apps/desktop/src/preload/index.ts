@@ -1,6 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
-import { type DesktopBridge, type FindCommand, IPC_CHANNELS, WINDOW_MATERIAL_ARGUMENT } from '../shared/bridge';
+import {
+    type DesktopBridge,
+    type FindCommand,
+    IPC_CHANNELS,
+    parseUpdateStatus,
+    WINDOW_MATERIAL_ARGUMENT,
+} from '../shared/bridge';
 
 // Synchronous, so the field exists before the page's first script runs. The main process answers only the app's own top frame.
 const daemon = ipcRenderer.sendSync(IPC_CHANNELS.getDaemon) as DesktopBridge['daemon'] | null;
@@ -28,14 +34,24 @@ const desktop: DesktopBridge = {
     },
     ready: () => ipcRenderer.invoke(IPC_CHANNELS.ready),
     restartToUpdate: () => ipcRenderer.invoke(IPC_CHANNELS.restartToUpdate),
-    onUpdateReady: listener => {
-        const handler = (_event: unknown, version: unknown) => {
-            if (Number.isSafeInteger(version)) listener(version as number);
+    replaceDaemon: () => ipcRenderer.invoke(IPC_CHANNELS.replaceDaemon),
+    getUpdateStatus: async () => {
+        const status = parseUpdateStatus(await ipcRenderer.invoke(IPC_CHANNELS.getUpdateStatus));
+
+        if (!status) throw new Error('The main process sent no update status');
+
+        return status;
+    },
+    onUpdateStatus: listener => {
+        const handler = (_event: unknown, value: unknown) => {
+            const status = parseUpdateStatus(value);
+
+            if (status) listener(status);
         };
 
-        ipcRenderer.on(IPC_CHANNELS.updateReady, handler);
+        ipcRenderer.on(IPC_CHANNELS.updateStatus, handler);
 
-        return () => void ipcRenderer.removeListener(IPC_CHANNELS.updateReady, handler);
+        return () => void ipcRenderer.removeListener(IPC_CHANNELS.updateStatus, handler);
     },
     findInPage: (text, options) => ipcRenderer.invoke(IPC_CHANNELS.findInPage, text, options),
     stopFind: () => ipcRenderer.invoke(IPC_CHANNELS.stopFind),

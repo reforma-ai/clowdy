@@ -118,5 +118,5 @@ Once the Apple Developer account is verified:
 
 - **Signed macOS build:** the run's `macos` job shows no "Unsigned macOS build" warning. On a downloaded DMG, `spctl -a -t open --context context:primary-signature -vv Clowdy-arm64.dmg` says `accepted` with `source=Notarized Developer ID`, and `xcrun stapler validate Clowdy-arm64.dmg` says the ticket is valid. After copying the app to `/Applications`, `spctl -a -t exec -vv /Applications/Clowdy.app` says the same.
 - **Shell update:** install an older release into `/Applications` and start it. Soon after its window opens, a signed build asks "Clowdy x.y.z is ready to install"; an ad-hoc build says "Clowdy x.y.z is available" and offers Download.
-- **OTA update:** after a bundle is published, **Clowdy → Check for Updates…** shows an "Update ready" toast with Restart.
+- **OTA update:** after a bundle is published, **Clowdy → Check for Updates…** asks "Clowdy is ready to update" with Restart and Later, and **Settings → About** shows an "Update ready" row with Restart. Nothing appears on its own.
 - **Without GitHub:** `bun scripts/ota-local.ts` in `apps/desktop` serves a test bundle to a development run ([AGENTS.md → Releases](AGENTS.md#releases), "Trying OTA locally").

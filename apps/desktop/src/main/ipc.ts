@@ -9,6 +9,7 @@ import {
     type FindResult,
     IPC_CHANNELS,
     type OpenApps,
+    type UpdateStatus,
 } from '../shared/bridge';
 import { isTrustedUrl } from './security';
 
@@ -35,6 +36,10 @@ export interface IpcActions {
     ready: () => Promise<void>;
     /** Restarts into the OTA bundle installed during this run; without one, nothing happens. */
     restartToUpdate: () => void;
+    /** What is known about updates now. */
+    getUpdateStatus: () => UpdateStatus;
+    /** Replaces an old daemon now, though it has agent runs in progress; without an old one, nothing happens. */
+    replaceDaemon: () => Promise<void>;
     /** The editors and file managers this computer has. */
     listOpenApps: () => Promise<OpenApps>;
     /** Opens a folder or a file in one of them; it checks what the page sent. */
@@ -55,6 +60,8 @@ export function registerIpc(
         getDaemon,
         ready,
         restartToUpdate,
+        getUpdateStatus,
+        replaceDaemon,
         listOpenApps,
         openPath,
         readClipboardFiles,
@@ -96,6 +103,17 @@ export function registerIpc(
     ipcMain.handle(IPC_CHANNELS.restartToUpdate, event => {
         assertTrustedSender(event, trustedOrigin);
         restartToUpdate();
+    });
+
+    ipcMain.handle(IPC_CHANNELS.getUpdateStatus, event => {
+        assertTrustedSender(event, trustedOrigin);
+
+        return getUpdateStatus();
+    });
+
+    ipcMain.handle(IPC_CHANNELS.replaceDaemon, async event => {
+        assertTrustedSender(event, trustedOrigin);
+        await replaceDaemon();
     });
 
     ipcMain.handle(IPC_CHANNELS.chooseDirectories, async (event): Promise<string[]> => {

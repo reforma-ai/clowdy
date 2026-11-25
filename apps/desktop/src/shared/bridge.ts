@@ -12,8 +12,12 @@ export const IPC_CHANNELS = {
     daemonChanged: 'desktop:daemon-changed',
     ready: 'desktop:ready',
     restartToUpdate: 'desktop:restart-to-update',
-    /** Main to renderer: an OTA bundle is installed and runs from the next launch. */
-    updateReady: 'desktop:update-ready',
+    /** Renderer to main: what is known about updates right now. */
+    getUpdateStatus: 'desktop:get-update-status',
+    /** Main to renderer: that status changed. */
+    updateStatus: 'desktop:update-status',
+    /** Renderer to main: replace an old daemon now, though agent runs are in progress. */
+    replaceDaemon: 'desktop:replace-daemon',
     /** Renderer to main: search the text Chromium has drawn in this window. */
     findInPage: 'desktop:find-in-page',
     /** Renderer to main: drop the highlights of that search. */
@@ -31,6 +35,33 @@ export const IPC_CHANNELS = {
     /** Renderer to main: copy files and folders of the system clipboard into a folder. */
     pasteFiles: 'desktop:paste-files',
 } as const;
+
+/** What the app knows about its updates: the versions running, and what waits to be applied. Settings > About shows it. */
+export interface UpdateStatus {
+    /** The shell's version. */
+    shell: string;
+    /** The running bundle's number; 0 when the app runs without one. */
+    bundle: number;
+    /** An OTA bundle installed during this run, which starts at the next launch. */
+    ready: number | null;
+    /** The daemon is from an older bundle and waits for its agent runs to end before it is replaced. */
+    daemonWaiting: boolean;
+}
+
+/** The status from what the main process sent, or `undefined` when it is not one. */
+export function parseUpdateStatus(value: unknown): UpdateStatus | undefined {
+    if (typeof value !== 'object' || value === null) return undefined;
+
+    const { shell, bundle, ready, daemonWaiting } = value as Record<string, unknown>;
+
+    if (typeof shell !== 'string' || !Number.isSafeInteger(bundle) || typeof daemonWaiting !== 'boolean') {
+        return undefined;
+    }
+
+    if (ready !== null && !Number.isSafeInteger(ready)) return undefined;
+
+    return { shell, bundle: bundle as number, ready: ready as number | null, daemonWaiting };
+}
 
 /** A program that can open a folder or a file: an editor or a file manager, found on this computer. `id` is the catalog's, `name` is what the person reads, and `icon` is its own icon as a `data:` image, none when it could not be read. */
 export interface OpenApp {
@@ -110,10 +141,14 @@ export interface DesktopBridge {
     chooseDirectories: () => Promise<string[]>;
     /** Says the page has rendered. An update on its first launch that never says so within 30 seconds is rolled back. */
     ready: () => Promise<void>;
-    /** Called with its version when an update is installed and waits for a restart. Returns a function that stops listening. */
-    onUpdateReady: (listener: (version: number) => void) => () => void;
+    /** What the app knows about its updates now. */
+    getUpdateStatus: () => Promise<UpdateStatus>;
+    /** Called with the status each time it changes. Returns a function that stops listening. */
+    onUpdateStatus: (listener: (status: UpdateStatus) => void) => () => void;
     /** Restarts the app into the installed update. */
     restartToUpdate: () => Promise<void>;
+    /** Replaces an old daemon now: the agent runs in progress stop, and continue when they are sent a message. */
+    replaceDaemon: () => Promise<void>;
     /** Searches the text drawn in this window. Rejects an empty query: clear the highlights with `stopFind` instead. */
     findInPage: (text: string, options: FindOptions) => Promise<FindResult>;
     /** Clears the highlights of `findInPage`. */

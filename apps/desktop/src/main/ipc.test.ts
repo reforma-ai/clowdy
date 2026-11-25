@@ -13,6 +13,8 @@ type Listener = (event: { sender: unknown; senderFrame: unknown; returnValue?: u
 
 type Handler = (event: { sender: unknown; senderFrame: unknown }, ...args: unknown[]) => unknown;
 
+const STATUS = { shell: '0.1.2', bundle: 250, ready: null, daemonWaiting: false };
+
 /** Registers the IPC handlers on a fake `ipcMain`. */
 function register(actions: Partial<Parameters<typeof registerIpc>[2]> = {}) {
     const listeners = new Map<string, Listener>();
@@ -29,6 +31,8 @@ function register(actions: Partial<Parameters<typeof registerIpc>[2]> = {}) {
             getDaemon: async () => undefined,
             ready: async () => undefined,
             restartToUpdate: vi.fn(),
+            getUpdateStatus: () => STATUS,
+            replaceDaemon: async () => undefined,
             listOpenApps: async () => ({ editors: [], terminals: [], fileManagers: [] }),
             openPath: async () => undefined,
             readClipboardFiles: async () => [],
@@ -239,6 +243,33 @@ describe('OTA updates', () => {
         expect(() => handlers.get(IPC_CHANNELS.restartToUpdate)!(event)).toThrow('Untrusted sender');
         expect(ready).not.toHaveBeenCalled();
         expect(restartToUpdate).not.toHaveBeenCalled();
+    });
+});
+
+describe('update status', () => {
+    test("the app's own page can read the status and replace an old daemon", async () => {
+        const status = { ...STATUS, ready: 251, daemonWaiting: true };
+        const replaceDaemon = vi.fn(async () => undefined);
+        const { handlers } = register({ getUpdateStatus: () => status, replaceDaemon });
+        const event = callFrom({ url: `${TRUSTED}/` });
+
+        expect(await handlers.get(IPC_CHANNELS.getUpdateStatus)!(event)).toEqual(status);
+
+        await handlers.get(IPC_CHANNELS.replaceDaemon)!(event);
+
+        expect(replaceDaemon).toHaveBeenCalledOnce();
+    });
+
+    test('another page can do neither', async () => {
+        const getUpdateStatus = vi.fn(() => STATUS);
+        const replaceDaemon = vi.fn(async () => undefined);
+        const { handlers } = register({ getUpdateStatus, replaceDaemon });
+        const event = callFrom({ url: 'https://example.com/' });
+
+        expect(() => handlers.get(IPC_CHANNELS.getUpdateStatus)!(event)).toThrow('Untrusted sender');
+        await expect(async () => handlers.get(IPC_CHANNELS.replaceDaemon)!(event)).rejects.toThrow('Untrusted sender');
+        expect(getUpdateStatus).not.toHaveBeenCalled();
+        expect(replaceDaemon).not.toHaveBeenCalled();
     });
 });
 

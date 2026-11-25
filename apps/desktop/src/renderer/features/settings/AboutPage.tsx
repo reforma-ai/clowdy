@@ -12,6 +12,7 @@ import { SettingsRow } from './ui/SettingsRow';
 import { SettingsSection } from './ui/SettingsSection';
 
 import type { ReactNode } from 'react';
+import type { UpdateStatus } from '../../../shared/bridge';
 import type { Transport } from '../../daemon/transport';
 
 /** A computer that runs a daemon. Local is this one, and it is a host like the others will be: each gets a card in Updates. */
@@ -25,9 +26,11 @@ const LOCAL_HOST: Host = { name: 'Local', detail: 'This computer' };
 /**
  * Settings > About: where Clowdy lives (the repository and the releases), the versions running on each host, and what it is built with. It only informs and links: the links open in the
  * browser. Updates has a card for the one host there is, Local; hosts that are not this computer, and what to do about an old daemon on one, come with them.
+ * Updates apply quietly, so this is the one place that says an update waits: for a restart, or for agent runs to finish.
  */
 export function AboutPage() {
     const { transport } = useRootStore();
+    const update = useUpdateStatus();
 
     return (
         <SettingsPage description="Links, versions and credits of Clowdy">
@@ -48,7 +51,7 @@ export function AboutPage() {
             </SettingsSection>
 
             <SettingsSection title="Updates" description="The versions running on your hosts">
-                <HostCard host={LOCAL_HOST} transport={transport} />
+                <HostCard host={LOCAL_HOST} transport={transport} update={update} />
             </SettingsSection>
 
             <SettingsSection title="Credits">
@@ -86,24 +89,95 @@ function LinkButton({
 /** What a host's daemon said about itself: not yet, its version, or that it did not answer. */
 type Reading = { status: 'checking' } | { status: 'read'; version: string } | { status: 'failed' };
 
-/** The host's name and what runs on it, one row for each part. The `Clowdy app` row joins the daemon's with the shell version, once the window can tell it. */
-function HostCard({ host, transport }: { host: Host; transport: Transport }) {
+/**
+ * The host's name and what runs on it, one row for each part, and a row for each update that waits. `update` is what the
+ * app of this window says: it belongs to Local, and is unset when the page runs outside the app.
+ */
+function HostCard({ host, transport, update }: { host: Host; transport: Transport; update: UpdateStatus | undefined }) {
     const reading = useDaemonReading(transport);
 
     return (
         <SettingsCard as="section" divided aria-label={host.name}>
             <SettingsRow title={host.name} description={host.detail} />
+            {update && (
+                <SettingsRow title="Clowdy app" description="The installed app and its interface">
+                    <Text variant="sm" color="secondary">
+                        {appText(update)}
+                    </Text>
+                </SettingsRow>
+            )}
             <SettingsRow title="Daemon" description="Runs the agents and keeps the chats">
                 <Text variant="sm" color="secondary" role="status">
                     {readingText(reading)}
                 </Text>
             </SettingsRow>
+            {update?.ready != null && (
+                <SettingsRow title="Update ready" description="Starts the next time Clowdy opens">
+                    <Button
+                        variant="filling"
+                        color="secondary"
+                        size="sm"
+                        onPress={() => void window.desktop?.restartToUpdate()}
+                    >
+                        Restart
+                    </Button>
+                </SettingsRow>
+            )}
+            {update?.daemonWaiting && (
+                <SettingsRow
+                    title="Daemon update"
+                    description="Waits for the agent runs to finish. Restarting now stops them, and they continue when you send a message."
+                >
+                    <Button
+                        variant="filling"
+                        color="secondary"
+                        size="sm"
+                        onPress={() => void window.desktop?.replaceDaemon()}
+                    >
+                        Restart now
+                    </Button>
+                </SettingsRow>
+            )}
         </SettingsCard>
     );
 }
 
+const appText = ({ shell, bundle }: UpdateStatus) => (bundle ? `${shell} (bundle ${bundle})` : shell);
+
 const readingText = (reading: Reading) =>
     reading.status === 'checking' ? 'Checking…' : reading.status === 'read' ? reading.version : 'Unavailable';
+
+/** What the app says about its updates, kept current while the page is open. Unset outside the app, or until it answers. */
+function useUpdateStatus(): UpdateStatus | undefined {
+    const [status, setStatus] = useState<UpdateStatus>();
+
+    useEffect(() => {
+        const desktop = window.desktop;
+
+        if (!desktop) return;
+
+        let current = true;
+        // A change that arrives first is newer than the answer to the question asked before it.
+        let pushed = false;
+
+        desktop.getUpdateStatus().then(
+            answer => current && !pushed && setStatus(answer),
+            () => undefined
+        );
+
+        const stop = desktop.onUpdateStatus(next => {
+            pushed = true;
+            setStatus(next);
+        });
+
+        return () => {
+            current = false;
+            stop();
+        };
+    }, []);
+
+    return status;
+}
 
 /** Reads the daemon's version once, when the card is drawn. */
 function useDaemonReading(transport: Transport): Reading {
