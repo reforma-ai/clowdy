@@ -39,11 +39,6 @@ export function PullRequestChip({
                 </Text>
                 <span className={styles.metadata}>
                     <Text variant="xs" color="secondary">{`PR #${pr.number}`}</Text>
-                    {(pr.state === 'draft' || pr.state === 'closed') && (
-                        <Text variant="xs" color="secondary" truncate>
-                            {state}
-                        </Text>
-                    )}
                     {(failing > 0 || passing > 0) && (
                         <span className={styles.checkCounts} aria-hidden="true">
                             {failing > 0 && (
