@@ -15,6 +15,16 @@ export function TasksBanner({ progress }: { progress: ChatProgress }) {
     const project = useProjectState();
     const ui = useProjectUi();
     const { summary, rows } = progress;
+    const continuingBranches = new Set<number>();
+    const path: number[] = [];
+    const branches = rows.map(({ depth }, index) => {
+        // A row at the same depth in the current path is the previous sibling.
+        if (path[depth] !== undefined) continuingBranches.add(path[depth]);
+        path.length = depth;
+        path.push(index);
+
+        return path.slice(1);
+    });
 
     return (
         <ComposerBanner role="group" aria-label="Chat tasks">
@@ -37,7 +47,7 @@ export function TasksBanner({ progress }: { progress: ChatProgress }) {
                         </CollapsibleTrigger>
                         {state.isExpanded && (
                             <ComposerBannerList label="Tasks in this chat" onAction={id => ui.openTask(id)}>
-                                {rows.map(({ task, depth }) => {
+                                {rows.map(({ task, depth, hasChildren }, index) => {
                                     const status = project.statuses.find(status => status.id === task.statusId);
                                     const label = `${task.key} ${task.title}, ${status?.name ?? 'Unknown'}`;
 
@@ -47,12 +57,31 @@ export function TasksBanner({ progress }: { progress: ChatProgress }) {
                                             key={task.id}
                                             className={styles.row}
                                             data-depth={depth}
+                                            data-has-children={hasChildren || undefined}
                                             style={{ '--depth': depth } as CSSProperties}
                                             textValue={label}
                                             aria-label={`${label}, level ${depth + 1}`}
                                             endAffix={<StatusPill status={status} />}
                                         >
                                             <Text slot="label" title={task.title}>
+                                                {branches[index].map((branch, column) => {
+                                                    const current = column === depth - 1;
+                                                    const continues = continuingBranches.has(branch);
+
+                                                    if (!current && !continues) return null;
+
+                                                    const kind = current ? (continues ? 'tee' : 'end') : 'through';
+
+                                                    return (
+                                                        <span
+                                                            key={rows[branch].task.id}
+                                                            aria-hidden
+                                                            className={styles.guide}
+                                                            data-branch={kind}
+                                                            style={{ '--column': column } as CSSProperties}
+                                                        />
+                                                    );
+                                                })}
                                                 <Text variant="xs" color="secondary" className={styles.key}>
                                                     {task.key}
                                                 </Text>
