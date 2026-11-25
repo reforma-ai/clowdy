@@ -472,9 +472,7 @@ describe('runs of tool calls', () => {
         });
         await act(async () => root.render(<StreamView items={[asked, question, next]} active onAnswer={vi.fn()} />));
         expect(container.textContent).toContain('Question withdrawn');
-        expect([...container.querySelectorAll('button')].filter(button => button.textContent === 'Next')).toHaveLength(
-            1
-        );
+        expect(container.querySelectorAll('button[aria-label="Next"]')).toHaveLength(1);
     });
 
     it('does not offer an answer while the agent is being stopped', async () => {
@@ -488,7 +486,7 @@ describe('runs of tool calls', () => {
         });
         await act(async () => root.render(<StreamView items={[asked, question]} active onAnswer={vi.fn()} />));
         expect(container.textContent).toContain('Stopping the agent…');
-        expect([...container.querySelectorAll('button')].some(button => button.textContent === 'Next')).toBe(false);
+        expect(container.querySelector('button[aria-label="Next"]')).toBeNull();
     });
 
     it('replaces the tool preview with the wait status when the agent stops working', async () => {

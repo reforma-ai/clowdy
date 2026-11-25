@@ -3,12 +3,18 @@
 .card {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-lg);
-    padding: var(--spacing-lg) var(--spacing-xl);
+    gap: var(--spacing-sm);
+    padding: var(--spacing-sm);
     border: 1px solid var(--color-secondary-muted-border);
     border-radius: calc(var(--radius-xl) * var(--squircle-radius-factor));
     corner-shape: superellipse(var(--squircle-value));
     background-color: var(--color-surface-float);
+}
+
+/* A question that takes no answer, or has one already: a plain text in the frame. Once answered it is history, so no plate. */
+.card[data-plain] {
+    gap: var(--spacing-lg);
+    padding: var(--spacing-lg) var(--spacing-xl);
 }
 
 .card[data-answered] {
@@ -29,24 +35,72 @@
     color: var(--color-success-text);
 }
 
-.options {
+/* The question is a title in a band, as in the composer's own question panel. */
+.header {
+    display: flex;
+    align-items: center;
+    min-height: var(--spacing-36);
+    padding: var(--spacing-md) var(--spacing-lg);
+    border-radius: calc(var(--radius-sm) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    background-color: var(--color-secondary-light);
+}
+
+.facts {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-md);
+    gap: var(--spacing-sm);
+    padding-inline: var(--spacing-lg);
+}
+
+.options {
+    --ask-option-line: var(--leading-lg);
+
+    width: 100%;
+    min-width: 0;
 }
 
 .option {
-    align-items: flex-start;
+    --clowdy-listbox-item-padding: var(--spacing-xs) var(--spacing-sm);
 }
 
-.label {
+.number {
     display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: var(--ask-option-line);
+    height: var(--ask-option-line);
+    border-radius: calc(var(--radius-sm) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    background-color: var(--color-secondary-muted-light);
+    color: var(--color-secondary-muted-content);
+    font-size: var(--text-xs);
+    font-weight: 400;
+}
+
+[data-selected='true'] .number {
+    background-color: var(--color-primary-muted);
+    color: var(--color-primary-muted-content);
+}
+
+/* A row's label is one line in a list. Here it wraps, with the consequence under it. */
+.options .option .body {
+    display: flex;
+    flex: 1;
     flex-direction: column;
     gap: var(--spacing-xxs);
+    min-width: 0;
+    width: 100%;
+    overflow: visible;
+    white-space: normal;
+    text-overflow: clip;
+    line-height: var(--ask-option-line);
 }
 
 .labelLine {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: var(--spacing-md);
 }
@@ -61,7 +115,27 @@
     font-weight: 500;
 }
 
-.actions {
+/* The 1px edge is always there, so turning it visible does not move the row. */
+.option[data-field] {
+    align-items: center;
+    border: 1px solid transparent;
+}
+
+.option[data-field]:is([data-selected], :focus-within) {
+    border-color: var(--color-secondary-muted-border);
+}
+
+.option[data-field][data-selected]::before {
+    background-color: transparent;
+}
+
+.field {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.footer {
     display: flex;
     justify-content: flex-end;
+    padding: var(--spacing-xxs) var(--spacing-xs) var(--spacing-xxs) var(--spacing-lg);
 }
