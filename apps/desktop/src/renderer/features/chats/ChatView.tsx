@@ -30,6 +30,7 @@ import { useCompact } from './useCompact';
 import { useEditMessage } from './useEditMessage';
 import { useFork } from './useFork';
 import { useHandoff } from './useHandoff';
+import { useSkillLookup } from './useSkillLookup';
 
 import type { Attachment, Chat } from '@clowdy/protocol';
 import type { ReactNode } from 'react';
@@ -45,16 +46,18 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
     const root = useRootStore();
     const project = useProjectState();
     const ui = useProjectUi();
-    // A task key in a message is a chip that opens the task, an archived one the window knows too (`ProjectState.taskOfKey`); a thread's card opens that thread.
+    const skillOfName = useSkillLookup();
+    // A task key in a message is a chip that opens the task, an archived one the window knows too (`ProjectState.taskOfKey`); a skill it asks for is a chip too; a thread's card opens that thread.
     const links = useMemo(
         () => ({
             taskOfKey: (key: string) => project.taskOfKey(key),
+            skillOfName,
             onOpenTask: (taskId: string) => ui.openTask(taskId),
             attachmentBlob: (attachment: Attachment) => root.transport.getAttachment(project.id, attachment.id),
             hasChat: (chatId: string) => project.chats.has(chatId),
             onOpenChat: (chatId: string) => void openChat(root, project, ui, chatId),
         }),
-        [project, ui, root]
+        [project, ui, root, skillOfName]
     );
     const parent = chat.parentChatId === undefined ? undefined : project.chats.get(chat.parentChatId);
     // A fork says where it came from. The source opens from there while it is listed: one in the archive is named only, since opening it would bring it back.

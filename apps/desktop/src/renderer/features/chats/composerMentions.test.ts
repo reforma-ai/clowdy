@@ -28,8 +28,11 @@ describe('serializeMention', () => {
         expect(serializeMention(mention('file', { path: 'notes/my plan.md' }))).toBe('@"notes/my plan.md"');
     });
 
-    it('asks for a skill in words, because no spelling of a command works for every agent', () => {
-        expect(serializeMention(mention('command', { name: 'deploy' }))).toBe('Use the skill "deploy"');
+    it('writes a skill as the command itself, `$name` for Codex and `/name` for every other agent', () => {
+        expect(serializeMention(mention('command', { name: 'deploy' }))).toBe('/deploy');
+        expect(serializeMention(mention('command', { name: 'deploy' }), 'claude')).toBe('/deploy');
+        expect(serializeMention(mention('command', { name: 'deploy' }), 'cursor')).toBe('/deploy');
+        expect(serializeMention(mention('command', { name: 'deploy' }), 'codex')).toBe('$deploy');
     });
 
     it('writes nothing for a kind it does not know', () => {

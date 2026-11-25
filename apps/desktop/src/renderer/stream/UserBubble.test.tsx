@@ -18,6 +18,7 @@ afterAll(() => store.dispose());
 
 const links = {
     taskOfKey: (key: string) => (key === 'CAR-24' ? { id: 't-24', key, title: 'Rebuild the form' } : undefined),
+    skillOfName: (name: string) => (name === 'review' ? { name, description: 'Review a diff' } : undefined),
 };
 const bubble = (text: string) =>
     renderToStaticMarkup(
@@ -55,6 +56,20 @@ describe('UserBubble', () => {
         expect(out).toContain('title="Rebuild the form"');
         expect(out).toContain('CAR-99');
         expect(out).not.toContain('>CAR-99</button>');
+    });
+
+    it('shows a skill the message asks for as a chip, for either spelling, and any other word as text', () => {
+        const slash = bubble('Do /review please');
+        const dollar = bubble('Do $review please');
+        const other = bubble('Do /deploy please');
+
+        for (const out of [slash, dollar]) {
+            expect(out).toContain('title="Review a diff"');
+            expect(out).toContain('>/review</span>');
+        }
+
+        expect(other).toContain('/deploy');
+        expect(other).not.toContain('data-chip');
     });
 
     it('shows the files of a message above its text, and no bubble for a message of files alone', () => {

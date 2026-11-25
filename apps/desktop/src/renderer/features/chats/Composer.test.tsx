@@ -540,7 +540,7 @@ describe('Composer', () => {
             expect(optionTexts()).toEqual([expect.stringContaining('CAR-24'), expect.stringContaining('pricing.md')]);
         });
 
-        it("lists the person's skills after /, not the system ones, and asks for the chosen one in words", async () => {
+        it("lists the person's skills after /, not the system ones, and sends the chosen one as the agent's own command", async () => {
             await mount(accepted);
             await open('/');
 
@@ -550,9 +550,18 @@ describe('Composer', () => {
             await type('the diff');
             await press('Enter');
 
-            expect(sent).toEqual([
-                { type: 'chat.send', chatId: chat.id, text: 'Use the skill "review" the diff', mode: 'steer' },
-            ]);
+            expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: '/review the diff', mode: 'steer' }]);
+        });
+
+        it('sends the chosen skill as $name to Codex, which reads skills that way', async () => {
+            chat = { ...chat, engine: 'codex' };
+            await mount(accepted);
+            await open('/');
+            await choose('/review');
+            await type('the diff');
+            await press('Enter');
+
+            expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: '$review the diff', mode: 'steer' }]);
         });
 
         it('asks for the skills again after a read that failed, not once the skills change', async () => {

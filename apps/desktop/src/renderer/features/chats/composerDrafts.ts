@@ -62,9 +62,9 @@ export function dropDraft(key: string): void {
     if (wasDirty) changed();
 }
 
-/** The words a draft sends: the document as markdown with its mentions written out, trimmed. Empty when there is nothing to send. */
-export function messageOf(doc: ComposerDoc): string {
-    return docToPlainText(doc, serializeMention).trim();
+/** The words a draft sends: the document as markdown with its mentions written out, as the `engine` that will read them takes them, trimmed. Empty when there is nothing to send. */
+export function messageOf(doc: ComposerDoc, engine?: string): string {
+    return docToPlainText(doc, mention => serializeMention(mention, engine)).trim();
 }
 
 /**

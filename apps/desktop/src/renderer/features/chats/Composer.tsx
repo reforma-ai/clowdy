@@ -251,7 +251,7 @@ export function Composer({ chat, run, start, minLines, editMode, controls, onSen
 
     /** Sends the message; `mod` (Cmd/Ctrl+Enter) sends it the other way than Enter while the orchestrator works. */
     const send = async (from: ComposerDoc, mod = false) => {
-        const message = messageOf(from);
+        const message = messageOf(from, model.choice?.engine);
         const held = filesOf(key);
 
         if (
@@ -341,7 +341,7 @@ export function Composer({ chat, run, start, minLines, editMode, controls, onSen
 
     /** Enter in an edit frame: the edited words and files go to the page, which sends them; nothing here is cleared, so a refused edit finds them in the box. */
     const submitEdit = (from: ComposerDoc) => {
-        const message = messageOf(from);
+        const message = messageOf(from, model.choice?.engine);
         const held = filesOf(key);
 
         if (

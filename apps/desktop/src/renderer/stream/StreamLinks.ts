@@ -1,11 +1,13 @@
 import { createContext } from 'react';
 
-import type { Attachment, ChatId, Task, TaskId } from '@clowdy/protocol';
+import type { Attachment, ChatId, SkillEntry, Task, TaskId } from '@clowdy/protocol';
 
 /** What a message's text may point at inside the app. Without it, task keys stay plain text and a thread's name opens nothing. */
 export interface StreamLinks {
     /** The task a key like `CAR-24` names, when the project has one. It answers at once, and a key the window does not know yet may be read from the daemon meanwhile (`ProjectState.taskOfKey`): call it while rendering, so the chip appears when the task is known. */
     taskOfKey?: (key: string) => Pick<Task, 'id' | 'key' | 'title'> | undefined;
+    /** The skill a name like `review` names, when the person has it (the system ones are not theirs to ask for). Without it, `/review` and `$review` in a message stay plain text. */
+    skillOfName?: (name: string) => Pick<SkillEntry, 'name' | 'description'> | undefined;
     onOpenTask?: (taskId: TaskId) => void;
     /** The bytes of a file a message carries, to show an image. Without it a file shows as its icon. */
     attachmentBlob?: (attachment: Attachment) => Promise<Blob>;
