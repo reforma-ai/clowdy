@@ -4,7 +4,7 @@
 - Date: 2026-11-25
 - Decided by: user (semi-manual)
 - Scope: Getting a folder from a git address when the folder is not on the disk yet, for a new project and for an existing one. Does not cover forking on GitHub, choosing a branch, or any change to Settings > Projects beyond the new action.
-- Related tasks: see the index line
+- Related tasks: CLO-176, CLO-190, CLO-191
 - Supersedes: none
 - Superseded by: none
 
