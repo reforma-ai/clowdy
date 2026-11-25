@@ -24,11 +24,13 @@ Use the list or Kanban view to manage work, drill into a parent task, and jump f
 
 <!-- Add a screenshot of the task board and task detail panel. -->
 
-### Projects, repositories and worktrees
+### Projects are workspaces
 
-A project can contain several repositories and folders. Switch between products, side projects and non-coding work without mixing their chats, files or tasks.
+A project in Clowdy is a workspace for an area of work. It could be your entire company, a product, a new idea or a personal project. Inside it are the folders and repositories that belong to that context. They don't need to live under one directory or share a Git history.
 
-Start a chat in the main checkout, reuse an existing Git worktree or create a new one from a branch of your choice. New chats can inherit the current worktree. Manage worktrees from the app, remove them with or without their branches, and access the same files and changes as the agent.
+For example, a company workspace might contain separate repositories for its frontend, API, mobile app and website, plus an ordinary folder for product documents. You can work across them with one set of chats, tasks and project settings. Switch projects to switch the whole working context. There's also a personal space for work that doesn't belong to a repository.
+
+Each Git repository keeps its own branches and worktrees. Start a chat in the main checkout, reuse a worktree or create one from a branch of your choice. New chats can inherit the current worktree. Manage worktrees from the app, remove them with or without their branches, and access the same files and changes as the agent.
 
 ### Threads you can actually talk to
 
