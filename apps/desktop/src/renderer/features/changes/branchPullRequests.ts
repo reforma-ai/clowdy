@@ -17,7 +17,7 @@ export interface BranchPullRequestKey {
     branch: string;
 }
 
-type HistoryTransport = Pick<Transport, 'getGitBranchPullRequests' | 'setGitPullRequestArchived'>;
+type HistoryTransport = Pick<Transport, 'getGitBranchPullRequests'>;
 const REFRESH_MS = 60_000;
 const COALESCE_MS = 1000;
 const MAX_PENDING = 4;
@@ -27,7 +27,19 @@ const keyText = ({ projectId, folderId, branch }: BranchPullRequestKey) =>
 const repoKey = ({ host, owner, name }: GitHubRepo) => `${host}/${owner}/${name}`.toLowerCase();
 const hidden = () => typeof document !== 'undefined' && document.hidden;
 
-/** A branch has one history and one archive state, regardless of which chat is observing it. */
+/** Keep live PRs, or the newest merged PR when none are live. Legacy manual archive marks do not affect the grouping. */
+export function partitionPullRequests<T extends Pick<GitPullRequestSummary, 'number' | 'state'>>(rows: readonly T[]) {
+    const sorted = [...rows].sort((a, b) => b.number - a.number);
+    const visible = sorted.filter(pr => pr.state === 'open' || pr.state === 'draft');
+    if (!visible.length) {
+        const latest = sorted.find(pr => pr.state === 'merged');
+        if (latest) visible.push(latest);
+    }
+    const active = new Set(visible);
+    return { visible, archived: sorted.filter(pr => !active.has(pr)) };
+}
+
+/** A branch has one history, regardless of which chat is observing it. */
 export class BranchPullRequestFact {
     value: GitBranchPullRequests | undefined;
     /** The current-PR read may see a new PR before the branch history cache does. */
@@ -35,25 +47,17 @@ export class BranchPullRequestFact {
     loading = false;
     stale = false;
     error: string | undefined;
-    archiving = false;
-    archiveError: string | undefined;
     #revision = 0;
     #pending: Promise<void> | undefined;
     #lastRequested = Number.NEGATIVE_INFINITY;
     #refreshAgain = false;
     readonly #read: () => Promise<void>;
-    readonly #archive: (number: number, archived: boolean, repo: GitHubRepo) => Promise<GitBranchPullRequests>;
-    readonly #changed: (value: GitBranchPullRequests) => void;
 
     constructor(
         readonly key: BranchPullRequestKey,
-        read: (fact: BranchPullRequestFact) => Promise<void>,
-        archive: (number: number, archived: boolean, repo: GitHubRepo) => Promise<GitBranchPullRequests>,
-        changed: (value: GitBranchPullRequests) => void
+        read: (fact: BranchPullRequestFact) => Promise<void>
     ) {
         this.#read = () => read(this);
-        this.#archive = archive;
-        this.#changed = changed;
         makeAutoObservable(this, { key: false, value: observableRef, current: observableRef });
     }
 
@@ -72,6 +76,10 @@ export class BranchPullRequestFact {
         ];
     }
 
+    get visiblePullRequests(): readonly GitPullRequestSummary[] {
+        return partitionPullRequests(this.pullRequests).visible;
+    }
+
     noteCurrent(repo: GitHubRepo, pr: GitPullRequestSummary): void {
         if (pr.head !== this.key.branch) return;
         if (this.value && (!this.value.repo || repoKey(this.value.repo) !== repoKey(repo))) return;
@@ -80,12 +88,14 @@ export class BranchPullRequestFact {
         if (known && known.updatedAt >= pr.updatedAt) return;
 
         if (this.current?.pr.url === pr.url && this.current.pr.updatedAt > pr.updatedAt) return;
-        this.current = keepEqual(this.current, { repo, pr });
+        // A place supplies the full PR, including CI checks. The shared history only keeps its summary.
+        const { number, title, url, state, base, head, updatedAt } = pr;
+        this.current = keepEqual(this.current, { repo, pr: { number, title, url, state, base, head, updatedAt } });
     }
 
-    /** Reads once for all callers sharing this branch. An archive answer supersedes a read already in flight. */
+    /** Reads once for all callers sharing this branch. */
     refresh(force = false): Promise<void> {
-        if (this.archiving || this.#pending) {
+        if (this.#pending) {
             this.#refreshAgain ||= force;
             return this.#pending ?? Promise.resolve();
         }
@@ -108,7 +118,6 @@ export class BranchPullRequestFact {
     /** Reads as a queued job. A rejected read leaves the last good answer visible. */
     async read(load: () => Promise<GitBranchPullRequests>): Promise<void> {
         const revision = this.#revision;
-        if (this.archiving) return;
         try {
             const value = await load();
             if (revision === this.#revision) this.accept(value);
@@ -136,34 +145,8 @@ export class BranchPullRequestFact {
         this.loading = false;
     }
 
-    async setArchived(number: number, archived: boolean): Promise<boolean> {
-        const repo = this.value?.repo;
-        if (this.archiving || !repo) return false;
-        this.#revision++;
-        this.archiving = true;
-        this.loading = false;
-        this.archiveError = undefined;
-        try {
-            const value = await this.#archive(number, archived, repo);
-            runInAction(() => this.#changed(value));
-            return true;
-        } catch (error) {
-            runInAction(() => {
-                this.archiveError = errorMessage(error);
-            });
-            // An origin change or a reopened PR can make an old row no longer archivable.
-            this.#refreshAgain = true;
-            return false;
-        } finally {
-            runInAction(() => {
-                this.archiving = false;
-            });
-            this.#refreshIfQueued();
-        }
-    }
-
     #refreshIfQueued(): void {
-        if (!this.#refreshAgain || this.archiving || this.#pending) return;
+        if (!this.#refreshAgain || this.#pending) return;
         this.#refreshAgain = false;
         void this.refresh(true);
     }
@@ -258,32 +241,13 @@ export class BranchPullRequests {
         let slot = this.#slots.get(text);
         if (!slot) {
             const { projectId, folderId, branch } = key;
-            const fact = new BranchPullRequestFact(
-                { ...key },
-                fact =>
-                    this.#enqueue(async () => {
-                        const current = this.#slots.get(text);
-                        if (!current?.observers || current.fact !== fact || hidden()) return;
-                        current.startedAt = Date.now();
-                        await fact.read(() => this.transport.getGitBranchPullRequests(projectId, folderId, branch));
-                    }),
-                (number, archived, repo) =>
-                    this.transport.setGitPullRequestArchived(projectId, { folderId, branch, number, archived, repo }),
-                value => {
-                    fact.accept(value);
-                    if (!value.repo) return;
-                    const repo = repoKey(value.repo);
-                    for (const candidate of this.#slots.values()) {
-                        const known = candidate.fact.value;
-                        if (
-                            candidate.fact !== fact &&
-                            known?.repo &&
-                            known.branch === value.branch &&
-                            repoKey(known.repo) === repo
-                        )
-                            candidate.fact.accept(value);
-                    }
-                }
+            const fact = new BranchPullRequestFact({ ...key }, fact =>
+                this.#enqueue(async () => {
+                    const current = this.#slots.get(text);
+                    if (!current?.observers || current.fact !== fact || hidden()) return;
+                    current.startedAt = Date.now();
+                    await fact.read(() => this.transport.getGitBranchPullRequests(projectId, folderId, branch));
+                })
             );
             slot = { fact, observers: 0, startedAt: Number.NEGATIVE_INFINITY };
             this.#slots.set(text, slot);

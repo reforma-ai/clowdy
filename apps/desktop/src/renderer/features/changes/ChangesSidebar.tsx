@@ -1,7 +1,6 @@
 import { CopyButton } from '@clowdy/components/CopyButton';
 import { Panel, PanelHeader } from '@clowdy/components/Panel';
 import { Text } from '@clowdy/components/Text';
-import { toast } from '@clowdy/components/Toast';
 import { Version } from '@clowdy/icons/14';
 import { Github } from '@clowdy/icons/logo';
 import { useEffect, useRef } from 'react';
@@ -82,12 +81,7 @@ export function ChangesSidebar({
     useEffect(() => {
         if (history && repo && pr && !prStale) history.noteCurrent(repo, pr);
     }, [history, repo, pr, prStale]);
-    const rows = pullRequestRows(
-        history?.value?.pullRequests ?? [],
-        history?.stale ?? false,
-        pr,
-        facts.pullRequest.stale
-    );
+    const rows = pullRequestRows(history?.pullRequests ?? [], history?.stale ?? false, pr, facts.pullRequest.stale);
     const hasOpen = rows.some(row => row.state === 'open' || row.state === 'draft');
     const hint = rows.length > 0 ? undefined : accessHint(facts.access, facts.repo);
     const repositoryLink = githubLink(git, { relative: '', kind: 'directory' });
@@ -146,17 +140,7 @@ export function ChangesSidebar({
                     <div className={styles.facts}>
                         {!git?.gone && <RemoteMenu facts={facts} checkoutBranch={git?.checkoutBranch} />}
                         {!git?.gone && !pr && !hasOpen && <CreatePullRequest facts={facts} git={git} />}
-                        <BranchPullRequestList
-                            key={historyBranch}
-                            rows={rows}
-                            archiving={history?.archiving ?? false}
-                            onArchive={async (number, archived) => {
-                                if (!history) return false;
-                                const changed = await history.setArchived(number, archived);
-                                if (!changed && history.archiveError) toast.error({ message: history.archiveError });
-                                return changed;
-                            }}
-                        />
+                        <BranchPullRequestList key={historyBranch} rows={rows} />
                         {hint && (
                             <Text
                                 variant="xs"

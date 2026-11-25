@@ -1222,7 +1222,7 @@ describe('merging branches from the sync menu', () => {
 });
 
 describe('Create PR in the sidebar', () => {
-    it('stacks the branch history and archives or restores only completed PRs', async () => {
+    it('shows open PRs and automatically archives older merged and closed PRs', async () => {
         await start({
             tweak: data => {
                 data.branchPullRequests = {
@@ -1238,8 +1238,16 @@ describe('Create PR in the sidebar', () => {
         });
         const row = (number: number) =>
             container.querySelector(`[role="row"][aria-label^="Open pull request ${number} "]`);
+        const archive = vi.spyOn(transport, 'setGitPullRequestArchived');
 
         expect(row(128)?.querySelector('[data-check="passed"]')?.textContent).toBe('3');
+        expect(row(125)).toBeNull();
+        expect(row(124)).toBeNull();
+        const archiveToggle = buttonOf('Archived PR')!;
+        expect(archiveToggle.getAttribute('data-variant')).toBe('filling');
+        expect(archiveToggle.getAttribute('aria-expanded')).toBe('false');
+        await press(archiveToggle);
+        await settle();
         expect(row(125)?.textContent).toContain('Release booking form');
         expect(row(125)?.querySelector('svg[data-state="merged"]')).not.toBeNull();
         expect(row(124)?.querySelector('svg[data-state="closed"]')).not.toBeNull();
@@ -1248,39 +1256,46 @@ describe('Create PR in the sidebar', () => {
         );
         expect(row(124)?.textContent).toBe('Try a new booking flowPR #124');
         expect(row(124)?.getAttribute('aria-label')).toContain('Closed');
-        expect(buttonOf('Archive PR #128')).toBeUndefined();
-        expect(row(125)?.contains(buttonOf('Archive PR #125')!)).toBe(true);
-        expect(buttonOf('Archive PR #125')?.getAttribute('data-show')).toBe('item-both');
-        expect(buttonOf('Archive PR #124')).toBeDefined();
+        expect(buttonOf('Archived PR')?.getAttribute('aria-expanded')).toBe('true');
+        expect(
+            container.querySelector('button[aria-label^="Archive PR #"], button[aria-label^="Restore PR #"]')
+        ).toBeNull();
 
         await press(row(124)!);
         expect(opened).toEqual(['https://github.com/acme/car-rental/pull/124']);
-        const archive = vi.spyOn(transport, 'setGitPullRequestArchived');
-        await press(buttonOf('Archive PR #125')!);
+        await press(buttonOf('Archived PR')!);
         await settle();
-        expect(archive).toHaveBeenCalledWith(FIXTURE_PROJECT_ID, {
-            folderId: WORKTREE.folderId,
-            branch: historyBranch,
-            number: 125,
-            archived: true,
-            repo: { host: 'github.com', owner: 'acme', name: 'car-rental' },
-        });
+        expect(row(128)).not.toBeNull();
         expect(row(125)).toBeNull();
-        expect(row(124)).not.toBeNull();
-        expect(opened).toEqual(['https://github.com/acme/car-rental/pull/124']);
+        expect(row(124)).toBeNull();
+        expect(archive).not.toHaveBeenCalled();
+    });
 
-        const archiveToggle = buttonOf('Archived PR')!;
-        expect(archiveToggle.getAttribute('data-variant')).toBe('filling');
-        expect(archiveToggle.getAttribute('aria-expanded')).toBe('false');
-        await press(archiveToggle);
+    it('shows only the latest merged PR without an open PR, ignoring earlier manual archive marks', async () => {
+        await start({
+            tweak: data => {
+                noPullRequest(data);
+                data.branchPullRequests = {
+                    [CAR_RENTAL]: {
+                        [historyBranch]: [
+                            historyPr(128, 'closed', 'Closed attempt'),
+                            historyPr(120, 'merged', 'Older release'),
+                            { ...historyPr(125, 'merged', 'Latest release'), archived: true },
+                        ],
+                    },
+                };
+            },
+        });
+        const row = (number: number) =>
+            container.querySelector(`[role="row"][aria-label^="Open pull request ${number} "]`);
+        expect(row(125)?.closest('[aria-label="Pull requests"]')).not.toBeNull();
+        expect(row(120)).toBeNull();
+        expect(row(128)).toBeNull();
+        await press(buttonOf('Archived PR')!);
         await settle();
-        expect(row(125)).not.toBeNull();
-        expect(buttonOf('Archived PR')?.getAttribute('aria-expanded')).toBe('true');
-        await press(buttonOf('Restore PR #125')!);
-        await settle();
-        expect(row(125)).not.toBeNull();
-        expect(buttonOf('Archived PR')).toBeUndefined();
-        expect(archive.mock.calls[1]?.[1]).toMatchObject({ number: 125, archived: false });
+        expect(row(125)?.closest('[aria-label="Pull requests"]')).not.toBeNull();
+        expect(row(120)?.closest('[aria-label="Archived pull requests"]')).not.toBeNull();
+        expect(row(128)?.closest('[aria-label="Archived pull requests"]')).not.toBeNull();
     });
 
     it('shares the current open PR before the branch history includes it', async () => {
@@ -1298,6 +1313,22 @@ describe('Create PR in the sidebar', () => {
         });
         expect(fact.value?.pullRequests.map(pr => pr.number)).toEqual([125]);
         expect(fact.pullRequests.map(pr => pr.number)).toEqual([125, 128]);
+        const active = () => container.querySelector('[aria-label="Pull requests"]');
+        expect(active()?.textContent).toContain('PR #128');
+
+        // A place read can lose the current PR before the separate branch history catches up.
+        // Its last known state should not disappear from the sidebar while the chat still shows it.
+        vi.spyOn(transport, 'getGitPullRequest').mockResolvedValueOnce({
+            isRepository: true,
+            access: 'ready',
+            repo: model.facts.repo,
+        });
+        await act(async () => model.facts.pullRequest.refresh());
+        await settle();
+        expect(fact.visiblePullRequests.map(pr => pr.number)).toEqual([128]);
+        expect(active()?.textContent).toContain('PR #128');
+        expect(active()?.textContent).not.toContain('PR #125');
+        expect(active()?.querySelector('[data-check="passed"]')).toBeNull();
     });
 
     it('offers Create PR above completed pull requests when the branch moved past them', async () => {
@@ -1380,7 +1411,7 @@ describe('Create PR in the sidebar', () => {
         expect(container.querySelector('[role="row"][aria-label^="Open pull request 128 "]')).toBeNull();
         expect(syncButton()).toBeNull();
         expect(createPRButton()).toBeUndefined();
-        expect(buttonOf('Archive PR #190')).toBeDefined();
+        expect(buttonOf('Archive PR #190')).toBeUndefined();
     });
 
     it('shows a pull request row with its title, number and check counts', async () => {

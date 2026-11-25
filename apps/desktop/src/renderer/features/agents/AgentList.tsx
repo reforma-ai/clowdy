@@ -716,7 +716,7 @@ const BranchPullRequestBadge = observer(function BranchPullRequestBadge({
     visible: boolean;
 }) {
     const fact = useBranchPullRequests(branchKey);
-    const pullRequests = fact?.pullRequests.filter(pr => !pr.archived && pr.state !== 'closed') ?? [];
+    const pullRequests = fact?.visiblePullRequests ?? [];
     if (!visible || pullRequests.length === 0) return null;
 
     const state = pullRequests.some(pr => pr.state === 'open')

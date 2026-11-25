@@ -1691,7 +1691,7 @@ describe('a chat that works in a worktree', () => {
         expect(project().chats.get(ui().chatId!)?.workspace?.id).toBe(workspace.id);
     });
 
-    it('shares the pull request badge and archive across chats on the actual checked-out branch', async () => {
+    it('shares the automatically selected pull request badge across chats on the actual checked-out branch', async () => {
         const data = withFixtureWorkspace(createFixtureData());
         const first = data.chats.find(chat => chat.id === FIXTURE_WORKSPACE_CHAT_ID)!;
         const second = { ...first, id: 'c-shared-history', title: 'Shared worktree' };
@@ -1727,9 +1727,7 @@ describe('a chat that works in a worktree', () => {
         await draw();
 
         const badge = (id: string) => rowOf(id).querySelector('[data-pr-state]');
-        await vi.waitFor(() =>
-            expect(badge(first.id)?.getAttribute('aria-label')).toBe('2 pull requests: 1 open, 1 merged')
-        );
+        await vi.waitFor(() => expect(badge(first.id)?.getAttribute('aria-label')).toBe('1 pull request: 1 open'));
         expect(badge(second.id)?.textContent).toBe('');
         expect(badge(second.id)?.getAttribute('data-pr-state')).toBe('open');
         expect(badge(second.id)?.querySelector('svg')?.getAttribute('width')).toBe('12');
@@ -1749,13 +1747,15 @@ describe('a chat that works in a worktree', () => {
 
         const fact = branchPullRequestsOf(transport).of({ projectId: FIXTURE_PROJECT_ID, folderId, branch });
         await act(async () => {
-            expect(await fact.setArchived(10, true)).toBe(true);
-        });
-        expect(badge(first.id)?.getAttribute('data-pr-state')).toBe('open');
-        expect(badge(second.id)?.getAttribute('aria-label')).toBe('1 pull request: 1 open');
-
-        await act(async () => {
-            fact.accept({ ...fact.value!, pullRequests: [pr(10, 'merged'), pr(11, 'closed'), pr(13, 'closed')] });
+            fact.accept({
+                ...fact.value!,
+                pullRequests: [
+                    pr(9, 'merged'),
+                    { ...pr(10, 'merged'), archived: true },
+                    pr(11, 'closed'),
+                    pr(13, 'closed'),
+                ],
+            });
         });
         expect(badge(first.id)?.getAttribute('data-pr-state')).toBe('merged');
         expect(badge(second.id)?.getAttribute('aria-label')).toBe('1 pull request: 1 merged');

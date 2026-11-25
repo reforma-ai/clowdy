@@ -5,7 +5,7 @@
 }
 
 .row {
-    /* Two-line rows are taller than a single-line sm item. The list uses this height to inset its xs row actions. */
+    /* A consistent height for the two-line rows. */
     --clowdy-listbox-item-height: var(--spacing-40);
     min-width: 0;
     padding-block: var(--spacing-xs);
