@@ -86,11 +86,35 @@ const failureOf = (error: unknown): Failure => ({
     ...(error instanceof TransportError && error.hint !== undefined && { hint: error.hint }),
 });
 
-const MODES: Record<Exclude<GitBranchMergePreview['mode'], 'up-to-date' | 'rebase'>, string> = {
-    'fast-forward': 'Fast-forward without a merge commit',
-    'merge-commit': 'Creates a merge commit',
-    squash: 'Creates one new commit',
+const MODES: Record<
+    Exclude<GitBranchMergePreview['mode'], 'up-to-date' | 'rebase'>,
+    { preview: string; done: string }
+> = {
+    'fast-forward': {
+        preview: 'Fast-forward without a merge commit',
+        done: 'Fast-forwarded without a merge commit',
+    },
+    'merge-commit': { preview: 'Creates a merge commit', done: 'Created a merge commit' },
+    squash: { preview: 'Creates one new commit', done: 'Created one new commit' },
 };
+
+function mergeSummary(
+    { mode, commits, replayCommits = 0, target, source }: GitBranchMergePreview,
+    done: boolean
+): string {
+    if (mode === 'rebase') {
+        if (replayCommits > 0)
+            return done
+                ? `Replayed ${commitsWords(replayCommits)} onto ${source}`
+                : `${commitsWords(replayCommits)} to replay`;
+
+        return done ? `Fast-forwarded ${target} without replaying commits` : 'Fast-forward without replaying commits';
+    }
+
+    return done
+        ? `${mode === 'squash' ? 'Squashed' : 'Merged'} ${commitsWords(commits)} into ${target}`
+        : `${commitsWords(commits)} to merge`;
+}
 
 const STRATEGIES: Record<DialogStrategy, { label: string; description: string }> = {
     merge: {
@@ -408,7 +432,7 @@ function BranchMergeDialog({
           : !preview && !failure
             ? 'Comparing branches…'
             : undefined;
-    const replay = preview?.replayCommits ?? 0;
+    const done = result?.state === 'done';
     const isWorking = pending !== undefined;
     const modeDisabled = isWorking || !selection;
     const syncLabel = syncPhase ? SYNC_WORDS[syncPhase] : 'Syncing…';
@@ -436,7 +460,9 @@ function BranchMergeDialog({
             }}
         >
             <Text id={headingId} as="h2" variant="heading-3" className={styles.heading}>
-                {strategy === 'rebase' ? `Rebase ${target} onto ${source}` : `Merge ${source} into ${target}`}
+                {strategy === 'rebase'
+                    ? `${done ? 'Rebased' : 'Rebase'} ${target} onto ${source}`
+                    : `${done ? (strategy === 'squash' ? 'Squashed' : 'Merged') : 'Merge'} ${source} into ${target}`}
             </Text>
             <Button
                 className={styles.close}
@@ -464,18 +490,12 @@ function BranchMergeDialog({
                 </div>
             )}
             {!result && fetchFailed && <FailureText failure={fetchFailed} />}
-            {!result && preview && preview.mode !== 'up-to-date' && (
+            {(!result || done) && preview && preview.mode !== 'up-to-date' && (
                 <div className={styles.detail} role="status">
-                    <Text variant="sm">
-                        {preview.mode === 'rebase'
-                            ? replay > 0
-                                ? `${commitsWords(replay)} to replay`
-                                : 'Fast-forward without replaying commits'
-                            : `${commitsWords(preview.commits)} to merge`}
-                    </Text>
+                    <Text variant="sm">{mergeSummary(preview, done)}</Text>
                     {preview.mode !== 'rebase' && !blocked && (
                         <Text variant="sm" color="secondary">
-                            {MODES[preview.mode]}
+                            {MODES[preview.mode][done ? 'done' : 'preview']}
                         </Text>
                     )}
                     {direction === 'into' && preview.targetPath && (
@@ -509,11 +529,6 @@ function BranchMergeDialog({
                         </Text>
                     )}
                 </div>
-            )}
-            {result?.state === 'done' && (
-                <Text variant="sm" role="status">
-                    {mergeMessage(result.target)}
-                </Text>
             )}
             {failure && <FailureText failure={failure} />}
             <div className={styles.actions}>

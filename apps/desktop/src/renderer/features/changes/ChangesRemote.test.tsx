@@ -842,13 +842,16 @@ describe('merging branches from the sync menu', () => {
             },
         });
         const merge = vi.spyOn(transport, 'branchMergeGit');
-        const sync = vi.spyOn(transport, 'syncGit');
+        const reply = Promise.withResolvers<GitSyncResult>();
+        const sync = vi.spyOn(transport, 'syncGit').mockReturnValueOnce(reply.promise);
 
         await open('Merge into main worktree…');
 
         expect(heading()).toBe('Merge clowdy/ab12cd34 into next');
         expect(dialog().querySelector('input[placeholder="Filter branches"]')).toBeNull();
-        expect(dialog().querySelector(`[title="${CAR_RENTAL}"]`)).not.toBeNull();
+        const preview = dialog().querySelector(`[title="${CAR_RENTAL}"]`)?.closest('[role="status"]');
+        expect(preview?.textContent).toContain('3 commits to merge');
+        expect(preview?.textContent).toContain('Fast-forward without a merge commit');
         expect(merge.mock.calls.map(call => call[2])).toEqual([
             { action: 'preview', direction: 'into', current: 'clowdy/ab12cd34', branch: 'next' },
         ]);
@@ -859,6 +862,15 @@ describe('merging branches from the sync menu', () => {
 
         expect(merge.mock.calls[1]?.[2]).toMatchObject({ action: 'merge', direction: 'into', branch: 'next' });
         expect(sync.mock.calls[0]?.[2]).toMatchObject({ branch: 'next', destination: true });
+        expect(heading()).toBe('Merged clowdy/ab12cd34 into next');
+        const completed = dialog().querySelector(`[title="${CAR_RENTAL}"]`)?.closest('[role="status"]');
+        expect(completed?.className).toBe(preview?.className);
+        expect(completed?.textContent).toContain('Merged 3 commits into next');
+        expect(completed?.textContent).toContain('Fast-forwarded without a merge commit');
+        expect(button('Done').disabled).toBe(true);
+
+        reply.resolve({ state: 'done', branch: 'next', pulled: 0, pushed: true });
+        await settle();
         expect(dialog()).toBeNull();
     });
 
@@ -875,6 +887,36 @@ describe('merging branches from the sync menu', () => {
         expect(heading()).toBe('Merge clowdy/ab12cd34 into dev');
         expect(merge.mock.calls[0]?.[2]).toMatchObject({ action: 'preview', branch: 'dev' });
         expect(merge).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+        ['Squash and merge', 'Squashed 3 commits into clowdy/ab12cd34', 'Created one new commit'],
+        ['Rebase', 'Fast-forwarded clowdy/ab12cd34 without replaying commits', undefined],
+    ])('shows the completed %s outcome during automatic sync', async (strategy, summary, detail) => {
+        await start({ gitWrites: { clean: true, remote: 'level' } });
+        const reply = Promise.withResolvers<GitSyncResult>();
+        vi.spyOn(transport, 'syncGit').mockReturnValueOnce(reply.promise);
+
+        await open('Merge from branch…');
+        await press(option('main'));
+        await settle();
+        await press(modeTrigger());
+        await settle();
+        await press(
+            [...document.querySelectorAll('[role="menuitemradio"]')].find(row => row.textContent?.startsWith(strategy))!
+        );
+        await settle();
+        await press(button(strategy));
+        await settle();
+
+        const status = dialog().querySelector('[role="status"]');
+        expect(status?.textContent).toContain(summary);
+        if (detail) expect(status?.textContent).toContain(detail);
+        expect(button('Done').disabled).toBe(true);
+
+        reply.resolve({ state: 'done', branch: 'clowdy/ab12cd34', pulled: 0, pushed: true });
+        await settle();
+        expect(dialog()).toBeNull();
     });
 
     it('does not offer merging into the main checkout from the main checkout itself', async () => {
@@ -914,7 +956,10 @@ describe('merging branches from the sync menu', () => {
         await press(button('Merge'));
         await settle();
 
-        expect(dialog().textContent).toContain('Merged into main');
+        expect(dialog().querySelector('[role="status"]')?.textContent).toContain('Merged 3 commits into main');
+        expect(dialog().querySelector('[role="status"]')?.textContent).toContain(
+            'Fast-forwarded without a merge commit'
+        );
         expect(dialog().querySelector('[role="alert"]')?.textContent).toContain('Sync failed: Network is offline');
         await press(button('Sync main'));
         await settle();
@@ -971,6 +1016,9 @@ describe('merging branches from the sync menu', () => {
         expect(merge.mock.calls.map(call => call[2].action)).toEqual(['preview', 'merge']);
         expect(sync).not.toHaveBeenCalled();
         expect(success).not.toHaveBeenCalled();
+        expect(dialog().querySelector('[role="status"]')?.textContent).toContain('Merged 3 commits into main');
+        expect(dialog().querySelector(`[title="${CAR_RENTAL}"]`)).not.toBeNull();
+        expect(button('Done').disabled).toBe(false);
 
         await press(button('Sync main'));
         await settle();
