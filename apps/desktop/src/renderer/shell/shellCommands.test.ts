@@ -9,6 +9,7 @@ import { commandHint } from '../hotkeys/react';
 import { commandPresses, createRegistry, type HotkeyRegistry } from '../hotkeys/registry';
 import { UiStore } from '../stores';
 import { findCommands } from './findCommands';
+import { PROJECT_SLOTS, projectSwitchCommand, projectSwitchKeys } from './projectSwitch';
 import { NEW_CHAT_COMMAND, type ShellCommandsRoot, shellCommands } from './shellCommands';
 
 let registry: HotkeyRegistry;
@@ -19,6 +20,7 @@ let screen: { shown: boolean };
 /** How far the window has loaded, as the real root's `phase` says. */
 let loading: { phase: ShellCommandsRoot['phase'] };
 let root: ShellCommandsRoot;
+let selected: string[];
 let history: ShellCommandsRoot['history'] & { canGoBack: boolean; canGoForward: boolean };
 
 const press = (init: KeyboardEventInit & { key: string }, target: EventTarget = document.body) => {
@@ -31,6 +33,7 @@ const press = (init: KeyboardEventInit & { key: string }, target: EventTarget = 
 
 beforeEach(() => {
     registry = createRegistry('darwin');
+    selected = [];
     ui = new UiStore();
     // A stand-in for the real history, which has its own tests: only what the commands read and call.
     history = observable(
@@ -45,8 +48,14 @@ beforeEach(() => {
             get phase() {
                 return loading.phase;
             },
+            projects: [
+                { id: 'prj_personal', personal: true },
+                { id: 'prj_a', personal: false },
+                { id: 'prj_b', personal: false },
+            ] as ShellCommandsRoot['projects'],
             selectedProject: undefined,
             selectedProjectId: 'p' as string | null,
+            selectProject: (projectId: string) => void selected.push(projectId),
             get selectedProjectUi() {
                 return this.selectedProjectId ? ui.forProject(this.selectedProjectId) : undefined;
             },
@@ -79,6 +88,107 @@ describe('the keys that went with the sections', () => {
         press({ key: 'a' });
 
         expect(ui.forProject('p').sidePanelOpen).toBe(false);
+    });
+});
+
+describe('the project keys', () => {
+    /** Cmd+Option+digit as a Mac types it: Option turns the key into a symbol, so only the physical key names the digit. */
+    const pressSlot = (slot: number, target?: EventTarget) =>
+        press({ key: '¡', code: `Digit${slot}`, metaKey: true, altKey: true }, target);
+
+    it('opens the personal space on Cmd+Option+0 and the projects in the order of the menu on Cmd+Option+1 and 2', () => {
+        pressSlot(0);
+        pressSlot(1);
+        pressSlot(2);
+
+        expect(selected).toEqual(['prj_personal', 'prj_a', 'prj_b']);
+    });
+
+    it('does nothing for a slot no project is on, and leaves the key to the page', () => {
+        const event = pressSlot(3);
+
+        expect(selected).toEqual([]);
+        expect(event.defaultPrevented).toBe(false);
+        expect(commandHint(projectSwitchCommand(3), registry)).toBeUndefined();
+        expect(commandHint(projectSwitchCommand(2), registry)).toEqual([['alt', 'meta', '2']]);
+    });
+
+    it('leaves Settings, as opening a project from its list does', () => {
+        ui.openSettings('providers');
+        pressSlot(1);
+
+        expect(selected).toEqual(['prj_a']);
+        expect(ui.settingsOpen).toBe(false);
+    });
+
+    describe('over a window', () => {
+        const overlay = (extra = '') => {
+            const element = document.body.appendChild(document.createElement('div'));
+
+            element.setAttribute('data-modal-overlay', '');
+            element.innerHTML = extra;
+
+            return element;
+        };
+
+        afterEach(() => {
+            document.body.innerHTML = '';
+        });
+
+        it('runs over Settings alone, and leaves it', () => {
+            ui.openSettings('projects');
+            overlay();
+            pressSlot(1);
+
+            expect(selected).toEqual(['prj_a']);
+            expect(ui.settingsOpen).toBe(false);
+        });
+
+        it('does not run over a window that is not Settings', () => {
+            overlay();
+            pressSlot(1);
+
+            expect(selected).toEqual([]);
+        });
+
+        it('does not run over a confirmation or a menu in front of Settings', () => {
+            ui.openSettings('projects');
+            overlay();
+            overlay();
+            pressSlot(1);
+
+            expect(selected).toEqual([]);
+
+            document.body.innerHTML = '';
+            overlay('<div data-modal-clickout-layer></div>');
+            pressSlot(1);
+
+            expect(selected).toEqual([]);
+            expect(ui.settingsOpen).toBe(true);
+        });
+    });
+
+    it('works from a text field too', () => {
+        const input = document.body.appendChild(document.createElement('input'));
+
+        input.focus();
+        pressSlot(2, input);
+
+        expect(selected).toEqual(['prj_b']);
+    });
+
+    it('follows the order of the projects as it changes', () => {
+        runInAction(() => {
+            root.projects = [root.projects[0], root.projects[2], root.projects[1]];
+        });
+        pressSlot(1);
+
+        expect(selected).toEqual(['prj_b']);
+    });
+
+    it('is Ctrl+Alt+digit off a Mac', () => {
+        expect(commandPresses({ keys: projectSwitchKeys(4) }, 'win32')).toEqual([['ctrl', 'alt', '4']]);
+        expect(commandPresses({ keys: projectSwitchKeys(4) }, 'darwin')).toEqual([['alt', 'meta', '4']]);
     });
 });
 
@@ -312,6 +422,7 @@ describe('the keymap', () => {
             'sidePanel.tab.docs',
             'sidePanel.tab.terminal',
             'sidePanel.tab.tasks',
+            ...Array.from({ length: PROJECT_SLOTS }, (_, slot) => projectSwitchCommand(slot)),
             'nav.back',
             'nav.forward',
             'find.open',

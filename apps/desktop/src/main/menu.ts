@@ -99,8 +99,8 @@ export function createAppMenu({ checkForUpdates }: AppMenuOptions = {}): Menu {
                 { role: 'forceReload' },
                 { role: 'toggleDevTools' },
                 { type: 'separator' },
-                // Not Cmd+0 (Ctrl+0): the side panel's Info tab has it.
-                { role: 'resetZoom', accelerator: 'CmdOrCtrl+Alt+0' },
+                // Cmd+0 (Ctrl+0) as in a browser: Cmd+Option+0 (Ctrl+Alt+0) is the personal space's key (`projectSwitch`), and a menu key reaches the page first.
+                { role: 'resetZoom', accelerator: 'CmdOrCtrl+0' },
                 { role: 'zoomIn' },
                 { role: 'zoomOut' },
                 { type: 'separator' },

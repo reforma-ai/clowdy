@@ -15,7 +15,7 @@ import type { RootStore } from '../../../stores';
 export type FolderSettingsPatch = Extract<CommandInput, { type: 'project.updateFolder' }>['settings'];
 
 /** Shows the project in the window, with Settings closed: one step for back and forward, not two. */
-export function openProject(root: RootStore, project: Project): void {
+export function openProject(root: Pick<RootStore, 'selectProject' | 'ui'>, project: Project): void {
     runInAction(() => {
         root.selectProject(project.id);
         root.ui.closeSettings();

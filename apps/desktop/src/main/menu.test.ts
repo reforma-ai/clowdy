@@ -38,6 +38,15 @@ function findItem(id: string, list: Item[] = items()): Item | undefined {
     return undefined;
 }
 
+describe('the View menu', () => {
+    test('resets the zoom on Cmd+0, which leaves Cmd+Option+0 to the personal space', () => {
+        const view = items().find(item => item.role === 'viewMenu')?.submenu ?? [];
+
+        expect(view.find(item => item.role === 'resetZoom')?.accelerator).toBe('CmdOrCtrl+0');
+        expect(view.some(item => item.accelerator === 'CmdOrCtrl+Alt+0')).toBe(false);
+    });
+});
+
 describe('Find in the Edit menu', () => {
     beforeEach(() => {
         send.mockReset();

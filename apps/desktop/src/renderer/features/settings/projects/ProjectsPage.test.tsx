@@ -15,6 +15,8 @@ import {
 } from '../../../daemon/fixtureData';
 import { FixtureTransport } from '../../../daemon/fixtureTransport';
 import { overrideTransport } from '../../../daemon/testing';
+import { hotkeys } from '../../../hotkeys';
+import { shellCommands } from '../../../shell/shellCommands';
 import { RootStore, RootStoreProvider } from '../../../stores';
 import { SettingsWindow } from '../SettingsWindow';
 
@@ -41,6 +43,12 @@ vi.mock('../../../shared/ProjectIcon', async importOriginal => {
     const mobx = await import('mobx-react-lite');
 
     return { ProjectIcon: mobx.observer(ProjectIcon) };
+});
+vi.mock('../../../hotkeys/CommandHotkey', async importOriginal => {
+    const { CommandHotkey } = await importOriginal<typeof import('../../../hotkeys/CommandHotkey')>();
+    const mobx = await import('mobx-react-lite');
+
+    return { CommandHotkey: mobx.observer(CommandHotkey) };
 });
 
 /**
@@ -231,6 +239,28 @@ describe('ProjectsPage list', () => {
         expect(rows[1]).toContain('Car Rental11 chats21 tasks');
         expect(rows[2]).not.toContain('folder');
         expect(rows[2]).not.toContain('chat');
+    });
+
+    it('shows the keys that open each project before its menu, the personal space on 0 and the others in the order of the list', async () => {
+        await open();
+
+        let disposers: (() => void)[] = [];
+
+        act(() => {
+            disposers = shellCommands(store).map(command => hotkeys.defineCommand({ ...command, scope: 'app' }));
+        });
+
+        try {
+            const keys = (projectId: string) =>
+                [...row(projectId)!.parentElement!.querySelectorAll('kbd')].map(item => item.textContent).join('');
+
+            // The modifiers depend on the platform the test runs on (`Ctrl Alt`, `⌘ ⌥` on a Mac): the digit is the slot.
+            expect(keys(FIXTURE_PERSONAL_PROJECT_ID)).toMatch(/0$/);
+            expect(keys(FIXTURE_PROJECT_ID)).toMatch(/1$/);
+            expect(keys(FIXTURE_EMPTY_PROJECT_ID)).toMatch(/2$/);
+        } finally {
+            for (const dispose of disposers) dispose();
+        }
     });
 
     it('opens the page of a project from its row and goes back to the list', async () => {
