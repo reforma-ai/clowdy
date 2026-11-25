@@ -6,17 +6,22 @@ Everything here lives in the repository settings on GitHub (`reforma-ai/clowdy` 
 
 | Name | Kind | Needed for | When |
 | --- | --- | --- | --- |
-| `CLOWDY_OTA_SIGNING_KEY` | Secret | Signing OTA bundles | Before the first shell release |
-| `CLOWDY_OTA_PUBLIC_KEY` | Variable | Baked into every shell, which checks bundles with it | Before the first shell release |
-| `CSC_LINK` | Secret | Signing the macOS app | Once the Apple account is verified |
-| `CSC_KEY_PASSWORD` | Secret | Opening `CSC_LINK` | Same |
-| `APPLE_API_KEY` | Secret | Notarizing the macOS app | Same |
-| `APPLE_API_KEY_ID` | Secret | Same | Same |
-| `APPLE_API_ISSUER` | Secret | Same | Same |
+| `CLOWDY_OTA_SIGNING_KEY` | Environment secret | Signing OTA bundles | Before the first shell release |
+| `CLOWDY_OTA_PUBLIC_KEY` | Repository variable | Baked into every shell, which checks bundles with it | Before the first shell release |
+| `CSC_LINK` | Environment secret | Signing the macOS app | Once the Apple account is verified |
+| `CSC_KEY_PASSWORD` | Environment secret | Opening `CSC_LINK` | Same |
+| `APPLE_API_KEY` | Environment secret | Notarizing the macOS app | Same |
+| `APPLE_API_KEY_ID` | Environment secret | Same | Same |
+| `APPLE_API_ISSUER` | Environment secret | Same | Same |
+| `APPLE_TEAM_ID` | Repository variable | Checking that the certificate and the signed app belong to your team | Same |
 
-Secrets go to **Settings → Secrets and variables → Actions → Secrets → New repository secret**. Variables go to the **Variables** tab next to it (**New repository variable**). The workflows' own GitHub token needs nothing: they ask for write access themselves where they publish.
+## The environment
 
-A secret can only be written, never read back, and `gh secret set` replaces one that exists. A placeholder you set earlier is overwritten by setting the name again; the list (`gh secret list --repo reforma-ai/clowdy`) shows only names and dates, so it cannot tell a placeholder from a real value. The workflow can: see step 6.
+The secrets are not repository secrets, which every branch and every pull request run can read. They live in the environment `desktop-release` (**Settings → Environments → New environment**), whose **Deployment branches and tags** is set to **Selected branches and tags** with the rules `main` and `next`. Only a job that declares `environment: desktop-release` reads them (the `macos` job of Release shell and the `publish` job of Release OTA bundle), and GitHub refuses that job on any other branch. Add them under the environment's **Environment secrets → Add environment secret**.
+
+The variables are not secret and stay repository variables: **Settings → Secrets and variables → Actions → Variables → New repository variable**. The workflows' own GitHub token needs nothing: they ask for write access themselves where they publish.
+
+A secret can only be written, never read back, and `gh secret set` replaces one that exists. A placeholder you set earlier is overwritten by setting the name again; the list (`gh secret list --repo reforma-ai/clowdy --env desktop-release`) shows only names and dates, so it cannot tell a placeholder from a real value. The workflow can: see step 6.
 
 ## 1. Create the OTA key
 
@@ -31,11 +36,11 @@ bun -e "const { generateKeyPairSync } = require('node:crypto'); const { writeFil
 Put the files into GitHub, either with `gh`:
 
 ```sh
-gh secret set CLOWDY_OTA_SIGNING_KEY --repo reforma-ai/clowdy < ota-private.pem
+gh secret set CLOWDY_OTA_SIGNING_KEY --repo reforma-ai/clowdy --env desktop-release < ota-private.pem
 gh variable set CLOWDY_OTA_PUBLIC_KEY --repo reforma-ai/clowdy < ota-public.pem
 ```
 
-or by hand: paste the whole of `ota-private.pem`, `BEGIN` and `END` lines included, as the secret `CLOWDY_OTA_SIGNING_KEY`, and `ota-public.pem` as the variable `CLOWDY_OTA_PUBLIC_KEY`.
+or by hand: paste the whole of `ota-private.pem`, `BEGIN` and `END` lines included, as the environment secret `CLOWDY_OTA_SIGNING_KEY`, and `ota-public.pem` as the repository variable `CLOWDY_OTA_PUBLIC_KEY`.
 
 Then move `ota-private.pem` into your password manager and delete the file. The key never changes casually: shells trust only the key they were built with, so a lost or replaced key means no OTA bundles until a shell built with the new key is out.
 
@@ -82,26 +87,32 @@ Once the Apple Developer account is verified:
 2. **`CSC_LINK` and `CSC_KEY_PASSWORD`.** In Keychain Access → **My Certificates**, right-click "Developer ID Application: …" (it must show its private key under it) → **Export** → `.p12`, with a password. Then set them; without a value, `gh secret set` asks for it:
 
    ```sh
-   base64 -i developer-id.p12 | gh secret set CSC_LINK --repo reforma-ai/clowdy
-   gh secret set CSC_KEY_PASSWORD --repo reforma-ai/clowdy
+   base64 -i developer-id.p12 | gh secret set CSC_LINK --repo reforma-ai/clowdy --env desktop-release
+   gh secret set CSC_KEY_PASSWORD --repo reforma-ai/clowdy --env desktop-release
    ```
 
 3. **`APPLE_API_KEY`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER`.** In [App Store Connect](https://appstoreconnect.apple.com/access/integrations/api) → **Users and Access → Integrations → App Store Connect API → Team Keys**, add a key with **Developer** access and download `AuthKey_<id>.p8` (Apple lets you download it once). The key's ID in the table is `APPLE_API_KEY_ID`, and the Issuer ID above the table is `APPLE_API_ISSUER`:
 
    ```sh
-   base64 -i AuthKey_<id>.p8 | gh secret set APPLE_API_KEY --repo reforma-ai/clowdy
-   gh secret set APPLE_API_KEY_ID --repo reforma-ai/clowdy
-   gh secret set APPLE_API_ISSUER --repo reforma-ai/clowdy
+   base64 -i AuthKey_<id>.p8 | gh secret set APPLE_API_KEY --repo reforma-ai/clowdy --env desktop-release
+   gh secret set APPLE_API_KEY_ID --repo reforma-ai/clowdy --env desktop-release
+   gh secret set APPLE_API_ISSUER --repo reforma-ai/clowdy --env desktop-release
    ```
 
-4. **Check the Apple key before the run.** A bad certificate costs nothing: the `macos` job's "Check the signing certificate" step decodes `CSC_LINK`, opens it with `CSC_KEY_PASSWORD`, and when that fails warns "Unsigned macOS build" and builds ad hoc. A bad App Store Connect key is not checked first: it fails the run after the build, at "Write the App Store Connect key" or "Package, sign, and notarize". Ask Apple with the same three values before you start:
+4. **`APPLE_TEAM_ID`.** Your Team ID is under **Membership details** on [developer.apple.com](https://developer.apple.com/account) and in the parentheses of the certificate's name. It is a variable, not a secret:
+
+   ```sh
+   gh variable set APPLE_TEAM_ID --repo reforma-ai/clowdy --body <team id>
+   ```
+
+5. **Check the Apple key before the run.** A bad certificate costs nothing: the `macos` job's "Check the signing certificate" step decodes `CSC_LINK`, opens it with `CSC_KEY_PASSWORD`, and when that fails warns "Unsigned macOS build" and builds ad hoc. A certificate that opens but is not a Developer ID Application one of the team in `APPLE_TEAM_ID` fails the run there instead. A bad App Store Connect key is not checked first: it fails the run after the build, at "Write the App Store Connect key" or "Package, sign, and notarize". Ask Apple with the same three values before you start:
 
    ```sh
    xcrun notarytool history --key AuthKey_<id>.p8 --key-id <key id> --issuer <issuer id>
    ```
 
    It lists past submissions (an empty list is fine) or says the credentials are refused.
-5. Release a new shell version (step 3). The `macos` job no longer warns, and its "Verify signatures, notarization, and fuses" step checks the notarization. People on an ad-hoc build install the signed one by hand once; it updates itself from then on.
+6. Release a new shell version (step 3). The `macos` job no longer warns, and its "Verify signatures, notarization, and fuses" step checks the notarization and the team. People on an ad-hoc build install the signed one by hand once; it updates itself from then on.
 
 ## Check that it works
 
