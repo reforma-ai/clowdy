@@ -1437,14 +1437,22 @@ describe('Edit in a chat', () => {
     const editsSent = (spy: { mock: { calls: Array<[CommandInput]> } }) =>
         spy.mock.calls.filter(([input]) => input.type === 'chat.edit');
 
-    /** Presses Edit under the message with these words, and lets the editor take the focus, which it does on a frame of its own. */
+    /**
+     * Presses Edit under the message with these words, and waits for the editor to take the focus, which it does a frame or two after it is made: a loaded
+     * machine delays that past any fixed number of frames. The wait ends at once when the focus is there; a box that never gets it is left to the test's own check.
+     */
     async function openEdit(words: string) {
         const row = [...container.querySelectorAll<HTMLElement>('[data-message]')].find(message =>
             message.textContent?.includes(words)
         )!;
 
         await act(async () => row.querySelector<HTMLButtonElement>('button[aria-label="Edit message"]')!.click());
-        await act(async () => new Promise(requestAnimationFrame));
+
+        const deadline = Date.now() + 2000;
+
+        do {
+            await act(async () => new Promise(requestAnimationFrame));
+        } while (document.activeElement !== editField() && Date.now() < deadline);
     }
 
     const typeIn = (target: HTMLElement & { editor: Editor }, words: string) =>

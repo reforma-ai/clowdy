@@ -47,22 +47,38 @@ async function settle() {
     });
 }
 
-/**
- * The tooltip that a keyboard focus opens: it is there once the library's own timer has run, which a loaded machine delays past one `settle`. Each pause is
- * inside `act`, which is what draws what the timer asked for; the wait ends as soon as the tooltip is, or fails with its own message before the test's limit.
- */
-async function openTooltip(): Promise<Element> {
+/** Polls for what a timer of the app or the library makes, which a loaded machine delays past any one `settle`; it fails with its own message before the test's limit. */
+async function until<T>(find: () => T | null | undefined | false, message: string): Promise<T> {
     const deadline = Date.now() + 4000;
 
     for (;;) {
         await settle();
 
-        const found = document.querySelector('[role="tooltip"]');
+        const found = find();
 
         if (found) return found;
 
-        if (Date.now() > deadline) throw new Error('The tooltip did not open');
+        if (Date.now() > deadline) throw new Error(message);
     }
+}
+
+/** The tooltip that a keyboard focus opens: it is there once the library's own timer has run. Each pause is inside `act`, which draws what the timer asked for. */
+const openTooltip = () => until(() => document.querySelector('[role="tooltip"]'), 'The tooltip did not open');
+
+/**
+ * Moves the focus to `target` as a keyboard does. The dialog's first field takes the focus on a timer of its own, 50 ms after it is drawn, and a loaded machine fires
+ * that timer after a focus the test gave earlier: the field takes the focus back, and the tooltip of `target` shuts. So the test waits for the field to have it first.
+ */
+async function focusByKeyboard(target: HTMLElement) {
+    await until(
+        () => document.activeElement?.matches('input[aria-label="Folder name"]'),
+        'The dialog did not take the focus'
+    );
+
+    await act(async () => {
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+        target.focus();
+    });
 }
 
 /** The projects' state is loaded by the feed: the chats of the project are there once it has answered. */
@@ -310,10 +326,7 @@ describe('Manage worktrees', () => {
             element => element.textContent === 'search-filters'
         )!;
 
-        await act(async () => {
-            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
-            name.focus();
-        });
+        await focusByKeyboard(name);
 
         expect((await openTooltip()).textContent).toBe('~/worktrees/car-rental/search-filters');
     });
@@ -365,10 +378,7 @@ describe('Manage worktrees', () => {
         expect(worktree.textContent).not.toContain('Weekend surcharge in a worktree');
         expect(textButton(row(FOUND_WORKTREE), '0 chats')).toBeUndefined();
 
-        await act(async () => {
-            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
-            count.focus();
-        });
+        await focusByKeyboard(count);
 
         const tooltip = await openTooltip();
 
