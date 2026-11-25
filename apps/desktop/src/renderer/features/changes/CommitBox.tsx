@@ -374,7 +374,7 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
             : 'Files to commit'
         : hasFiles
           ? 'Commit'
-          : '0 changed files';
+          : 'No changed files';
     const count = hasFiles ? (mergeFiles ? commitFiles.length : `${ticked} of ${commitFiles.length}`) : undefined;
     const showConflicts = mergeFiles !== undefined && conflicts > 0;
     const truncationNotice = mergeStatus
@@ -421,12 +421,13 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
                         : count
                 }
                 leading={
-                    !mergeFiles && (
+                    !mergeFiles &&
+                    hasFiles && (
                         <Checkbox
                             size="sm"
                             isSelected={draft.allTicked}
                             isIndeterminate={!draft.allTicked && !draft.noneTicked}
-                            isDisabled={!hasFiles || draft.writing}
+                            isDisabled={draft.writing}
                             aria-label="Tick every file"
                             onChange={on => draft.setAll(on)}
                         />

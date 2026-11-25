@@ -491,12 +491,11 @@ describe('the commit box', () => {
         await settle();
         await draw();
 
-        expect(box()?.textContent).toContain('0 changed files');
+        expect(box()?.querySelector('h3')?.textContent).toBe('No changed files');
         expect(box()?.textContent).not.toContain('Committed c0ffee0');
         expect(message().value).toBe('');
         expect(message().readOnly).toBe(false);
-        expect(checkboxes()).toEqual([everyTick()]);
-        expect(everyTick().disabled).toBe(true);
+        expect(checkboxes()).toHaveLength(0);
         expect(commitButton()?.textContent).toBe('Commit 0 files');
         expect(commitButton()?.disabled).toBe(true);
     });
@@ -505,7 +504,8 @@ describe('the commit box', () => {
         await start({ key: { projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental' } });
         const commit = vi.spyOn(transport, 'commitGit');
 
-        expect(box()?.textContent).toContain('0 changed files');
+        expect(box()?.querySelector('h3')?.textContent).toBe('No changed files');
+        expect(checkboxes()).toHaveLength(0);
         await type('Draft for the next change');
         expect(message().value).toBe('Draft for the next change');
         expect(commitButton()?.textContent).toBe('Commit 0 files');
