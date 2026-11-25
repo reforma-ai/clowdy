@@ -7,13 +7,14 @@ import { StatusPill } from '../tasks/status';
 import { ComposerBanner, ComposerBannerHeader, ComposerBannerList } from './ComposerBanner';
 import styles from './TasksBanner.module.css';
 
+import type { CSSProperties } from 'react';
 import type { ChatProgress } from './progress';
 
 /** The chat's current tasks, kept outside the message history. */
 export function TasksBanner({ progress }: { progress: ChatProgress }) {
     const project = useProjectState();
     const ui = useProjectUi();
-    const { summary, tasks } = progress;
+    const { summary, rows } = progress;
 
     return (
         <ComposerBanner role="group" aria-label="Chat tasks">
@@ -36,14 +37,19 @@ export function TasksBanner({ progress }: { progress: ChatProgress }) {
                         </CollapsibleTrigger>
                         {state.isExpanded && (
                             <ComposerBannerList label="Tasks in this chat" onAction={id => ui.openTask(id)}>
-                                {tasks.map(task => {
+                                {rows.map(({ task, depth }) => {
                                     const status = project.statuses.find(status => status.id === task.statusId);
+                                    const label = `${task.key} ${task.title}, ${status?.name ?? 'Unknown'}`;
 
                                     return (
                                         <GridListItem
                                             id={task.id}
                                             key={task.id}
-                                            textValue={`${task.key} ${task.title}, ${status?.name ?? 'Unknown'}`}
+                                            className={styles.row}
+                                            data-depth={depth}
+                                            style={{ '--depth': depth } as CSSProperties}
+                                            textValue={label}
+                                            aria-label={`${label}, level ${depth + 1}`}
                                             endAffix={<StatusPill status={status} />}
                                         >
                                             <Text slot="label" title={task.title}>

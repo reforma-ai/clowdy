@@ -16,3 +16,7 @@
 .key {
     margin-inline-end: var(--spacing-sm);
 }
+
+.row:not([data-depth='0']) {
+    padding-inline-start: calc(var(--clowdy-listbox-item-padding-inline) + var(--depth) * var(--spacing-20));
+}
