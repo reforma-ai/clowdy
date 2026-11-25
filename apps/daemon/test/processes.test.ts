@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process';
 import { join } from 'node:path';
 
 import { getRunWork } from '../src/db/runs';
-import { processesBelow, spawnInOwnGroup } from '../src/engine/process';
+import { processesBelow, spawnInOwnGroup, stderrOf } from '../src/engine/process';
 import { isAlive, killSurvivor, mayBeSameProcess, startTimeOf } from '../src/runs/processes';
 import {
     cleanTempDirs,
@@ -390,5 +390,59 @@ describe("a tool that left the agent's process group", () => {
             true
         );
         await waitFor(() => gone(child.pid!) && gone(tool), 'the agent and its tool to be stopped');
+    });
+});
+
+describe('what a program wrote to stderr as it ended', () => {
+    const start = (script: string) =>
+        spawnInOwnGroup({
+            command: process.execPath,
+            args: ['-e', script],
+            cwd: tempDir(),
+            env: { PATH: process.env.PATH ?? '' },
+        });
+
+    test('is what the failure of a program that ended says, the last line included', async () => {
+        const agent = await start('console.error("x".repeat(60_000)); console.error("why it went"); process.exit(2)');
+
+        await agent.exited;
+
+        expect(await stderrOf(agent)).toEndWith('x\nwhy it went\n');
+    });
+
+    test('is not waited for from a program that is still working', async () => {
+        const agent = await start('console.error("so far"); setInterval(() => undefined, 1000)');
+
+        leftovers.push(agent.pid);
+
+        const started = Date.now();
+
+        await stderrOf(agent);
+
+        expect(Date.now() - started).toBeLessThan(500);
+        expect(isAlive(agent.pid)).toBe(true);
+
+        agent.stop();
+        await agent.exited;
+    });
+
+    test('is waited for from a program that closed its stdout, until a limit when it goes on running', async () => {
+        const agent = await start(
+            'console.error("so far"); require("node:fs").closeSync(1); setInterval(() => undefined, 1000)'
+        );
+
+        leftovers.push(agent.pid);
+        // The connection reads stdout, so it sees the end of it.
+        agent.child.stdout?.resume();
+        await new Promise(resolve => agent.child.stdout?.once('end', resolve));
+
+        const started = Date.now();
+
+        expect(await stderrOf(agent)).toBe('so far\n');
+        expect(Date.now() - started).toBeGreaterThanOrEqual(900);
+        expect(isAlive(agent.pid)).toBe(true);
+
+        agent.stop();
+        await agent.exited;
     });
 });

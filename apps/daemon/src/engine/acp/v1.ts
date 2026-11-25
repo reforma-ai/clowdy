@@ -2,6 +2,7 @@ import { Readable, Writable } from 'node:stream';
 import { client, methods, ndJsonStream, PROTOCOL_VERSION } from '@agentclientprotocol/sdk/unstable';
 
 import { EngineFailure, errorMessage } from '../../errors';
+import { stderrOf } from '../process';
 import { answeredInTime, Channel, ProcessEnded, toWebReadable, watchEnd } from './connection';
 import {
     advertisesSteering,
@@ -354,7 +355,7 @@ export class V1Layer implements ProtocolLayer {
 
                 if (item.kind === 'exited') {
                     yield failureEvent(
-                        processEnded(context, `exit code ${proc.child.exitCode ?? 'unknown'}`, proc.stderr())
+                        processEnded(context, `exit code ${proc.child.exitCode ?? 'unknown'}`, await stderrOf(proc))
                     );
 
                     return;
@@ -362,7 +363,7 @@ export class V1Layer implements ProtocolLayer {
 
                 if (item.kind === 'failed') {
                     yield* mapper.close();
-                    yield failureEvent(classifyThrown(item.error, context, proc.stderr()));
+                    yield failureEvent(classifyThrown(item.error, context, await stderrOf(proc)));
 
                     return;
                 }
@@ -387,13 +388,13 @@ export class V1Layer implements ProtocolLayer {
 
             if (error instanceof ProcessEnded) {
                 yield failureEvent(
-                    processEnded(context, `exit code ${proc.child.exitCode ?? 'unknown'}`, proc.stderr())
+                    processEnded(context, `exit code ${proc.child.exitCode ?? 'unknown'}`, await stderrOf(proc))
                 );
 
                 return;
             }
 
-            yield failureEvent(classifyThrown(error, context, proc.stderr()));
+            yield failureEvent(classifyThrown(error, context, await stderrOf(proc)));
         }
     }
 }

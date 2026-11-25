@@ -5,6 +5,8 @@ import type { ChildProcess } from 'node:child_process';
 /** After a polite stop, the group gets this long before it is killed outright. */
 const KILL_AFTER_MS = 2000;
 const STDERR_TAIL_CHARS = 4000;
+/** How long a failure waits for what a process that is ending wrote last (`stderrOf`): it ends the wait as soon as the pipes close, so this bounds a leftover that holds one. */
+const STDERR_WAIT_MS = 1000;
 
 /** Signals every process of the group `pgid`. On Windows, which has no groups, it stops the process tree of `pgid`. */
 export function killProcessGroup(pgid: number, signal: NodeJS.Signals): void {
@@ -127,6 +129,11 @@ export interface AgentProcess {
     readonly pid: number;
     /** Settles when the process has exited. */
     readonly exited: Promise<void>;
+    /**
+     * Settles when the process has exited and its pipes are closed, so everything it wrote is read: `exited` comes at the exit, and the end of stderr can still be on its
+     * way. It does not settle while something the process left holds a pipe, nor for a process that is still running: wait for it with a limit.
+     */
+    readonly closed: Promise<void>;
     /** The last part of what the process wrote to stderr. */
     stderr(): string;
     /**
@@ -136,6 +143,31 @@ export interface AgentProcess {
     watch(): void;
     /** Asks the group, and what was started below it outside the group, to stop (SIGTERM), then kills them after a short grace. Safe to call again. */
     stop(): void;
+}
+
+/**
+ * The end of what the process wrote to stderr, for the failure of one that is ending. The connection to an agent closes with its stdout, and its last words on stderr
+ * can still be unread then, as they can at its exit, so a failure that reads `stderr()` at once can miss why the agent went. For a process that has exited or closed
+ * its stdout this waits for the pipes to close, at most `STDERR_WAIT_MS`; one that is still working (an agent that answered a request with an error) is not waited for.
+ */
+export async function stderrOf(proc: AgentProcess): Promise<string> {
+    const { child } = proc;
+    const ending =
+        child.exitCode !== null || child.signalCode !== null || child.stdout?.readableEnded || child.stdout?.destroyed;
+
+    if (ending) {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+
+        await Promise.race([
+            proc.closed,
+            new Promise<void>(resolve => {
+                timer = setTimeout(resolve, STDERR_WAIT_MS);
+            }),
+        ]);
+        clearTimeout(timer);
+    }
+
+    return proc.stderr();
 }
 
 /**
@@ -186,6 +218,8 @@ export function spawnInOwnGroup({ command, args, cwd, env }: ProcessSpec): Promi
             child.once('error', () => done());
         });
 
+        const closed = new Promise<void>(done => child.once('close', () => done()));
+
         child.once('error', reject);
         child.once('spawn', () => {
             child.off('error', reject);
@@ -197,6 +231,7 @@ export function spawnInOwnGroup({ command, args, cwd, env }: ProcessSpec): Promi
                 child,
                 pid,
                 exited,
+                closed,
                 stderr: () => stderr,
                 watch,
                 stop() {
