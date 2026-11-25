@@ -61,8 +61,11 @@ async function open(data = createFixtureData()) {
     await flush();
 }
 
-const items = () => [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+// The projects are the options of one choice (`menuitemradio`), the actions after them plain items.
+const items = () => [...document.body.querySelectorAll<HTMLElement>('[role^="menuitem"]')];
 const labels = () => items().map(item => item.textContent);
+const settingsButton = (name: string) =>
+    document.body.querySelector<HTMLButtonElement>(`button[aria-label="${name} settings"]`)!;
 
 beforeEach(() => {
     container = document.createElement('div');
@@ -116,17 +119,75 @@ describe('ProjectSelect', () => {
         expect(items()[2].textContent).not.toContain('+');
     });
 
-    it('marks the open project and switches to the one chosen', async () => {
+    it('marks the open project with a plate and switches to the one chosen', async () => {
         await open();
 
-        // Every project has its icon; the open one has the check after it.
+        // Every project has its icon and its settings button; the open one is the one chosen of the list.
         expect(items()[1].querySelectorAll('svg, img')).toHaveLength(2);
-        expect(items()[2].querySelectorAll('svg, img')).toHaveLength(1);
+        expect(items()[2].querySelectorAll('svg, img')).toHaveLength(2);
+        expect(items().map(item => item.getAttribute('aria-checked'))).toEqual(['false', 'true', 'false', null, null]);
+        expect(items()[1].hasAttribute('data-selected')).toBe(true);
+        expect(items()[2].hasAttribute('data-selected')).toBe(false);
         expect(store.selectedProjectId).toBe(FIXTURE_PROJECT_ID);
 
         await act(async () => items()[2].click());
 
         expect(store.selectedProjectId).toBe(FIXTURE_EMPTY_PROJECT_ID);
+        expect(items()).toHaveLength(0);
+    });
+
+    it('opens the page of a project in Settings from the button at the end of its row, without switching to it', async () => {
+        await open();
+        await act(async () => settingsButton('Clowdy').click());
+
+        expect(store.selectedProjectId).toBe(FIXTURE_PROJECT_ID);
+        expect([store.ui.settingsOpen, store.ui.settingsPage, store.ui.settingsProjectId]).toEqual([
+            true,
+            'projects',
+            FIXTURE_EMPTY_PROJECT_ID,
+        ]);
+        expect(items()).toHaveLength(0);
+    });
+
+    it('does not switch to the project when the pointer presses the settings button, as it does on a real press', async () => {
+        await open();
+
+        const button = settingsButton('Clowdy');
+        const press = (type: string) =>
+            button.dispatchEvent(
+                new PointerEvent(type, {
+                    bubbles: true,
+                    cancelable: true,
+                    button: 0,
+                    pointerId: 1,
+                    pointerType: 'mouse',
+                })
+            );
+
+        await act(async () => {
+            press('pointerdown');
+            press('pointerup');
+            button.click();
+        });
+
+        expect(store.selectedProjectId).toBe(FIXTURE_PROJECT_ID);
+        expect(store.ui.settingsProjectId).toBe(FIXTURE_EMPTY_PROJECT_ID);
+    });
+
+    it('has the settings button on the personal space too, and none on the actions', async () => {
+        await open();
+
+        expect(document.body.querySelectorAll('button[aria-label$=" settings"]')).toHaveLength(3);
+
+        await act(async () => settingsButton('Personal').click());
+
+        expect(store.ui.settingsProjectId).toBe(FIXTURE_PERSONAL_PROJECT_ID);
+    });
+
+    it('leaves the settings button out of the tab order, since the arrow keys move through the rows', async () => {
+        await open();
+
+        expect(settingsButton('Clowdy').tabIndex).toBe(-1);
     });
 
     it('draws an icon before every project and sets it level with the middle of the two lines', async () => {
