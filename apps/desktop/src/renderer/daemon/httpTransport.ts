@@ -31,6 +31,7 @@ import type {
     GitBranches,
     GitBranchMergeRequest,
     GitBranchMergeResult,
+    GitBranchPullRequests,
     GitChanges,
     GitCommitResult,
     GitDiscardRequest,
@@ -38,6 +39,7 @@ import type {
     GitErrorDetails,
     GitFileSides,
     GitMessage,
+    GitPullRequestArchiveRequest,
     GitPullRequestInfo,
     GitPushRequest,
     GitRemoteRequest,
@@ -361,6 +363,17 @@ export class HttpTransport implements Transport {
 
     getGitPullRequest(projectId: ProjectId, place: PlaceRef): Promise<GitPullRequestInfo> {
         return this.#read(`${ROUTES.projectGitPullRequest(projectId)}?${placeQuery(place)}`);
+    }
+
+    getGitBranchPullRequests(projectId: ProjectId, folderId: FolderId, branch: string): Promise<GitBranchPullRequests> {
+        return this.#read(`${ROUTES.projectGitPullRequests(projectId)}?${placeQuery({ folderId }, { branch })}`);
+    }
+
+    setGitPullRequestArchived(
+        projectId: ProjectId,
+        request: GitPullRequestArchiveRequest
+    ): Promise<GitBranchPullRequests> {
+        return this.#write(ROUTES.projectGitPullRequestArchive(projectId), request);
     }
 
     getChatWorkspaceRemoval(chatId: ChatId): Promise<ChatWorkspaceRemoval> {

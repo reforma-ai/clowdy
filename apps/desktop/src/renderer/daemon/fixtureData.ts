@@ -34,6 +34,7 @@ import type {
     GitHubRepo,
     GitPullRequest,
     GitPullRequestInfo,
+    GitPullRequestSummary,
     GitScope,
     GitStatus,
     GitUpstream,
@@ -68,6 +69,8 @@ export interface FixtureData {
      * (`worktree`, `open` when it is left out). See `fixtureGitPullRequest`.
      */
     pullRequests: Record<string, { checkout?: FixturePullRequestScript; worktree?: FixturePullRequestScript }>;
+    /** Explicit histories by folder path and source branch; an omitted branch uses the single-PR fixture. */
+    branchPullRequests?: Record<string, Record<string, GitPullRequestSummary[]>>;
     /** Worktree and branch changes by repository path. */
     worktreeEdits?: Record<string, FixtureWorktreeEdits>;
     statuses: Record<string, TaskStatus[]>;

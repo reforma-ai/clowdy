@@ -17,11 +17,13 @@ import type {
     GitBranches,
     GitBranchMergeRequest,
     GitBranchMergeResult,
+    GitBranchPullRequests,
     GitChanges,
     GitCommitResult,
     GitDiscardResult,
     GitFileSides,
     GitMessage,
+    GitPullRequestArchiveRequest,
     GitPullRequestInfo,
     GitPushRequest,
     GitRemoteResult,
@@ -258,6 +260,17 @@ export interface Transport {
      * is no answer, and never "no pull request".
      */
     getGitPullRequest: (projectId: ProjectId, place: PlaceRef) => Promise<GitPullRequestInfo>;
+    /** The pull requests of a named source branch, whether or not the local branch or its checkout exists. */
+    getGitBranchPullRequests: (
+        projectId: ProjectId,
+        folderId: FolderId,
+        branch: string
+    ) => Promise<GitBranchPullRequests>;
+    /** Archives or restores a terminal pull request locally in Clowdy, returning the branch history. */
+    setGitPullRequestArchived: (
+        projectId: ProjectId,
+        request: GitPullRequestArchiveRequest
+    ) => Promise<GitBranchPullRequests>;
     /**
      * Whether the chat's worktree may be removed together with the chat, which is what `chat.delete`'s `removeWorkspace` asks for: Clowdy made it, no other chat uses it, nothing in it
      * is uncommitted and its work is merged into its base. Read when the delete dialog opens, never pushed: a tree changes in a terminal or by an agent, and the daemon checks again

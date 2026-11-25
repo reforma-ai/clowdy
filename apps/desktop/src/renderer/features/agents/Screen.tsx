@@ -1,8 +1,10 @@
-import { useEffect } from 'react';
+import { isBusyRunStatus } from '@clowdy/protocol';
+import { useEffect, useRef } from 'react';
 
 import { SidebarLayout } from '../../shared';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { ChatView } from '../chats/ChatView';
+import { refreshFolderGit } from '../openWith/useFolderGit';
 import { useProjectsInfo } from '../settings/projects/useProjectsInfo';
 import { useSidePanel } from '../sidePanel';
 import { AgentList } from './AgentList';
@@ -44,18 +46,45 @@ export function Screen() {
     }, [expanded, settingsOpen, run, chatRun, ui]);
 
     // The list and the new-chat page share the read that detects folders gone from disk.
-    const { info } = useProjectsInfo({ poll: false, refreshOnFocus: true });
+    const { info } = useProjectsInfo({ poll: false, refreshOnFocus: true, refreshProjectId: project.id });
     const projectInfo = info.get(project.id);
     const missing = new Set(projectInfo?.folders.filter(folder => !folder.exists).map(folder => folder.folderId));
 
     // Show the folder only when the project has several; the workspace label remains available for every chat.
     const where = chat ? chatFolder(project.chats, project.project.folders, chat.id) : undefined;
 
+    // An agent may have pushed, opened a pull request, or switched its worktree without using the panel.
+    // Refresh the affected folders once when a turn finishes, even if its chat was not the selected one.
+    const busy = new Map(
+        [...project.runs.values()].flatMap(run =>
+            run.role === 'orchestrator' && isBusyRunStatus(run.status) && run.chatId
+                ? [[run.id, chatFolder(project.chats, project.project.folders, run.chatId)?.folder.id] as const]
+                : []
+        )
+    );
+    const previous = useRef({ projectId: project.id, busy });
+    useEffect(() => {
+        const before = previous.current;
+        previous.current = { projectId: project.id, busy };
+        if (before.projectId !== project.id) return;
+        const endedFolders = new Set<string>();
+        for (const [id, folder] of before.busy) if (folder && !busy.has(id)) endedFolders.add(folder);
+        for (const folder of endedFolders) refreshFolderGit(project.id, folder);
+    });
+
     return (
         <SidebarLayout
             screen="agents"
             defaultWidth={270}
-            sidebar={<AgentList selection={selection} chats={chats} missing={missing} isCovered={expanded} />}
+            sidebar={
+                <AgentList
+                    selection={selection}
+                    chats={chats}
+                    missing={missing}
+                    isCovered={expanded}
+                    projectInfo={projectInfo}
+                />
+            }
         >
             <section
                 className={styles.main}

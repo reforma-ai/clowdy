@@ -224,6 +224,41 @@ describe('HttpTransport git reads', () => {
         ]);
     });
 
+    it('reads and archives branch history without requiring a local checkout', async () => {
+        const answer = { branch: 'feature/name', access: 'ready', pullRequests: [] };
+        const requests: Array<{ url: string; method?: string; body?: string }> = [];
+        const transport = new HttpTransport({
+            url: 'http://127.0.0.1:4310',
+            token: 't',
+            fetch: (async (input, options) => {
+                requests.push({
+                    url: String(input),
+                    method: options?.method,
+                    body: options?.body as string | undefined,
+                });
+                return new Response(JSON.stringify(answer), { status: 200 });
+            }) as typeof fetch,
+        });
+        const request = {
+            folderId: 'fld/b',
+            branch: 'feature/name',
+            number: 12,
+            archived: true,
+            repo: { host: 'github.com', owner: 'acme', name: 'app' },
+        };
+
+        expect(await transport.getGitBranchPullRequests('prj a', request.folderId, request.branch)).toEqual(answer);
+        expect(await transport.setGitPullRequestArchived('prj a', request)).toEqual(answer);
+        expect(requests[0]?.url).toBe(
+            'http://127.0.0.1:4310/v1/projects/prj%20a/git/pull-requests?folderId=fld%2Fb&branch=feature%2Fname'
+        );
+        expect(requests[1]).toEqual({
+            url: 'http://127.0.0.1:4310/v1/projects/prj%20a/git/pull-requests/archive',
+            method: 'POST',
+            body: JSON.stringify(request),
+        });
+    });
+
     it("rejects with the daemon's own reason and status, for the strip to say why, and with the status when it gives none", async () => {
         const gone = transportFor(
             { error: { code: 'unavailable', message: 'The worktree /w/app is missing' } },

@@ -17,8 +17,10 @@ import {
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { hotkeys, installDispatcher } from '../../hotkeys';
 import { RootStore, RootStoreProvider } from '../../stores';
+import { branchPullRequestsOf } from '../changes/branchPullRequests';
 import { saveDraft } from '../chats/composerDrafts';
 import { setFiles } from '../chats/composerFiles';
+import { refreshFolderGit } from '../openWith/useFolderGit';
 import { chatListPreferences } from './chatListPreferences';
 import { Screen } from './Screen';
 import { starCardPreferences } from './starCardState';
@@ -1687,6 +1689,77 @@ describe('a chat that works in a worktree', () => {
         expect(ui().draft).toBe(false);
         expect(ui().chatId).not.toBe(FIXTURE_WORKSPACE_CHAT_ID);
         expect(project().chats.get(ui().chatId!)?.workspace?.id).toBe(workspace.id);
+    });
+
+    it('shares the pull request badge and archive across chats on the actual checked-out branch', async () => {
+        const data = withFixtureWorkspace(createFixtureData());
+        const first = data.chats.find(chat => chat.id === FIXTURE_WORKSPACE_CHAT_ID)!;
+        const second = { ...first, id: 'c-shared-history', title: 'Shared worktree' };
+        data.chats.push(second);
+        const folderId = first.workspace!.folderId;
+        const branch = first.workspace!.branch!;
+        const folderPath = data.projects
+            .find(project => project.id === FIXTURE_PROJECT_ID)!
+            .folders.find(folder => folder.id === folderId)!.path;
+        const pr = (number: number, state: 'open' | 'merged' | 'closed', head = branch) => ({
+            number,
+            state,
+            head,
+            base: 'main',
+            title: `PR ${number}`,
+            url: `https://github.com/acme/car-rental/pull/${number}`,
+            updatedAt: number,
+        });
+        data.branchPullRequests = {
+            [folderPath]: {
+                [branch]: [pr(10, 'merged'), pr(11, 'open')],
+                'feature/current': [pr(12, 'closed', 'feature/current')],
+            },
+        };
+        const transport = new FixtureTransport({ data });
+        const reads = vi.spyOn(transport, 'getGitBranchPullRequests');
+
+        act(() => reactRoot.unmount());
+        store.dispose();
+        reactRoot = createRoot(container);
+        store = new RootStore(transport, { storage: memoryStorage() });
+        await store.load();
+        await draw();
+
+        const badge = (id: string) => rowOf(id).querySelector('[data-pr-state]');
+        await vi.waitFor(() =>
+            expect(badge(first.id)?.getAttribute('aria-label')).toBe('2 pull requests: 1 open, 1 merged')
+        );
+        expect(badge(second.id)?.textContent).toBe('2');
+        expect(badge(second.id)?.getAttribute('data-pr-state')).toBe('open');
+        expect(reads.mock.calls.filter(([, , name]) => name === branch)).toHaveLength(1);
+
+        const fact = branchPullRequestsOf(transport).of({ projectId: FIXTURE_PROJECT_ID, folderId, branch });
+        await act(async () => {
+            expect(await fact.setArchived(10, true)).toBe(true);
+        });
+        expect(badge(first.id)?.textContent).toBe('');
+        expect(badge(second.id)?.getAttribute('aria-label')).toBe('1 pull request: 1 open');
+
+        // The recorded ChatWorkspace branch remains the original name after an external checkout.
+        // ProjectInfo says what the worktree is actually on now.
+        const info = await transport.getProjectsInfo();
+        vi.spyOn(transport, 'getProjectsInfo').mockImplementation(async projectId =>
+            info
+                .filter(project => !projectId || project.projectId === projectId)
+                .map(project => ({
+                    ...project,
+                    workspaces: project.workspaces?.map(workspace =>
+                        workspace.workspaceId === first.workspace!.id
+                            ? { ...workspace, branch: 'feature/current' }
+                            : workspace
+                    ),
+                }))
+        );
+        await act(async () => refreshFolderGit(FIXTURE_PROJECT_ID, folderId));
+        await vi.waitFor(() => expect(badge(first.id)?.getAttribute('data-pr-state')).toBe('closed'));
+        expect(badge(second.id)?.getAttribute('aria-label')).toBe('1 pull request: 1 closed');
+        expect(reads.mock.calls.filter(([, , name]) => name === 'feature/current')).toHaveLength(1);
     });
 });
 
