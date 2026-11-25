@@ -9,7 +9,7 @@ import { type RootStore, RootStoreProvider } from '../../stores';
 import { UserBubble } from '../../stream/UserBubble';
 import { Composer, type ComposerHandle } from './Composer';
 import { codeQuote } from './codeQuote';
-import { quoteIntoComposer } from './composerBridge';
+import { mentionFilesIntoComposer, quoteIntoComposer } from './composerBridge';
 import { draftOf, messageOf, newChatDraftKey, saveDraft } from './composerDrafts';
 import { modelStore } from './modelTestKit';
 
@@ -362,4 +362,21 @@ describe('a quote of code from the side panel, through the door the box register
 
         expect(quoteIntoComposer('words')).toBe(false);
     });
+});
+
+it('adds a file and a directory from the side panel as path mentions in the draft', async () => {
+    await mount();
+    type('Look at ');
+
+    expect(
+        await act(async () =>
+            mentionFilesIntoComposer([
+                { path: '/Users/dev/web/src/a.ts', name: 'a.ts', kind: 'file' },
+                { path: '/Users/dev/web/my docs', name: 'my docs', kind: 'directory' },
+            ])
+        )
+    ).toBe(true);
+    expect(sent()).toBe('Look at @src/a.ts @"my docs"');
+    expect(messageOf(draftOf(chat.id))).toBe(sent());
+    expect(document.activeElement).toBe(field());
 });

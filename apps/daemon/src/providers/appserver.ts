@@ -1,6 +1,6 @@
 import { createInterface } from 'node:readline';
 
-import { spawnInOwnGroup } from '../engine/process';
+import { spawnInOwnGroup, stderrOf } from '../engine/process';
 
 import type { ProbeContext } from './types';
 
@@ -59,8 +59,8 @@ export async function withAppServer<T>(
 
         pending.clear();
     };
-    const tail = () => {
-        const text = proc.stderr().trim().slice(-300);
+    const tail = (stderr = proc.stderr()) => {
+        const text = stderr.trim().slice(-300);
 
         return text ? ` (it wrote: ${text})` : '';
     };
@@ -118,8 +118,11 @@ export async function withAppServer<T>(
             waiting.resolve(message.result);
         }
     });
-    void proc.exited.then(() => {
-        ended = new Error(`the program ended before it answered${tail()}`);
+    void proc.exited.then(async () => {
+        // What the program wrote last can still be on its way when it exits (`stderrOf`), and the reason it went is there.
+        const stderr = await stderrOf(proc);
+
+        ended = new Error(`the program ended before it answered${tail(stderr)}`);
         failAll(ended);
     });
     const rpc: Rpc = {

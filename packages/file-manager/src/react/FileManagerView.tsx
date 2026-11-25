@@ -30,6 +30,8 @@ export interface FileManagerViewProps {
     manager: FileManager;
     /** Items the host adds to the explorer's row menus, for the files and folders they act on. */
     menuItems?: (targets: readonly FileEntry[]) => FileMenuItem[];
+    /** Adds host-specific data to a drag from the file tree. The tree's own drag to move still works. */
+    onEntryDragStart?: ExplorerProps['onEntryDragStart'];
     /** CodeMirror extensions added to every text document while it is shown (host keys, a language server). Keep the value stable: a new one reconfigures the editor. */
     editorExtensions?: Extension;
     /** Draws a part of the tree in the sidebar (a folder of documents) in place of all of it, with a name filter of its own. Keep the value stable. */
@@ -61,6 +63,7 @@ const SIDEBAR_DEFAULT_WIDTH = 240;
 export const FileManagerView = observer(function FileManagerView({
     manager,
     menuItems,
+    onEntryDragStart,
     editorExtensions,
     scope,
     filterPlaceholder = 'Filter files',
@@ -180,6 +183,7 @@ export const FileManagerView = observer(function FileManagerView({
                                         ref={explorer}
                                         manager={manager}
                                         menuItems={menuItems}
+                                        onEntryDragStart={onEntryDragStart}
                                         dndManager={dndManager}
                                         scope={scope}
                                         filter={scope ? (scoped ?? null) : undefined}

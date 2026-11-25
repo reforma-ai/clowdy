@@ -231,7 +231,7 @@ export function RemoteMenu({ facts, checkoutBranch }: { facts: PlaceFacts; check
                                 <MenuItem
                                     id="merge-into-checkout"
                                     icon={<ArrowUpRight />}
-                                    text={`Merge into ${destination}…`}
+                                    text="Merge into main worktree…"
                                     isDisabled={current === undefined || facts.switching}
                                 />
                             )}

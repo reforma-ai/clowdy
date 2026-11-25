@@ -95,4 +95,4 @@ Request: "Let customers sign in with Google."
 - Everyday: route name `/auth/google`, button wording, which test file to extend. Decided without comment.
 - Significant: keep cookie sessions or move to tokens. Options: keep cookies (fits, reversible, no new dependency), move to tokens (touches every route). Take cookies. Record `2026-11-17-keep-cookie-sessions-for-google-login.md`, one line in the report.
 - Blocker: no Google client ID or secret exists, and you cannot invent them. Build everything behind config, mark the task with what is needed, finish the rest.
-- Report: "Done: customers can sign in with Google; it runs against a stub until real credentials exist. Decided for you: kept the current sign-in sessions, so no other page changes (decisions/2026-11-17-keep-cookie-sessions-for-google-login.md). Open: a Google client ID and secret from you (CLW-14)."
+- Report: "Done: customers can sign in with Google; it runs against a stub until real credentials exist. Decided for you: kept the current sign-in sessions, so no other page changes (decisions/2026-11-17-keep-cookie-sessions-for-google-login.md). Open: a Google client ID and secret from you (`CLW-14`)."

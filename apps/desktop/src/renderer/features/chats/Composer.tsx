@@ -35,7 +35,7 @@ import { dropReplyQuote, restoreReplyQuote, setReplyQuote, takeReplyQuote, useRe
 import { MentionChip } from './MentionChip';
 import { ModelPicker, ModelPickerOff } from './ModelPicker';
 import { ModePicker } from './ModePicker';
-import { pasteFiles } from './pastedFiles';
+import { mentionedFiles, pasteFiles } from './pastedFiles';
 import { ReplyCard } from './ReplyCard';
 import { useComposerFiles } from './useComposerFiles';
 import { useMentionTriggers } from './useMentionTriggers';
@@ -54,6 +54,7 @@ import type {
     Run,
 } from '@clowdy/protocol';
 import type { ReactNode } from 'react';
+import type { ClipboardFile } from '../../../shared/bridge';
 import type { ReplyMessage } from '../../stream/MessageActions';
 
 /** What a press on the card's empty parts must leave alone: the controls, which take the press themselves. */
@@ -224,9 +225,20 @@ export function Composer({ chat, run, start, minLines, editMode, controls, onSen
         void pasteFiles(files, {
             folders,
             place,
-            mention: chip => field.current?.insertMention(chip),
+            mention: chips => field.current?.insertMentions(chips),
             attach: attach.add,
         });
+
+    const mentionFiles = (files: readonly ClipboardFile[]): boolean => {
+        const input = field.current;
+        const chips = mentionedFiles(files, folders, place);
+
+        if (!input || chips.length === 0) return false;
+
+        input.insertMentions(chips);
+
+        return true;
+    };
 
     useImperativeHandle(ref, () => ({ addFiles: attach.add, pasteFiles: pasted, reply, quote }), [
         attach.add,
@@ -234,8 +246,8 @@ export function Composer({ chat, run, start, minLines, editMode, controls, onSen
         reply,
         quote,
     ]);
-    // The side panel's Add to chat quotes code into this box (`composerBridge`); the box of an edit frame is not the one it means.
-    useRegisterComposer(editMode ? undefined : quote);
+    // The side panel's Add to chat sends quotes and file references to this box, never to an edit frame.
+    useRegisterComposer(editMode ? undefined : quote, editMode ? undefined : mentionFiles);
 
     /** Sends the message; `mod` (Cmd/Ctrl+Enter) sends it the other way than Enter while the orchestrator works. */
     const send = async (from: ComposerDoc, mod = false) => {

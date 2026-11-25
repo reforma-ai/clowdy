@@ -3,7 +3,7 @@ import { FormField } from '@clowdy/components/FormField';
 import { Input } from '@clowdy/components/Input';
 import { Radio, RadioGroup } from '@clowdy/components/Radio';
 import { Text } from '@clowdy/components/Text';
-import { ArrowLeft } from '@clowdy/icons/14';
+import { ChevronLeft } from '@clowdy/icons/14';
 import { useState } from 'react';
 
 import styles from './BranchPicker.module.css';
@@ -62,58 +62,62 @@ export function NewBranchForm({
         >
             <div className={styles.formHeader}>
                 <Button
-                    variant="transparent"
+                    variant="filling"
                     color="secondary"
-                    size="xs"
+                    size="sm"
                     iconOnly
                     aria-label="Back to the branches"
                     onPress={onBack}
                 >
-                    <ArrowLeft aria-hidden="true" />
+                    <ChevronLeft aria-hidden="true" />
                 </Button>
-                <Text weight="medium">Create a branch</Text>
+                <Text className={styles.formTitle}>Create a branch</Text>
             </div>
 
-            <FormField layout="vertical" size="sm">
-                <FormField.Label>Name</FormField.Label>
-                <Input
-                    type="text"
-                    size="sm"
-                    variant="bordered"
-                    aria-label="Name"
-                    value={name}
-                    onChange={setName}
-                    placeholder="feature/new-thing"
-                    autoFocus
-                    spellCheck={false}
-                    autoCapitalize="off"
-                />
-            </FormField>
+            <div className={styles.formContent}>
+                <FormField layout="vertical" size="sm">
+                    <FormField.Label>Name</FormField.Label>
+                    <Input
+                        type="text"
+                        size="sm"
+                        variant="bordered"
+                        aria-label="Name"
+                        value={name}
+                        onChange={setName}
+                        placeholder="feature/new-thing"
+                        autoFocus
+                        spellCheck={false}
+                        autoCapitalize="off"
+                    />
+                </FormField>
 
-            <Text variant="xs" weight="medium" color="secondary" id="new-branch-start">
-                Create branch based on…
-            </Text>
-            <RadioGroup
-                size="sm"
-                className={styles.choices}
-                aria-labelledby="new-branch-start"
-                value={start}
-                onChange={value => setStart(value as GitSwitchStart)}
-            >
-                <Radio value="default" className={styles.radio} isDisabled={starts.default === undefined}>
-                    <Choice start="default" name={starts.default} />
-                </Radio>
-                <Radio value="current" className={styles.radio} isDisabled={starts.current === undefined}>
-                    <Choice start="current" name={starts.current} />
-                </Radio>
-            </RadioGroup>
+                <div className={styles.startField}>
+                    <Text variant="sm" id="new-branch-start">
+                        Create branch based on…
+                    </Text>
+                    <RadioGroup
+                        size="sm"
+                        className={styles.choices}
+                        aria-labelledby="new-branch-start"
+                        value={start}
+                        onChange={value => setStart(value as GitSwitchStart)}
+                    >
+                        <Radio value="default" className={styles.radio} isDisabled={starts.default === undefined}>
+                            <Choice start="default" name={starts.default} />
+                        </Radio>
+                        <Radio value="current" className={styles.radio} isDisabled={starts.current === undefined}>
+                            <Choice start="current" name={starts.current} />
+                        </Radio>
+                    </RadioGroup>
+                </div>
 
-            <SwitchReasons model={model} />
+                <SwitchReasons model={model} />
 
-            <div className={styles.actions}>
-                <Button type="submit" color="primary" size="sm" isDisabled={!ready} isPending={model.busy}>
-                    Create branch
-                </Button>
+                <div className={styles.actions}>
+                    <Button type="submit" color="primary" size="sm" isDisabled={!ready} isPending={model.busy}>
+                        Create branch
+                    </Button>
+                </div>
             </div>
         </form>
     );

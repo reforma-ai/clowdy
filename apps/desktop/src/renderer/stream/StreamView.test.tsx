@@ -646,7 +646,7 @@ describe('StreamView', () => {
 
         await act(async () => root.render(<StreamView items={[...items, compact]} active={false} />));
 
-        expect(container.textContent).toContain('Context compacted · 22.1K → 6.1K');
+        expect(container.textContent).toContain('Context compacted from 22.1K to 6.1K tokens');
         // A tool line would read the humanized name with the title as its chip.
         expect(container.textContent).not.toContain('Compact conversation');
     });

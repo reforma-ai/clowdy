@@ -12,7 +12,8 @@ import {
 import { Panel, PanelContent } from '@clowdy/components/Panel';
 import { Popover, PopoverScroll, PopoverTrigger, useContextMenu } from '@clowdy/components/Popover';
 import { Show } from '@clowdy/components/Show';
-import { Archive, Check, ChevronDown, ChevronRight, Message, More, NewChat } from '@clowdy/icons/14';
+import { Archive, Check, ChevronDown, ChevronRight, Merge, Message, More, NewChat } from '@clowdy/icons/14';
+import { observer } from 'mobx-react-lite';
 import {
     type CSSProperties,
     type KeyboardEvent,
@@ -30,6 +31,12 @@ import { useFileDragHover } from '../../shared/useFileDragHover';
 import { ProjectSelect } from '../../shell/ProjectSelect';
 import { NEW_CHAT_COMMAND } from '../../shell/shellCommands';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
+import {
+    type BranchPullRequestKey,
+    type BranchPullRequests,
+    branchPullRequestsOf,
+    useBranchPullRequests,
+} from '../changes/branchPullRequests';
 import { archiveChat } from '../chats/archiveChat';
 import { ChatMenu } from '../chats/ChatMenu';
 import { isRunActive } from '../chats/chatRun';
@@ -37,6 +44,7 @@ import { perform } from '../chats/commands';
 import { draftOf, messageOf, useDraftRevision } from '../chats/composerDrafts';
 import { filesOf, useDraftFilesRevision } from '../chats/composerFiles';
 import { deleteChat } from '../chats/deleteChat';
+import { workspaceHead } from '../openWith/workspaceHead';
 import styles from './AgentList.module.css';
 import { ArchiveButton } from './ArchiveButton';
 import { AGENTS_SCOPE, agentCommands } from './agentCommands';
@@ -59,7 +67,7 @@ import { openNewChat } from './openNewChat';
 import { StarCard } from './StarCard';
 import { useChatListOrder } from './useChatListOrder';
 
-import type { Chat, ChatId, FolderId } from '@clowdy/protocol';
+import type { Chat, ChatId, FolderId, ProjectInfo } from '@clowdy/protocol';
 
 /** The id of the first row, the one that starts a chat. Chat ids never look like it. */
 export const NEW_CHAT_ROW = '@new-chat';
@@ -112,12 +120,14 @@ export function AgentList({
     chats,
     missing,
     isCovered,
+    projectInfo,
 }: {
     selection: AgentSelection;
     chats: readonly Chat[];
     missing: ReadonlySet<FolderId>;
     /** The side panel is in the place of the chat, so the list is a plate of its own. */
     isCovered: boolean;
+    projectInfo?: ProjectInfo;
 }) {
     const root = useRootStore();
     useDraftRevision();
@@ -132,6 +142,18 @@ export function AgentList({
     const list = useRef<HTMLDivElement>(null);
     const heading = useRef<HTMLDivElement>(null);
     const contextMenu = useContextMenu();
+    const histories = branchPullRequestsOf(root.transport);
+    useEffect(() => {
+        if (!projectInfo) return;
+        for (const workspace of projectInfo.workspaces ?? []) {
+            if (workspace.exists)
+                histories.rememberWorkspaceBranch(
+                    projectInfo.projectId,
+                    workspace.workspaceId,
+                    workspace.detached ? null : (workspace.branch ?? null)
+                );
+        }
+    }, [projectInfo, histories]);
     const order = useChatListOrder(chats, selection.draft ? undefined : selection.chat?.id);
     const runOf = (chat: Chat) => orchestratorOf(chat, project.runs);
     const actions: ChatActions = {
@@ -417,6 +439,12 @@ export function AgentList({
                             isOpen={menuOpenId === chat.id}
                             onOpenChange={open => setMenuOpenId(open ? chat.id : null)}
                             move={menuOpenId === chat.id ? order.actions(chat.id) : undefined}
+                            branchKey={chatBranchKey(
+                                projectInfo,
+                                groupFolderOf(project.chats, folders, chat.id),
+                                chat,
+                                histories
+                            )}
                         />
                     )
                 }
@@ -599,6 +627,7 @@ function RowEnd({
     isOpen,
     onOpenChange,
     move,
+    branchKey,
 }: {
     chat: Chat;
     actions: ChatActions;
@@ -607,6 +636,7 @@ function RowEnd({
     isOpen: boolean;
     onOpenChange: (isOpen: boolean) => void;
     move?: { onMoveUp?: () => void; onMoveDown?: () => void };
+    branchKey?: BranchPullRequestKey;
 }) {
     const close = () => onOpenChange(false);
 
@@ -614,6 +644,7 @@ function RowEnd({
         // The buttons and the popover are React children of the row, so their clicks and keys would reach the row through the tree.
         <span className={styles.chatActions} {...ownEvents}>
             {status}
+            <BranchPullRequestBadge branchKey={branchKey} />
             {!busy && (
                 <Button
                     className={styles.rowAction}
@@ -655,6 +686,66 @@ function RowEnd({
         </span>
     );
 }
+
+/** The branch of the actual worktree, falling back to its last known branch only if the worktree is gone. */
+function chatBranchKey(
+    info: ProjectInfo | undefined,
+    folderId: FolderId | undefined,
+    chat: Chat,
+    histories: BranchPullRequests
+): BranchPullRequestKey | undefined {
+    const folder = info?.folders.find(folder => folder.folderId === folderId);
+    if (!info || !folder?.exists || !folder.remoteUrl) return undefined;
+
+    const workspace = chat.workspace?.folderId === folder.folderId ? chat.workspace : undefined;
+    const branch = workspace
+        ? histories.workspaceHistoryBranch(info.projectId, workspace, workspaceHead(workspace, info.workspaces))
+        : folder.detached
+          ? undefined
+          : folder.branch;
+
+    return branch ? { projectId: info.projectId, folderId: folder.folderId, branch } : undefined;
+}
+
+/** A status, not another action: every chat observing the same branch shares the count and archive state. */
+const BranchPullRequestBadge = observer(function BranchPullRequestBadge({
+    branchKey,
+}: {
+    branchKey?: BranchPullRequestKey;
+}) {
+    const fact = useBranchPullRequests(branchKey);
+    const pullRequests = fact?.value?.pullRequests.filter(pr => !pr.archived) ?? [];
+    if (pullRequests.length === 0) return null;
+
+    const state = pullRequests.some(pr => pr.state === 'open')
+        ? 'open'
+        : pullRequests.some(pr => pr.state === 'draft')
+          ? 'draft'
+          : pullRequests.some(pr => pr.state === 'merged')
+            ? 'merged'
+            : 'closed';
+    const detail = (['open', 'draft', 'merged', 'closed'] as const)
+        .flatMap(state => {
+            const count = pullRequests.filter(pr => pr.state === state).length;
+            return count ? [`${count} ${state}`] : [];
+        })
+        .join(', ');
+    const label = `${pullRequests.length} pull request${pullRequests.length === 1 ? '' : 's'}: ${detail}${fact?.stale ? ' (last known)' : ''}`;
+
+    return (
+        <span
+            className={styles.pullRequests}
+            data-pr-state={state}
+            data-stale={fact?.stale || undefined}
+            role="img"
+            aria-label={label}
+            title={label}
+        >
+            <Merge aria-hidden="true" />
+            {pullRequests.length > 1 && <span>{pullRequests.length}</span>}
+        </span>
+    );
+});
 
 /** The title as a field in the title's own place: Enter or leaving it renames, Escape keeps the old name. */
 function RenameField({

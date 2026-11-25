@@ -81,13 +81,16 @@ import type {
     GitBranchMergePreview,
     GitBranchMergeRequest,
     GitBranchMergeResult,
+    GitBranchPullRequests,
     GitChangedFile,
     GitChanges,
     GitCommitResult,
     GitDiscardResult,
     GitFileSides,
     GitMessage,
+    GitPullRequestArchiveRequest,
     GitPullRequestInfo,
+    GitPullRequestSummary,
     GitPushRequest,
     GitRemoteAction,
     GitRemoteResult,
@@ -290,6 +293,7 @@ export class FixtureTransport implements Transport {
     readonly #branches: FixtureGitBranches;
     readonly #branchMerges = new Map<string, { sourceCommit: string; commit: string }>();
     readonly #mergeConflicts = new Map<string, Extract<GitBranchMergeResult, { state: 'conflicts' }>>();
+    readonly #archivedPullRequests = new Map<string, boolean>();
 
     constructor({ data = createFixtureData(), timeline = false, gitWrites, branches }: FixtureTransportOptions = {}) {
         this.#data = data;
@@ -959,6 +963,65 @@ export class FixtureTransport implements Transport {
         if (!answer) throw new TransportError(FIXTURE_PULL_REQUEST_UNAVAILABLE, 503);
 
         return structuredClone(answer);
+    }
+
+    async getGitBranchPullRequests(
+        projectId: ProjectId,
+        folderId: FolderId,
+        branch: string
+    ): Promise<GitBranchPullRequests> {
+        const { folder, head } = this.#gitPlace(projectId, { folderId });
+        const workspace = branch === head?.branch ? undefined : { branch };
+        const answer = fixtureGitPullRequest(head, this.#data.pullRequests[folder.path], workspace);
+
+        if (!answer) throw new TransportError(FIXTURE_PULL_REQUEST_UNAVAILABLE, 503);
+        if (!answer.isRepository) return { branch, access: 'no_remote', pullRequests: [] };
+
+        const { access, repo, pullRequest } = answer;
+        const explicit = this.#data.branchPullRequests?.[folder.path]?.[branch];
+        const history = explicit ?? (pullRequest ? [pullRequest] : []);
+        const pullRequests =
+            repo && access === 'ready'
+                ? history
+                      .map(({ number, title, url, state, base, head, updatedAt, archived }: GitPullRequestSummary) => ({
+                          number,
+                          title,
+                          url,
+                          state,
+                          base,
+                          head,
+                          updatedAt,
+                          ...((state === 'merged' || state === 'closed') &&
+                              (this.#archivedPullRequests.get(this.#pullRequestKey(repo, number)) ?? archived) && {
+                                  archived: true as const,
+                              }),
+                      }))
+                      .sort((a, b) => b.number - a.number)
+                : [];
+
+        return structuredClone({ branch, access, repo, pullRequests });
+    }
+
+    async setGitPullRequestArchived(
+        projectId: ProjectId,
+        { folderId, branch, number, archived, repo }: GitPullRequestArchiveRequest
+    ): Promise<GitBranchPullRequests> {
+        const history = await this.getGitBranchPullRequests(projectId, folderId, branch);
+        const pr = history.pullRequests.find(candidate => candidate.number === number);
+
+        if (!pr || !history.repo) throw new TransportError('Pull request not found', 404);
+        if (this.#pullRequestKey(history.repo, number) !== this.#pullRequestKey(repo, number))
+            throw new TransportError("The folder's origin has changed", 409);
+        if (archived && pr.state !== 'merged' && pr.state !== 'closed')
+            throw new TransportError('Only merged or closed pull requests can be archived', 409);
+
+        this.#archivedPullRequests.set(this.#pullRequestKey(history.repo, number), archived);
+
+        return this.getGitBranchPullRequests(projectId, folderId, branch);
+    }
+
+    #pullRequestKey(repo: NonNullable<GitBranchPullRequests['repo']>, number: number): string {
+        return `${repo.host}/${repo.owner}/${repo.name}#${number}`.toLowerCase();
     }
 
     /** The folder a git read names and what the fixture's git says of it, and the worktree when the read names one (judged as the daemon judges a place). */

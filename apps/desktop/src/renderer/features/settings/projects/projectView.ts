@@ -153,13 +153,13 @@ export function holdingMarks(info: Pick<ProjectInfo, 'chats' | 'tasks'> | undefi
         .map(([count, one]) => plural(count, one));
 }
 
-/** What a project holds, for the line under the title of its page: `12 chats · 5 tasks`. */
+/** What a project holds, for the line under the title of its page: `12 chats, 5 tasks`. */
 export function holdingsLine(info: Pick<ProjectInfo, 'chats' | 'tasks'> | undefined): string | undefined {
     if (!info) return undefined;
 
     if (info.chats === 0 && info.tasks === 0) return 'No chats or tasks yet';
 
-    return [plural(info.chats, 'chat'), plural(info.tasks, 'task')].join(' · ');
+    return [plural(info.chats, 'chat'), plural(info.tasks, 'task')].join(', ');
 }
 
 const PERSONAL_NOTE =

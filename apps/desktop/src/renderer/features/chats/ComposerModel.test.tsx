@@ -318,7 +318,7 @@ describe('where a new chat starts', () => {
         writeRemembered({ engine: 'claude', models: {}, efforts: {} });
         await mount({ defaults: { engine: 'codex' } });
 
-        expect(trigger()!.getAttribute('aria-label')).toBe('Model: GPT-6.2 Sol · Low');
+        expect(trigger()!.getAttribute('aria-label')).toBe('Model: GPT-6.2 Sol, Low');
 
         await send('Build the thing');
 
@@ -347,7 +347,7 @@ describe('on the new-chat page', () => {
     it("starts on the provider's default model and level when nothing was picked before", async () => {
         await mount();
 
-        expect(trigger()!.getAttribute('aria-label')).toBe('Model: Opus 5.5 · High');
+        expect(trigger()!.getAttribute('aria-label')).toBe('Model: Opus 5.5, High');
     });
 
     it('starts the chat on what the picker holds: the provider, the model and the level', async () => {
@@ -419,7 +419,7 @@ describe('on the new-chat page', () => {
         root = createRoot(container);
         await mount();
 
-        expect(trigger()!.getAttribute('aria-label')).toBe('Model: Fable 5.2 · Low');
+        expect(trigger()!.getAttribute('aria-label')).toBe('Model: Fable 5.2, Low');
 
         type('Next one');
         await pressEnter();
@@ -438,7 +438,7 @@ describe('on the new-chat page', () => {
         writeRemembered({ engine: 'codex', models: { codex: 'gpt-6-luna' }, efforts: { 'codex/gpt-6-luna': 'max' } });
         await mount();
 
-        expect(trigger()!.getAttribute('aria-label')).toBe('Model: GPT-6 Luna · Max');
+        expect(trigger()!.getAttribute('aria-label')).toBe('Model: GPT-6 Luna, Max');
 
         type('Go');
         await pressEnter();
@@ -464,7 +464,7 @@ describe('on the new-chat page', () => {
             }
         );
 
-        expect(trigger()!.getAttribute('aria-label')).toBe('Model: Opus 5.5 · High');
+        expect(trigger()!.getAttribute('aria-label')).toBe('Model: Opus 5.5, High');
     });
 
     it('looks again at the models as they arrive until something is picked, and never after', async () => {
@@ -482,14 +482,14 @@ describe('on the new-chat page', () => {
         await act(async () => arrive.forEach(resolve => resolve()));
         await update({});
 
-        expect(trigger()!.getAttribute('aria-label')).toBe('Model: Opus 5.5 · High');
+        expect(trigger()!.getAttribute('aria-label')).toBe('Model: Opus 5.5, High');
 
         await openPicker();
         await pickModel('Sonnet 5.5');
         writeRemembered({ engine: 'codex', models: { codex: 'gpt-6-luna' }, efforts: {} });
         await update({});
 
-        expect(trigger()!.getAttribute('aria-label')).toBe('Model: Sonnet 5.5 · High');
+        expect(trigger()!.getAttribute('aria-label')).toBe('Model: Sonnet 5.5, High');
     });
 
     it('keeps what was remembered when the page opened, whatever is written to the memory meanwhile, until something is picked', async () => {
@@ -497,12 +497,12 @@ describe('on the new-chat page', () => {
 
         const { update } = await mount();
 
-        expect(trigger()!.getAttribute('aria-label')).toBe('Model: GPT-6 Luna · Max');
+        expect(trigger()!.getAttribute('aria-label')).toBe('Model: GPT-6 Luna, Max');
 
         writeRemembered({ engine: 'claude', models: { claude: 'fable' }, efforts: { 'claude/fable': 'low' } });
         await update({});
 
-        expect(trigger()!.getAttribute('aria-label')).toBe('Model: GPT-6 Luna · Max');
+        expect(trigger()!.getAttribute('aria-label')).toBe('Model: GPT-6 Luna, Max');
     });
 
     it('lets the first message go while the models are still being read, on the provider alone', async () => {
@@ -548,7 +548,7 @@ describe('on the new-chat page', () => {
             'GPT-6 Codex',
             'More models',
         ]);
-        expect(trigger()!.getAttribute('aria-label')).toBe('Model: Opus 5.5 · High');
+        expect(trigger()!.getAttribute('aria-label')).toBe('Model: Opus 5.5, High');
         expect(stored()).toBeNull();
 
         type('Build the thing');
@@ -605,7 +605,7 @@ describe('on the new-chat page', () => {
             }
         );
 
-        expect(trigger()!.getAttribute('aria-label')).toBe('Model: GPT-6.2 Sol · Low');
+        expect(trigger()!.getAttribute('aria-label')).toBe('Model: GPT-6.2 Sol, Low');
 
         await openPicker();
         await press(selectModel());
@@ -673,7 +673,7 @@ describe('on the new-chat page', () => {
             // The chat's own provider is read when the composer first asks, and the composer is drawn again as the list comes.
             await update({});
 
-            expect(trigger()!.getAttribute('aria-label')).toBe('Model: Opus 5.5 · High');
+            expect(trigger()!.getAttribute('aria-label')).toBe('Model: Opus 5.5, High');
         });
     });
 
@@ -700,7 +700,7 @@ describe('on the new-chat page', () => {
                 model: 'gpt-6-sol',
                 effort: 'high',
             });
-            expect(trigger()!.getAttribute('aria-label')).toBe('Model: GPT-6 Sol · High');
+            expect(trigger()!.getAttribute('aria-label')).toBe('Model: GPT-6 Sol, High');
 
             // No orchestrator has started, so the provider may still change.
             await press(selectModel());
@@ -758,11 +758,11 @@ describe('in a chat', () => {
         const chat = chatOn({ model: 'fable', effort: 'max' });
         const { update } = await mount({ chat, run: runOf() });
 
-        expect(trigger()!.getAttribute('aria-label')).toBe('Model: Fable 5.2 · Max');
+        expect(trigger()!.getAttribute('aria-label')).toBe('Model: Fable 5.2, Max');
 
         await update({ chat: { ...chat, model: 'sonnet', effort: 'low' } });
 
-        expect(trigger()!.getAttribute('aria-label')).toBe('Model: Sonnet 5.5 · Low');
+        expect(trigger()!.getAttribute('aria-label')).toBe('Model: Sonnet 5.5, Low');
     });
 
     it('sends a picked model to the chat with its level, and not the provider', async () => {
@@ -812,18 +812,18 @@ describe('in a chat', () => {
         await openPicker();
         await pickModel('Fable 5.2');
 
-        expect(trigger()!.getAttribute('aria-label')).toBe('Model: Fable 5.2 · High');
+        expect(trigger()!.getAttribute('aria-label')).toBe('Model: Fable 5.2, High');
         expect(selectModel().textContent).toBe('Fable 5.2High');
 
         // The record comes, and the store is what the pill reads again.
         await update({ chat: { ...chat, model: 'fable' } });
 
-        expect(trigger()!.getAttribute('aria-label')).toBe('Model: Fable 5.2 · High');
+        expect(trigger()!.getAttribute('aria-label')).toBe('Model: Fable 5.2, High');
 
         // Another client changed the chat after: the pill follows it.
         await update({ chat: { ...chat, model: 'sonnet', effort: 'low' } });
 
-        expect(trigger()!.getAttribute('aria-label')).toBe('Model: Sonnet 5.5 · Low');
+        expect(trigger()!.getAttribute('aria-label')).toBe('Model: Sonnet 5.5, Low');
     });
 
     it("does not bring a pick back when the chat's record, which has moved past it, returns to what it was before the pick", async () => {
@@ -835,7 +835,7 @@ describe('in a chat', () => {
         await update({ chat: { ...chat, model: 'fable' } });
         await update({ chat });
 
-        expect(trigger()!.getAttribute('aria-label')).toBe('Model: Opus 5.5 · High');
+        expect(trigger()!.getAttribute('aria-label')).toBe('Model: Opus 5.5, High');
     });
 
     it('keeps the old model on the pill when the daemon refused the pick', async () => {
@@ -843,13 +843,13 @@ describe('in a chat', () => {
         await openPicker();
         await pickModel('Fable 5.2');
 
-        expect(trigger()!.getAttribute('aria-label')).toBe('Model: Opus 5.5 · High');
+        expect(trigger()!.getAttribute('aria-label')).toBe('Model: Opus 5.5, High');
     });
 
     it("shows Claude's hidden default as the model it stands for, checked in the list", async () => {
         await mount({ chat: chatOn({ model: 'default' }), run: runOf({ model: 'default' }) });
 
-        expect(trigger()!.getAttribute('aria-label')).toBe('Model: Opus 5.5 · High');
+        expect(trigger()!.getAttribute('aria-label')).toBe('Model: Opus 5.5, High');
 
         await openPicker();
         await press(selectModel());
@@ -996,7 +996,7 @@ describe('in a chat', () => {
                 run: runOf({ engine: 'codex', model: 'gpt-6-sol', effort: 'xhigh' }),
             });
 
-            expect(trigger()!.getAttribute('aria-label')).toBe('Model: GPT-6 Sol · Extra high');
+            expect(trigger()!.getAttribute('aria-label')).toBe('Model: GPT-6 Sol, Extra high');
         });
 
         it('shows nothing when there is no orchestrator either', async () => {

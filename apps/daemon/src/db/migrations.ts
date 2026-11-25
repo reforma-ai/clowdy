@@ -547,4 +547,24 @@ export const MIGRATIONS: Migration[] = [
             db.run('ALTER TABLE runs ADD COLUMN active_since INTEGER');
         },
     },
+    {
+        version: 29,
+        up(db) {
+            // A branch's last complete pull request history survives an offline read and is shared by all folders of the repository.
+            // An archive marks a pull request in that repository and is independent of its branch, worktree or chat.
+            db.run(`
+                CREATE TABLE git_pull_request_history (
+                    repository TEXT NOT NULL,
+                    branch TEXT NOT NULL,
+                    data TEXT NOT NULL,
+                    PRIMARY KEY (repository, branch)
+                );
+                CREATE TABLE git_pull_request_archives (
+                    repository TEXT NOT NULL,
+                    number INTEGER NOT NULL,
+                    PRIMARY KEY (repository, number)
+                );
+            `);
+        },
+    },
 ];

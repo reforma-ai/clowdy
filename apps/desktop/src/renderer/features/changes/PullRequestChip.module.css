@@ -4,6 +4,11 @@
     opacity: var(--opacity-inactive);
 }
 
+.button {
+    flex: 1;
+    min-width: 0;
+}
+
 .content {
     justify-content: flex-start;
     min-width: 0;
@@ -21,6 +26,19 @@
 
 .prMark[data-state='merged'] {
     color: var(--color-accent-text);
+}
+
+.prMark[data-state='closed'] {
+    color: var(--color-danger-text);
+}
+
+.prNumber {
+    flex-shrink: 0;
+}
+
+.prTitle {
+    flex: 1;
+    min-width: 0;
 }
 
 .checkCounts,

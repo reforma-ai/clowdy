@@ -204,7 +204,7 @@ export function ExplorerRow(props: NodeRendererProps<ExplorerItem>) {
 function ExplorerEntryRow({ node, dragHandle }: NodeRendererProps<ExplorerItem>) {
     const [menuOpen, setMenuOpen] = useState(false);
     const contextMenu = useContextMenu();
-    const { manager, root, dropFolder, menuItems } = useExplorer();
+    const { manager, root, dropFolder, menuItems, onEntryDragStart } = useExplorer();
     const { kind, name } = node.data;
     const draft = node.id === DRAFT_ID;
     // The tree shows a hidden path only while "Show hidden files" is on, and draws it fainter so it still reads as one. A scope's rows are shown by its own rules.
@@ -237,6 +237,11 @@ function ExplorerEntryRow({ node, dragHandle }: NodeRendererProps<ExplorerItem>)
             data-joined-start={(ownFill && fill(node.prev) === ownFill) || undefined}
             data-joined-end={(ownFill && fill(node.next) === ownFill) || undefined}
             data-open={menuOpen || contextMenu.isOpen || undefined}
+            onDragStartCapture={event => {
+                if (!draft && !node.isEditing && event.target === event.currentTarget) {
+                    onEntryDragStart?.(targetsOf(node), event.dataTransfer);
+                }
+            }}
             onClick={event => {
                 // The row frame selects; a plain click also opens or closes a folder.
                 if (node.isInternal && !draft && !event.metaKey && !event.ctrlKey && !event.shiftKey) {

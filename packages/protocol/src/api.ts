@@ -62,6 +62,10 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  * GET  /v1/projects/:id/git/file?folderId=&workspaceId=&scope=&path=&oldPath=&from= -> GitFileSides (the text of one changed file before and after; `from` is the list's own start)
  * GET  /v1/projects/:id/git/pull-request?folderId=&workspaceId= -> GitPullRequestInfo (whether the person's `gh` can be asked about the place's `origin`, and the pull
  *                                            request of its branch with its checks, or none). The four are described in `git.ts`
+ * GET  /v1/projects/:id/git/pull-requests?folderId=&branch= -> GitBranchPullRequests (all pull requests from a repository's source branch, independent of its current tip or checkout).
+ *                                            The last complete answer is kept on disk and marked stale when GitHub cannot be read.
+ * POST /v1/projects/:id/git/pull-requests/archive -> GitBranchPullRequests (body GitPullRequestArchiveRequest: locally archive a merged or closed pull request, or restore it).
+ *                                            Shared by every chat on the branch; changes no GitHub state.
  * GET  /v1/projects/:id/git/viewed?folderId=&workspaceId=&scope= -> GitViewedMark[] (the files the person marked as viewed in a scope of the place, each with the revision it had
  *                                            when it was marked; the daemon keeps them, and the client decides a file is still viewed while its own revision is the stored one)
  * POST /v1/projects/:id/git/viewed       -> GitViewedMark (body GitViewedSet: marks one file as viewed in a scope)
@@ -134,6 +138,9 @@ export const ROUTES = {
     projectGitViewed: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/viewed`,
     projectWorktrees: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/worktrees`,
     projectGitPullRequest: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/pull-request`,
+    projectGitPullRequests: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/pull-requests`,
+    projectGitPullRequestArchive: (projectId: string) =>
+        `/v1/projects/${encodeURIComponent(projectId)}/git/pull-requests/archive`,
     projectGitCommit: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/commit`,
     projectGitMessage: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/message`,
     projectGitBranches: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/git/branches`,

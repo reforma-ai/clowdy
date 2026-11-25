@@ -131,6 +131,8 @@ const unconfigured: Transport = {
     branchMergeGit: noDaemon,
     getProjectWorktrees: noDaemon,
     getGitPullRequest: noDaemon,
+    getGitBranchPullRequests: noDaemon,
+    setGitPullRequestArchived: noDaemon,
     getChatWorkspaceRemoval: noDaemon,
     subscribe: () => () => undefined,
     command: noDaemon,

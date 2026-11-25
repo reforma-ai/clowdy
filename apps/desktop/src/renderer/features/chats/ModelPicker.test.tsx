@@ -175,7 +175,7 @@ describe('the pill', () => {
         // The provider's mark and the chevron.
         expect(trigger().querySelectorAll('svg')).toHaveLength(2);
         expect(trigger().textContent).toBe('Opus 5.5High');
-        expect(trigger().getAttribute('aria-label')).toBe('Model: Opus 5.5 · High');
+        expect(trigger().getAttribute('aria-label')).toBe('Model: Opus 5.5, High');
     });
 
     it("says the level in the words of the person, in the agent's own spelling", async () => {
@@ -1063,7 +1063,7 @@ describe('the provider strip', () => {
         expect(picks).toEqual([]);
         expect(onList()).toBe(true);
         // The pill and the face still say what is held.
-        expect(trigger().getAttribute('aria-label')).toBe('Model: Opus 5.5 · High');
+        expect(trigger().getAttribute('aria-label')).toBe('Model: Opus 5.5, High');
 
         await press(tabNamed('Claude Code'));
 

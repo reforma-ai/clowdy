@@ -32,7 +32,7 @@ export class CommitDraft {
     message = '';
     /** The text Generate wrote, while the box still holds exactly that: Generate may replace it, and nothing the person typed is ever replaced. */
     generated: string | undefined;
-    /** What is going on: a message is being written, a commit is being made, or the branch is syncing after one (Commit & Sync). One at a time. */
+    /** What is going on: a message is being written, a commit is being made, or the branch is syncing after one (Commit and sync). One at a time. */
     busy: 'generate' | 'commit' | 'sync' | undefined;
     syncPhase: GitSyncProgress['phase'] | undefined;
     /** Why the last request failed, until the person acts again. */
@@ -45,7 +45,7 @@ export class CommitDraft {
         private readonly transport: CommitTransport,
         /** Asks for a new round of reads of the place (`GitFacts.refresh`): what a commit, or a commit that failed, may have changed. */
         private readonly refresh: () => void,
-        /** The place's moves to and from origin: what Commit & Sync sends the branch with, and what it waits for. */
+        /** The place's moves to and from origin: what Commit and sync sends the branch with, and what it waits for. */
         private readonly remote: Pick<RemoteActions, 'sync'>
     ) {
         makeAutoObservable<CommitDraft, 'transport' | 'refresh' | 'remote'>(this, {
@@ -205,7 +205,7 @@ export class CommitDraft {
         return commitBlock(this.message, this.ticked.length);
     }
 
-    /** Why Commit & Sync is unavailable, for the button and menu entry. */
+    /** Why Commit and sync is unavailable, for the button and menu entry. */
     get syncBlock(): string | undefined {
         return syncBlock(this.model.facts.status.value);
     }

@@ -35,6 +35,7 @@ import { commandResponse, failure, json } from './responses';
 import { eventStream, gitSyncStream } from './sse';
 
 import type {
+    GitPullRequestArchiveRequest,
     GitRemoteAction,
     GitViewedMark,
     Health,
@@ -80,6 +81,14 @@ const viewedBody = z.object({
     scope: z.string(),
     path: z.string(),
     revision: z.string(),
+});
+
+const pullRequestArchiveBody = z.object({
+    folderId: z.string(),
+    branch: z.string(),
+    number: z.number().int().positive(),
+    archived: z.boolean(),
+    repo: z.object({ host: z.string(), owner: z.string(), name: z.string() }),
 });
 
 /** How many paths a file search answers with when it is not told, and the most it ever does. */
@@ -551,6 +560,36 @@ export function createRoutes(context: RouteContext): Route[] {
             method: 'GET',
             pattern: /^\/v1\/projects\/([^/]+)\/git\/pull-request$/,
             handle: async (_request, url, [id]) => json(await services.pullRequests.read(gitPlaceOf(id, url))),
+        },
+        {
+            method: 'GET',
+            pattern: /^\/v1\/projects\/([^/]+)\/git\/pull-requests$/,
+            handle: async (request, url, [id]) => {
+                const place = resolvePlace(store, requireProject(store, id), url.searchParams.get('folderId') ?? '');
+                const branch = url.searchParams.get('branch') ?? '';
+
+                context.keepOpen(request);
+                return json(await services.pullRequests.readHistory(store, place, branch));
+            },
+        },
+        {
+            method: 'POST',
+            pattern: /^\/v1\/projects\/([^/]+)\/git\/pull-requests\/archive$/,
+            handle: async (request, _url, [id]) => {
+                const body: GitPullRequestArchiveRequest = await readJson(request, pullRequestArchiveBody);
+                const place = resolvePlace(store, requireProject(store, id), body.folderId);
+
+                return json(
+                    await services.pullRequests.archiveHistory(
+                        store,
+                        place,
+                        body.branch,
+                        body.number,
+                        body.archived,
+                        body.repo
+                    )
+                );
+            },
         },
         {
             method: 'POST',

@@ -3,7 +3,7 @@
     "productName": "Clowdy Dev",
     "private": true,
     "license": "Apache-2.0",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "description": "Clowdy desktop app",
     "type": "module",
     "main": "dist/main/index.cjs",

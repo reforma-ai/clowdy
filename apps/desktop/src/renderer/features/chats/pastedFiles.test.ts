@@ -126,21 +126,25 @@ describe('files pasted into the message box', () => {
         clipboard(file('/Users/dev/web/src/a.ts'));
         await pasteFiles([pasted], { mention, attach, ...rest });
 
-        expect(mention).toHaveBeenCalledWith(
-            expect.objectContaining({ id: 'file:f1:src/a.ts', data: { path: 'src/a.ts' } })
-        );
+        expect(mention).toHaveBeenCalledWith([
+            expect.objectContaining({ id: 'file:f1:src/a.ts', data: { path: 'src/a.ts' } }),
+        ]);
         expect(attach).not.toHaveBeenCalled();
     });
 
     it('are attached when they are somewhere else, and only the ones in the project become chips', async () => {
         const { mention, attach, ...rest } = targets();
         const inside = new File(['a'], 'a.ts');
+        const second = new File(['b'], 'b.ts');
         const outside = new File(['r'], 'report.pdf');
 
-        clipboard(file('/Users/dev/web/a.ts'), file('/Users/dev/Downloads/report.pdf'));
-        await pasteFiles([inside, outside], { mention, attach, ...rest });
+        clipboard(file('/Users/dev/web/a.ts'), file('/Users/dev/Downloads/report.pdf'), file('/Users/dev/web/b.ts'));
+        await pasteFiles([inside, outside, second], { mention, attach, ...rest });
 
-        expect(mention).toHaveBeenCalledTimes(1);
+        expect(mention).toHaveBeenCalledExactlyOnceWith([
+            expect.objectContaining({ data: { path: 'a.ts' } }),
+            expect.objectContaining({ data: { path: 'b.ts' } }),
+        ]);
         expect(attach).toHaveBeenCalledWith([outside]);
     });
 

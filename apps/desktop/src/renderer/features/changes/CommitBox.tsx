@@ -285,17 +285,21 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
         : draft.truncated && `Showing the first ${files.length} files`;
     const hasChangesToCommit = hasFiles || merging !== undefined;
     const syncsByDefault = draft.syncsByDefault;
-    const commitAndSync = (merging ? draft.concluding : ticked > 0) && syncsByDefault !== shiftHeld;
+    const hasCommit = merging ? draft.concluding : ticked > 0;
+    const commitAndSync = hasCommit && syncsByDefault !== shiftHeld;
     const target = commitTarget(status);
     const localLabel = merging ? 'Complete merge' : commitLabel(ticked);
-    const syncLabel = merging ? 'Complete merge & Sync' : 'Commit & Sync';
+    const localOnlyLabel = merging ? 'Complete merge locally' : 'Commit locally';
+    const syncLabel = merging ? 'Complete merge and sync' : 'Commit and sync';
     const label =
         draft.busy === 'sync'
             ? draft.syncPhase
                 ? SYNC_WORDS[draft.syncPhase]
                 : 'Syncing…'
-            : commitAndSync
-              ? syncLabel
+            : shiftHeld && hasCommit
+              ? commitAndSync
+                  ? syncLabel
+                  : localOnlyLabel
               : localLabel;
     const alternateBlock = syncsByDefault ? undefined : draft.syncBlock;
     const reason = hasChangesToCommit
@@ -451,13 +455,7 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
                                 <MenuItem
                                     id={syncsByDefault ? 'local' : 'sync'}
                                     icon={syncsByDefault ? undefined : <Refresh />}
-                                    text={
-                                        syncsByDefault
-                                            ? merging
-                                                ? 'Complete merge locally'
-                                                : 'Commit locally'
-                                            : syncLabel
-                                    }
+                                    text={syncsByDefault ? localOnlyLabel : syncLabel}
                                     description={alternateBlock}
                                     stacked={alternateBlock !== undefined}
                                     isDisabled={alternateBlock !== undefined}

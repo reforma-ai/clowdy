@@ -50,6 +50,8 @@ jobs:
         needs: decide
         if: needs.decide.outputs.decision == 'build'
         runs-on: macos-latest
+        # The signing secrets live in this environment, which only main (and next) may use.
+        environment: desktop-release
         steps:
             # Full history: the bundle version counts first-parent commits.
             - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
@@ -67,12 +69,22 @@ jobs:
             # then offers its download page instead of updating itself (CLOWDY_SIGNED).
             # electron-builder gets it as a file, since it reads a short CSC_LINK as a path.
             # /usr/bin/openssl is LibreSSL, which reads the legacy ciphers of Keychain exports.
+            # A certificate that opens but is not a Developer ID Application one of the team in APPLE_TEAM_ID fails the
+            # run: Squirrel.Mac installs only an update signed by the same team, so it never ships under another one.
+            # `shell: bash` adds pipefail, so a pkcs12 that fails after printing a certificate still fails.
             - name: Check the signing certificate
               id: signing
+              shell: bash
               run: |
                   cert="$RUNNER_TEMP/developer-id.p12"
                   if [ -n "$CSC_LINK" ] && base64 --decode <<< "$CSC_LINK" > "$cert" 2>/dev/null \
                       && /usr/bin/openssl pkcs12 -in "$cert" -passin env:CSC_KEY_PASSWORD -noout 2>/dev/null; then
+                      subject="$(/usr/bin/openssl pkcs12 -in "$cert" -passin env:CSC_KEY_PASSWORD -clcerts -nokeys 2>/dev/null \
+                          | /usr/bin/openssl x509 -noout -subject)"
+                      if [[ -z "$APPLE_TEAM_ID" || "$subject" != *"Developer ID Application:"*"($APPLE_TEAM_ID)"* ]]; then
+                          echo "::error title=Signing certificate::CSC_LINK holds \"$subject\", not a Developer ID Application certificate of the team in APPLE_TEAM_ID (\"$APPLE_TEAM_ID\")."
+                          exit 1
+                      fi
                       echo "cert=$cert" >> "$GITHUB_OUTPUT"
                       echo "signed=true" >> "$GITHUB_OUTPUT"
                   else
@@ -82,6 +94,7 @@ jobs:
               env:
                   CSC_LINK: ${{ secrets.CSC_LINK }}
                   CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+                  APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
             # No signing secrets here: the renderer's build toolchain never sees them.
             - name: Build the app
               run: bun scripts/build.ts darwin-arm64 darwin-x64
@@ -124,6 +137,7 @@ jobs:
               working-directory: apps/desktop/release
               env:
                   SIGNED: ${{ steps.signing.outputs.signed }}
+                  APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
               run: |
                   set -euo pipefail
                   fuses=(
@@ -137,7 +151,11 @@ jobs:
                   )
                   for app in mac-arm64/Clowdy.app mac/Clowdy.app; do
                       codesign --verify --deep --strict --verbose=2 "$app"
-                      if [ "$SIGNED" = true ]; then spctl -a -t exec -vv "$app"; fi
+                      if [ "$SIGNED" = true ]; then
+                          spctl -a -t exec -vv "$app"
+                          team="$(codesign -dv "$app" 2>&1 | sed -n 's/^TeamIdentifier=//p')"
+                          [ "$team" = "$APPLE_TEAM_ID" ] || { echo "$app: signed by team \"$team\", expected \"$APPLE_TEAM_ID\""; exit 1; }
+                      fi
                       read_back="$(../../../node_modules/.bin/electron-fuses read --app "$app")"
                       for fuse in "${fuses[@]}"; do
                           grep -qF "$fuse" <<< "$read_back" || { echo "$app: expected \"$fuse\""; exit 1; }

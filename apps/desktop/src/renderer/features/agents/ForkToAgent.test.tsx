@@ -116,7 +116,7 @@ describe('Hand off to', () => {
         await forkTo('Codex');
 
         expect(container.textContent).toContain('What should we work on?');
-        expect(modelLabel()).toBe('Model: GPT-6.2 Sol · Low');
+        expect(modelLabel()).toBe('Model: GPT-6.2 Sol, Low');
         expect(container.textContent).toContain(FILE_NAME);
         expect(filesOf(DRAFT_KEY).map(file => file.name)).toEqual([FILE_NAME]);
         expect(field()!.editor.getText()).toBe(

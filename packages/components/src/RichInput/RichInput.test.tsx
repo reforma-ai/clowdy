@@ -139,7 +139,7 @@ describe('RichInput', () => {
         it('should draw a mention as its label when the host gives no renderer', async () => {
             const ref = await draw();
 
-            await act(async () => ref.current!.insertMention(mention));
+            await act(async () => ref.current!.insertMentions([mention]));
 
             expect(host.querySelector('[data-node-view-wrapper]')?.textContent).toBe('hero.tsx');
         });
@@ -148,7 +148,7 @@ describe('RichInput', () => {
             const ref = await draw(OneHook);
             const editor = (host.querySelector('[contenteditable="true"]') as HTMLElement & { editor: Editor }).editor;
 
-            await act(async () => ref.current!.insertMention(mention));
+            await act(async () => ref.current!.insertMentions([mention]));
             expect(chip()?.textContent).toBe('one hero.tsx');
 
             // A new renderer is read when the node view draws again, here because the mention is selected.

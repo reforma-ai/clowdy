@@ -19,12 +19,12 @@ export interface CompactionLineProps {
     active: boolean;
 }
 
-/** What the line says once the compaction is over: `Context compacted · 22K → 6K`, the counts when the agent reported them. */
+/** What the line says once the compaction is over, including token counts when the agent reported them. */
 function doneText(output: unknown): string {
     const counts = compactionCounts(output);
 
     return counts
-        ? `Context compacted · ${formatTokens(counts.before)} → ${formatTokens(counts.after)}`
+        ? `Context compacted from ${formatTokens(counts.before)} to ${formatTokens(counts.after)} tokens`
         : 'Context compacted';
 }
 

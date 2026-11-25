@@ -564,7 +564,7 @@ describe('a chat whose orchestrator waits for background work', () => {
             [...container.querySelectorAll('[aria-label="Work in progress"] [class*="agentRows"] > div')].map(
                 row => row.textContent
             )
-        ).toEqual(['Command · bun run testStop', 'Command · bun run typecheck', 'Background task runningStop run']);
+        ).toEqual(['Command: bun run testStop', 'Command: bun run typecheck', 'Background task runningStop run']);
         expect(container.textContent).not.toContain('Waiting for background work…');
         expect(notice()).toBeNull();
         expect(field()).not.toBeNull();

@@ -86,16 +86,15 @@ const failureOf = (error: unknown): Failure => ({
     ...(error instanceof TransportError && error.hint !== undefined && { hint: error.hint }),
 });
 
-const MODES: Record<Exclude<GitBranchMergePreview['mode'], 'up-to-date'>, string> = {
-    'fast-forward': 'Moves the branch forward without a merge commit',
+const MODES: Record<Exclude<GitBranchMergePreview['mode'], 'up-to-date' | 'rebase'>, string> = {
+    'fast-forward': 'Fast-forward without a merge commit',
     'merge-commit': 'Creates a merge commit',
-    squash: 'Creates one commit',
-    rebase: 'Rebase',
+    squash: 'Creates one new commit',
 };
 
 const STRATEGIES: Record<DialogStrategy, { label: string; description: string }> = {
     merge: {
-        label: 'Create a merge commit',
+        label: 'Merge',
         description: 'Join the branch histories, using a fast-forward when possible',
     },
     squash: { label: 'Squash and merge', description: 'Combine incoming changes into one new commit' },
@@ -437,7 +436,7 @@ function BranchMergeDialog({
             }}
         >
             <Text id={headingId} as="h2" variant="heading-3" className={styles.heading}>
-                {`Merge ${source} to ${target}`}
+                {strategy === 'rebase' ? `Rebase ${target} onto ${source}` : `Merge ${source} into ${target}`}
             </Text>
             <Button
                 className={styles.close}
@@ -470,11 +469,15 @@ function BranchMergeDialog({
                     <Text variant="sm">
                         {preview.mode === 'rebase'
                             ? replay > 0
-                                ? `Replay ${commitsWords(replay)} from ${target} on top of ${source}`
-                                : `Fast-forward ${target} to ${source}`
-                            : commitsWords(preview.commits)}
-                        {preview.mode !== 'rebase' && !blocked && ` · ${MODES[preview.mode]}`}
+                                ? `${commitsWords(replay)} to replay`
+                                : 'Fast-forward without replaying commits'
+                            : `${commitsWords(preview.commits)} to merge`}
                     </Text>
+                    {preview.mode !== 'rebase' && !blocked && (
+                        <Text variant="sm" color="secondary">
+                            {MODES[preview.mode]}
+                        </Text>
+                    )}
                     {direction === 'into' && preview.targetPath && (
                         <Text color="secondary" variant="xs" title={preview.targetPath}>
                             {tildePath(preview.targetPath, homeFolder.path)}
@@ -527,8 +530,7 @@ function BranchMergeDialog({
                             isPending={pending === 'merge'}
                             onPress={merge}
                         >
-                            {actionStatus ??
-                                (autoSync && hasOrigin && canMerge ? `${actionLabel} & Sync` : actionLabel)}
+                            {actionStatus ?? actionLabel}
                         </Button>
                         <MenuTrigger>
                             <Button

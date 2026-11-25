@@ -647,14 +647,14 @@ export function RichInput({
             getDoc: () => (editor?.getJSON() as ComposerDoc) ?? emptyComposerDoc(),
             getPlainText: () =>
                 docToPlainText((editor?.getJSON() as ComposerDoc) ?? emptyComposerDoc(), getBridge().serializeMention),
-            insertMention: (attrs: ComposerMentionAttrs) => {
-                if (!editor) {
+            insertMentions: (attrs: readonly ComposerMentionAttrs[]) => {
+                if (!editor || attrs.length === 0) {
                     return;
                 }
 
                 const pos = clamp(1, lastPosRef.current, editor.state.doc.content.size);
 
-                editor.chain().insertContentAt(pos, mentionNodes(attrs)).focus().run();
+                editor.chain().insertContentAt(pos, attrs.flatMap(mentionNodes)).focus().run();
                 rememberPos(editor);
             },
             appendText: (text: string) => {

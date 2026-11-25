@@ -70,6 +70,7 @@ export interface ExplorerActions {
     /** Folder that files dragged in from outside would go in, while they are over the tree. */
     dropFolder: string | null;
     menuItems?: (targets: readonly FileEntry[]) => FileMenuItem[];
+    onEntryDragStart?: (targets: readonly FileEntry[], transfer: DataTransfer) => void;
     /** Shows the inline new row inside `parent`. */
     create: (parent: string, kind: FileKind) => void;
     /** Shows the inline rename input on a row. */

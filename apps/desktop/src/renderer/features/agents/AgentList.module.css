@@ -68,6 +68,31 @@
     pointer-events: auto;
 }
 
+.pullRequests {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-2);
+    flex-shrink: 0;
+    color: var(--color-secondary-muted-text);
+    font-size: var(--text-xs);
+    font-variant-numeric: tabular-nums;
+}
+
+.pullRequests[data-pr-state='open'] > svg {
+    color: var(--color-success-text);
+}
+.pullRequests[data-pr-state='merged'] > svg {
+    color: var(--color-accent-text);
+}
+
+.pullRequests[data-pr-state='closed'] > svg {
+    color: var(--color-danger-text);
+}
+
+.pullRequests[data-stale] {
+    opacity: var(--opacity-inactive);
+}
+
 .archiveStatus {
     display: grid;
     place-items: center;
@@ -88,17 +113,17 @@
         pointer-events: none;
     }
 
-    & [slot='endAffix']:not(:has(.archiveStatus)) {
+    & [slot='endAffix']:not(:has(.archiveStatus, .pullRequests)) {
         position: absolute;
         inset-inline-end: calc((var(--clowdy-listbox-item-height) - var(--spacing-24)) / 2);
     }
 
-    & .chatActions:has(.archiveStatus) .rowAction {
+    & .chatActions:has(.archiveStatus, .pullRequests) .rowAction {
         position: absolute;
         inset-inline-end: 0;
     }
 
-    & .chatActions:has(.archiveStatus) .rowAction[aria-label='Archive'] {
+    & .chatActions:has(.archiveStatus, .pullRequests) .rowAction[aria-label='Archive'] {
         inset-inline-end: calc(var(--spacing-24) + var(--spacing-xs));
     }
 }

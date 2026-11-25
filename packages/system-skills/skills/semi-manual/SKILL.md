@@ -100,7 +100,7 @@ Request: "Let customers export their orders."
 - Round 1: two cards. Answers: "what's on screen", "only admins".
 - Recompute: with filtered exports the size stays small, so the huge-export node vanishes. "How admins are recognised" is answered by the role flag in the code.
 - Frontier empty. Settled: export contains the current filter; admins only; CSV via the existing library. Record `2026-11-17-orders-export-scope.md`. Confirmation card. Answer "ok go".
-- Create three tasks, start them, report: "Done: admins can download the filtered orders as CSV. Decided with you: filtered export, admins only (decisions/2026-11-17-orders-export-scope.md). Decided for you: file name format. Tasks: CLW-21, CLW-22, CLW-23."
+- Create three tasks, start them, report: "Done: admins can download the filtered orders as CSV. Decided with you: filtered export, admins only (decisions/2026-11-17-orders-export-scope.md). Decided for you: file name format. Tasks: `CLW-21`, `CLW-22`, `CLW-23`."
 
 ## Avoid
 

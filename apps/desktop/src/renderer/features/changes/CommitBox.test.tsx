@@ -537,7 +537,7 @@ describe('the commit box', () => {
 
             expect(box()?.textContent).toContain('No staged files');
             expect(message().value).toBe('Merge main');
-            expect(buttonOf('Complete merge & Sync')?.disabled).toBe(false);
+            expect(buttonOf('Complete merge')?.disabled).toBe(false);
         } finally {
             status.mockRestore();
         }
@@ -618,9 +618,9 @@ describe('the commit box', () => {
             expect(checkboxes()).toHaveLength(0);
             expect(box()?.textContent).not.toContain('Conflicts resolved');
             expect(buttonOf('Abort merge')).toBeUndefined();
-            expect(buttonOf('Complete merge & Sync')?.disabled).toBe(false);
+            expect(buttonOf('Complete merge')?.disabled).toBe(false);
             const sync = vi.spyOn(transport, 'syncGit');
-            await press(buttonOf('Complete merge & Sync')!);
+            await press(buttonOf('Complete merge')!);
             await settle();
             expect(commit).toHaveBeenCalledWith(FIXTURE_PROJECT_ID, PLACE, expect.any(Array), 'Merge both changes', {
                 conclude: true,
@@ -662,11 +662,11 @@ describe('the commit box', () => {
     });
 });
 
-describe('Commit & Sync', () => {
+describe('Commit and sync', () => {
     const more = () => container.querySelector<HTMLButtonElement>('button[aria-label="More ways to commit"]')!;
     const entry = () =>
         [...document.querySelectorAll<HTMLElement>('[role="menu"] [role="menuitem"]')].find(item =>
-            item.textContent?.includes('Commit & Sync')
+            item.textContent?.includes('Commit and sync')
         );
 
     /** Opens the menu beside Commit. */
@@ -770,7 +770,7 @@ describe('Commit & Sync', () => {
 
         if (control === 'Shift') {
             act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', shiftKey: true })));
-            expect(commitButton()?.textContent).toBe('Commit 3 files');
+            expect(commitButton()?.textContent).toBe('Commit locally');
             await press(commitButton()!, true);
             act(() => window.dispatchEvent(new KeyboardEvent('keyup', { key: 'Shift' })));
         } else {
@@ -819,7 +819,7 @@ describe('the commit button and the line under the box', () => {
         expect(commitButton()?.textContent).toBe('Commit 0 files');
     });
 
-    it('switches the contrast button to Commit & Sync while Shift is held and automatic sync is off', async () => {
+    it('switches the contrast button to Commit and sync while Shift is held and automatic sync is off', async () => {
         sourceControlPreferences.setAutoSync(false);
         await start();
         await type('feat: surcharge');
@@ -828,7 +828,7 @@ describe('the commit button and the line under the box', () => {
 
         expect(commitButton()?.getAttribute('data-color')).toBe('contrast');
         act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', shiftKey: true })));
-        expect(commitButton()?.textContent).toBe('Commit & Sync');
+        expect(commitButton()?.textContent).toBe('Commit and sync');
         act(() => window.dispatchEvent(new KeyboardEvent('keyup', { key: 'Shift' })));
         expect(commitButton()?.textContent).toBe('Commit 3 files');
         act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', shiftKey: true })));
@@ -840,12 +840,12 @@ describe('the commit button and the line under the box', () => {
         expect(sync).toHaveBeenCalledTimes(1);
     });
 
-    it('disables Commit & Sync when the remote blocks pushing and clears the modifier on blur', async () => {
+    it('disables Commit and sync when the remote blocks pushing and clears the modifier on blur', async () => {
         await start({ gitWrites: { remote: 'no_origin' } });
         await type('feat: surcharge');
 
         act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', shiftKey: true })));
-        expect(commitButton()?.textContent).toBe('Commit & Sync');
+        expect(commitButton()?.textContent).toBe('Commit and sync');
         expect(commitButton()?.disabled).toBe(true);
 
         act(() => window.dispatchEvent(new Event('blur')));
@@ -870,7 +870,7 @@ describe('the commit button and the line under the box', () => {
         expect(reasonStop()?.contains(commitButton()!)).toBe(true);
         // One tab stop that reads out what the button is, and the reason is its description.
         expect(reasonStop()?.getAttribute('tabindex')).toBe('0');
-        expect(reasonStop()?.getAttribute('aria-label')).toBe('Commit & Sync');
+        expect(reasonStop()?.getAttribute('aria-label')).toBe('Commit 3 files');
 
         await type('feat: surcharge');
         expect(draft.commitReason).toBeUndefined();

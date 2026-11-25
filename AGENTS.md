@@ -7,6 +7,8 @@ Product spec: `spec.md`. Visual language: `DESIGN.md`. License: Apache-2.0 (`LIC
 
 UI text that is a phrase or a single sentence ends without a period: a label, description, hint, placeholder, note, empty state, toast, or error (`Not signed in`, `Sign in to see your limits`, `Couldn't read the usage`). A period dangling after one sentence looks broken in the interface. Keep periods only in text of two sentences or more. This covers the daemon's messages that the app shows (`detail`, setting descriptions, sign-in messages).
 
+Use natural phrases and separate independent metadata with layout or ordinary punctuation. Avoid decorative middle dots in product copy. A primary action names the requested operation. Automatic follow-up actions such as Sync are described in settings and when they are running or fail.
+
 ## Layout
 
 | Path | What |

@@ -73,7 +73,7 @@ function RunHeader({ run, parent }: { run: Run; parent: Run | undefined }) {
                         <RunStatusPill run={run} />
                     </div>
                     <Text color="secondary" truncate>
-                        {run.summary ? `${ROLE_LABEL[run.role]} · ${run.summary}` : ROLE_LABEL[run.role]}
+                        {run.summary ? `${ROLE_LABEL[run.role]}: ${run.summary}` : ROLE_LABEL[run.role]}
                     </Text>
                 </div>
                 {!isTerminalRunStatus(run.status) &&
