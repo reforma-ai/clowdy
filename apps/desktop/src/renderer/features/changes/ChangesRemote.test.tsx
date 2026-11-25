@@ -1249,13 +1249,17 @@ describe('Create PR in the sidebar', () => {
         expect(row(124)).not.toBeNull();
         expect(opened).toEqual(['https://github.com/acme/car-rental/pull/124']);
 
-        await press(buttonOf('Archived (1)')!);
+        const archiveToggle = buttonOf('Archived PR')!;
+        expect(archiveToggle.getAttribute('data-variant')).toBe('filling');
+        expect(archiveToggle.getAttribute('aria-expanded')).toBe('false');
+        await press(archiveToggle);
         await settle();
         expect(row(125)).not.toBeNull();
+        expect(buttonOf('Archived PR')?.getAttribute('aria-expanded')).toBe('true');
         await press(buttonOf('Restore PR #125')!);
         await settle();
         expect(row(125)).not.toBeNull();
-        expect(buttonOf('Archived (1)')).toBeUndefined();
+        expect(buttonOf('Archived PR')).toBeUndefined();
         expect(archive.mock.calls[1]?.[1]).toMatchObject({ number: 125, archived: false });
     });
 
@@ -1370,6 +1374,8 @@ describe('Create PR in the sidebar', () => {
         expect(pr.getAttribute('aria-label')).toContain('1 failed, 3 passed');
         expect(pr.querySelector('[data-check="failed"]')?.textContent).toBe('1');
         expect(pr.querySelector('[data-check="passed"]')?.textContent).toBe('3');
+        expect(pr.querySelector('[slot="endAffix"] [data-check="failed"]')).not.toBeNull();
+        expect(pr.querySelector('[slot="endAffix"] [data-check="passed"]')).not.toBeNull();
         expect(pr.hasAttribute('aria-haspopup')).toBe(false);
         expect(createPRButton()).toBeUndefined();
         expect(buttonOf('Publish first')).toBeUndefined();

@@ -94,14 +94,14 @@ export function BranchPullRequestList({
                 <>
                     <Button
                         size="xs"
-                        variant="ghost"
+                        variant="filling"
                         color="secondary"
                         className={styles.archive}
                         aria-expanded={expanded}
                         onPress={() => setExpanded(value => !value)}
                     >
+                        Archived PR
                         {expanded ? <ChevronDown /> : <ChevronRight />}
-                        Archived ({archived.length})
                     </Button>
                     {expanded && (
                         <GridList size="sm" aria-label="Archived pull requests">

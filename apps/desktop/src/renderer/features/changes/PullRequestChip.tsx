@@ -32,14 +32,8 @@ export function PullRequestChip({
             aria-label={`Open pull request ${pr.number} on GitHub: ${state}, ${pr.title}${counts ? `, ${counts}` : ''}`}
             icon={<Mark className={styles.prMark} data-state={pr.state} aria-hidden="true" />}
             onAction={() => openEffects.openUrl(pr.url)}
-            endAffix={action}
-        >
-            <Text slot="label" className={styles.copy}>
-                <Text variant="sm" weight="medium" truncate title={pr.title}>
-                    {pr.title || `PR #${pr.number}`}
-                </Text>
-                <span className={styles.metadata}>
-                    <Text variant="xs" color="secondary">{`PR #${pr.number}`}</Text>
+            endAffix={
+                <>
                     {(failing > 0 || passing > 0) && (
                         <span className={styles.checkCounts} aria-hidden="true">
                             {failing > 0 && (
@@ -56,7 +50,15 @@ export function PullRequestChip({
                             )}
                         </span>
                     )}
-                </span>
+                    {action}
+                </>
+            }
+        >
+            <Text slot="label" className={styles.copy}>
+                <Text variant="sm" weight="medium" truncate title={pr.title}>
+                    {pr.title || `PR #${pr.number}`}
+                </Text>
+                <Text variant="xs" color="secondary">{`PR #${pr.number}`}</Text>
             </Text>
         </GridListItem>
     );
