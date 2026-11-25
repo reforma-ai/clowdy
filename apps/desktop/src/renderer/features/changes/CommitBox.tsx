@@ -2,22 +2,25 @@ import { Button } from '@clowdy/components/Button';
 import { Checkbox } from '@clowdy/components/Checkbox';
 import { For } from '@clowdy/components/For';
 import { GridList, GridListItem, Menu, MenuItem, MenuTrigger } from '@clowdy/components/List';
-import { Popover } from '@clowdy/components/Popover';
+import { Popover, useContextMenu } from '@clowdy/components/Popover';
 import { Scrollable } from '@clowdy/components/Scrollable';
 import { Spinner } from '@clowdy/components/Spinner';
 import { Text } from '@clowdy/components/Text';
 import { Textarea } from '@clowdy/components/Textarea';
-import { AiStar, ChevronDown, Refresh } from '@clowdy/icons/14';
+import { AiStar, ChevronDown, Refresh, Undo } from '@clowdy/icons/14';
 import { commitMessageAgent, writesCommitMessages } from '@clowdy/protocol';
-import { useEffect, useState } from 'react';
+import { type MouseEvent, type KeyboardEvent as ReactKeyboardEvent, useEffect, useState } from 'react';
 
 import { Unavailable } from '../../shared/Unavailable';
-import { useAgents, useProjectUi, useRootStore } from '../../stores';
+import { useAgents, useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { quoteIntoComposer } from '../chats/composerBridge';
 import styles from './CommitBox.module.css';
 import { commitDraftOf } from './CommitDraft';
 import { commitLabel, commitTarget, isFetchFirst, SYNC_WORDS } from './changesActions';
 import { confirmAbortMerge } from './confirmAbortMerge';
+import { openDiscardDialog } from './DiscardDialog';
+import { discardChanges } from './discardChanges';
+import { agentsWorkingIn, discardableFiles } from './discardRules';
 import { gitFactsOf } from './gitFacts';
 import { CHANGE_KIND_VIEW, splitPath } from './gitSummary';
 import { useRemoteActions } from './useRemoteActions';
@@ -151,24 +154,86 @@ function CommitFileList({
     draft: CommitDraft;
     mergeGroup?: 'conflicts' | 'staged';
 }) {
+    const { model } = draft;
+    const { transport } = useRootStore();
+    const project = useProjectState();
+    const contextMenu = useContextMenu();
+    const [menuPath, setMenuPath] = useState<string>();
+    const { close } = contextMenu;
+    // This checklist always represents uncommitted files, regardless of the diff's scope or the checkboxes.
+    const discardable =
+        draft.writing || model.facts.switching || mergeGroup === 'conflicts'
+            ? undefined
+            : discardableFiles('uncommitted', model.uncommitted);
+    const menuFile = menuPath && files.some(file => file.path === menuPath) ? discardable?.get(menuPath) : undefined;
+
+    useEffect(() => () => close(), [close, model]);
+    useEffect(() => {
+        if (contextMenu.isOpen && !menuFile) close();
+    }, [contextMenu.isOpen, menuFile, close]);
+
+    const selectMenuFile = (row: Element | null) => {
+        const path = row?.getAttribute('data-key');
+        if (!path || !discardable?.has(path) || !files.some(file => file.path === path)) return false;
+
+        setMenuPath(path);
+        return true;
+    };
+
+    const openMenu = (event: MouseEvent) => {
+        if (selectMenuFile((event.target as Element).closest('[role="row"][data-key]')))
+            contextMenu.areaProps.onContextMenu(event);
+    };
+
+    const openMenuFromKey = (event: ReactKeyboardEvent) => {
+        if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return;
+
+        const row = (event.target as Element).closest('[role="row"][data-key]');
+        if (!row || !event.currentTarget.contains(row) || !selectMenuFile(row)) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+        const rect = row.getBoundingClientRect();
+        contextMenu.openAt(rect.left, rect.bottom);
+    };
+
+    const discard = () => {
+        if (!menuFile) return;
+        close();
+        openDiscardDialog({
+            file: menuFile,
+            working: agentsWorkingIn(project, model.facts.key),
+            discard: () => discardChanges(model, transport, menuFile.path),
+        });
+    };
+
     if (files.length === 0) return null;
 
     return (
-        <GridList
-            aria-label={mergeGroup === 'conflicts' ? 'Conflicting files' : 'Files to commit'}
-            size="sm"
-            onAction={key => {
-                const path = String(key);
+        <div onContextMenu={openMenu} onKeyDown={openMenuFromKey}>
+            <GridList
+                aria-label={mergeGroup === 'conflicts' ? 'Conflicting files' : 'Files to commit'}
+                size="sm"
+                onAction={key => {
+                    const path = String(key);
 
-                // A press on the row opens the file's diff; its tick is the checkbox's own.
-                if (mergeGroup === undefined) draft.model.showFile(path);
-                else draft.model.showUncommittedFile(path);
-            }}
-        >
-            <For each={[...files]}>
-                {file => <CommitFileRow key={file.path} file={file} draft={draft} mergeGroup={mergeGroup} />}
-            </For>
-        </GridList>
+                    // A press on the row opens the file's diff; its tick is the checkbox's own.
+                    if (mergeGroup === undefined) model.showFile(path);
+                    else model.showUncommittedFile(path);
+                }}
+            >
+                <For each={[...files]}>
+                    {file => <CommitFileRow key={file.path} file={file} draft={draft} mergeGroup={mergeGroup} />}
+                </For>
+            </GridList>
+            {contextMenu.isOpen && menuFile && (
+                <Popover {...contextMenu.popoverProps} placement="bottom start" spacing="xs">
+                    <Menu aria-label="File actions" size="sm" onAction={discard}>
+                        <MenuItem id="discard" icon={<Undo aria-hidden="true" />} text="Discard changes…" isDanger />
+                    </Menu>
+                </Popover>
+            )}
+        </div>
     );
 }
 

@@ -234,6 +234,63 @@ it('does not offer discard on diff cards', async () => {
     expect(discardButtons()).toHaveLength(0);
 });
 
+describe('discarding from the commit checklist', () => {
+    const tick = (path: string) => container.querySelector<HTMLInputElement>(`input[aria-label="${path}"]`)!;
+    const row = (path: string) => tick(path).closest('[role="row"]')!;
+    const menuItem = () => document.querySelector<HTMLElement>('[role="menuitem"][data-key="discard"]');
+
+    it('discards only the right-clicked file, even when unchecked and showing committed changes', async () => {
+        discardHarness.enabled = false;
+        await start();
+        await chooseScope('branch');
+        const discard = vi.spyOn(transport, 'discardGit');
+        const path = 'src/limits.ts';
+        await press(tick(path));
+        expect(tick(path).checked).toBe(false);
+        expect(tick('notes.md').checked).toBe(true);
+
+        await act(async () => {
+            row(path).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 }));
+        });
+        await settle();
+        expect(menuItem()?.textContent).toContain('Discard changes…');
+        await press(menuItem()!);
+        await settleDialog();
+
+        expect(dialogText()).toContain('Discard changes to limits.ts?');
+        expect(discard).not.toHaveBeenCalled();
+        await press(dialogButton('Discard changes'));
+        await settleDialog();
+        await untilClosed();
+
+        expect(discard).toHaveBeenCalledExactlyOnceWith(FIXTURE_PROJECT_ID, PLACE, [path]);
+        expect(tick(path)).toBeNull();
+        expect(tick('notes.md').checked).toBe(true);
+        expect(tick('src/booking/price.ts').checked).toBe(true);
+    });
+
+    it('offers the focused row through the keyboard and preserves files when the dialog is cancelled', async () => {
+        discardHarness.enabled = false;
+        await start();
+        const discard = vi.spyOn(transport, 'discardGit');
+        await act(async () => {
+            row('notes.md').dispatchEvent(
+                new KeyboardEvent('keydown', { key: 'F10', shiftKey: true, bubbles: true, cancelable: true })
+            );
+        });
+        await settle();
+        expect(menuItem()).not.toBeNull();
+        await press(menuItem()!);
+        await settleDialog();
+
+        expect(dialogText()).toContain('Delete notes.md?');
+        await press(dialogButton('Cancel'));
+        await untilClosed();
+        expect(discard).not.toHaveBeenCalled();
+        expect(tick('notes.md').checked).toBe(true);
+    });
+});
+
 describe('the retained discard trigger in the test harness', () => {
     it('is on the diff cards of the uncommitted files in All changes, and not on the files that are only committed', async () => {
         await start();
@@ -311,6 +368,15 @@ describe('the retained discard trigger in the test harness', () => {
         expect(cardPaths()).toContain('src/both.ts');
         expect(cardPaths()).toContain('vendor/sub');
         expect(discardPathsIn(container)).toEqual(['notes.md', 'src/booking/price.ts', 'src/limits.ts']);
+
+        for (const path of ['src/both.ts', 'vendor/sub']) {
+            const row = container.querySelector(`input[aria-label="${path}"]`)?.closest('[role="row"]');
+            expect(row).toBeDefined();
+            await act(async () => {
+                row?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 }));
+            });
+            expect(document.querySelector('[role="menuitem"][data-key="discard"]')).toBeNull();
+        }
     });
 
     it('is taken away while the branch is being changed, and comes back when it is done', async () => {
