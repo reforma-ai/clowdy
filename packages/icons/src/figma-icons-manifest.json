@@ -2442,6 +2442,12 @@
                     "name": "split",
                     "sourceHash": "3083e2190996a85572d4a7f005d05f9b4711d8104613ce4478b49b3c5e0097c8"
                 },
+                "16678:129116": {
+                    "file": "merge-into.svg",
+                    "fingerprint": "4f11dcc8b3e91bddf66bffbe65615524f71d87a0bb38f8f4792462fb8bc04c42",
+                    "name": "merge-into",
+                    "sourceHash": "7dcb92d359277fd3779ceb433de772617ca7c5e8220c8c37af3e1bbca839fdd2"
+                },
                 "11881:127129": {
                     "file": "version.svg",
                     "fingerprint": "716d8b31799f8b2eac990ed96c0123d93e50554269c9ce6a5bc2b814519b8f80",
