@@ -12,7 +12,7 @@ import { commitMessageAgent, writesCommitMessages } from '@clowdy/protocol';
 import { type MouseEvent, type KeyboardEvent as ReactKeyboardEvent, useEffect, useState } from 'react';
 
 import { Unavailable } from '../../shared/Unavailable';
-import { useAgents, useProjectState, useProjectUi, useRootStore } from '../../stores';
+import { useAgents, useProjectUi, useRootStore } from '../../stores';
 import { quoteIntoComposer } from '../chats/composerBridge';
 import styles from './CommitBox.module.css';
 import { commitDraftOf } from './CommitDraft';
@@ -20,7 +20,7 @@ import { commitLabel, commitTarget, isFetchFirst, SYNC_WORDS } from './changesAc
 import { confirmAbortMerge } from './confirmAbortMerge';
 import { openDiscardDialog } from './DiscardDialog';
 import { discardChanges } from './discardChanges';
-import { agentsWorkingIn, discardableFiles } from './discardRules';
+import { discardableFiles } from './discardRules';
 import { gitFactsOf } from './gitFacts';
 import { CHANGE_KIND_VIEW, splitPath } from './gitSummary';
 import { useRemoteActions } from './useRemoteActions';
@@ -157,7 +157,6 @@ function CommitFileList({
 }) {
     const { model } = draft;
     const { transport } = useRootStore();
-    const project = useProjectState();
     const contextMenu = useContextMenu();
     const [menuPath, setMenuPath] = useState<string>();
     const { close } = contextMenu;
@@ -203,7 +202,6 @@ function CommitFileList({
         close();
         openDiscardDialog({
             file: menuFile,
-            working: agentsWorkingIn(project, model.facts.key),
             discard: () => discardChanges(model, transport, menuFile.path),
         });
     };

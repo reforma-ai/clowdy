@@ -15,6 +15,7 @@ import { FsService } from './fs/service';
 import { GitBranchMerge } from './git/branchMerge';
 import { GitWrites } from './git/commit';
 import { GitDiscard } from './git/discard';
+import { pruneDiscardCopies } from './git/discardCopies';
 import { CommitMessages } from './git/message';
 import { PullRequests } from './git/pullRequest';
 import { GitRemote } from './git/remote';
@@ -40,7 +41,6 @@ import type { DaemonInfo } from '@clowdy/protocol';
 import type { Services } from './commands';
 import type { Config } from './config';
 import type { EngineRegistry } from './engine/types';
-import type { CopyStore } from './git/discardCopies';
 
 /** Set by `scripts/bundle.ts`: the version of the app bundle this daemon was built into. */
 declare const __CLOWDY_BUNDLE_VERSION__: string | undefined;
@@ -70,8 +70,6 @@ export interface DaemonOptions {
     pullRequests?: PullRequests;
     /** Replaces the environment of the git writes and its search for the signing agent; tests use it to put an `ssh` and a shell of their own in the place of the person's. */
     gitEnvironment?: WriteEnvironment;
-    /** Replaces the keeper of the copies a discard makes; tests use it to make a copy fail or to give it limits of its own. */
-    discardCopies?: CopyStore;
     /** Replaces the runner of the agents' no-tools runs (commit messages); tests use it to give a run a limit of its own. */
     textGeneration?: TextGeneration;
     heartbeatMs?: number;
@@ -169,19 +167,14 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
                 workspacesDir: config.workspacesDir,
             }),
             gitSwitch: new GitSwitch({ store, environment: gitEnvironment }),
-            gitDiscard: new GitDiscard({
-                store,
-                dataDir: config.dataDir,
-                environment: gitEnvironment,
-                ...(options.discardCopies && { copies: options.discardCopies }),
-            }),
+            gitDiscard: new GitDiscard({ store, environment: gitEnvironment }),
             commitMessages: new CommitMessages({ store, agents, providers, generation: textGeneration }),
         };
 
         await runs.recover();
         attachments.sweep();
-        // The copies of discarded files that are past their week: in the background, and the stop waits for it before the data folder is let go.
-        const pruning = services.gitDiscard.prune().catch(() => undefined);
+        // Expire legacy recovery copies in the background; new discards never create them.
+        const pruning = pruneDiscardCopies(config.dataDir).catch(() => undefined);
         // Before the watchers, so the personal space is watched like any project.
         ensurePersonalProject(store, config);
         skills.watchFolders(listProjects(store.db));

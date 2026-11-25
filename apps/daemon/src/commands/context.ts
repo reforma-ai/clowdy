@@ -51,7 +51,7 @@ export interface Services {
     gitBranchMerge: GitBranchMerge;
     /** What the daemon does to the branch of a folder's own checkout: the switch. */
     gitSwitch: GitSwitch;
-    /** The discard of the changes of single files, with the copy it keeps of what it removes. */
+    /** The discard of the changes of single files, without recovery copies. */
     gitDiscard: GitDiscard;
     /** The commit message an agent the person chose writes for the files they ticked. */
     commitMessages: CommitMessages;

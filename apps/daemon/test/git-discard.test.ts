@@ -7,26 +7,24 @@ import {
     readdirSync,
     readFileSync,
     readlinkSync,
-    realpathSync,
     renameSync,
     rmSync,
     statSync,
     symlinkSync,
+    truncateSync,
     utimesSync,
     writeFileSync,
 } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
-import { GIT_DISCARD_KEEP_DAYS, MAX_GIT_DISCARD_PATHS } from '@clowdy/protocol';
+import { MAX_GIT_DISCARD_PATHS } from '@clowdy/protocol';
 
 import { resolvePlace } from '../src/domain/places';
 import { requireProject } from '../src/domain/projects';
 import { GitDiscard } from '../src/git/discard';
-import { DiscardCopies, KEEP_COPIES_MS, MAX_COPY_FILE_BYTES, MAX_KEPT_BYTES } from '../src/git/discardCopies';
 import { WriteEnvironment } from '../src/git/writeEnv';
 import { cleanTempDirs, git, makeRepo, startHarness, tempDir, waitFor } from './helpers';
 
 import type { GitDiscardResult } from '@clowdy/protocol';
-import type { CopyJob, KeptCopy } from '../src/git/discardCopies';
 import type { Harness } from './helpers';
 
 afterAll(cleanTempDirs);
@@ -136,33 +134,19 @@ interface Failure {
     error: { code: string; message: string; details?: unknown };
 }
 
-/** A copy that is spied on and may be made to misbehave: what the daemon makes copies with, with a hand in `keep`. */
-class SpyCopies extends DiscardCopies {
-    jobs: CopyJob[] = [];
-    before?: () => void | Promise<void>;
-    after?: (copy: KeptCopy) => void | Promise<void>;
-    fail?: Error;
-
-    override async keep(job: CopyJob): Promise<KeptCopy> {
-        this.jobs.push(job);
-        await this.before?.();
-
-        if (this.fail) throw this.fail;
-
-        const copy = await super.keep(job);
-
-        await this.after?.(copy);
-
-        return copy;
-    }
+/** Run a callback between inspecting the files and the final checks before writing. */
+function beforeWrite(callback: () => void | Promise<void>): WriteEnvironment {
+    const environment = isolated();
+    const read = environment.of.bind(environment);
+    environment.of = async cwd => {
+        await callback();
+        return read(cwd);
+    };
+    return environment;
 }
 
-interface StartOptions {
-    copies?: DiscardCopies;
-}
-
-async function start({ copies }: StartOptions = {}): Promise<Harness> {
-    const h = await startHarness({}, { gitEnvironment: isolated(), ...(copies && { discardCopies: copies }) });
+async function start(environment = isolated()): Promise<Harness> {
+    const h = await startHarness({}, { gitEnvironment: environment });
 
     harnesses.push(h);
 
@@ -180,17 +164,16 @@ async function open(path: string, h: Harness) {
     return { project, folderId, url, discard };
 }
 
-/** The manifest of a copy, and a copied file. */
-const manifestOf = (copy: { folder: string }) =>
-    JSON.parse(readFileSync(join(copy.folder, 'manifest.json'), 'utf8')) as Record<string, any>;
-const copied = (copy: { folder: string }, path: string, kind: 'files' | 'staged' = 'files') =>
-    readFileSync(join(copy.folder, kind, path), 'utf8');
+function expectNoCopy(h: Harness, result: GitDiscardResult): void {
+    expect(result).not.toHaveProperty('copy');
+    expect(existsSync(join(h.config.dataDir, 'discarded'))).toBe(false);
+}
 
 describe('POST /v1/projects/:id/git/discard', () => {
-    test('puts an edited file back as the last commit has it, keeps a copy of the edit, and leaves every other file and HEAD alone', async () => {
+    test('puts an edited file back without a recovery copy and leaves every other file and HEAD alone', async () => {
         const h = await start();
         const path = repository();
-        const { discard, project, folderId } = await open(path, h);
+        const { discard } = await open(path, h);
 
         put(path, { 'a.txt': 'a\nthe agent wrote this\n', 'b.txt': 'b\nmore\n', 'fresh.txt': 'fresh\n' });
 
@@ -207,27 +190,11 @@ describe('POST /v1/projects/:id/git/discard', () => {
         expect(readFileSync(join(path, 'b.txt'), 'utf8')).toBe('b\nmore\n');
         expect(readFileSync(join(path, 'fresh.txt'), 'utf8')).toBe('fresh\n');
 
-        // The copy is the file as it was just before, in the daemon's data folder and not in the repository.
-        expect(result.copy.files).toBe(1);
-        expect(result.copy.folder.startsWith(join(h.config.dataDir, 'discarded', project.id))).toBe(true);
-        expect(result.copy.folder.startsWith(path)).toBe(false);
-        expect(copied(result.copy, 'a.txt')).toBe('a\nthe agent wrote this\n');
-        expect(result.copy.keptUntil).toBeGreaterThan(Date.now() + KEEP_COPIES_MS - 60_000);
-        expect(result.copy.keptUntil).toBeLessThanOrEqual(Date.now() + KEEP_COPIES_MS);
-        expect(manifestOf(result.copy)).toMatchObject({
-            version: 1,
-            projectId: project.id,
-            folderId,
-            branch: 'main',
-            head,
-            completed: true,
-            files: [{ path: 'a.txt', action: 'restored', copied: 'file', size: 'a\nthe agent wrote this\n'.length }],
-        });
-        expect(manifestOf(result.copy).place).toBe(realpathSync(path));
+        expectNoCopy(h, result);
         expect(existsSync(join(path, '.git', 'discarded'))).toBe(false);
     });
 
-    test('brings back a deleted file, and says there is nothing to copy of it', async () => {
+    test('brings back a deleted file', async () => {
         const h = await start();
         const path = repository();
         const { discard } = await open(path, h);
@@ -237,7 +204,7 @@ describe('POST /v1/projects/:id/git/discard', () => {
         const result = await json<GitDiscardResult>(await discard(['gone.txt']));
 
         expect(result.discarded).toEqual([{ path: 'gone.txt', action: 'restored' }]);
-        expect(result.copy.files).toBe(0);
+        expectNoCopy(h, result);
         expect(readFileSync(join(path, 'gone.txt'), 'utf8')).toBe('gone\n');
         expect(left(path)).toEqual([]);
     });
@@ -255,7 +222,7 @@ describe('POST /v1/projects/:id/git/discard', () => {
         expect(readFileSync(join(path, 'gone.txt'), 'utf8')).toBe('gone\n');
     });
 
-    test('replaces a staged edit and the edit of the file after it, and keeps both versions, the staged one apart', async () => {
+    test('replaces a staged edit and the edit of the file after it without a recovery copy', async () => {
         const h = await start();
         const path = repository();
         const { discard } = await open(path, h);
@@ -272,15 +239,14 @@ describe('POST /v1/projects/:id/git/discard', () => {
         expect(left(path)).toEqual([]);
         expect(readFileSync(join(path, 'a.txt'), 'utf8')).toBe('a\n');
         expect(readFileSync(join(path, 'b.txt'), 'utf8')).toBe('b\n');
-        // What was on the disk is kept for both; the staged version of a (which is not on the disk any more) is kept apart, and b's, which the file still is, is not repeated.
-        expect(copied(result.copy, 'a.txt')).toBe('a\nstaged\nand then edited\n');
-        expect(copied(result.copy, 'a.txt', 'staged')).toBe('a\nstaged\n');
-        expect(copied(result.copy, 'b.txt')).toBe('b\nstaged too\n');
-        expect(existsSync(join(result.copy.folder, 'staged', 'b.txt'))).toBe(false);
-        expect(result.copy.files).toBe(3);
+        expect(result.discarded).toEqual([
+            { path: 'a.txt', action: 'restored' },
+            { path: 'b.txt', action: 'restored' },
+        ]);
+        expectNoCopy(h, result);
     });
 
-    test('keeps the staged version of a file that was staged and then deleted from the disk', async () => {
+    test('restores a file that was staged and then deleted from the disk', async () => {
         const h = await start();
         const path = repository();
         const { discard } = await open(path, h);
@@ -293,8 +259,8 @@ describe('POST /v1/projects/:id/git/discard', () => {
 
         expect(left(path)).toEqual([]);
         expect(readFileSync(join(path, 'a.txt'), 'utf8')).toBe('a\n');
-        expect(existsSync(join(result.copy.folder, 'files', 'a.txt'))).toBe(false);
-        expect(copied(result.copy, 'a.txt', 'staged')).toBe('a\nstaged and gone\n');
+        expect(result.discarded).toEqual([{ path: 'a.txt', action: 'restored' }]);
+        expectNoCopy(h, result);
     });
 
     test('removes a new file that was staged from the index and the disk, and only that file', async () => {
@@ -316,8 +282,7 @@ describe('POST /v1/projects/:id/git/discard', () => {
         expect(readFileSync(join(path, 'fresh/deep/other.ts'), 'utf8')).toBe('other\n');
         expect(left(path)).toEqual(['?? fresh/deep/other.ts', '?? plain.txt']);
         expect(git(path, 'rev-parse', 'HEAD')).toBe(before);
-        expect(copied(result.copy, 'fresh/deep/new.ts')).toBe('new\nedited after the staging\n');
-        expect(copied(result.copy, 'fresh/deep/new.ts', 'staged')).toBe('new\n');
+        expectNoCopy(h, result);
 
         // The folder is left even when it is empty now.
         rmSync(join(path, 'fresh/deep/other.ts'));
@@ -358,11 +323,7 @@ describe('POST /v1/projects/:id/git/discard', () => {
         expect(left(path)).toEqual([]);
         expect(readFileSync(join(path, 'old.txt'), 'utf8')).toBe('one\ntwo\nthree\nfour\nfive\n');
         expect(existsSync(join(path, 'renamed.txt'))).toBe(false);
-        expect(copied(result.copy, 'renamed.txt')).toBe('one\ntwo\nthree\nfour\nfive\nsix\n');
-        expect(manifestOf(result.copy).files.map((file: { path: string }) => file.path)).toEqual([
-            'renamed.txt',
-            'old.txt',
-        ]);
+        expectNoCopy(h, result);
     });
 
     test('deletes an untracked file and that file only: no folder, no sibling, no ignored file', async () => {
@@ -388,7 +349,7 @@ describe('POST /v1/projects/:id/git/discard', () => {
         expect(readFileSync(join(path, 'notes/keep.md'), 'utf8')).toBe('keep\n');
         expect(readFileSync(join(path, 'ignored.log'), 'utf8')).toBe('log\n');
         expect(left(path)).toEqual(['?? new.txt', '?? notes/keep.md', '?? tmp/only.txt']);
-        expect(copied(result.copy, 'notes/draft.md')).toBe('draft\n');
+        expectNoCopy(h, result);
 
         // The folder of the last file is left, empty, and a path that is a folder is not a changed file: it is never removed whole.
         await discard(['tmp/only.txt']);
@@ -419,7 +380,7 @@ describe('POST /v1/projects/:id/git/discard', () => {
         expect(left(path)).toEqual([' M src/i.tsx', ' M starX.txt']);
     });
 
-    test('keeps the bytes of a file exactly as they are on the disk, a binary one and one a line-ending filter would change, while the restore applies the filter', async () => {
+    test('restores binary files and applies line-ending filters as git does', async () => {
         const h = await start();
         const path = repository({ '.gitattributes': '*.txt text eol=crlf\n', 'doc.txt': 'one\ntwo\n' });
         const { discard } = await open(path, h);
@@ -433,9 +394,11 @@ describe('POST /v1/projects/:id/git/discard', () => {
 
         const result = await json<GitDiscardResult>(await discard(['blob.bin', 'doc.txt']));
 
-        // What was on the disk is kept to the byte: no line ending is changed, and a byte that is not text is not turned into one.
-        expect(readFileSync(join(result.copy.folder, 'files', 'blob.bin'))).toEqual(bytes);
-        expect(readFileSync(join(result.copy.folder, 'files', 'doc.txt'), 'latin1')).toBe('one\ntwo\nthree\r\nfour\n');
+        expect(result.discarded).toEqual([
+            { path: 'blob.bin', action: 'restored' },
+            { path: 'doc.txt', action: 'restored' },
+        ]);
+        expectNoCopy(h, result);
         // The file is what the commit has, as a checkout writes it here.
         expect(readFileSync(join(path, 'blob.bin'))).toEqual(Buffer.from([0x00, 0x01, 0x02]));
         expect(readFileSync(join(path, 'doc.txt'), 'latin1')).toBe('one\r\ntwo\r\n');
@@ -457,24 +420,7 @@ describe('POST /v1/projects/:id/git/discard', () => {
         expect(result.discarded.map(file => file.action)).toEqual(['removed', 'removed']);
         expect(left(path)).toEqual([]);
         expect(readdirSync(path)).toEqual(['.git']);
-        expect(copied(result.copy, 'staged.txt')).toBe('staged\n');
-        expect(manifestOf(result.copy).head).toBeUndefined();
-    });
-
-    test("keeps what is in the repository the person's: the copy is readable by them alone", async () => {
-        const h = await start();
-        const path = repository();
-        const { discard } = await open(path, h);
-
-        put(path, { 'a.txt': 'secret\n' });
-
-        const result = await json<GitDiscardResult>(await discard(['a.txt']));
-
-        if (posix) {
-            expect(statSync(result.copy.folder).mode & 0o077).toBe(0);
-            expect(statSync(join(result.copy.folder, 'files', 'a.txt')).mode & 0o077).toBe(0);
-            expect(statSync(join(result.copy.folder, 'manifest.json')).mode & 0o077).toBe(0);
-        }
+        expectNoCopy(h, result);
     });
 
     withPosix('with links, modes and what a file is on the disk', () => {
@@ -513,9 +459,7 @@ describe('POST /v1/projects/:id/git/discard', () => {
             expect(lstatSync(join(outside, 'precious.txt')).isFile()).toBe(true);
             expect(readFileSync(join(outside, 'precious.txt'), 'utf8')).toBe('do not touch\n');
             expect(readFileSync(join(path, 'real/inside.txt'), 'utf8')).toBe('inside\n');
-            // The copy of a link is what it points to, as text, and not what is there.
-            expect(copied(result.copy, 'link-to-file')).toBe(join(outside, 'precious.txt'));
-            expect(manifestOf(result.copy).files[0]).toMatchObject({ path: 'link-to-file', copied: 'link' });
+            expectNoCopy(h, result);
         });
 
         test('turns a link that was retargeted back, and a file that was made a link back into the file, without writing through the link', async () => {
@@ -545,7 +489,8 @@ describe('POST /v1/projects/:id/git/discard', () => {
             expect(lstatSync(join(path, 'a.txt')).isFile()).toBe(true);
             expect(readFileSync(join(path, 'a.txt'), 'utf8')).toBe('a\n');
             expect(readFileSync(join(outside, 'outside.txt'), 'utf8')).toBe('outside\n');
-            expect(copied(result.copy, 'a.txt')).toBe(join(outside, 'outside.txt'));
+            expect(result.discarded.map(file => file.action)).toEqual(['restored', 'restored']);
+            expectNoCopy(h, result);
         });
 
         test('refuses a path that runs through a link, to a place outside the repository or inside it, and does nothing', async () => {
@@ -794,9 +739,7 @@ describe('POST /v1/projects/:id/git/discard', () => {
         // The checkout has its own edit of the same name, and it is not touched.
         expect(left(path)).toEqual([' M a.txt']);
         expect(readFileSync(join(path, 'a.txt'), 'utf8')).toBe('a\nin the checkout\n');
-        expect(copied(result.copy, 'a.txt')).toBe('a\nin the tree\n');
-        expect(manifestOf(result.copy)).toMatchObject({ workspaceId, folderId, branch: 'chat-branch' });
-        expect(manifestOf(result.copy).place).toBe(realpathSync(tree));
+        expectNoCopy(h, result);
 
         // A file the worktree does not list as changed is refused, though the checkout lists it.
         put(tree, { 'b.txt': 'b\n' });
@@ -810,264 +753,95 @@ describe('POST /v1/projects/:id/git/discard', () => {
     });
 });
 
-describe('the copy of a discard', () => {
-    test('is made before anything is touched, from what the files hold at that moment, and not from HEAD', async () => {
-        const dataDir = tempDir('git-discard-data');
-        const spy = new SpyCopies(dataDir);
-        const h = await start({ copies: spy });
-        const path = repository();
-        const { discard } = await open(path, h);
-        const seen: Array<{ a: string; status: string[]; fresh: boolean }> = [];
-
-        spy.before = () => {
-            seen.push({
-                a: readFileSync(join(path, 'a.txt'), 'utf8'),
-                status: left(path),
-                fresh: existsSync(join(path, 'fresh.txt')),
-            });
-        };
-        put(path, { 'a.txt': 'a\nwritten a minute ago\n', 'fresh.txt': 'fresh\n' });
-
-        const result = await json<GitDiscardResult>(await discard(['a.txt', 'fresh.txt']));
-
-        // When the copy began nothing had been discarded, and what it holds is the working bytes.
-        expect(seen).toEqual([{ a: 'a\nwritten a minute ago\n', status: [' M a.txt', '?? fresh.txt'], fresh: true }]);
-        expect(copied(result.copy, 'a.txt')).toBe('a\nwritten a minute ago\n');
-        expect(copied(result.copy, 'fresh.txt')).toBe('fresh\n');
-        expect(result.copy.folder.startsWith(dataDir)).toBe(true);
-        expect(spy.jobs[0]?.files.map(file => file.path)).toEqual(['a.txt', 'fresh.txt']);
-    });
-
-    test('that fails discards nothing, in a place with edits, new files and a staged one, and says so', async () => {
-        const spy = new SpyCopies(tempDir('git-discard-data'));
-        const h = await start({ copies: spy });
+describe('discarding without recovery copies', () => {
+    test('discards a mixture of tracked, new and staged files without an archive', async () => {
+        const h = await start();
         const path = repository();
         const { discard } = await open(path, h);
 
         put(path, { 'a.txt': 'a\nedited\n', 'fresh.txt': 'fresh\n', 'staged.txt': 'staged\n' });
         git(path, 'add', 'staged.txt');
-        rmSync(join(path, 'gone.txt'));
-        spy.fail = new Error('ENOSPC: no space left on device');
+        const response = await discard(['a.txt', 'fresh.txt', 'staged.txt']);
+        const result = await json<GitDiscardResult>(response);
 
-        const before = snapshot(path);
-        const response = await discard(['a.txt', 'fresh.txt', 'staged.txt', 'gone.txt']);
-        const body = await json<Failure>(response);
-
-        expect(response.status).toBe(503);
-        expect(body.error).toMatchObject({ code: 'unavailable' });
-        expect(body.error.message).toBe(
-            "Couldn't keep a copy of the files, so nothing was discarded: ENOSPC: no space left on device"
-        );
-        expect(snapshot(path)).toEqual(before);
-        expect(left(path)).toEqual([' D gone.txt', ' M a.txt', '?? fresh.txt', 'A  staged.txt']);
-
-        // The same files go the moment the copy works.
-        spy.fail = undefined;
-        expect((await discard(['a.txt', 'fresh.txt', 'staged.txt', 'gone.txt'])).status).toBe(200);
+        expect(response.status).toBe(200);
+        expect(result.discarded).toEqual([
+            { path: 'a.txt', action: 'restored' },
+            { path: 'fresh.txt', action: 'removed' },
+            { path: 'staged.txt', action: 'removed' },
+        ]);
         expect(left(path)).toEqual([]);
+        expectNoCopy(h, result);
     });
 
-    test('that is half made leaves no folder behind, and discards nothing', async () => {
-        const dataDir = tempDir('git-discard-data');
-        const spy = new SpyCopies(dataDir);
-        const h = await start({ copies: spy });
+    test('discards a file larger than the former copy size limit', async () => {
+        const h = await start();
         const path = repository();
         const { discard } = await open(path, h);
+        const file = join(path, 'fresh.bin');
+        writeFileSync(file, 'large');
+        truncateSync(file, 51 * 1024 * 1024);
 
+        const response = await discard(['fresh.bin']);
+        const result = await json<GitDiscardResult>(response);
+
+        expect(response.status).toBe(200);
+        expect(result.discarded).toEqual([{ path: 'fresh.bin', action: 'removed' }]);
+        expect(existsSync(file)).toBe(false);
+        expectNoCopy(h, result);
+    });
+
+    test('refuses a file written to after inspection and discards nothing', async () => {
+        const path = repository();
+        let edit = true;
+        const h = await start(
+            beforeWrite(() => {
+                if (!edit) return;
+                writeFileSync(join(path, 'a.txt'), 'a\nedited again\n');
+                edit = false;
+            })
+        );
+        const { discard } = await open(path, h);
         put(path, { 'a.txt': 'a\nedited\n', 'b.txt': 'b\nedited\n' });
-        // The second file goes before it is copied: the copy of the first is made, and the second cannot be.
-        spy.before = () => rmSync(join(path, 'b.txt'));
 
-        const before = snapshot(path);
         const response = await discard(['a.txt', 'b.txt']);
 
-        // The copy of b is made from a file that is not there: the copy fails, and what it made of a is removed.
-        expect(response.status).toBe(503);
-        expect(
-            existsSync(join(dataDir, 'discarded'))
-                ? readdirSync(join(dataDir, 'discarded')).flatMap(project =>
-                      readdirSync(join(dataDir, 'discarded', project))
-                  )
-                : []
-        ).toEqual([]);
-        expect(readFileSync(join(path, 'a.txt'), 'utf8')).toBe('a\nedited\n');
-        expect(before.head).toBe(git(path, 'rev-parse', 'HEAD'));
-    });
-
-    test('refuses a file that was written to while it was being copied, and discards nothing', async () => {
-        const spy = new SpyCopies(tempDir('git-discard-data'));
-        const h = await start({ copies: spy });
-        const path = repository();
-        const { discard } = await open(path, h);
-
-        put(path, { 'a.txt': 'a\nedited\n' });
-        spy.after = () => {
-            // The agent writes again right after the copy was taken.
-            writeFileSync(join(path, 'a.txt'), 'a\nedited again, after the copy\n');
-            utimesSync(join(path, 'a.txt'), new Date(Date.now() + 5000), new Date(Date.now() + 5000));
-        };
-
-        const response = await discard(['a.txt']);
-
         expect(response.status).toBe(409);
-        expect((await json<Failure>(response)).error.message).toBe('a.txt changed while its copy was made, try again');
-        expect(readFileSync(join(path, 'a.txt'), 'utf8')).toBe('a\nedited again, after the copy\n');
+        expect((await json<Failure>(response)).error.message).toBe('a.txt changed before discard, try again');
+        expect(readFileSync(join(path, 'a.txt'), 'utf8')).toBe('a\nedited again\n');
+        expect(readFileSync(join(path, 'b.txt'), 'utf8')).toBe('b\nedited\n');
 
-        spy.after = undefined;
-
-        const retried = await json<GitDiscardResult>(await discard(['a.txt']));
-
-        expect(copied(retried.copy, 'a.txt')).toBe('a\nedited again, after the copy\n');
+        const retried = await discard(['a.txt', 'b.txt']);
+        expect(retried.status).toBe(200);
+        expectNoCopy(h, await json<GitDiscardResult>(retried));
         expect(left(path)).toEqual([]);
     });
 
-    test('refuses a deleted file that was written again while the copies were made, since the restore would write over it', async () => {
-        const spy = new SpyCopies(tempDir('git-discard-data'));
-        const h = await start({ copies: spy });
+    test('refuses to restore a deleted file when it has been written again after inspection', async () => {
         const path = repository();
+        let edit = true;
+        const h = await start(
+            beforeWrite(() => {
+                if (!edit) return;
+                writeFileSync(join(path, 'gone.txt'), 'written again\n');
+                edit = false;
+            })
+        );
         const { discard } = await open(path, h);
-
         rmSync(join(path, 'gone.txt'));
-        // Nothing was there to copy, and then the agent writes the file anew.
-        spy.after = () => writeFileSync(join(path, 'gone.txt'), 'written while the copies were made\n');
 
         const response = await discard(['gone.txt']);
-
         expect(response.status).toBe(409);
-        expect((await json<Failure>(response)).error.message).toBe(
-            'gone.txt changed while its copy was made, try again'
-        );
-        expect(readFileSync(join(path, 'gone.txt'), 'utf8')).toBe('written while the copies were made\n');
-
-        spy.after = undefined;
-
-        const retried = await json<GitDiscardResult>(await discard(['gone.txt']));
-
-        expect(copied(retried.copy, 'gone.txt')).toBe('written while the copies were made\n');
-        expect(readFileSync(join(path, 'gone.txt'), 'utf8')).toBe('gone\n');
-    });
-
-    test('refuses a file over the per-file limit, and a staged version over it, and leaves everything in the request where it is', async () => {
-        const copies = new DiscardCopies(tempDir('git-discard-data'), { maxFileBytes: 2048, maxBytes: 100_000 });
-        const h = await start({ copies });
-        const path = repository();
-        const { discard } = await open(path, h);
-
-        put(path, { 'a.txt': 'a\nsmall edit\n', 'big.bin': 'x'.repeat(3000) });
-
-        const before = snapshot(path);
-        const big = await discard(['a.txt', 'big.bin']);
-
-        expect(big.status).toBe(400);
-        expect((await json<Failure>(big)).error).toMatchObject({
-            code: 'invalid',
-            message: 'big.bin is over 2 KB, discard it in a terminal',
-        });
-        expect(snapshot(path)).toEqual(before);
-
-        // The version in the index is a file's too: a small file on the disk with a big staged version is not a small file.
-        put(path, { 'b.txt': 'y'.repeat(3000) });
-        git(path, 'add', 'b.txt');
-        put(path, { 'b.txt': 'small again\n' });
-
-        const staged = await discard(['b.txt']);
-
-        expect(staged.status).toBe(400);
-        expect((await json<Failure>(staged)).error.message).toBe('b.txt is over 2 KB, discard it in a terminal');
-        expect(readFileSync(join(path, 'b.txt'), 'utf8')).toBe('small again\n');
-
-        // Within the limit it goes.
-        expect((await discard(['a.txt'])).status).toBe(200);
-        expect(existsSync(join(h.config.dataDir, 'discarded'))).toBe(false);
-    });
-
-    test('refuses files whose copies would not fit together, with a refusal that names no file', async () => {
-        const copies = new DiscardCopies(tempDir('git-discard-data'), { maxFileBytes: 2048, maxBytes: 5000 });
-        const h = await start({ copies });
-        const path = repository();
-        const { discard } = await open(path, h);
-
-        put(path, { 'a.txt': 'a'.repeat(2000), 'b.txt': 'b'.repeat(2000), 'gone.txt': 'g'.repeat(2000) });
-
-        const before = snapshot(path);
-        const response = await discard(['a.txt', 'b.txt', 'gone.txt']);
-
-        expect(response.status).toBe(400);
-        expect((await json<Failure>(response)).error.message).toBe(
-            'The files are too big to keep a copy of together, discard fewer of them'
-        );
-        expect(snapshot(path)).toEqual(before);
-        expect((await discard(['a.txt', 'b.txt'])).status).toBe(200);
-    });
-
-    test('has limits of 7 days, 500 MB in all and 50 MB for a file', () => {
-        expect(KEEP_COPIES_MS).toBe(GIT_DISCARD_KEEP_DAYS * 24 * 60 * 60 * 1000);
-        expect(GIT_DISCARD_KEEP_DAYS).toBe(7);
-        expect(MAX_KEPT_BYTES).toBe(500 * 1024 * 1024);
-        expect(MAX_COPY_FILE_BYTES).toBe(50 * 1024 * 1024);
+        expect((await json<Failure>(response)).error.message).toBe('gone.txt changed before discard, try again');
+        expect(readFileSync(join(path, 'gone.txt'), 'utf8')).toBe('written again\n');
+        const retried = await discard(['gone.txt']);
+        expect(retried.status).toBe(200);
+        expectNoCopy(h, await json<GitDiscardResult>(retried));
+        expect(left(path)).toEqual([]);
     });
 });
 
-describe('the retention of the copies', () => {
-    /** A discard of one edited file of `name`, in a daemon whose copies run on a clock the test moves. */
-    async function setup(options: { keepMs?: number; maxBytes?: number; maxFileBytes?: number } = {}) {
-        const state = { now: 1_800_000_000_000 };
-        const copies = new DiscardCopies(tempDir('git-discard-data'), { ...options, now: () => state.now });
-        const h = await start({ copies });
-        const path = repository();
-        const { discard } = await open(path, h);
-        const discardEdit = async (name: string, content: string) => {
-            put(path, { [name]: content });
-
-            return json<GitDiscardResult>(await discard([name]));
-        };
-
-        return { state, copies, h, path, discardEdit };
-    }
-
-    test('removes a copy once it is older than its time, when the next discard is made, and never the one just made', async () => {
-        const { state, discardEdit } = await setup({ keepMs: 10_000 });
-        const first = await discardEdit('a.txt', 'first\n');
-
-        state.now += 9_000;
-
-        const second = await discardEdit('b.txt', 'second\n');
-
-        // The first is nine seconds old, which is within its time.
-        expect(existsSync(first.copy.folder)).toBe(true);
-        expect(existsSync(second.copy.folder)).toBe(true);
-
-        state.now += 2_000;
-
-        const third = await discardEdit('gone.txt', 'third\n');
-
-        expect(existsSync(first.copy.folder)).toBe(false);
-        expect(existsSync(second.copy.folder)).toBe(true);
-        expect(existsSync(third.copy.folder)).toBe(true);
-
-        // A copy that is already past its time when it is made is still kept for the person to find.
-        state.now += 60_000;
-
-        const fourth = await discardEdit('old.txt', 'fourth\n');
-
-        expect(existsSync(second.copy.folder)).toBe(false);
-        expect(existsSync(third.copy.folder)).toBe(false);
-        expect(copied(fourth.copy, 'old.txt')).toBe('fourth\n');
-    });
-
-    test('removes the oldest copies first while all of them are over the cap, and keeps the newest', async () => {
-        const { state, discardEdit } = await setup({ maxBytes: 5000, maxFileBytes: 2048 });
-        const made: GitDiscardResult[] = [];
-
-        for (const name of ['a.txt', 'b.txt', 'gone.txt', 'old.txt']) {
-            state.now += 1000;
-            made.push(await discardEdit(name, 'x'.repeat(2000)));
-        }
-
-        // Two copies are 4000 bytes, three would be 6000: only the newest two are left.
-        expect(made.map(result => existsSync(result.copy.folder))).toEqual([false, false, true, true]);
-    });
-
+describe('expiration of legacy recovery copies', () => {
     test('removes what is past its time when the daemon starts, and leaves what is not, what is not ours, and a copy of this week', async () => {
         const dataDir = tempDir('git-discard-data');
         const old = join(dataDir, 'discarded', 'prj_x', '20260101T000000000Z-aaaaaa');
@@ -1081,7 +855,7 @@ describe('the retention of the copies', () => {
         writeFileSync(join(fresh, 'files', 'a.txt'), 'fresh\n');
         writeFileSync(
             join(fresh, 'manifest.json'),
-            JSON.stringify({ at: Date.now() - 6 * 24 * 3600 * 1000, bytes: 6 })
+            JSON.stringify({ at: Date.now() - 6 * 24 * 3600 * 1000, bytes: 501 * 1024 * 1024 })
         );
         // A copy that was interrupted has no manifest and is judged by the time of its folder.
         mkdirSync(join(cut, 'files'), { recursive: true });
@@ -1107,93 +881,26 @@ describe('the retention of the copies', () => {
         expect(existsSync(join(dataDir, 'discarded', 'prj_y'))).toBe(false);
         expect(existsSync(join(dataDir, 'discarded', 'prj_x'))).toBe(true);
     });
-
-    test('makes a copy that reads as it was written: a link as its target, a deleted file as nothing, and the manifest of a discard that did not finish says so', async () => {
-        const dataDir = tempDir('git-discard-data');
-        const copies = new DiscardCopies(dataDir);
-        const source = join(tempDir('git-discard'), 'src.txt');
-
-        writeFileSync(source, 'bytes\n');
-
-        const kept = await copies.keep({
-            projectId: 'prj/../x',
-            folderId: 'fld_1',
-            place: '/repo',
-            files: [
-                { path: 'f.txt', action: 'restored', work: { kind: 'file', source, size: 6 } },
-                { path: 'l', action: 'removed', work: { kind: 'link', target: '../elsewhere' } },
-                { path: 'd.txt', action: 'restored' },
-            ],
-        });
-
-        expect(kept.folder.startsWith(join(dataDir, 'discarded', 'prj____x'))).toBe(true);
-        expect(kept.files).toBe(2);
-        expect(kept.bytes).toBe(6 + '../elsewhere'.length);
-        expect(manifestOf(kept)).toMatchObject({ completed: false, bytes: kept.bytes });
-        expect(copied(kept, 'l')).toBe('../elsewhere');
-
-        await copies.finish(kept);
-
-        expect(manifestOf(kept).completed).toBe(true);
-    });
-
-    test('is checked: a file that is not the size it was measured at is no copy, and leaves no folder', async () => {
-        const dataDir = tempDir('git-discard-data');
-        const copies = new DiscardCopies(dataDir);
-        const source = join(tempDir('git-discard'), 'src.txt');
-
-        writeFileSync(source, 'twelve bytes');
-
-        await expect(
-            copies.keep({
-                projectId: 'prj_1',
-                folderId: 'fld_1',
-                place: '/repo',
-                files: [{ path: 'f.txt', action: 'restored', work: { kind: 'file', source, size: 99 } }],
-            })
-        ).rejects.toThrow(/12 bytes/);
-        await expect(
-            copies.keep({
-                projectId: 'prj_1',
-                folderId: 'fld_1',
-                place: '/repo',
-                files: [
-                    { path: 'g.txt', action: 'restored', staged: { size: 3, read: async () => Buffer.from('four') } },
-                ],
-            })
-        ).rejects.toThrow(/not the size/);
-        expect(readdirSync(join(dataDir, 'discarded', 'prj_1'))).toEqual([]);
-    });
 });
 
 withPosix("GitDiscard on the place's line of writes", () => {
     test('runs two discards of one place one after the other', async () => {
-        const spy = new SpyCopies(tempDir('git-discard-data'));
-        const h = await start({ copies: spy });
+        const h = await start();
         const path = repository();
         const { discard } = await open(path, h);
-        const log: string[] = [];
-        let count = 0;
-
-        spy.before = async () => {
-            const number = ++count;
-
-            log.push(`start ${number}`);
-            await Bun.sleep(300);
-            log.push(`end ${number}`);
-        };
+        const log = join(path, '.git', 'order.log');
+        hook(path, 'post-checkout', `echo start >> '${log}'`, 'sleep 0.3', `echo end >> '${log}'`);
         put(path, { 'a.txt': 'a\nedited\n', 'b.txt': 'b\nedited\n' });
 
         const [first, second] = await Promise.all([discard(['a.txt']), discard(['b.txt'])]);
 
         expect([first.status, second.status]).toEqual([200, 200]);
-        expect(log).toEqual(['start 1', 'end 1', 'start 2', 'end 2']);
+        expect(readFileSync(log, 'utf8').trim().split('\n')).toEqual(['start', 'end', 'start', 'end']);
         expect(left(path)).toEqual([]);
     });
 
     test('and a commit of the same place never overlap, whichever comes first', async () => {
-        const spy = new SpyCopies(tempDir('git-discard-data'));
-        const h = await start({ copies: spy });
+        const h = await start();
         const path = repository();
         const { discard, project, folderId } = await open(path, h);
         const log = join(path, '.git', 'order.log');
@@ -1205,11 +912,7 @@ withPosix("GitDiscard on the place's line of writes", () => {
 
         put(path, { 'a.txt': 'a\nedited\n', 'b.txt': 'b\nedited\n' });
         hook(path, 'pre-commit', `echo "commit start" >> '${log}'`, 'sleep 0.5', `echo "commit end" >> '${log}'`);
-        spy.before = async () => {
-            writeFileSync(log, `${existsSync(log) ? readFileSync(log, 'utf8') : ''}discard start\n`);
-            await Bun.sleep(300);
-            writeFileSync(log, `${readFileSync(log, 'utf8')}discard end\n`);
-        };
+        hook(path, 'post-checkout', `echo "discard start" >> '${log}'`, 'sleep 0.3', `echo "discard end" >> '${log}'`);
 
         const [committed, discarded] = await Promise.all([commit(), discard(['b.txt'])]);
 
@@ -1303,9 +1006,7 @@ withPosix("GitDiscard on the place's line of writes", () => {
         expect(readFileSync(join(path, 'a.txt'), 'utf8')).toBe('a\n');
         expect(existsSync(join(path, 'fresh.txt'))).toBe(false);
         expect(existsSync(join(path, 'staged.txt'))).toBe(false);
-        expect(copied(result.copy, 'a.txt')).toBe('a\nedited\n');
-        expect(copied(result.copy, 'fresh.txt')).toBe('fresh\n');
-        expect(manifestOf(result.copy).completed).toBe(true);
+        expectNoCopy(h, result);
 
         // A hook that says nothing is still named, and one that works is no warning.
         put(path, { 'a.txt': 'a\nedited again\n' });
@@ -1335,7 +1036,7 @@ withPosix("GitDiscard on the place's line of writes", () => {
             expect(response.status).toBe(409);
             expect(body.error).toMatchObject({ code: 'conflict' });
             expect(body.error.message).toBe("error: unable to unlink old 'ro/a.txt': Permission denied");
-            // The new file is not deleted after a restore that did not finish, and what was not restored is as it was; the copy of all of it is kept.
+            // The new file is not deleted after a restore that did not finish, and what was not restored is as it was.
             expect(readFileSync(join(path, 'fresh.txt'), 'utf8')).toBe('fresh\n');
             expect(readFileSync(join(path, 'ro/a.txt'), 'utf8')).toBe('edited\n');
             expect(left(path)).toEqual([' M ro/a.txt', '?? fresh.txt']);
@@ -1353,7 +1054,6 @@ withPosix("GitDiscard on the place's line of writes", () => {
         const { project, folderId } = await open(path, h);
         const discarding = new GitDiscard({
             store: h.store,
-            dataDir: tempDir('git-discard-data'),
             environment: isolated(),
             timeoutMs: 1500,
         });
@@ -1363,7 +1063,7 @@ withPosix("GitDiscard on the place's line of writes", () => {
         hook(path, 'post-checkout', 'sleep 30');
 
         const started = Date.now();
-        const result = await discarding.discard(place, { projectId: project.id, paths: ['a.txt', 'fresh.txt'] });
+        const result = await discarding.discard(place, ['a.txt', 'fresh.txt']);
 
         expect(result.warning).toBe('The post-checkout hook did not finish in time');
         expect(Date.now() - started).toBeLessThan(15_000);
@@ -1371,14 +1071,14 @@ withPosix("GitDiscard on the place's line of writes", () => {
         expect(existsSync(join(path, 'fresh.txt'))).toBe(false);
     });
 
-    test('leaves a new file that was written to while the restore ran, whose copy is not what it holds', async () => {
+    test('leaves a new file that was written to while the restore ran', async () => {
         const h = await start();
         const path = repository();
         const { discard } = await open(path, h);
 
         put(path, { 'a.txt': 'a\nedited\n', 'fresh.txt': 'fresh\n' });
         // The restore takes its time (a filter that fetches, a hook that builds): the agent goes on writing to the file it is about to lose.
-        hook(path, 'post-checkout', `echo "written after the copy" >> '${join(path, 'fresh.txt')}'`);
+        hook(path, 'post-checkout', `echo "written after inspection" >> '${join(path, 'fresh.txt')}'`);
 
         const response = await discard(['a.txt', 'fresh.txt']);
 
@@ -1386,7 +1086,7 @@ withPosix("GitDiscard on the place's line of writes", () => {
         expect((await json<Failure>(response)).error.message).toBe(
             'fresh.txt changed while the files were discarded, so it was left as it is'
         );
-        expect(readFileSync(join(path, 'fresh.txt'), 'utf8')).toBe('fresh\nwritten after the copy\n');
+        expect(readFileSync(join(path, 'fresh.txt'), 'utf8')).toBe('fresh\nwritten after inspection\n');
         expect(readFileSync(join(path, 'a.txt'), 'utf8')).toBe('a\n');
     });
 

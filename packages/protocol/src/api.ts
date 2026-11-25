@@ -72,7 +72,7 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  * DELETE /v1/projects/:id/git/viewed?folderId=&workspaceId=&scope=&path= -> { ok: true } (clears one file's mark). The three are described in `git.ts`
  * POST /v1/projects/:id/git/commit        -> GitCommitResult (commits the files the person ticked, `paths`, with `message`: the first route that changes a repository)
  * POST /v1/projects/:id/git/message       -> GitMessage (a commit message for the ticked files, written by the provider the person turned `Commit messages` on for). Both are described in `git.ts`
- * POST /v1/projects/:id/git/discard      -> GitDiscardResult (discards the changes of the files named in `paths`, one by one, after keeping a copy of what each holds now: the one route that deletes work)
+ * POST /v1/projects/:id/git/discard      -> GitDiscardResult (discards the changes of the files named in `paths`, without keeping recovery copies)
  * POST /v1/projects/:id/git/fetch|pull|push|update|abort -> GitRemoteResult (the routes that reach `origin`, and abort, which does not: a fetch, a pull that merges when the branch diverged, a push or
  *                                            the first publish, an update that merges the base, and abort of a merge that stopped). A merge that stops on conflicts answers `state: 'conflicts'`.
  *                                            Body `GitRemoteRequest`, described in `git.ts`

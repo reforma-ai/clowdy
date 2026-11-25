@@ -925,12 +925,7 @@ export class FixtureTransport implements Transport {
         if (!head?.branch) throw new TransportError('The folder is not the root of a git repository', 400);
 
         return structuredClone(
-            await this.#gitWrites.discard(
-                place.workspaceId ?? '',
-                projectId,
-                this.#uncommittedFiles(projectId, place),
-                paths
-            )
+            await this.#gitWrites.discard(place.workspaceId ?? '', this.#uncommittedFiles(projectId, place), paths)
         );
     }
 

@@ -612,12 +612,10 @@ export function createRoutes(context: RouteContext): Route[] {
                 const project = requireProject(store, id);
                 const place = resolvePlace(store, project, body.folderId, body.workspaceId);
 
-                // The copy of a few files and a restore are quick, but a filter that has to fetch (Git LFS) may take longer than the connection's idle timeout.
+                // A restore is usually quick, but a filter that has to fetch (Git LFS) may take longer than the connection's idle timeout.
                 context.keepOpen(request);
 
-                return gitOperation(async () =>
-                    json(await services.gitDiscard.discard(place, { projectId: project.id, paths: body.paths }))
-                );
+                return gitOperation(async () => json(await services.gitDiscard.discard(place, body.paths)));
             },
         },
         {

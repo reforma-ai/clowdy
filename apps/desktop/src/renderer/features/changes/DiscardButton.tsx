@@ -1,11 +1,10 @@
 import { Button } from '@clowdy/components/Button';
 import { Undo } from '@clowdy/icons/14';
 
-import { useProjectState, useRootStore } from '../../stores';
+import { useRootStore } from '../../stores';
 import { openDiscardDialog } from './DiscardDialog';
 import { discardChanges } from './discardChanges';
 import { discardSpot, keepFocusWhenGone } from './discardFocus';
-import { agentsWorkingIn } from './discardRules';
 
 import type { GitChangedFile } from '@clowdy/protocol';
 import type { PlaceChanges } from './PlaceChanges';
@@ -21,7 +20,6 @@ export function DiscardButton({
     className?: string;
 }) {
     const root = useRootStore();
-    const project = useProjectState();
 
     return (
         <Button
@@ -40,7 +38,6 @@ export function DiscardButton({
 
                 openDiscardDialog({
                     file,
-                    working: agentsWorkingIn(project, model.facts.key),
                     discard: async () => {
                         const result = await discardChanges(model, root.transport, file.path);
 

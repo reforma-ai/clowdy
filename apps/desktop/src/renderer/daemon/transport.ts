@@ -172,11 +172,9 @@ export interface Transport {
         signal?: AbortSignal
     ) => Promise<GitMessage>;
     /**
-     * Discards the changes of the files of a place (`POST git/discard`): the daemon keeps a copy of what each holds now (for a few days, in its own data folder, never in the repository), and
-     * then a file the last commit has goes back to it (staged and edited versions alike) while one it has not (a new file) is deleted, that file alone. `paths` are `GitChangedFile.path`s of the
-     * place's uncommitted changes, at most `MAX_GIT_DISCARD_PATHS`, and the UI sends one file at a time. Answers what was discarded and where the copy is. Rejects with a `TransportError` carrying
-     * the daemon's reason: 400 for a path that is not a changed file, a submodule, a file over the copy's limit, 409 for a file with merge conflicts or a git that refused (its own line), 503 when
-     * the copy could not be made (nothing was discarded) or git did not end in time. Not retried: a discard is not asked for twice.
+     * Discards the named files of a place (`POST git/discard`). A committed file returns to its last commit, including the index; a new file is removed. No recovery copy is made.
+     * `paths` are `GitChangedFile.path`s of the place's uncommitted changes, at most `MAX_GIT_DISCARD_PATHS`; the UI sends one at a time. Answers what was discarded and any hook warning.
+     * Rejects with the daemon's reason when Git cannot discard the file. Not retried: a discard is not asked for twice.
      */
     discardGit: (projectId: ProjectId, place: PlaceRef, paths: string[]) => Promise<GitDiscardResult>;
     /**

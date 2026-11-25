@@ -443,6 +443,8 @@
 
 ## Stage 13 — Discard the changes of a file
 
+**CLO-189 follow-up (2026-11-25):** the owner removed creation of recovery copies, manual backup-size limits, the agent-activity warning, and the recovery-path toast. The discard still validates named paths and runs under the place write lock; existing copies keep their original expiration. The original stage record below documents its historical implementation, not the current recovery policy.
+
 **Depends on:** Stage 4.
 
 **This stage:** the one destructive action the owner uses in GitHub Desktop: discard the changes of single files. A file goes back to the last commit (an untracked file is removed) after a confirmation, and a copy of what is discarded is kept for a while, since an agent may have written it a minute ago.
