@@ -114,9 +114,30 @@ Once the Apple Developer account is verified:
    It lists past submissions (an empty list is fine) or says the credentials are refused.
 6. Release a new shell version (step 3). The `macos` job no longer warns, and its "Verify signatures, notarization, and fuses" step checks the notarization and the team. People on an ad-hoc build install the signed one by hand once; it updates itself from then on.
 
+## 7. Install from a terminal
+
+`scripts/install.sh` (macOS) and `scripts/install.ps1` (Windows) install the newest release for someone who pastes one line:
+
+```sh
+curl -fsSL https://<site>/install.sh | bash
+```
+
+```powershell
+irm https://<site>/install.ps1 | iex
+```
+
+The macOS script downloads the zip for the computer's processor, checks its SHA-512 against `latest-mac.yml`, checks the app's signature, and puts `Clowdy.app` in `/Applications` (`~/Applications` when that is not writable), with no `sudo`. It stops when Clowdy is running. The Windows script checks `Clowdy-Setup.exe` against `latest.yml` and runs it; the installer then downloads the package of that computer from the release, as it always does. The app updates itself afterwards, so a person runs a script once.
+
+Serve them from the site as static files copied from `scripts/`, or redirect the site's address to the raw file on `main`. Nothing in them changes with a release: they read the newest release's feed, so they are not published again for one. They work once the repository is public ([step 5](#5-open-the-repository)); a build that is not signed and notarized installs too, but cannot update itself.
+
+Settings, as environment variables, all optional: `CLOWDY_VERSION` (install that version, for example `0.1.2`), `CLOWDY_SILENT` (Windows: run the installer without its window), `CLOWDY_INSTALL_DIR` and `CLOWDY_NO_OPEN` (macOS: the folder to install into, and do not start the app), `CLOWDY_REPO` (another repository), and `CLOWDY_RELEASE_URL` (a folder that holds the feed and the files, in place of the release).
+
+To try the macOS script without a public repository, download `latest-mac.yml` and the zip of a release into an empty folder, serve it (`python3 -m http.server 8000 --bind 127.0.0.1` there), and run `CLOWDY_RELEASE_URL=http://127.0.0.1:8000 CLOWDY_INSTALL_DIR=/tmp/clowdy-try CLOWDY_NO_OPEN=1 bash scripts/install.sh`. On Windows, `CLOWDY_RELEASE_URL` replaces only the download of the installer: it fetches its package from the release itself.
+
 ## Check that it works
 
 - **Signed macOS build:** the run's `macos` job shows no "Unsigned macOS build" warning. On a downloaded DMG, `spctl -a -t open --context context:primary-signature -vv Clowdy-arm64.dmg` says `accepted` with `source=Notarized Developer ID`, and `xcrun stapler validate Clowdy-arm64.dmg` says the ticket is valid. After copying the app to `/Applications`, `spctl -a -t exec -vv /Applications/Clowdy.app` says the same.
 - **Shell update:** install an older release into `/Applications` and start it. Soon after its window opens, a signed build asks "Clowdy x.y.z is ready to install"; an ad-hoc build says "Clowdy x.y.z is available" and offers Download.
 - **OTA update:** after a bundle is published, **Clowdy → Check for Updates…** asks "Clowdy is ready to update" with Restart and Later. Unasked, an "Update ready" toast with Restart appears once no agent run is in progress, and **Settings → About** has the same button at any time.
+- **Install script:** on a computer that has no Clowdy, the line of step 7 installs it, and `codesign --verify --deep --strict /Applications/Clowdy.app` passes. Run it again with Clowdy open and it stops with "Clowdy is running".
 - **Without GitHub:** `bun scripts/ota-local.ts` in `apps/desktop` serves a test bundle to a development run ([AGENTS.md → Releases](AGENTS.md#releases), "Trying OTA locally").
