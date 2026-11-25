@@ -434,7 +434,7 @@ function BranchMergeDialog({
             : undefined;
     const done = result?.state === 'done';
     const isWorking = pending !== undefined;
-    const modeDisabled = isWorking || !selection;
+    const modeDisabled = isWorking || !selection || upToDate || (!preview && !failure);
     const syncLabel = syncPhase ? SYNC_WORDS[syncPhase] : 'Syncing…';
     const empty = loading ? (
         <Spinner
@@ -550,7 +550,7 @@ function BranchMergeDialog({
                         <MenuTrigger>
                             <Button
                                 size="md"
-                                color={canMerge || modeDisabled ? 'contrast' : 'secondary'}
+                                color="contrast"
                                 iconOnly
                                 className={styles.mode}
                                 aria-label="Choose merge mode"

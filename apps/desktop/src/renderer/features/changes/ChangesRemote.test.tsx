@@ -686,7 +686,7 @@ describe('merging branches from the sync menu', () => {
         expect(success).toHaveBeenCalledWith({ message: 'Pushed clowdy/ab12cd34 to origin' });
     });
 
-    it('puts comparison and up-to-date states on the disabled merge button', async () => {
+    it('disables both halves of the merge button while comparing or already up to date', async () => {
         await start({ gitWrites: { clean: true, remote: 'level' } });
         const readPreview = transport.branchMergeGit.bind(transport);
         let finish = () => {};
@@ -704,6 +704,7 @@ describe('merging branches from the sync menu', () => {
         await settle();
 
         expect(button('Comparing branches…').disabled).toBe(true);
+        expect(modeTrigger().disabled).toBe(true);
         expect(dialog().querySelectorAll('[role="status"]')).toHaveLength(1);
 
         await act(async () => finish());
@@ -711,12 +712,31 @@ describe('merging branches from the sync menu', () => {
 
         expect(button('Already up to date').disabled).toBe(true);
         expect(dialog().querySelectorAll('[role="status"]')).toHaveLength(1);
-        expect(modeTrigger().disabled).toBe(false);
+        expect(modeTrigger().disabled).toBe(true);
+        expect(modeTrigger().getAttribute('data-color')).toBe(button('Already up to date').getAttribute('data-color'));
         expect(merge.mock.calls.map(call => call[2].action)).toEqual(['preview']);
 
         await press(option('main'));
         await settle();
         expect(button('Merge').disabled).toBe(false);
+        expect(modeTrigger().disabled).toBe(false);
+    });
+
+    it('disables the mode menu when the main checkout is already up to date', async () => {
+        await start({ gitWrites: { clean: true, remote: 'level' } });
+        const readPreview = transport.branchMergeGit.bind(transport);
+        vi.spyOn(transport, 'branchMergeGit').mockImplementationOnce(async (...args) => {
+            const preview = await readPreview(...args);
+            if (preview.state !== 'preview') throw new Error('Expected a merge preview');
+            return { ...preview, mode: 'up-to-date', commits: 0 };
+        });
+
+        await open('Merge into main worktree…');
+
+        expect(button('Already up to date').disabled).toBe(true);
+        expect(modeTrigger().disabled).toBe(true);
+        expect(modeTrigger().getAttribute('data-color')).toBe('contrast');
+        expect(button('Cancel').disabled).toBe(false);
     });
 
     it('filters the destination branches with text entered while they were loading', async () => {
