@@ -1712,7 +1712,7 @@ describe('a chat that works in a worktree', () => {
         });
         data.branchPullRequests = {
             [folderPath]: {
-                [branch]: [pr(10, 'merged'), pr(11, 'open')],
+                [branch]: [pr(10, 'merged'), pr(11, 'open'), pr(13, 'closed')],
                 'feature/current': [pr(12, 'closed', 'feature/current')],
             },
         };
@@ -1730,28 +1730,36 @@ describe('a chat that works in a worktree', () => {
         await vi.waitFor(() =>
             expect(badge(first.id)?.getAttribute('aria-label')).toBe('2 pull requests: 1 open, 1 merged')
         );
-        expect(badge(second.id)?.textContent).toBe('1');
+        expect(badge(second.id)?.textContent).toBe('');
+        expect(badge(second.id)?.getAttribute('data-pr-state')).toBe('open');
         expect(badge(second.id)?.querySelector('svg')?.getAttribute('width')).toBe('12');
         expect(reads.mock.calls.filter(([, , name]) => name === branch)).toHaveLength(1);
         await act(async () => saveDraft(first.id, plainTextToDoc('Unsent')));
         expect(badge(first.id)).toBeNull();
-        expect(badge(second.id)?.textContent).toBe('1');
+        expect(badge(second.id)?.getAttribute('data-pr-state')).toBe('open');
         await act(async () => saveDraft(first.id, emptyComposerDoc()));
-        expect(badge(first.id)?.textContent).toBe('1');
+        expect(badge(first.id)?.getAttribute('data-pr-state')).toBe('open');
         const run = project().runs.get(first.orchestratorRunId!)!;
         await draw(() => project().runs.set(run.id, { ...run, status: 'running' }));
         expect(badge(first.id)).toBeNull();
         expect(rowOf(first.id).querySelector('[aria-label="Working"]')).not.toBeNull();
         await draw(() => project().runs.set(run.id, run));
-        expect(badge(first.id)?.textContent).toBe('1');
+        expect(badge(first.id)?.getAttribute('data-pr-state')).toBe('open');
         expect(badge(second.id)?.getAttribute('data-pr-state')).toBe('open');
 
         const fact = branchPullRequestsOf(transport).of({ projectId: FIXTURE_PROJECT_ID, folderId, branch });
         await act(async () => {
             expect(await fact.setArchived(10, true)).toBe(true);
         });
-        expect(badge(first.id)?.textContent).toBe('1');
+        expect(badge(first.id)?.getAttribute('data-pr-state')).toBe('open');
         expect(badge(second.id)?.getAttribute('aria-label')).toBe('1 pull request: 1 open');
+
+        await act(async () => {
+            fact.accept({ ...fact.value!, pullRequests: [pr(10, 'merged'), pr(11, 'closed'), pr(13, 'closed')] });
+        });
+        expect(badge(first.id)?.getAttribute('data-pr-state')).toBe('merged');
+        expect(badge(second.id)?.getAttribute('aria-label')).toBe('1 pull request: 1 merged');
+        expect(badge(second.id)?.textContent).toBe('');
 
         // The recorded ChatWorkspace branch remains the original name after an external checkout.
         // ProjectInfo says what the worktree is actually on now.
@@ -1769,8 +1777,14 @@ describe('a chat that works in a worktree', () => {
                 }))
         );
         await act(async () => refreshFolderGit(FIXTURE_PROJECT_ID, folderId));
-        await vi.waitFor(() => expect(badge(first.id)?.getAttribute('data-pr-state')).toBe('closed'));
-        expect(badge(second.id)?.getAttribute('aria-label')).toBe('1 pull request: 1 closed');
+        const switched = branchPullRequestsOf(transport).of({
+            projectId: FIXTURE_PROJECT_ID,
+            folderId,
+            branch: 'feature/current',
+        });
+        await vi.waitFor(() => expect(switched.value?.pullRequests[0]?.state).toBe('closed'));
+        expect(badge(first.id)).toBeNull();
+        expect(badge(second.id)).toBeNull();
         expect(reads.mock.calls.filter(([, , name]) => name === 'feature/current')).toHaveLength(1);
     });
 });

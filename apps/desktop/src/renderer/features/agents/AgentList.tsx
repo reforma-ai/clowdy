@@ -707,7 +707,7 @@ function chatBranchKey(
     return branch ? { projectId: info.projectId, folderId: folder.folderId, branch } : undefined;
 }
 
-/** A status, not another action: every chat observing the same branch shares the count and archive state. */
+/** A status, not another action: every chat observing the same branch shares the PR state. */
 const BranchPullRequestBadge = observer(function BranchPullRequestBadge({
     branchKey,
     visible,
@@ -716,24 +716,21 @@ const BranchPullRequestBadge = observer(function BranchPullRequestBadge({
     visible: boolean;
 }) {
     const fact = useBranchPullRequests(branchKey);
-    const pullRequests = fact?.pullRequests.filter(pr => !pr.archived) ?? [];
+    const pullRequests = fact?.pullRequests.filter(pr => !pr.archived && pr.state !== 'closed') ?? [];
     if (!visible || pullRequests.length === 0) return null;
 
     const state = pullRequests.some(pr => pr.state === 'open')
         ? 'open'
         : pullRequests.some(pr => pr.state === 'draft')
           ? 'draft'
-          : pullRequests.some(pr => pr.state === 'merged')
-            ? 'merged'
-            : 'closed';
-    const detail = (['open', 'draft', 'merged', 'closed'] as const)
+          : 'merged';
+    const detail = (['open', 'draft', 'merged'] as const)
         .flatMap(state => {
             const count = pullRequests.filter(pr => pr.state === state).length;
             return count ? [`${count} ${state}`] : [];
         })
         .join(', ');
     const label = `${pullRequests.length} pull request${pullRequests.length === 1 ? '' : 's'}: ${detail}${fact?.stale ? ' (last known)' : ''}`;
-    const count = pullRequests.filter(pr => pr.state === state).length;
 
     return (
         <span
@@ -745,7 +742,6 @@ const BranchPullRequestBadge = observer(function BranchPullRequestBadge({
             title={label}
         >
             <Merge size={12} aria-hidden="true" />
-            <span>{count}</span>
         </span>
     );
 });

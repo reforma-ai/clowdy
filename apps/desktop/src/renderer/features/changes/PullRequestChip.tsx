@@ -1,6 +1,6 @@
 import { GridListItem } from '@clowdy/components/List';
 import { Text } from '@clowdy/components/Text';
-import { CircleCheck, CircleWarning, Merge } from '@clowdy/icons/14';
+import { CircleCheck, CircleWarning, Merge, MergeCancel } from '@clowdy/icons/14';
 
 import { openEffects } from '../openWith';
 import { PULL_REQUEST_STATE_LABEL } from './gitSummary';
@@ -19,6 +19,7 @@ export function PullRequestChip({
     action?: ReactNode;
 }) {
     const state = PULL_REQUEST_STATE_LABEL[pr.state];
+    const Mark = pr.state === 'closed' ? MergeCancel : Merge;
     const { failing, passing } = pr.checks ?? { failing: 0, passing: 0 };
     const counts = [failing > 0 && `${failing} failed`, passing > 0 && `${passing} passed`].filter(Boolean).join(', ');
 
@@ -29,7 +30,7 @@ export function PullRequestChip({
             className={styles.row}
             data-stale={stale || undefined}
             aria-label={`Open pull request ${pr.number} on GitHub: ${state}, ${pr.title}${counts ? `, ${counts}` : ''}`}
-            icon={<Merge className={styles.prMark} data-state={pr.state} aria-hidden="true" />}
+            icon={<Mark className={styles.prMark} data-state={pr.state} aria-hidden="true" />}
             onAction={() => openEffects.openUrl(pr.url)}
             endAffix={action}
         >

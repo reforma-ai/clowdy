@@ -1154,6 +1154,9 @@ describe('Create PR in the sidebar', () => {
         expect(row(125)?.textContent).toContain('Release booking form');
         expect(row(125)?.querySelector('svg[data-state="merged"]')).not.toBeNull();
         expect(row(124)?.querySelector('svg[data-state="closed"]')).not.toBeNull();
+        expect(row(124)?.querySelector('svg path')?.getAttribute('d')).not.toBe(
+            row(125)?.querySelector('svg path')?.getAttribute('d')
+        );
         expect(row(124)?.textContent).toBe('Try a new booking flowPR #124');
         expect(row(124)?.getAttribute('aria-label')).toContain('Closed');
         expect(buttonOf('Archive PR #128')).toBeUndefined();
