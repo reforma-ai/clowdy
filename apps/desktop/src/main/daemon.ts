@@ -158,16 +158,16 @@ export async function ensureDaemon(context = currentContext()): Promise<DaemonIn
 }
 
 /**
- * Asks the daemon to shut down and waits until its process has ended. It stops answering first and lets go of
+ * Asks the daemon to shut down and waits until its process has ended, or returns false while Git is busy. It stops answering first and lets go of
  * `daemon.lock` last, so a daemon started in between would find the lock taken and exit. Throws `DaemonError` when it stays.
  */
-export async function stopDaemon({ host }: DaemonContext, { info }: RunningDaemon): Promise<void> {
+export async function stopDaemon({ host }: DaemonContext, { info }: RunningDaemon): Promise<boolean> {
     const deadline = host.now() + STOP_TIMEOUT_MS;
 
-    await host.stop(info);
+    if (!(await host.stop(info))) return false;
 
     while (host.now() < deadline) {
-        if (!host.alive(info.pid)) return;
+        if (!host.alive(info.pid)) return true;
 
         await host.sleep(POLL_INTERVAL_MS);
     }
