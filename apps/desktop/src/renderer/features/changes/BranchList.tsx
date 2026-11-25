@@ -102,7 +102,7 @@ export function BranchList({
                 </div>
             )}
             <SwitchReasons model={model} />
-            <Separator spacing="xxs" />
+            <Separator spacing={0} />
             <div className={styles.footer}>
                 <Button
                     variant="filling"
