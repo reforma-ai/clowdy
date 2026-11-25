@@ -37,13 +37,14 @@ export function onFolderGitRefresh(listener: (projectId: ProjectId, folderId: Fo
  * answer for this folder comes (never another folder's), and nothing when it fails: the menu then has no link and the label no branch.
  *
  * With the `workspace` of a chat that works in a worktree, the branch is the worktree's, read the same way (`ProjectInfo.workspaces`, see `workspaceHead`): the branch it has
- * now, nothing until the read has answered, the branch it will be made on while it is not made yet, and `gone` once it was made and is no longer on the disk. The `origin` is the folder's.
+ * now, nothing until the read has answered, the branch it will be made on while it is not made yet, and `gone` once it was made and is no longer on the disk. The `origin`
+ * and `checkoutBranch` refer to the folder's own checkout, with no `checkoutBranch` on a detached HEAD.
  */
 export function useFolderGit(
     projectId: ProjectId,
     folderId: FolderId,
     workspace?: WorkspaceRef
-): FolderGit | undefined {
+): (FolderGit & { checkoutBranch?: string }) | undefined {
     const root = useRootStore();
     // A worktree that gets made is a change of its own: it is read again then, whatever the window did.
     const key = `${projectId}/${folderId}/${workspace ? `${workspace.id}:${workspace.ready}` : ''}`;
@@ -98,5 +99,7 @@ export function useFolderGit(
 
     const head = workspaceHead(workspace, current?.workspaces);
 
-    return head && { remoteUrl: current?.git?.remoteUrl, ...head };
+    const checkoutBranch = current?.git?.detached ? undefined : current?.git?.branch;
+
+    return head && { remoteUrl: current?.git?.remoteUrl, ...head, checkoutBranch };
 }

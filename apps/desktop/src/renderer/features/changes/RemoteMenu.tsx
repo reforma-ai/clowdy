@@ -98,7 +98,7 @@ function SyncWords({ label, line, tone }: SyncCopy) {
 /**
  * One split button recommends the next action. Its menu keeps explicit Fetch, Pull, Update and branch merges available.
  */
-export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
+export function RemoteMenu({ facts, checkoutBranch }: { facts: PlaceFacts; checkoutBranch?: string }) {
     const { transport } = useRootStore();
     const remote = useRemoteActions(facts);
     const now = useNow();
@@ -114,6 +114,7 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
     const off = running === undefined && (view.action === undefined || facts.switching);
     const offHint = facts.switching ? 'The branch is being changed' : view.title;
     const current = status?.isRepository && status.head.kind === 'branch' ? status.head.name : undefined;
+    const destination = facts.key.workspaceId && checkoutBranch !== current ? checkoutBranch : undefined;
     const hasOrigin = status?.isRepository === true && status.origin;
     const updateBlocked = !hasOrigin || facts.switching || remote.isPending('update');
     const tip = off || running !== undefined ? undefined : view.title;
@@ -123,7 +124,8 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
     };
 
     const run = (key: string) => {
-        if (key === 'merge-from' || key === 'merge-into') {
+        if (key === 'merge-from' || key === 'merge-into' || key === 'merge-into-checkout') {
+            if (key === 'merge-into-checkout' && !destination) return;
             if (current !== undefined && !facts.switching) {
                 openBranchMergeDialog({
                     transport,
@@ -132,6 +134,7 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
                     current,
                     direction: key === 'merge-from' ? 'from' : 'into',
                     hasOrigin,
+                    ...(key === 'merge-into-checkout' && { checkoutBranch: destination }),
                 });
             }
         } else if (key === 'fetch' || key === 'pull' || key === 'update') {
@@ -224,6 +227,14 @@ export function RemoteMenu({ facts }: { facts: PlaceFacts }) {
                                 text={MERGE_LABELS.into}
                                 isDisabled={current === undefined || facts.switching}
                             />
+                            {destination && (
+                                <MenuItem
+                                    id="merge-into-checkout"
+                                    icon={<ArrowUpRight />}
+                                    text={`Merge into ${destination}…`}
+                                    isDisabled={current === undefined || facts.switching}
+                                />
+                            )}
                         </Menu>
                     </Popover>
                 </MenuTrigger>

@@ -95,7 +95,7 @@ const isOff = (label: string) => item(label).getAttribute('aria-disabled') === '
 const alert = () => container.querySelector('[role="alert"]');
 const status = () => container.querySelector('[role="status"]:not([aria-label])');
 const updateLabel = 'Update from main';
-const mergeLabels = ['Merge from branch…', 'Merge into branch…'];
+const mergeLabels = ['Merge from branch…', 'Merge into branch…', 'Merge into main…'];
 
 async function openMenu() {
     await press(dropdown());
@@ -429,6 +429,7 @@ describe('the sync button in the sidebar', () => {
             true,
             true,
             true,
+            false,
             false,
             false,
         ]);
@@ -818,6 +819,69 @@ describe('merging branches from the sync menu', () => {
                 workspaceId: WORKTREE.workspaceId,
             })
         ).toMatchObject({ head: { name: 'clowdy/ab12cd34' }, upstream: { ahead: 0 } });
+    });
+
+    it('opens the main checkout branch directly even when it differs from the default branch', async () => {
+        await start({
+            gitWrites: { clean: true, remote: 'level' },
+            tweak: data => {
+                data.git[CAR_RENTAL]!.branch = 'next';
+            },
+        });
+        const merge = vi.spyOn(transport, 'branchMergeGit');
+        const sync = vi.spyOn(transport, 'syncGit');
+
+        await open('Merge into next…');
+
+        expect(heading()).toBe('Merge clowdy/ab12cd34 to next');
+        expect(dialog().querySelector('input[placeholder="Filter branches"]')).toBeNull();
+        expect(dialog().querySelector(`[title="${CAR_RENTAL}"]`)).not.toBeNull();
+        expect(merge.mock.calls.map(call => call[2])).toEqual([
+            { action: 'preview', direction: 'into', current: 'clowdy/ab12cd34', branch: 'next' },
+        ]);
+        expect(sync).not.toHaveBeenCalled();
+
+        await press(button('Create a merge commit & Sync'));
+        await settle();
+
+        expect(merge.mock.calls[1]?.[2]).toMatchObject({ action: 'merge', direction: 'into', branch: 'next' });
+        expect(sync.mock.calls[0]?.[2]).toMatchObject({ branch: 'next', destination: true });
+        expect(dialog()).toBeNull();
+    });
+
+    it('reads the checkout branch again when the shortcut is pressed', async () => {
+        await start({ gitWrites: { clean: true, remote: 'level' } });
+        const merge = vi.spyOn(transport, 'branchMergeGit');
+
+        await openMenu();
+        expect(item('Merge into main…')).toBeDefined();
+        await transport.switchGitBranch(FIXTURE_PROJECT_ID, { folderId: CHECKOUT.folderId }, 'dev');
+        await press(item('Merge into main…'));
+        await settle();
+
+        expect(heading()).toBe('Merge clowdy/ab12cd34 to dev');
+        expect(merge.mock.calls[0]?.[2]).toMatchObject({ action: 'preview', branch: 'dev' });
+        expect(merge).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not offer merging into the main checkout from the main checkout itself', async () => {
+        await start({ key: CHECKOUT });
+        await openMenu();
+
+        expect(item('Merge into main…')).toBeUndefined();
+        expect(item('Merge into branch…')).toBeDefined();
+    });
+
+    it('does not offer the shortcut when the main checkout is detached', async () => {
+        await start({
+            tweak: data => {
+                data.git[CAR_RENTAL]!.detached = true;
+            },
+        });
+        await openMenu();
+
+        expect(item('Merge into main…')).toBeUndefined();
+        expect(item('Merge into branch…')).toBeDefined();
     });
 
     it('retries sync from the post-integration tip after a rejected push', async () => {
