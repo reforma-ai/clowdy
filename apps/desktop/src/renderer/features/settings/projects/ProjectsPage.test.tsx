@@ -480,6 +480,47 @@ describe('ProjectsPage project', () => {
         expect(rows()[1]!.querySelector('a[href="https://github.com/acme/car-rental-api"]')).not.toBeNull();
     });
 
+    it('clones a repository into the project at once: the folder it made is added like a picked one', async () => {
+        // The one answer of the folder dialog is for Choose folder… in the clone dialog, which has the folder `code` with files in it.
+        (window as { desktop?: unknown }).desktop = { chooseDirectories: async () => ['/Users/dev/code'] };
+        // A window opened over another is anchored to it and closes when its anchor is not on the page: happy-dom lays nothing out, so every element would be gone.
+        const box = { x: 0, y: 0, top: 0, left: 0, right: 400, bottom: 400, width: 400, height: 400 };
+
+        vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ ...box, toJSON: () => box });
+        vi.spyOn(HTMLElement.prototype, 'getClientRects').mockReturnValue([box] as unknown as DOMRectList);
+
+        const cloneGit = vi.fn(async (request: { path: string }) => request.path);
+        const inDialog = (text: string) =>
+            [...document.body.querySelectorAll<HTMLButtonElement>('button')].find(
+                candidate => candidate.textContent?.trim() === text && !container.contains(candidate)
+            )!;
+
+        await open(FIXTURE_EMPTY_PROJECT_ID, { cloneGit: cloneGit as Transport['cloneGit'] });
+        expect(named('Add folders…')).not.toBeUndefined();
+
+        await click(named('Clone repository…'));
+        await flush();
+        type(
+            document.body.querySelector<HTMLInputElement>('input[aria-label="Repository address"]')!,
+            'https://github.com/acme/booking-api.git'
+        );
+        await click(inDialog('Choose folder…'));
+        await act(async () => void (await new Promise(resolve => setTimeout(resolve, 450))));
+        await click(inDialog('Clone'));
+        await flush();
+
+        expect(cloneGit).toHaveBeenCalledOnce();
+        expect(cloneGit.mock.calls[0][0]).toEqual({
+            url: 'https://github.com/acme/booking-api.git',
+            path: '/Users/dev/code/booking-api',
+        });
+        // At once: the project has the folder, after its main one, with no further question.
+        expect(folderPaths(FIXTURE_EMPTY_PROJECT_ID)).toEqual(['/Users/dev/clowdy', '/Users/dev/code/booking-api']);
+        expect(rowPaths()).toEqual(['/Users/dev/clowdy', '/Users/dev/code/booking-api']);
+        expect(confirm).not.toHaveBeenCalled();
+        expect(document.body.querySelector('input[aria-label="Repository address"]')).toBeNull();
+    });
+
     it('adds nothing when the folder dialog is closed without a choice', async () => {
         const command = vi.fn();
 

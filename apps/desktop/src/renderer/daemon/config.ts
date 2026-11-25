@@ -2,6 +2,7 @@ import { FileSystemError } from '@clowdy/file-manager/provider';
 
 import { createFixtureData, withFixtureLastRun, withFixtureWorkspace } from './fixtureData';
 import { FIXTURE_BRANCH_SCRIPTS } from './fixtureGitBranches';
+import { FIXTURE_CLONE_SCRIPTS } from './fixtureGitClone';
 import { FIXTURE_REMOTE_SCRIPTS } from './fixtureGitRemote';
 import { FixtureTransport } from './fixtureTransport';
 import { HttpTransport } from './httpTransport';
@@ -9,6 +10,7 @@ import { type ProjectFileSystem, type Transport, TransportError } from './transp
 
 import type { FixturePullRequestScript } from './fixtureData';
 import type { FixtureBranchScript } from './fixtureGitBranches';
+import type { FixtureCloneScript } from './fixtureGitClone';
 import type { FixtureRemoteScript } from './fixtureGitRemote';
 import type { FixtureCommitScript, FixtureDiscardScript, FixtureMessageScript } from './fixtureGitWrites';
 
@@ -26,6 +28,7 @@ export type DaemonConfig =
           remote?: FixtureRemoteScript;
           pr?: FixturePullRequestScript;
           branches?: FixtureBranchScript[];
+          clone?: FixtureCloneScript;
       }
     | { kind: 'none' };
 
@@ -56,7 +59,8 @@ const oneOf = <T extends string>(value: string | null, words: readonly T[]): T |
  *    and when the repository last fetched (the sync button's states), `&pr=none|open|draft|merged|closed|no_gh|not_signed_in|no_remote|unavailable` what GitHub says of the worktree's branch (`open` by default,
  *    `none` is the one that offers Create PR), `&clean` leaves the worktree with nothing uncommitted (hiding the commit form), and `&base` puts the worktree on `main`, the branch the work is compared with; `&branches=remote,held,dirty,refused,slow,warned,merged,idle`, any of the
  *    words joined by commas, says what the folder's branches and a switch from the Changes sidebar's branch button, or from the new chat's pill, are like: branches only origin has, branches that worktrees hold, a checkout with
- *    changes, a switch that is refused for the chats working there, a switch that takes a while, a switch whose `post-checkout` hook failed after it, a merged worktree, and every chat at rest, which the new chat's pill needs to show a tree with changes alone: it counts the chats of the fixtures that work in the folder);
+ *    changes, a switch that is refused for the chats working there, a switch that takes a while, a switch whose `post-checkout` hook failed after it, a merged worktree, and every chat at rest, which the new chat's pill needs to show a tree with changes alone: it counts the chats of the fixtures that work in the folder;
+ *    `&clone=slow|failed` says how a Clone repository… ends: it stops at 42% and waits to be cancelled, or git fails with its line and a hint; without it the clone goes through);
  * 4. nothing: the UI shows that it cannot reach a daemon.
  */
 export function resolveDaemonConfig(search: string, bridge?: { url: string; token: string }): DaemonConfig {
@@ -72,6 +76,7 @@ export function resolveDaemonConfig(search: string, bridge?: { url: string; toke
         const message = oneOf(params.get('message'), ['failed', 'slow'] as const);
         const discard = oneOf(params.get('discard'), ['slow', 'refused', 'hook'] as const);
         const remote = oneOf(params.get('remote'), FIXTURE_REMOTE_SCRIPTS);
+        const clone = oneOf(params.get('clone'), FIXTURE_CLONE_SCRIPTS);
         const pr = oneOf(params.get('pr'), PULL_REQUEST_SCRIPTS);
         const branches = (params.get('branches') ?? '')
             .split(',')
@@ -89,6 +94,7 @@ export function resolveDaemonConfig(search: string, bridge?: { url: string; toke
             ...(remote && { remote }),
             ...(pr && { pr }),
             ...(branches.length > 0 && { branches }),
+            ...(clone && { clone }),
         };
     }
 
@@ -123,6 +129,8 @@ const unconfigured: Transport = {
     pullGit: noDaemon,
     pushGit: noDaemon,
     syncGit: noDaemon,
+    getGitCloneTarget: noDaemon,
+    cloneGit: noDaemon,
     updateGit: noDaemon,
     abortGit: noDaemon,
     getGitBranches: noDaemon,
@@ -168,7 +176,7 @@ export function createTransport(config: DaemonConfig): Transport {
 
     if (config.kind !== 'fixtures') return unconfigured;
 
-    const { timeline, commit, message, discard, remote, pr, branches, clean, base } = config;
+    const { timeline, commit, message, discard, remote, pr, branches, clean, base, clone } = config;
     const data = config.worktree ? withFixtureLastRun(withFixtureWorkspace(createFixtureData())) : createFixtureData();
 
     // The worktree's branch is the branch the work is compared with, which is where a commit goes straight to the base.
@@ -182,5 +190,6 @@ export function createTransport(config: DaemonConfig): Transport {
         data,
         gitWrites: { commit, message, discard, remote, ...(clean && { clean }) },
         branches,
+        clone,
     });
 }

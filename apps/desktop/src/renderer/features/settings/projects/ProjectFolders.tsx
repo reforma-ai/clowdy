@@ -31,7 +31,7 @@ interface DraggedOrder {
 
 /**
  * The Folders block of a project's page, in the `FolderList` the Add project form has too: the folders in order, the first marked Main,
- * dragged into another order, removed one by one, and more added with Add folders…. Each shows that it is missing, with a Locate… button that moves it to
+ * dragged into another order, removed one by one, and more added with Add folders… or cloned from an address with Clone repository…. Each shows that it is missing, with a Locate… button that moves it to
  * the place the person picks, and opens its git
  * remote's page (Open in GitHub). Its Workspace button opens the dialog of what the worktrees made from the folder start from and need
  * (`FolderWorkspaceDialog`). A new main folder asks first and waits while agents of the project work; anything else applies at once.
@@ -96,6 +96,7 @@ export function ProjectFolders({ project, info, infoFailed }: ProjectFoldersProp
                 onReorder={reorder}
                 canDrop={working ? keepsMain : undefined}
                 onAdd={paths => void addFolders(root, project, paths)}
+                transport={root.transport}
             />
 
             {working && (

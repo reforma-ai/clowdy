@@ -19,6 +19,9 @@ import type {
     GitBranchMergeResult,
     GitBranchPullRequests,
     GitChanges,
+    GitCloneEvent,
+    GitCloneRequest,
+    GitCloneTarget,
     GitCommitResult,
     GitDiscardResult,
     GitFileSides,
@@ -54,6 +57,9 @@ import type {
     WorkspaceId,
 } from '@clowdy/protocol';
 import type { TerminalStream, TerminalStreamHandlers } from './terminalStream';
+
+/** What git said of a clone while it runs: its own line (`Receiving objects`) with its percent when it gave one. */
+export type GitCloneProgress = Omit<Extract<GitCloneEvent, { type: 'progress' }>, 'type'>;
 
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
 
@@ -183,6 +189,21 @@ export interface Transport {
      * has no `origin`, 503 for one that did not end in about two minutes (a fingerprint that was waited for). Not retried.
      */
     fetchGit: (projectId: ProjectId, place: PlaceRef) => Promise<GitRemoteResult>;
+    /**
+     * Where a clone of `url` would go (`GET git/clone-target`): the `folder` the person chose, or the daemon's projects folder when none, and the folder the repository would be cloned into,
+     * absent while `url` names no repository. Asked as the address and the folder change, so `signal` drops an answer that is no longer wanted. Rejects with a `TransportError` when the daemon cannot say.
+     */
+    getGitCloneTarget: (url: string, folder?: string, signal?: AbortSignal) => Promise<GitCloneTarget>;
+    /**
+     * Clones `request.url` into `request.path` (`POST git/clone`, a stream), with the person's own git and no prompt for a password. Reports git's own progress lines while it runs and resolves the
+     * folder it made. Aborting `signal` closes the request, which cancels the clone and removes what it made: the promise then rejects with the signal's reason. Rejects with a `TransportError`
+     * carrying git's line (and `hint`) when the clone fails or the target is refused. Not retried.
+     */
+    cloneGit: (
+        request: GitCloneRequest,
+        onProgress?: (progress: GitCloneProgress) => void,
+        signal?: AbortSignal
+    ) => Promise<string>;
     /** Fetches, integrates and publishes the chosen branch as one operation. Reports its phases while it runs. */
     syncGit: (
         projectId: ProjectId,

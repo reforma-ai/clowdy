@@ -291,4 +291,79 @@ describe('the Add project form', () => {
         await press(button('Add folder'));
         expect(paths()).toEqual(['/Users/dev/web', '/Users/dev/api', 'D:\\']);
     });
+    describe('Clone repository…', () => {
+        const cloneAddress = () =>
+            document.body.querySelector<HTMLInputElement>('input[aria-label="Repository address"]')!;
+        const afterDelay = () => act(async () => void (await new Promise(resolve => setTimeout(resolve, 450))));
+
+        beforeEach(() => {
+            // A window opened over another is anchored to it and closes when its anchor is not on the page: happy-dom lays nothing out, so every element would be gone.
+            const box = { x: 0, y: 0, top: 0, left: 0, right: 400, bottom: 400, width: 400, height: 400 };
+
+            vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ ...box, toJSON: () => box });
+            vi.spyOn(HTMLElement.prototype, 'getClientRects').mockReturnValue([box] as unknown as DOMRectList);
+        });
+
+        it('sits beside Add folders… in the desktop app, and in a browser under the path field', async () => {
+            desktop([]);
+            await open();
+
+            expect(button('Add folders…')).not.toBeUndefined();
+            expect(button('Clone repository…')).not.toBeUndefined();
+            expect(button('Clone repository…')!.parentElement).toBe(button('Add folders…')!.parentElement);
+
+            delete (window as { desktop?: unknown }).desktop;
+            await open();
+
+            expect(input('Folder path')).not.toBeNull();
+            expect(button('Clone repository…')).not.toBeUndefined();
+        });
+
+        it('puts the folder a clone made into the list, like a picked one, and leaves the form open', async () => {
+            // The first answer is for Choose folder… in the clone dialog.
+            desktop(['/Users/dev/code']);
+            const cloneGit = vi.fn(async (request: { path: string }) => request.path);
+
+            await open({ cloneGit: cloneGit as Transport['cloneGit'] });
+            await press(button('Clone repository…'));
+
+            expect(document.body.querySelectorAll('form')).toHaveLength(2);
+
+            type(cloneAddress(), 'https://github.com/acme/booking-api.git');
+            await press(button('Choose folder…'));
+            await afterDelay();
+            await press(button('Clone'));
+
+            expect(cloneGit).toHaveBeenCalledWith(
+                { url: 'https://github.com/acme/booking-api.git', path: '/Users/dev/code/booking-api' },
+                expect.any(Function),
+                expect.any(AbortSignal)
+            );
+            expect(paths()).toEqual(['/Users/dev/code/booking-api']);
+            expect(marked()).toEqual(['/Users/dev/code/booking-api']);
+            // Only the clone dialog went; the form is where it was, with the folder in its list.
+            expect(document.body.querySelectorAll('form')).toHaveLength(1);
+            expect(button('Add project')!.disabled).toBe(false);
+        });
+
+        it('leaves the list as it was when the clone is cancelled with Escape', async () => {
+            desktop([]);
+            const cloneGit: Transport['cloneGit'] = (_request, _progress, signal) =>
+                new Promise((_resolve, reject) => signal?.addEventListener('abort', () => reject(signal.reason)));
+
+            await open({ cloneGit });
+            await press(button('Clone repository…'));
+            type(cloneAddress(), 'https://github.com/acme/booking-api.git');
+            await afterDelay();
+            await press(button('Clone'));
+            await act(async () => {
+                document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            });
+            await settle();
+
+            // The clone dialog closed and the form under it stayed.
+            expect(document.body.querySelectorAll('form')).toHaveLength(1);
+            expect(paths()).toEqual([]);
+        });
+    });
 });

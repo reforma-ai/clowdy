@@ -6,6 +6,7 @@ import { TerminalSocket } from './terminalStream';
 import {
     type CommandInput,
     type FeedStatus,
+    type GitCloneProgress,
     type PageQuery,
     type PlaceRef,
     type ProjectFileSystem,
@@ -33,6 +34,9 @@ import type {
     GitBranchMergeResult,
     GitBranchPullRequests,
     GitChanges,
+    GitCloneEvent,
+    GitCloneRequest,
+    GitCloneTarget,
     GitCommitResult,
     GitDiscardRequest,
     GitDiscardResult,
@@ -258,6 +262,53 @@ export class HttpTransport implements Transport {
 
     fetchGit(projectId: ProjectId, place: PlaceRef): Promise<GitRemoteResult> {
         return this.#write(ROUTES.projectGitRemote(projectId, 'fetch'), { ...place } satisfies GitRemoteRequest);
+    }
+
+    getGitCloneTarget(url: string, folder?: string, signal?: AbortSignal): Promise<GitCloneTarget> {
+        const query = new URLSearchParams({ url, ...(folder !== undefined && { folder }) });
+
+        return this.#read(`${ROUTES.gitCloneTarget}?${query}`, signal);
+    }
+
+    async cloneGit(
+        request: GitCloneRequest,
+        onProgress?: (progress: GitCloneProgress) => void,
+        signal?: AbortSignal
+    ): Promise<string> {
+        const route = ROUTES.gitClone;
+        const response = await this.#fetch(this.#base + route, {
+            method: 'POST',
+            headers: { ...this.#headers, 'content-type': 'application/json', accept: 'text/event-stream' },
+            body: JSON.stringify(request),
+            signal,
+        });
+
+        if (!response.ok) throw await refusal(response, route);
+
+        const reader = response.body?.getReader();
+        const parser = new SseParser();
+        const decoder = new TextDecoder();
+
+        if (reader) {
+            try {
+                for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
+                    for (const frame of parser.push(decoder.decode(chunk.value, { stream: true }))) {
+                        const event = JSON.parse(frame.data) as GitCloneEvent;
+
+                        if (event.type === 'progress') {
+                            const { type: _, ...progress } = event;
+                            onProgress?.(progress);
+                        }
+                        if (event.type === 'result') return event.path;
+                        if (event.type === 'error') throw new TransportError(event.message, event.status, event.hint);
+                    }
+                }
+            } finally {
+                await reader.cancel().catch(() => undefined);
+            }
+        }
+
+        throw new TransportError("Couldn't confirm that the clone finished", 503);
     }
 
     async syncGit(
@@ -603,8 +654,8 @@ export class HttpTransport implements Transport {
     }
 
     /** `#get` for a read whose refusal the app tells the person (git is not there, the folder is gone): the error carries the daemon's own reason. */
-    async #read<T>(route: string): Promise<T> {
-        const response = await this.#fetch(this.#base + route, { headers: this.#headers });
+    async #read<T>(route: string, signal?: AbortSignal): Promise<T> {
+        const response = await this.#fetch(this.#base + route, { headers: this.#headers, signal });
 
         if (!response.ok) throw await refusal(response, route);
 
