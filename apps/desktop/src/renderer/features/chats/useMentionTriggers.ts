@@ -68,7 +68,7 @@ export function useMentionTriggers(box: RefObject<HTMLElement | null>, place: Pl
                       ])
                     : [[], []];
 
-                return [...taskItems(project.taskList, query), ...docs, ...files];
+                return [...taskItems(project.taskList, query, project.statuses), ...docs, ...files];
             },
         };
 

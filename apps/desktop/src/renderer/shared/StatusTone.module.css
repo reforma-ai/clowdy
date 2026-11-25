@@ -1,0 +1,29 @@
+.tone {
+    --clowdy-status-bg: var(--color-secondary-muted-light);
+    --clowdy-status-hover: var(--color-secondary-muted);
+    --clowdy-status-color: var(--color-secondary-muted-text);
+}
+
+.tone[data-tone='accent'] {
+    --clowdy-status-bg: var(--color-accent-muted-light);
+    --clowdy-status-hover: var(--color-accent-muted);
+    --clowdy-status-color: var(--color-accent-text);
+}
+
+.tone[data-tone='success'] {
+    --clowdy-status-bg: var(--color-success-muted-light);
+    --clowdy-status-hover: var(--color-success-muted);
+    --clowdy-status-color: var(--color-success-text);
+}
+
+.tone[data-tone='warning'] {
+    --clowdy-status-bg: var(--color-warning-muted-light);
+    --clowdy-status-hover: var(--color-warning-muted);
+    --clowdy-status-color: var(--color-warning-text);
+}
+
+.tone[data-tone='danger'] {
+    --clowdy-status-bg: var(--color-danger-muted-light);
+    --clowdy-status-hover: var(--color-danger-muted);
+    --clowdy-status-color: var(--color-danger-text);
+}

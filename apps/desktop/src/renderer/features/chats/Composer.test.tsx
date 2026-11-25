@@ -39,7 +39,9 @@ const refused: CommandResult = {
     error: { code: 'unavailable', message: 'The daemon cannot be reached' },
 };
 
-const tasks = [{ id: 't-24', number: 24, key: 'CAR-24', title: 'Rebuild the form as one view' }] as Task[];
+const tasks = [
+    { id: 't-24', number: 24, key: 'CAR-24', title: 'Rebuild the form as one view', statusId: 'done' },
+] as Task[];
 const FOLDERS: ProjectFolder[] = [{ id: 'fld_p', path: '/work/p' }];
 const docs: DocsTree = [
     {
@@ -105,7 +107,12 @@ async function mount(
         command,
         transport,
         skillsRevision: 0,
-        selectedProject: { project: { id: 'p', folders }, taskList: tasks },
+        selectedProject: {
+            project: { id: 'p', folders },
+            taskList: tasks,
+            taskOfKey: (key: string) => tasks.find(task => task.key === key),
+            statuses: [{ id: 'done', name: 'Done', category: 'done' }],
+        },
         ...(await modelStore()),
     };
 
@@ -313,6 +320,7 @@ describe('Composer', () => {
             ]);
 
             await choose('CAR-24');
+            expect(container.querySelector('[data-chip]')?.getAttribute('data-tone')).toBe('success');
             await press('Enter');
 
             expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Do CAR-24', mode: 'steer' }]);

@@ -1,33 +1,52 @@
-import { Box } from '@clowdy/icons/14';
 import { cn } from '@clowdy/lib';
 
-import { useProjectUi } from '../stores';
+import { StatusIcon, statusTone } from '../features/tasks/status';
+import { useProjectState, useProjectUi } from '../stores';
 import styles from './Chip.module.css';
+import toneStyles from './StatusTone.module.css';
 
-import type { Task } from '@clowdy/protocol';
+import type { Task, TaskStatus } from '@clowdy/protocol';
 
 export interface TaskChipProps {
-    task: Pick<Task, 'id' | 'key' | 'title'>;
+    task: Pick<Task, 'id' | 'key' | 'title'> & Partial<Pick<Task, 'statusId'>>;
     /** What a press does. By default it opens the task in the Tasks tab of the side panel. */
     onPress?: () => void;
     className?: string;
 }
 
-/** A task as a chip: cube icon and key (`CAR-24`). */
-export function TaskChip({ task, onPress, className }: TaskChipProps) {
-    const ui = useProjectUi();
+export const taskChipClass = cn(styles.chip, toneStyles.tone);
+
+export function TaskChipContents({ label, status }: { label: string; status?: TaskStatus }) {
+    return (
+        <>
+            {status && <StatusIcon category={status.category} size={12} />}
+            <span className={styles.label}>{label}</span>
+        </>
+    );
+}
+
+/** A task key with the current status's icon and tone, opening the task when pressed. */
+export function TaskChipButton({ task, onPress, className }: TaskChipProps) {
+    const project = useProjectState();
+    const statusId = project.taskById(task.id)?.statusId ?? task.statusId;
+    const status = project.statuses.find(candidate => candidate.id === statusId);
 
     return (
         <button
             type="button"
-            className={cn(styles.chip, className)}
+            className={cn(taskChipClass, className)}
+            data-tone={statusTone(status?.category)}
             title={task.title}
-            onClick={onPress ?? (() => ui.openTask(task.id))}
+            aria-description={status?.name}
+            onClick={onPress}
         >
-            <span className={styles.icon}>
-                <Box width={12} height={12} />
-            </span>
-            <span className={styles.label}>{task.key}</span>
+            <TaskChipContents label={task.key} status={status} />
         </button>
     );
+}
+
+export function TaskChip({ task, onPress, className }: TaskChipProps) {
+    const ui = useProjectUi();
+
+    return <TaskChipButton task={task} className={className} onPress={onPress ?? (() => ui.openTask(task.id))} />;
 }
