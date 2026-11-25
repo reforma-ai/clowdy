@@ -70,14 +70,15 @@ export function BranchPicker({ facts, label }: BranchPickerProps) {
             size="sm"
             className={styles.trigger}
             contentClassName={styles.content}
-            isPending={model.busy || previewing}
+            isPending={model.running !== undefined}
+            isDisabled={previewing || (model.busy && model.running === undefined)}
             spinnerPlacement="start"
             aria-label={`Current branch: ${label}`}
             // Constant while the popover is open or not: a button that gains or loses its tooltip is drawn in another place of the tree, and would lose the focus the popover gives back.
             tooltip={`Current branch: ${label}`}
             tooltipPlacement="bottom"
         >
-            {!model.busy && !previewing && <Version aria-hidden="true" className={styles.icon} />}
+            {model.running === undefined && <Version aria-hidden="true" className={styles.icon} />}
             <Text weight="medium" truncate className={styles.label}>
                 {label}
             </Text>

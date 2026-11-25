@@ -290,11 +290,39 @@ describe('deleting a branch from the branch picker', () => {
         await open();
         await ask('dev');
         expect(confirmation()).toBeUndefined();
+        expect(trigger()?.querySelector('[data-size]')).toBeNull();
         await act(async () => root.render(null));
         await act(async () => finish({ state: 'preview', branch: 'dev', localCommit: FIXTURE_BASE_COMMIT }));
         await settle();
         expect(confirmation()).toBeUndefined();
         expect(remove.mock.calls.map(call => call[2].action)).toEqual(['preview']);
+    });
+
+    it('shows deletion progress only in the confirmation while keeping the current branch icon', async () => {
+        await start({ branches: ['remote'], clean: true });
+        await open();
+        await ask('dev');
+
+        const deleteBranch = transport.deleteGitBranch.bind(transport);
+        let finish = () => {};
+        vi.spyOn(transport, 'deleteGitBranch').mockImplementationOnce(
+            (...args) =>
+                new Promise(resolve => {
+                    finish = () => void deleteBranch(...args).then(resolve);
+                })
+        );
+
+        await press(buttonOf('Delete branch')!);
+        await settle();
+        expect(buttonOf('Delete branch')?.querySelector('[data-size]')).not.toBeNull();
+        expect(trigger()?.querySelector('[data-size]')).toBeNull();
+        expect(trigger()?.textContent).toBe('main');
+        expect(trigger()?.disabled).toBe(true);
+
+        await act(async () => finish());
+        await settle();
+        expect(confirmation()).toBeUndefined();
+        expect(trigger()?.disabled).toBe(false);
     });
 
     it('opens branch actions with the keyboard for the highlighted branch', async () => {
