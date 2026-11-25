@@ -1276,7 +1276,7 @@ describe('Create PR in the sidebar', () => {
         expect(fact.pullRequests.map(pr => pr.number)).toEqual([125, 128]);
     });
 
-    it('still offers Create PR when the branch moved past completed pull requests', async () => {
+    it('offers Create PR above completed pull requests when the branch moved past them', async () => {
         await start({
             tweak: data => {
                 noPullRequest(data);
@@ -1287,8 +1287,11 @@ describe('Create PR in the sidebar', () => {
             gitWrites: { clean: true, remote: 'level' },
         });
 
-        expect(container.querySelector('[role="row"][aria-label^="Open pull request 125 "]')).not.toBeNull();
-        expect(createPRButton()).toBeDefined();
+        const previous = container.querySelector('[role="row"][aria-label^="Open pull request 125 "]')!;
+        const create = createPRButton()!;
+        expect(previous).not.toBeNull();
+        expect(syncButton().compareDocumentPosition(create) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(create.compareDocumentPosition(previous) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
 
     it('keeps the last checked-out branch history when its worktree disappears', async () => {
