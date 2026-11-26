@@ -11,7 +11,7 @@ This thread was started by your parent; its first message is your brief. <!-- sk
 
 - The first message is the whole assignment; you cannot see your parent's conversation. Resolve gaps from code and docs, or decide as your mode says.
 - Do only what the brief asks, within its owned paths and tasks. Report changes needed outside them; do not edit files you do not own.
-- Its mode line rules. Autopilot decides and records. Semi-manual asks the person with `ask_user` in this chat, where the card waits for them while your state shows as asking. Decisions the brief lists as made are settled: do not reopen them.
+- Its mode line rules. Autopilot decides within the brief. Semi-manual asks the person with `ask_user` in this chat, where the card waits for them while your state shows as asking. Decisions the brief lists as made are settled: do not reopen them.
 - Tasks it names are assigned to you: move them through the statuses<!-- skill:orchestrate --> as clowdy:orchestrate says<!-- /skill -->. A task may be a stage inside a larger one: move yours, never the whole, which your parent verifies. Do not plan your parent's work again or create tasks it already has.
 - A message from your parent in the middle of a turn changes the brief: take it in and go on. A stop from your parent ends your turn, and a later message starts you again.
 
@@ -43,7 +43,7 @@ You may choose sub-agents or start threads while the depth limit allows, includi
 
 ## Shared files and git
 
-- Documents: write the ones the brief asks for, and decision records your mode calls for. Never edit `.clowdy/docs/index.md`: the chat the person started keeps it, so put the line it needs into your report.
+- Documents: write those the brief asks for and coordinate shared files with the parent.
 - Git: as the brief says. When it says nothing, commit nothing in a checkout that others edit and list your changed files in the report. In a worktree of your own, commit your work there and name its branch in your report. It is one your parent made and started you in with `--cwd`, or one the daemon made for you when your parent started you with `--worktree`: then your system prompt says it was made for you alone, and names its branch, started from your parent's branch or the repository's default one. Merging that branch back is your parent's job: do not merge it into another branch, switch your worktree to another branch or remove it. A worktree your system prompt names without saying that is shared with your parent and its other threads, so treat it as a checkout others edit.
 
 ## Example
@@ -53,5 +53,5 @@ Brief: "Mode: autopilot. Goal: the invoices API exports CSV. Owns `apps/api/src/
 ```text
 Verdict: done - GET /invoices/export.csv returns one row per invoice, with names that contain commas quoted
 Evidence: bun test apps/api (exit 0, 41 passed); curl of 3 invoices gave a header and 3 rows; changed apps/api/src/invoices/export.ts and export.test.ts
-Left: nothing; index.md needs no line
+Left: nothing
 ```

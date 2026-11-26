@@ -21,7 +21,7 @@ The manager switches, not you. Say it in plain words:
 
 ```text
 Done: <what changed for users>
-Checked: <what ran on the candidate> (evidence: checks/<file>)
+Checked: <what ran on the candidate>
 Ready to try: <path of the copy>. Close the app and start it from there.
 Careful: <stored data changes, anything that cannot be undone>, or "nothing"
 ```

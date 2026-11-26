@@ -107,7 +107,7 @@ function projectFacts(project: Project, cwd: string, worktreeOf?: string): strin
             ? `the person's personal space, a folder at ${folder} that belongs to no repository`
             : `folder at ${folder}`;
 
-        return `Project: ${project.name}, ${where}, ${keys}, project documents in .clowdy/docs/.`;
+        return `Project: ${project.name}, ${where}, ${keys}.`;
     }
 
     const folders = project.folders.map(({ path }, index) => {
@@ -124,7 +124,6 @@ function projectFacts(project: Project, cwd: string, worktreeOf?: string): strin
         `Project: ${project.name}, ${keys}, folders (use absolute paths outside the folder you work in):`,
         ...folders,
         'Each folder may have its own AGENTS.md or CLAUDE.md; read it before you change files in that folder.',
-        "Documents: each folder has its own .clowdy/docs/. A document about one folder goes into that folder's; one about several folders or the whole project goes into the main folder's.",
     ].join('\n');
 }
 
@@ -145,7 +144,9 @@ export function systemPrompt(
         'Clowdy is a desktop app where a person who manages software work chats with an orchestrator and watches tasks, agents and documents while agents do the engineering.',
         skillAvailable(skillsDir, ENTRY_SKILL) ? INTRO : 'You are the orchestrator of a Clowdy chat.',
         chat?.parent && threadIntro(chat.parent, skillAvailable(skillsDir, THREAD_SKILL)),
-        `Mode: ${modeLabel(mode)}.`,
+        mode === 'semi'
+            ? 'Mode: semi-manual. Ask the user about significant unresolved product or scope decisions with ask_user; decide routine matters yourself.'
+            : 'Mode: autopilot. Decide within the user’s request and continue independently; report significant choices and stop when the user’s input is necessary.',
         projectFacts(project, cwd, chat?.workspace?.folder),
         terminalsDir &&
             `The app's terminal logs for this project are in ${terminalsDir}, one plain file per shell. Read one when the person mentions the terminal.`,

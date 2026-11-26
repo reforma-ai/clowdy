@@ -183,7 +183,7 @@ describe('the system skills and the tools the daemon gives agents', () => {
                 .matchAll(/^\s*ask_user\((\{[\s\S]*?\n\s*\})\)/gm),
         ];
 
-        expect(cards.length).toBeGreaterThanOrEqual(3);
+        expect(cards.length).toBeGreaterThanOrEqual(1);
 
         for (const [, literal] of cards) {
             // The examples are plain object literals, so JavaScript can read them.

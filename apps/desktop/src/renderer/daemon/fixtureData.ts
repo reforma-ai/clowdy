@@ -157,29 +157,10 @@ function fixtureSkills(projectId: ProjectId): FixtureSkill[] {
     return [
         skill(
             'system',
-            'clowdy:autopilot',
-            'How to work without asking the user. Sort every fork, decide significant ones by explicit criteria and record them, and report only true blockers.'
-        ),
-        skill(
-            'system',
-            'clowdy:docs',
-            "The contract for a project's documents: layout, file names, facts versus plans, decisions and how to supersede them, and how to edit them safely."
-        ),
-        skill(
-            'system',
             'clowdy:orchestrate',
             'Entry skill of every chat: classify the message, plan a task graph, do the work yourself or with your own sub-agents, verify the result with commands, and report briefly.'
         ),
-        skill(
-            'system',
-            'clowdy:scaffold',
-            'Start a new application from nothing: product statement, stack, one verified skeleton, then the first task graph.'
-        ),
-        skill(
-            'system',
-            'clowdy:semi-manual',
-            'Involve the user in the decisions that matter through question cards, then build with autopilot discipline.'
-        ),
+        skill('system', 'clowdy:thread', 'Work on an assignment from a parent chat and report the result.'),
         skill(
             'user',
             'user:deploy',
