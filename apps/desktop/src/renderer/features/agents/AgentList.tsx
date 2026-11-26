@@ -1,17 +1,8 @@
 import { Button } from '@clowdy/components/Button';
 import { Input } from '@clowdy/components/Input';
-import {
-    GridList,
-    GridListItem,
-    GridListSection,
-    listBoxItemDataShow,
-    Menu,
-    MenuItem,
-    MenuSection,
-    useCellEditMode,
-} from '@clowdy/components/List';
+import { GridList, GridListItem, GridListSection, listBoxItemDataShow, useCellEditMode } from '@clowdy/components/List';
 import { Panel, PanelContent } from '@clowdy/components/Panel';
-import { Popover, PopoverScroll, PopoverTrigger, useContextMenu } from '@clowdy/components/Popover';
+import { Popover, PopoverTrigger, useContextMenu } from '@clowdy/components/Popover';
 import { Show } from '@clowdy/components/Show';
 import {
     Archive,
@@ -81,6 +72,7 @@ import { ChatIcon, ChatStatus } from './ChatIcon';
 import { chatListPreferences } from './chatListPreferences';
 import { GroupFolderName } from './GroupFolderName';
 import { openNewChat } from './openNewChat';
+import { ProjectMenu } from './ProjectMenu';
 import { StarCard } from './StarCard';
 import { useChatListOrder } from './useChatListOrder';
 import { useSidebarWorktrees } from './useSidebarWorktrees';
@@ -139,9 +131,9 @@ interface ChatActions {
 
 /**
  * The project's agents: the row that starts a chat, then the chats in use in the person's order, each with what works for it below: the native sub-agents it
- * started and the threads its agents started in one list, oldest first, folded until the person opens them, except what works (with Expand running agents on)
+ * started and the threads its agents started in one list, oldest first, folded until the person opens them, except what works (with Expand active threads on)
  * or waits for the person. Archived chats are not here, they are in the archive's list (the button
- * in the heading, beside the filters), and take their threads with them. `missing` are the folders gone from the disk (`Screen` reads them once for the list and the new-chat page): their group is marked and its button is off. With the menu's Group chats by folder on (it is, until the person turns it off), the
+ * in the heading, beside the project menu), and take their threads with them. `missing` are the folders gone from the disk (`Screen` reads them once for the list and the new-chat page): their group is marked and its button is off. With the menu's folder layout (the default), the
  * chats stand in a group for the folder they work in, under a heading that folds the group. Its name opens the folder's menu (`GroupFolderName`), and the menu and heading both offer a new chat in that folder.
  */
 export function AgentList({
@@ -672,7 +664,7 @@ export function AgentList({
         <Panel side="left" className={isCovered ? styles.covered : undefined}>
             <SidebarHeading ref={heading} title={<ProjectSelect />} className={styles.heading}>
                 <ArchiveButton anchor={heading} />
-                <FilterMenu />
+                <ProjectMenu />
             </SidebarHeading>
 
             <PanelContent contentClass={styles.content}>
@@ -731,80 +723,6 @@ export function AgentList({
                 )}
             </Show>
         </Panel>
-    );
-}
-
-/**
- * The header's `⋯`: whether the list shows finished threads and sub-agents, whether the agents that work are listed under a folded chat, and whether chats
- * stand in groups by folder.
- */
-function FilterMenu() {
-    const ui = useProjectUi();
-    const { showFinishedThreads, expandRunningAgents } = chatListPreferences;
-    const [isOpen, setIsOpen] = useState(false);
-    const shown = [
-        ...(showFinishedThreads ? ['finished'] : []),
-        ...(expandRunningAgents ? ['running'] : []),
-        ...(ui.groupByFolder ? ['folders'] : []),
-        ...(ui.groupByWorktree ? ['worktrees'] : []),
-    ];
-
-    return (
-        <PopoverTrigger isOpen={isOpen} onOpenChange={setIsOpen}>
-            <Button variant="filling" size="sm" iconOnly aria-label="Filters" tooltip="Filters">
-                <More />
-            </Button>
-            <Popover placement="bottom end" spacing="xs" width={240}>
-                <PopoverScroll>
-                    <Menu aria-label="Filters" size="sm">
-                        <MenuSection
-                            aria-label="Show"
-                            selectionMode="multiple"
-                            selectedKeys={shown}
-                            onSelectionChange={keys => {
-                                const on = (key: string) => keys === 'all' || keys.has(key);
-
-                                if (on('finished') !== showFinishedThreads)
-                                    chatListPreferences.setShowFinishedThreads(!showFinishedThreads);
-                                if (on('running') !== expandRunningAgents)
-                                    chatListPreferences.setExpandRunningAgents(!expandRunningAgents);
-                                if (on('folders') !== ui.groupByFolder) ui.setGroupByFolder(!ui.groupByFolder);
-                                if (on('worktrees') !== ui.groupByWorktree) ui.setGroupByWorktree(!ui.groupByWorktree);
-                            }}
-                        >
-                            <MenuItem
-                                id="finished"
-                                textValue="Show finished sub-threads"
-                                endAffix={showFinishedThreads ? <Check /> : undefined}
-                            >
-                                Show finished sub-threads
-                            </MenuItem>
-                            <MenuItem
-                                id="running"
-                                textValue="Expand running agents"
-                                endAffix={expandRunningAgents ? <Check /> : undefined}
-                            >
-                                Expand running agents
-                            </MenuItem>
-                            <MenuItem
-                                id="folders"
-                                textValue="Group chats by folder"
-                                endAffix={ui.groupByFolder ? <Check /> : undefined}
-                            >
-                                Group chats by folder
-                            </MenuItem>
-                            <MenuItem
-                                id="worktrees"
-                                textValue="Group chats by worktree"
-                                endAffix={ui.groupByWorktree ? <Check /> : undefined}
-                            >
-                                Group chats by worktree
-                            </MenuItem>
-                        </MenuSection>
-                    </Menu>
-                </PopoverScroll>
-            </Popover>
-        </PopoverTrigger>
     );
 }
 

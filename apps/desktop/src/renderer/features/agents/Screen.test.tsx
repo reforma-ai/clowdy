@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     createFixtureData,
     FIXTURE_EMPTY_PROJECT_ID,
+    FIXTURE_PERSONAL_PROJECT_ID,
     FIXTURE_PROJECT_ID,
     FIXTURE_WORKSPACE_CHAT_ID,
     type FixtureData,
@@ -105,10 +106,20 @@ const press = async (target: HTMLElement) =>
         target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
         target.click();
     });
-const menuItem = (name: string) =>
-    [...document.body.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find(row =>
-        row.textContent?.includes(name)
-    )!;
+const menuItem = (name: string) => {
+    const rows = [...document.body.querySelectorAll<HTMLElement>('[role^="menuitem"]')];
+    return (rows.find(row => row.textContent?.trim() === name) ?? rows.find(row => row.textContent?.includes(name)))!;
+};
+
+/** Opens a submenu the way a keyboard user does, so both the menu and its controls are available. */
+const openProjectSubmenu = async (name: 'Layout' | 'Filter') => {
+    await press(buttonNamed('Project menu'));
+    await act(async () => {
+        menuItem(name).dispatchEvent(
+            new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true })
+        );
+    });
+};
 
 beforeEach(async () => {
     chatListPreferences.setShowFinishedThreads(true);
@@ -382,10 +393,12 @@ describe('grouped by folder', () => {
     const folderLine = () => container.querySelector<HTMLElement>('[role="group"][aria-label^="Current place:"]');
     const folderItem = (name: string) =>
         [...document.body.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find(row => row.textContent === name)!;
-    const filtersMenu = async () => {
-        await press(container.querySelector<HTMLElement>('button[aria-label="Filters"]')!);
+    const layoutMenu = async () => {
+        await openProjectSubmenu('Layout');
 
-        return [...document.body.querySelectorAll('[role^="menuitem"]')].map(row => row.textContent);
+        return [...document.body.querySelectorAll('[role="menu"][aria-label="Layout"] [role^="menuitem"]')].map(
+            row => row.textContent
+        );
     };
 
     /** The fixture project with a second folder, `car-rental-api`, where c-2 works; the switch is on unless `grouping` says otherwise, and `null` keeps no choice. */
@@ -416,33 +429,39 @@ describe('grouped by folder', () => {
         return data;
     }
 
-    it('offers the switch to a project of one folder as well, on until it is turned off', async () => {
+    it('offers a layout choice even for a project of one folder', async () => {
         // A project that kept no choice groups, whatever number of folders it has.
-        expect(await filtersMenu()).toEqual([
-            'Show finished sub-threads',
-            'Expand running agents',
-            'Group chats by folder',
-            'Group chats by worktree',
-        ]);
-        expect(menuItem('Group chats by folder').getAttribute('aria-checked')).toBe('true');
+        expect(await layoutMenu()).toEqual(['Simple list', 'By folder', 'By folder and worktree']);
+        expect(menuItem('By folder').getAttribute('aria-checked')).toBe('true');
         expect(rowKeys()).toContain(MAIN_GROUP);
 
         await restart({ grouping: null });
 
-        expect(await filtersMenu()).toEqual([
-            'Show finished sub-threads',
-            'Expand running agents',
-            'Group chats by folder',
-            'Group chats by worktree',
-        ]);
-        expect(menuItem('Group chats by folder').getAttribute('aria-checked')).toBe('true');
+        expect(await layoutMenu()).toEqual(['Simple list', 'By folder', 'By folder and worktree']);
+        expect(menuItem('By folder').getAttribute('aria-checked')).toBe('true');
         expect(rowKeys()).toContain(head(MAIN));
 
-        await press(menuItem('Group chats by folder'));
+        await press(menuItem('Simple list'));
         expect(ui().groupByFolder).toBe(false);
         await draw();
 
         expect(rowKeys()).not.toContain(head(MAIN));
+    });
+
+    it('switches among the three list layouts and shows the selected mode', async () => {
+        await openProjectSubmenu('Layout');
+        await press(menuItem('By folder and worktree'));
+        expect([ui().groupByFolder, ui().groupByWorktree]).toEqual([true, true]);
+
+        await openProjectSubmenu('Layout');
+        expect(menuItem('By folder and worktree').getAttribute('aria-checked')).toBe('true');
+        await press(menuItem('Simple list'));
+        expect([ui().groupByFolder, ui().groupByWorktree]).toEqual([false, false]);
+
+        await openProjectSubmenu('Layout');
+        expect(menuItem('Simple list').getAttribute('aria-checked')).toBe('true');
+        await press(menuItem('By folder'));
+        expect([ui().groupByFolder, ui().groupByWorktree]).toEqual([true, false]);
     });
 
     it('groups a project of one folder too, and keeps the list flat once the switch is off', async () => {
@@ -1089,14 +1108,60 @@ describe('grouped by folder', () => {
 });
 
 describe('the heading', () => {
-    it('has the history, as a button, to the left of the filters', () => {
+    it('has the history, as a button, to the left of the project menu', () => {
         // The rows have an Archive of their own, as a quick action: the heading's buttons are the ones outside the list.
         const buttons = [
-            ...container.querySelectorAll<HTMLElement>('button[aria-label="History"], button[aria-label="Filters"]'),
+            ...container.querySelectorAll<HTMLElement>(
+                'button[aria-label="History"], button[aria-label="Project menu"]'
+            ),
         ].filter(button => !button.closest('[role="grid"]'));
 
-        expect(buttons.map(button => button.getAttribute('aria-label'))).toEqual(['History', 'Filters']);
+        expect(buttons.map(button => button.getAttribute('aria-label'))).toEqual(['History', 'Project menu']);
         expect(buttons[0].parentElement).toBe(buttons[1].parentElement);
+    });
+
+    it('opens settings for the selected project', async () => {
+        await press(buttonNamed('Project menu'));
+        await press(menuItem('Project settings'));
+
+        expect([store.ui.settingsOpen, store.ui.settingsPage, store.ui.settingsProjectId]).toEqual([
+            true,
+            'projects',
+            FIXTURE_PROJECT_ID,
+        ]);
+    });
+
+    it('adds the folder selected from the project menu', async () => {
+        const previous = window.desktop;
+        const choose = vi.fn(async () => ['/Users/dev/notes']);
+        (window as { desktop?: unknown }).desktop = { chooseDirectories: choose };
+
+        try {
+            await press(buttonNamed('Project menu'));
+            await press(menuItem('Add folder'));
+            await act(async () => void (await new Promise(resolve => setTimeout(resolve, 0))));
+
+            expect(choose).toHaveBeenCalledOnce();
+            expect(store.ui.settingsOpen).toBe(false);
+            expect(
+                store.projects.find(project => project.id === FIXTURE_PROJECT_ID)?.folders.map(folder => folder.path)
+            ).toContain('/Users/dev/notes');
+        } finally {
+            (window as { desktop?: unknown }).desktop = previous;
+        }
+    });
+
+    it('does not offer adding folders to the personal space', async () => {
+        await draw(() => store.selectProject(FIXTURE_PERSONAL_PROJECT_ID));
+        await draw();
+        await press(buttonNamed('Project menu'));
+
+        expect(
+            [...document.body.querySelectorAll('[role^="menuitem"]')].some(row =>
+                row.textContent?.includes('Add folder')
+            )
+        ).toBe(false);
+        expect(menuItem('Project settings')).toBeTruthy();
     });
 
     it('has the new-chat page open by its row, which is selected only while it is open', async () => {
@@ -1499,20 +1564,13 @@ describe('threads', () => {
         expect(rowKeys().filter(key => key?.startsWith('c-6'))).toEqual(['c-6', 'c-6a', 'c-6b', 'c-6c', 'c-6e']);
     });
 
-    it('has a check in the Filters menu, Show finished sub-threads, that hides the threads whose run is over', async () => {
+    it('hides finished threads when their filter is turned off', async () => {
         await draw(() => ['c-6', 'c-6a'].forEach(id => ui().toggleChatExpanded(id)));
-        await press(container.querySelector<HTMLElement>('button[aria-label="Filters"]')!);
+        await openProjectSubmenu('Filter');
 
-        expect(menuItem('Show finished sub-threads').getAttribute('aria-checked')).toBe('true');
-        expect([...document.body.querySelectorAll('[role^="menuitem"]')].map(row => row.textContent)).toEqual([
-            'Show finished sub-threads',
-            'Expand running agents',
-            'Group chats by folder',
-            'Group chats by worktree',
-        ]);
-        expect(document.body.querySelector('[role="menu"] header')).toBeNull();
+        expect(menuItem('Show completed threads').getAttribute('aria-checked')).toBe('true');
 
-        await press(menuItem('Show finished sub-threads'));
+        await press(menuItem('Show completed threads'));
         expect(chatListPreferences.showFinishedThreads).toBe(false);
         await draw();
 
@@ -1872,9 +1930,9 @@ describe('worktree cards', () => {
     it('keeps flat order when disabled and puts checkout chats before worktree cards when enabled', async () => {
         await restart();
         const before = rowKeys();
-        await press(buttonNamed('Filters'));
-        expect(menuItem('Group chats by worktree').getAttribute('aria-checked')).toBe('false');
-        await press(menuItem('Group chats by worktree'));
+        await openProjectSubmenu('Layout');
+        expect(menuItem('By folder and worktree').getAttribute('aria-checked')).toBe('false');
+        await press(menuItem('By folder and worktree'));
         await draw();
         expect(
             rowOf('c-1').compareDocumentPosition(rowOf(workspaceKey())) & Node.DOCUMENT_POSITION_FOLLOWING

@@ -1096,6 +1096,27 @@ describe('UiStore', () => {
         });
     });
 
+    it('keeps each chat layout per project across a restart', () => {
+        const storage = memoryStorage();
+        const store = new UiStore(storage);
+        const ui = store.forProject('p1');
+
+        ui.setChatListLayout('simple');
+        expect([ui.groupByFolder, ui.groupByWorktree]).toEqual([false, false]);
+        ui.setChatListLayout('worktree');
+        expect([ui.groupByFolder, ui.groupByWorktree]).toEqual([true, true]);
+        expect(new UiStore(storage).forProject('p1')).toMatchObject({ groupByFolder: true, groupByWorktree: true });
+        expect(store.forProject('p2')).toMatchObject({ groupByFolder: true, groupByWorktree: false });
+        ui.setChatListLayout('folder');
+        expect([ui.groupByFolder, ui.groupByWorktree]).toEqual([true, false]);
+    });
+
+    it('migrates the old worktree-only layout to folders with worktrees', () => {
+        const storage = memoryStorage({ 'clowdy:ui:p1': '{"groupByFolder":false,"groupByWorktree":true}' });
+
+        expect(new UiStore(storage).forProject('p1')).toMatchObject({ groupByFolder: true, groupByWorktree: true });
+    });
+
     it('opens the folded group of a chat opened from elsewhere, and changes nothing when it is open', () => {
         const ui = new UiStore().forProject('p1');
 
