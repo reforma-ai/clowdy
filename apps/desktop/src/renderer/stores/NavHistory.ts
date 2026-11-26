@@ -1,6 +1,8 @@
 import { compareStructural, makeAutoObservable, observableShallow, reaction, when } from 'mobx';
 
-import type { Project, ProjectId } from '@clowdy/protocol';
+import { resolveSelection, visibleChats } from '../features/agents/agentTree';
+
+import type { ChatId, Project, ProjectId } from '@clowdy/protocol';
 import type { ProjectState } from './ProjectState';
 import type { ProjectView, UiStore } from './UiStore';
 
@@ -39,6 +41,7 @@ export class NavHistory {
     private entries: NavSnapshot[] = [];
     /** The entry the window is on; `-1` before recording starts. */
     private index = -1;
+    private recentChats = new Map<ProjectId, ChatId[]>();
     #disposers: Array<() => void> = [];
 
     constructor(private readonly host: NavHost) {
@@ -67,6 +70,17 @@ export class NavHistory {
         this.#go(1);
     }
 
+    get canSwitchChat(): boolean {
+        return this.#previousChat() !== undefined;
+    }
+
+    switchChat(): void {
+        const previous = this.#previousChat();
+        const projectId = this.host.selectedProjectId;
+
+        if (previous && projectId) this.host.ui.forProject(projectId).openChat(previous);
+    }
+
     dispose(): void {
         this.#disposers.forEach(dispose => dispose());
         this.#disposers = [];
@@ -82,6 +96,11 @@ export class NavHistory {
                 () => this.#observe(),
                 snapshot => snapshot && this.#record(snapshot),
                 { equals: compareStructural }
+            ),
+            reaction(
+                () => this.#visibleChat(),
+                visible => visible && this.#rememberChat(visible.projectId, visible.chatId),
+                { equals: compareStructural, fireImmediately: true }
             )
         );
     }
@@ -102,6 +121,45 @@ export class NavHistory {
 
         this.entries.splice(this.index + 1);
         this.#push(snapshot);
+    }
+
+    #rememberChat(projectId: ProjectId, chatId: ChatId): void {
+        const recent = this.recentChats.get(projectId) ?? [];
+
+        if (recent[0] !== chatId)
+            this.recentChats.set(projectId, [chatId, ...recent.filter(id => id !== chatId)].slice(0, 2));
+    }
+
+    /** Match the chat the screen actually shows, including its fallback when no chat is selected. */
+    #visibleChat(): { projectId: ProjectId; chatId: ChatId } | undefined {
+        const projectId = this.host.selectedProjectId;
+
+        if (!projectId) return undefined;
+
+        const state = this.host.projectState(projectId);
+        if (state?.status !== 'ready') return undefined;
+
+        const ui = this.host.ui.forProject(projectId);
+        const list = visibleChats([...state.chats.values()], ui.chatOrder);
+        const selection = resolveSelection(state.chats, list, state.runs, ui.chatId, ui.runId, ui.draft);
+
+        return selection.chat && !selection.run ? { projectId, chatId: selection.chat.id } : undefined;
+    }
+
+    #previousChat(): ChatId | undefined {
+        const projectId = this.host.selectedProjectId;
+
+        if (!projectId) return undefined;
+
+        const recent = this.recentChats.get(projectId) ?? [];
+        if (recent.length < 2) return undefined;
+
+        const state = this.host.projectState(projectId);
+        const current = this.#visibleChat()?.chatId;
+        const target = recent.find(id => id !== current);
+        const chat = target && state?.chats.get(target);
+
+        return chat && chat.archivedAt === undefined ? target : undefined;
     }
 
     #push(snapshot: NavSnapshot): void {
