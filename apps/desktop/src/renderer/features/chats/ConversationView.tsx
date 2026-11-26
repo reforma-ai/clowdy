@@ -20,6 +20,14 @@ import type { ConversationLinks } from './useStreamLinks';
 
 const NO_ITEMS: StreamItem[] = [];
 
+/** Turn the daemon's queue and pause reasons into the agent's message, keeping unknown formats intact. */
+function usageLimitMessage(reason: string): string {
+    return reason.replace(
+        /^(.+?) is at its usage limit until (.+?)(?:; this run continues then)?$/,
+        (_, engine: string, time: string) => `I've hit the ${engine} usage limit. I'll continue after ${time}.`
+    );
+}
+
 export interface ConversationViewProps
     extends Pick<
         StreamViewProps,
@@ -110,7 +118,7 @@ export function ConversationView({
     // The daemon's usage-limit reason carries the reset time; other queue and retry reasons remain ordinary live lines.
     const usageLimit =
         (shown === 'queued' || shown === 'blocked') && run?.statusReason?.includes(' is at its usage limit until ')
-            ? run.statusReason
+            ? usageLimitMessage(run.statusReason)
             : undefined;
     // The live line follows what the person reads of the run: none while a card waits for them.
     const working =
