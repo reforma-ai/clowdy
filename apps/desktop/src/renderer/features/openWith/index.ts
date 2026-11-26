@@ -1,5 +1,5 @@
 export { AppIcon } from './AppIcon';
-export { actionIcon, OpenWithMenu } from './OpenWithMenu';
+export { actionIcon, actionItem, OpenInSubmenu, OpenWithMenu } from './OpenWithMenu';
 export { canOpenPaths, chosenApp, chosenPrograms, openEffects, useOpenApps } from './openApps';
 export {
     absolutePath,

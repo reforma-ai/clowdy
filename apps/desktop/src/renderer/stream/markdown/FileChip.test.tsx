@@ -95,6 +95,7 @@ afterEach(() => {
     act(() => root.unmount());
     container.remove();
     store.dispose();
+    window.desktop = undefined;
 });
 
 describe('FileChip', () => {
@@ -155,6 +156,160 @@ describe('FileChip', () => {
         await act(async () => item('Copy relative path').click());
 
         expect(writeText).toHaveBeenCalledExactlyOnceWith('src/gone.ts');
+    });
+
+    describe('a file that is not where the message wrote it', () => {
+        const OPENED = 'apps/web/src/Price.tsx';
+        const match = (path: string) => ({ folderId: FOLDER.id, path });
+        const search = (...paths: string[]) =>
+            vi.spyOn(store.transport, 'getProjectFiles').mockResolvedValue(paths.map(match));
+        // Only the file the search found is on the disk: the written path is not.
+        const gone = (...found: string[]) =>
+            vi
+                .mocked(openInFiles)
+                .mockImplementation(async (_root, _project, _place, relative) => found.includes(relative));
+
+        it('opens the one file that ends with a bare name on a press, with no menu and no toast', async () => {
+            const find = search(OPENED);
+            gone(OPENED);
+            vi.mocked(kindOnDisk).mockResolvedValue(undefined);
+            await draw('Price.tsx');
+            await press();
+            await settle();
+
+            expect(find).toHaveBeenCalledWith(FIXTURE_PROJECT_ID, 'Price.tsx', 100, undefined);
+            expect(openInFiles).toHaveBeenLastCalledWith(store, FIXTURE_PROJECT_ID, { folder: FOLDER }, OPENED);
+            expect(items()).toEqual([]);
+            expect(toasts.error).not.toHaveBeenCalled();
+        });
+
+        it('matches by whole names of folders and lets the case of the name go', async () => {
+            search('apps/web/src/Price.tsx', 'apps/web/src/MyPrice.tsx', 'apps/web/src/price.tsx.bak', 'Price.tsx');
+            gone('apps/web/src/Price.tsx');
+            vi.mocked(kindOnDisk).mockResolvedValue(undefined);
+            await draw('src/price.tsx');
+            await press();
+            await settle();
+
+            expect(openInFiles).toHaveBeenLastCalledWith(store, FIXTURE_PROJECT_ID, { folder: FOLDER }, OPENED);
+        });
+
+        it('lists the files on a press when several end with the name, and opens the one that is pressed', async () => {
+            search('src/a/index.ts', 'src/b/index.ts');
+            gone('src/a/index.ts', 'src/b/index.ts');
+            vi.mocked(kindOnDisk).mockResolvedValue(undefined);
+            await draw('index.ts');
+            await press();
+            await settle();
+
+            expect(document.body.querySelector('[role="menu"] header')?.textContent).toBe('Several files match');
+            expect(items()).toEqual(['src/a/index.ts', 'src/b/index.ts']);
+            expect(toasts.error).not.toHaveBeenCalled();
+
+            await act(async () => item('src/b/index.ts').click());
+
+            expect(openInFiles).toHaveBeenLastCalledWith(
+                store,
+                FIXTURE_PROJECT_ID,
+                { folder: FOLDER },
+                'src/b/index.ts'
+            );
+        });
+
+        it('lists the first ten of a longer list', async () => {
+            const many = Array.from({ length: 14 }, (_, index) => `pkg${index}/index.ts`);
+
+            search(...many);
+            vi.mocked(kindOnDisk).mockResolvedValue(undefined);
+            await draw('index.ts');
+            await rightClick();
+            await settle();
+
+            expect(items()).toEqual(many.slice(0, 10));
+        });
+
+        it('gives the menu of a file to the one file found, on a right-click, with its own path to copy', async () => {
+            search(OPENED);
+            vi.mocked(kindOnDisk).mockImplementation(async (_root, _project, _place, relative) =>
+                relative === OPENED ? 'file' : undefined
+            );
+            await draw('Price.tsx');
+            await rightClick();
+            await settle();
+
+            expect(items()).toEqual(MENU);
+
+            await act(async () => item('Copy path').click());
+
+            expect(writeText).toHaveBeenLastCalledWith(`${FOLDER.path}/${OPENED}`);
+            expect(writeText).toHaveBeenCalledTimes(1);
+        });
+
+        it('says it is looking while the search is out, then that there is no such file when nothing ends with the name', async () => {
+            let answer: (paths: Array<{ folderId: string; path: string }>) => void = () => undefined;
+
+            vi.spyOn(store.transport, 'getProjectFiles').mockReturnValue(
+                new Promise(resolve => {
+                    answer = resolve as typeof answer;
+                })
+            );
+            vi.mocked(kindOnDisk).mockResolvedValue(undefined);
+            await draw('Gone.tsx');
+            await rightClick();
+            await settle();
+
+            expect(document.body.querySelector('[role="menu"] header')?.textContent).toBe('Looking for this file');
+
+            await act(async () => answer([]));
+            await settle();
+
+            expect(document.body.querySelector('[role="menu"] header')?.textContent).toBe("This file doesn't exist");
+            expect(items()).toEqual(['Copy path', 'Copy relative path']);
+        });
+
+        it('says there is no such file when the search fails', async () => {
+            vi.spyOn(store.transport, 'getProjectFiles').mockRejectedValue(new Error('no daemon'));
+            vi.mocked(openInFiles).mockResolvedValue(false);
+            vi.mocked(kindOnDisk).mockResolvedValue(undefined);
+            await draw('Gone.tsx');
+            await press();
+            await settle();
+
+            expect(toasts.error).toHaveBeenCalledWith({ message: 'Couldn’t open this path' });
+            expect(document.body.querySelector('[role="menu"] header')?.textContent).toBe("This file doesn't exist");
+        });
+
+        it('does not look for a folder, nor in another folder of the project', async () => {
+            const find = search(OPENED);
+
+            vi.mocked(openInFiles).mockResolvedValue(false);
+            vi.mocked(kindOnDisk).mockResolvedValue(undefined);
+            await draw('markdown/');
+            await press();
+            await settle();
+
+            expect(find).not.toHaveBeenCalled();
+            expect(document.body.querySelector('[role="menu"] header')?.textContent).toBe("This folder doesn't exist");
+        });
+
+        it('leaves a file found in another folder out', async () => {
+            vi.spyOn(store.transport, 'getProjectFiles').mockResolvedValue([
+                { folderId: 'fld_other', path: 'src/Price.tsx' },
+            ]);
+            vi.mocked(openInFiles).mockResolvedValue(false);
+            vi.mocked(kindOnDisk).mockResolvedValue(undefined);
+            await draw('Price.tsx');
+            await press();
+            await settle();
+
+            expect(openInFiles).toHaveBeenCalledExactlyOnceWith(
+                store,
+                FIXTURE_PROJECT_ID,
+                { folder: FOLDER },
+                'Price.tsx'
+            );
+            expect(document.body.querySelector('[role="menu"] header')?.textContent).toBe("This file doesn't exist");
+        });
     });
 
     it("says it of a folder too, and keeps no relative copy for the project's own folder", async () => {
@@ -324,5 +479,60 @@ describe('FileChip', () => {
         await act(async () => item('Copy path').click());
 
         expect(writeText).toHaveBeenCalledExactlyOnceWith('/Users/me/elsewhere/a.ts');
+    });
+
+    describe('in no folder of the project, in the desktop app', () => {
+        const openPath = vi.fn(async () => undefined);
+        const drawWithApps = async (path: string) => {
+            window.desktop = {
+                getOpenApps: async () => ({
+                    editors: [{ id: 'cursor', name: 'Cursor' }],
+                    terminals: [{ id: 'ghostty', name: 'Ghostty' }],
+                    fileManagers: [{ id: 'finder', name: 'Finder' }],
+                }),
+                openPath,
+            } as unknown as typeof window.desktop;
+            await draw(path);
+            await press();
+            await settle();
+        };
+        const submenu = () =>
+            [...document.body.querySelectorAll<HTMLElement>('[aria-label="Open in"] [role="menuitem"]')].map(
+                row => row.textContent
+            );
+
+        beforeEach(() => openPath.mockClear());
+
+        it('shows a file in the file manager, which is what the chip of a file outside the project is for', async () => {
+            await drawWithApps('/tmp/qc-shots/inset-panel.png');
+
+            expect(items()).toEqual(['Copy path', 'Open in…']);
+
+            await pressRow(item('Open in…'));
+
+            expect(submenu()).toEqual(['Open in Cursor', 'Show in Finder']);
+
+            await pressRow(item('Show in Finder'));
+
+            expect(openPath).toHaveBeenCalledExactlyOnceWith('/tmp/qc-shots/inset-panel.png', {
+                kind: 'fileManager',
+                id: 'finder',
+            });
+            expect(openInFiles).not.toHaveBeenCalled();
+        });
+
+        it('opens a folder in the file manager and the terminal program, and has no relative copy or GitHub', async () => {
+            await drawWithApps('/tmp/qc-shots/');
+            await pressRow(item('Open in…'));
+
+            expect(items().filter(text => text?.startsWith('Copy'))).toEqual(['Copy path']);
+            expect(submenu()).toEqual(['Open in Cursor', 'Open in Finder', 'Open in Ghostty']);
+        });
+
+        it('has only the copy for a path written from the folder that climbs out of it', async () => {
+            await drawWithApps('../elsewhere/a.png');
+
+            expect(items()).toEqual(['Copy path']);
+        });
     });
 });
