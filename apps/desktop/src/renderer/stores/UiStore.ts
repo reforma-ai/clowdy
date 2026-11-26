@@ -73,7 +73,6 @@ interface StoredProjectUi {
     groupByWorktree: boolean;
     worktreeOrder: string[];
     collapsedWorktrees: string[];
-    expandedUnusedWorktrees: string[];
     agentsFoldedByChat: Record<ChatId, boolean>;
     sidePanelOpen: boolean;
     sidePanelTab: SidePanelTab;
@@ -192,7 +191,6 @@ export class ProjectUi {
     groupByWorktree = false;
     worktreeOrder: readonly string[] = [];
     collapsedWorktrees: readonly string[] = [];
-    expandedUnusedWorktrees: readonly string[] = [];
     /** The side panel at the right of the window is open for this project. Closed until the person opens it, and kept for the project, whichever chat is on show. */
     sidePanelOpen = false;
     /** The tab the side panel shows, kept for the project: the one it was left on. */
@@ -279,7 +277,6 @@ export class ProjectUi {
                 Array.isArray(value) ? [...new Set(value.filter(id => typeof id === 'string'))] : [];
             this.worktreeOrder = strings(stored.worktreeOrder);
             this.collapsedWorktrees = strings(stored.collapsedWorktrees);
-            this.expandedUnusedWorktrees = strings(stored.expandedUnusedWorktrees);
             // A project-wide choice from an older version cannot identify which chat was opened.
             if (
                 agentsFolded === undefined &&
@@ -316,7 +313,6 @@ export class ProjectUi {
             collapsedFolders: observableRef,
             worktreeOrder: observableRef,
             collapsedWorktrees: observableRef,
-            expandedUnusedWorktrees: observableRef,
             tasksCollapsed: observableRef,
         });
         reaction(
@@ -331,7 +327,6 @@ export class ProjectUi {
                 groupByWorktree: this.groupByWorktree,
                 worktreeOrder: [...this.worktreeOrder],
                 collapsedWorktrees: [...this.collapsedWorktrees],
-                expandedUnusedWorktrees: [...this.expandedUnusedWorktrees],
                 agentsFoldedByChat: Object.fromEntries(this.#agentsFoldedByChat),
                 sidePanelOpen: this.sidePanelOpen,
                 sidePanelTab: this.sidePanelTab,
@@ -562,12 +557,6 @@ export class ProjectUi {
     expandWorktree(key: string): void {
         if (this.collapsedWorktrees.includes(key))
             this.collapsedWorktrees = this.collapsedWorktrees.filter(id => id !== key);
-    }
-
-    toggleUnusedWorktrees(key: string): void {
-        this.expandedUnusedWorktrees = this.expandedUnusedWorktrees.includes(key)
-            ? this.expandedUnusedWorktrees.filter(id => id !== key)
-            : [...this.expandedUnusedWorktrees, key];
     }
 
     setChatOrder(order: readonly ChatId[], visibleChatId?: ChatId): void {

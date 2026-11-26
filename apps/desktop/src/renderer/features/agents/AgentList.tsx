@@ -100,8 +100,7 @@ type ListEntry =
     | { kind: 'row'; row: AgentRow }
     | { kind: 'group'; group: AgentGroup; isCollapsed: boolean }
     | { kind: 'empty'; folderId: FolderId }
-    | { kind: 'worktree'; card: WorktreeCard; isCollapsed: boolean; rows: AgentRow[] }
-    | { kind: 'unused'; key: string; isCollapsed: boolean };
+    | { kind: 'worktree'; card: WorktreeCard; isCollapsed: boolean; rows: AgentRow[] };
 
 /** The key of a line's row in the grid list: a chat's id, a sub-agent's run id, or the id of a heading or a note. */
 const entryKey = (entry: ListEntry) =>
@@ -111,9 +110,7 @@ const entryKey = (entry: ListEntry) =>
           ? groupKey(entry.group.folder.id)
           : entry.kind === 'worktree'
             ? entry.card.key
-            : entry.kind === 'unused'
-              ? entry.key
-              : `${EMPTY_PREFIX}${entry.folderId}`;
+            : `${EMPTY_PREFIX}${entry.folderId}`;
 
 /** The events a row's own buttons must not pass up: they are React children of the row, so the row would take their clicks and keys as its own. */
 const ownEvents = {
@@ -209,8 +206,9 @@ export function AgentList({
     const cards = groupedByWorktree
         ? worktreeCards(chats, project.chats.values(), folders, actual, projectInfo, ui.worktreeOrder)
         : [];
-    const order = useChatListOrder(chats, openChatId, cards);
-    const { showFinishedThreads, expandRunningAgents } = chatListPreferences;
+    const { showFinishedThreads, expandRunningAgents, showUnusedWorktrees } = chatListPreferences;
+    const shownCards = cards.filter(card => (card.used ? card.roots.length > 0 : showUnusedWorktrees));
+    const order = useChatListOrder(chats, openChatId, cards, shownCards);
     // The sub-agents of every chat, found in one pass over the project's runs and not once per chat.
     const agentsByRoot = nativeAgentsByRoot(project.runs.values());
     const agentsOf = (chat: Chat): readonly Run[] =>
@@ -235,21 +233,12 @@ export function AgentList({
             openRunId: openRun?.id,
         });
     const rowEntries = (roots: readonly Chat[]): ListEntry[] => rowsOf(roots).map(row => ({ kind: 'row', row }));
-    const cardEntries = (roots: readonly Chat[], scoped: readonly WorktreeCard[], scope: string): ListEntry[] => {
+    const cardEntries = (roots: readonly Chat[], scoped: readonly WorktreeCard[]): ListEntry[] => {
         const cardEntry = (card: WorktreeCard): ListEntry => {
             const isCollapsed = ui.collapsedWorktrees.includes(card.key);
             return { kind: 'worktree', card, isCollapsed, rows: isCollapsed ? [] : rowsOf(card.roots) };
         };
-        const used = scoped.filter(card => card.used && card.roots.length > 0);
-        const unused = scoped.filter(card => !card.used);
-        const isCollapsed = !ui.expandedUnusedWorktrees.includes(scope);
-        return [
-            ...rowEntries(roots.filter(chat => !chat.workspace)),
-            ...used.map(cardEntry),
-            ...(unused.length
-                ? [{ kind: 'unused' as const, key: scope, isCollapsed }, ...(isCollapsed ? [] : unused.map(cardEntry))]
-                : []),
-        ];
+        return [...rowEntries(roots.filter(chat => !chat.workspace)), ...scoped.map(cardEntry)];
     };
     const entries: ListEntry[] = grouped
         ? agentGroups(chats, folders).flatMap((group): ListEntry[] => {
@@ -259,8 +248,7 @@ export function AgentList({
                   : groupedByWorktree
                     ? cardEntries(
                           group.roots,
-                          cards.filter(card => card.folder.id === group.folder.id),
-                          `@unused:${group.folder.id}`
+                          shownCards.filter(card => card.folder.id === group.folder.id)
                       )
                     : rowEntries(group.roots);
               return [
@@ -269,7 +257,7 @@ export function AgentList({
               ];
           })
         : groupedByWorktree
-          ? cardEntries(chats, cards, '@unused:all')
+          ? cardEntries(chats, shownCards)
           : rowEntries(chats);
 
     const visibleRows = new Map<string, AgentRow>();
@@ -356,8 +344,6 @@ export function AgentList({
             return { isExpanded: row.isExpanded, toggle: () => ui.toggleChatExpanded(row.id) };
         if (entry?.kind === 'worktree' && entry.card.roots.length > 0)
             return { isExpanded: !entry.isCollapsed, toggle: () => ui.toggleWorktreeCollapsed(entry.card.key) };
-        if (entry?.kind === 'unused')
-            return { isExpanded: !entry.isCollapsed, toggle: () => ui.toggleUnusedWorktrees(entry.key) };
 
         if (entry?.kind === 'group')
             return { isExpanded: !entry.isCollapsed, toggle: () => ui.toggleFolderCollapsed(entry.group.folder.id) };
@@ -507,32 +493,6 @@ export function AgentList({
                         />
                         {entry.rows.map(renderAgentRow)}
                     </GridListSection>
-                );
-            case 'unused':
-                return (
-                    <GridListItem
-                        key={entry.key}
-                        id={entry.key}
-                        text="Unused worktrees"
-                        className={styles.unusedWorktrees}
-                        plateless
-                    >
-                        <span className={styles.worktreeTitle} {...ownEvents}>
-                            <Button
-                                variant="filling"
-                                color="secondary"
-                                size="xs"
-                                iconOnly
-                                aria-label={`${entry.isCollapsed ? 'Expand' : 'Collapse'} unused worktrees`}
-                                aria-expanded={!entry.isCollapsed}
-                                preventFocusOnPress
-                                onPress={() => ui.toggleUnusedWorktrees(entry.key)}
-                            >
-                                {entry.isCollapsed ? <ChevronRight /> : <ChevronDown />}
-                            </Button>
-                            Unused worktrees
-                        </span>
-                    </GridListItem>
                 );
             case 'empty':
                 return (

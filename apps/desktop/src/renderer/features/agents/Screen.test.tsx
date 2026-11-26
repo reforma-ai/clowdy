@@ -124,6 +124,7 @@ const openProjectSubmenu = async (name: 'Layout' | 'Display') => {
 };
 
 beforeEach(async () => {
+    chatListPreferences.setShowUnusedWorktrees(false);
     chatListPreferences.setShowFinishedThreads(true);
     // These tests read the list as it was before working agents opened their chats by themselves; `AgentListWorking.test.tsx` has the setting on.
     chatListPreferences.setExpandRunningAgents(false);
@@ -139,6 +140,7 @@ afterEach(() => {
     act(() => reactRoot.unmount());
     container.remove();
     store.dispose();
+    chatListPreferences.setShowUnusedWorktrees(false);
     chatListPreferences.setShowFinishedThreads(true);
     chatListPreferences.setExpandRunningAgents(true);
 });
@@ -2029,21 +2031,25 @@ describe('worktree cards', () => {
         expect(ui().collapsedWorktrees).not.toContain(key);
     });
 
-    it('lists unused actual worktrees only when their section is opened', async () => {
+    it('shows unused worktrees in the list when enabled in Display', async () => {
         await restart();
         await draw(() => ui().setGroupByWorktree(true));
         expect(cardRows()).toEqual([workspaceKey()]);
-        await arrow('@unused:fld_car_rental', 'ArrowRight');
+        expect(container.textContent).not.toContain('Unused worktrees');
+        await openProjectSubmenu('Display');
+        await press(menuItem('Show unused worktrees'));
         await draw();
-        const cards = cardRows();
-        expect(cards.length).toBeGreaterThan(2);
+        expect(cardRows().length).toBeGreaterThan(2);
+        expect(container.textContent).not.toContain('Unused worktrees');
+        await press(menuItem('Show unused worktrees'));
+        await draw();
+        expect(cardRows()).toEqual([workspaceKey()]);
     });
 
     it('starts a draft in a worktree with no chats from its own menu', async () => {
         await restart();
         await draw(() => ui().setGroupByWorktree(true));
-        await arrow('@unused:fld_car_rental', 'ArrowRight');
-        await draw();
+        await draw(() => chatListPreferences.setShowUnusedWorktrees(true));
         const card = cardRows().find(key => key?.includes('search-filters'))!;
         await press(rowOf(card).querySelector<HTMLElement>('button[aria-label^="Worktree actions:"]')!);
         expect(menuItem('Open in Files')).toBeUndefined();
@@ -2165,11 +2171,24 @@ describe('worktree cards', () => {
     it('moves a card with its entire group by dragging another card', async () => {
         await restart();
         await draw(() => ui().setGroupByWorktree(true));
-        await arrow('@unused:fld_car_rental', 'ArrowRight');
-        await draw();
+        await draw(() => chatListPreferences.setShowUnusedWorktrees(true));
         const cards = cardRows();
         await drag(cards[1]!, cards[2]!);
         expect(cardRows().slice(0, 3)).toEqual([cards[0], cards[2], cards[1]]);
+    });
+
+    it('moves an occupied worktree among unused worktrees', async () => {
+        await restart();
+        await draw(() => {
+            ui().setGroupByWorktree(true);
+            chatListPreferences.setShowUnusedWorktrees(true);
+        });
+        const cards = cardRows();
+        await drag(cards[0]!, cards[1]!);
+        expect(cardRows().slice(0, 3)).toEqual([cards[1], cards[0], cards[2]]);
+        expect(
+            rowOf(FIXTURE_WORKSPACE_CHAT_ID).closest('[data-worktree-card]')?.getAttribute('data-worktree-card')
+        ).toBe(cards[0]);
     });
 
     it('keeps cross-worktree threads below their root and only shows the place indicator without another status', async () => {
@@ -2253,8 +2272,7 @@ describe('worktree cards', () => {
         await draw();
         expect(cardRows()).not.toContain(key);
         expect(rowOf('c-6a')).not.toBeNull();
-        await arrow('@unused:fld_car_rental', 'ArrowRight');
-        await draw();
+        await draw(() => chatListPreferences.setShowUnusedWorktrees(true));
         expect(cardRows()).not.toContain(key);
         expect(cardRows().length).toBeGreaterThan(0);
     });

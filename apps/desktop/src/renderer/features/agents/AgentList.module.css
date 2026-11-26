@@ -339,12 +339,6 @@
     padding-inline-start: calc(var(--clowdy-listbox-item-padding-inline) + (var(--depth) + 1) * var(--spacing-12));
 }
 
-.unusedWorktrees {
-    color: var(--color-secondary-muted-text);
-    cursor: default;
-    margin-block-start: var(--spacing-xs);
-}
-
 .worktreeHeader[data-pending] {
     color: var(--color-secondary-muted-text);
 }

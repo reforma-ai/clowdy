@@ -59,7 +59,12 @@ function targetAt(event: DragEvent): DropTarget | null {
     return { targetId, indicatorId: last.dataset.key ?? targetId, position: 'after' };
 }
 
-export function useChatListOrder(chats: readonly Chat[], visibleChatId?: ChatId, cards: readonly WorktreeCard[] = []) {
+export function useChatListOrder(
+    chats: readonly Chat[],
+    visibleChatId?: ChatId,
+    cards: readonly WorktreeCard[] = [],
+    shownCards: readonly WorktreeCard[] = cards
+) {
     const ui = useProjectUi();
     const project = useProjectState();
     const { folders } = project.project;
@@ -114,13 +119,8 @@ export function useChatListOrder(chats: readonly Chat[], visibleChatId?: ChatId,
     };
 
     const cardSiblings = (id: string) => {
-        const card = cards.find(candidate => candidate.key === id);
-        return card
-            ? cards.filter(
-                  candidate =>
-                      candidate.used === card.used && (!ui.groupByFolder || candidate.folder.id === card.folder.id)
-              )
-            : [];
+        const card = shownCards.find(candidate => candidate.key === id);
+        return card ? shownCards.filter(candidate => !ui.groupByFolder || candidate.folder.id === card.folder.id) : [];
     };
 
     const moveCard = (id: string, targetId: string, position: Position) => {

@@ -81,4 +81,13 @@ describe('the Agents list preferences', () => {
 
         expect(new ChatListPreferences(storage).expandRunningAgents).toBe(true);
     });
+    it('hides unused worktrees by default and remembers the setting', () => {
+        const storage = memory();
+        const preferences = new ChatListPreferences(storage);
+        expect(preferences.showUnusedWorktrees).toBe(false);
+        preferences.setShowUnusedWorktrees(true);
+        expect(new ChatListPreferences(storage).showUnusedWorktrees).toBe(true);
+        preferences.setShowUnusedWorktrees(false);
+        expect(new ChatListPreferences(storage).showUnusedWorktrees).toBe(false);
+    });
 });

@@ -21,10 +21,14 @@ export const ProjectMenu = observer(function ProjectMenu() {
     const root = useRootStore();
     const project = useProjectState().project;
     const ui = useProjectUi();
-    const { showFinishedThreads, expandRunningAgents } = chatListPreferences;
+    const { showFinishedThreads, expandRunningAgents, showUnusedWorktrees } = chatListPreferences;
     const layout = ui.groupByWorktree ? 'worktree' : ui.groupByFolder ? 'folder' : 'simple';
     const layoutLabel = layouts.find(option => option.id === layout)!.label;
-    const filters = [...(showFinishedThreads ? ['completed'] : []), ...(expandRunningAgents ? ['active'] : [])];
+    const filters = [
+        ...(showFinishedThreads ? ['completed'] : []),
+        ...(expandRunningAgents ? ['active'] : []),
+        ...(showUnusedWorktrees ? ['unused'] : []),
+    ];
 
     const addFolder = () => {
         const choose = window.desktop?.chooseDirectories;
@@ -92,6 +96,7 @@ export const ProjectMenu = observer(function ProjectMenu() {
                                         const on = (key: string) => keys === 'all' || keys.has(key);
                                         chatListPreferences.setShowFinishedThreads(on('completed'));
                                         chatListPreferences.setExpandRunningAgents(on('active'));
+                                        chatListPreferences.setShowUnusedWorktrees(on('unused'));
                                     }}
                                 >
                                     <MenuItem
@@ -122,6 +127,22 @@ export const ProjectMenu = observer(function ProjectMenu() {
                                                     aria-label="Expand active threads"
                                                     isReadOnly
                                                     isSelected={expandRunningAgents}
+                                                />
+                                            </span>
+                                        }
+                                    />
+                                    <MenuItem
+                                        className={styles.displayItem}
+                                        id="unused"
+                                        text="Show unused worktrees"
+                                        shouldCloseOnSelect={false}
+                                        endAffix={
+                                            <span inert aria-hidden className={styles.switch}>
+                                                <Switch
+                                                    size="sm"
+                                                    aria-label="Show unused worktrees"
+                                                    isReadOnly
+                                                    isSelected={showUnusedWorktrees}
                                                 />
                                             </span>
                                         }

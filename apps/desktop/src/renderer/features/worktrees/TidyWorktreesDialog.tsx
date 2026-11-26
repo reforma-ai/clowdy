@@ -78,7 +78,7 @@ function TidyPreview({
                     setDeleteBranches(checked);
                 }}
             >
-                Also delete merged branches (except the base branch)
+                Also delete merged branches
             </Checkbox>
             <Button
                 color="danger"
