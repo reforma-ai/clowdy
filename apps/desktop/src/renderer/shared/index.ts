@@ -1,5 +1,6 @@
 export { AgentChip, type AgentChipProps } from './AgentChip';
 export { RunStatusPill, type RunStatusPillProps } from './RunStatusPill';
+export { runLabel, runSummary } from './runLabel';
 export { RUN_STATUS_VIEW, type RunStatusView, type StatusTone } from './runStatus';
 export { SidebarHeading, type SidebarHeadingProps } from './SidebarHeading';
 export { SidebarLayout, type SidebarLayoutProps } from './SidebarLayout';
@@ -15,3 +16,4 @@ export {
     formatRemaining,
     formatTime,
 } from './time';
+export { useRunLabel } from './useRunLabel';

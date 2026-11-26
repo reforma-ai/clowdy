@@ -52,6 +52,34 @@ async function setup(
     return { h, engine, project, task };
 }
 
+describe('system skill delivery', () => {
+    test('new runs omit disabled entry instructions and restore them when re-enabled', async () => {
+        const { h, engine, task } = await setup();
+
+        h.ok('skills.setEnabled', { name: 'clowdy:orchestrate', enabled: false });
+        h.ok('task.start', { taskId: task('First').id });
+        await waitFor(() => engine.turns.length === 1, 'first run');
+        expect(engine.turns[0].systemPrompt).not.toContain('clowdy:orchestrate');
+        expect(engine.turns[0].prompt).not.toContain('Follow clowdy:orchestrate');
+
+        h.ok('skills.setEnabled', { name: 'clowdy:orchestrate', enabled: true });
+        h.ok('task.start', { taskId: task('Second').id });
+        await waitFor(() => engine.turns.length === 2, 'second run');
+        expect(engine.turns[1].systemPrompt).toContain('<skill name="clowdy:orchestrate">');
+        expect(engine.turns[1].prompt).toStartWith('Follow clowdy:orchestrate');
+    });
+
+    test('new runs do not direct agents to a disabled supporting skill', async () => {
+        const { h, engine, task } = await setup();
+
+        h.ok('skills.setEnabled', { name: 'clowdy:thread', enabled: false });
+        h.ok('task.start', { taskId: task('Inspect').id });
+        await waitFor(() => engine.turns.length === 1, 'run');
+        expect(engine.turns[0].systemPrompt).not.toContain('clowdy:thread');
+        expect(engine.turns[0].systemPrompt).toContain('<skill name="clowdy:orchestrate">');
+    });
+});
+
 describe('task.start', () => {
     test('opens a new chat named after the task, linked to it, with an orchestrator bound to the task', async () => {
         const { h, engine, project, task } = await setup();
@@ -224,12 +252,21 @@ describe('the prompts of a run', () => {
         expect(prompt).toContain('You are the orchestrator of a Clowdy chat. Follow clowdy:orchestrate');
         expect(prompt).toContain('Mode: semi-manual.');
         // Any folder can be a project's, so none is called a repository.
-        expect(prompt).toContain(
-            'Project: Car Rental, folder at /work/cars, task keys CAR-<number>, project documents in .clowdy/docs/.'
-        );
+        expect(prompt).toContain('Project: Car Rental, folder at /work/cars, task keys CAR-<number>.');
         expect(prompt).not.toContain('repository');
         expect(prompt.length).toBeLessThan(900);
         expect(systemPrompt('autopilot', project)).toContain('Mode: autopilot.');
+    });
+
+    test('both modes retain their instructions when the orchestrator skill is disabled', () => {
+        const noSkills = tempDir();
+        const handsOn = systemPrompt('semi', project, undefined, undefined, undefined, noSkills);
+        const handsOff = systemPrompt('autopilot', project, undefined, undefined, undefined, noSkills);
+
+        expect(handsOn).toContain('Ask the user about significant unresolved product or scope decisions with ask_user');
+        expect(handsOff).toContain('continue independently');
+        expect(handsOn).not.toContain('Follow clowdy:orchestrate');
+        expect(handsOff).not.toContain('Follow clowdy:orchestrate');
     });
 
     test('the system prompt names the terminal logs when it is told where they are', () => {
@@ -260,7 +297,6 @@ describe('the prompts of a run', () => {
                 '- /work/cars-api',
                 '- /notes/fleet',
                 'Each folder may have its own AGENTS.md or CLAUDE.md; read it before you change files in that folder.',
-                "Documents: each folder has its own .clowdy/docs/. A document about one folder goes into that folder's; one about several folders or the whole project goes into the main folder's.",
             ].join('\n')
         );
         expect(prompt).not.toContain('repository');

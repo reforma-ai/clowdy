@@ -1,0 +1,38 @@
+@reference '@clowdy/styles/rulesets';
+
+/* Takes the place the page's parts had, so they lay out as before; the box overlays the bottom of it. */
+.page {
+    position: relative;
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
+.center {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-md);
+    padding: var(--spacing-xxl);
+}
+
+.alert {
+    max-width: 36rem;
+}
+
+/* The banners and the box over the stream's bottom; the stream scrolls behind them and keeps its last lines clear of them (`composerInset`). */
+.overlay {
+    position: absolute;
+    z-index: 3;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    max-height: 100%;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    padding: 0 var(--spacing-xxl) var(--spacing-xs);
+}

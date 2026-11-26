@@ -4,7 +4,7 @@ import { Popover, PopoverTrigger } from '@clowdy/components/Popover';
 import { Sliders } from '@clowdy/icons/14';
 
 import { commandTooltip } from '../../hotkeys';
-import { RunStatusPill } from '../../shared';
+import { RunStatusPill, useRunLabel } from '../../shared';
 import styles from './FilterPopover.module.css';
 import { StatusIcon } from './status';
 import { facetCount, NO_FILTER, type TaskFilter } from './taskView';
@@ -29,6 +29,7 @@ function toggle<T>(list: readonly T[], value: T): T[] {
 /** "Filter": status and agent checkboxes in a popover. Nothing checked in a group means no narrowing by it. */
 export function FilterPopover({ filter, onChange, statuses, agents, isOpen, onOpenChange }: FilterPopoverProps) {
     const facets = facetCount(filter);
+    const labelOf = useRunLabel();
 
     return (
         <PopoverTrigger isOpen={isOpen} onOpenChange={onOpenChange}>
@@ -74,7 +75,7 @@ export function FilterPopover({ filter, onChange, statuses, agents, isOpen, onOp
                                     onChange={() => onChange({ ...filter, runIds: toggle(filter.runIds, run.id) })}
                                 >
                                     <span className={styles.option}>
-                                        <span className={styles.optionLabel}>{run.name}</span>
+                                        <span className={styles.optionLabel}>{labelOf(run)}</span>
                                         <RunStatusPill run={run} />
                                     </span>
                                 </Checkbox>

@@ -55,7 +55,7 @@ describe('FixtureTransport skills', () => {
         expect(tokens).toBe(enabled.reduce((sum, entry) => sum + entry.tokens, 0));
     });
 
-    it('switches a user skill and announces it to every project; refuses the rest', async () => {
+    it('switches a user skill and announces it to every project; refuses project and unknown skills', async () => {
         const transport = new FixtureTransport();
         const events: ClowdyEvent[] = [];
         const { cursor } = await transport.getRootSnapshot();
@@ -80,13 +80,24 @@ describe('FixtureTransport skills', () => {
         );
 
         expect(
-            await transport.command({ type: 'skills.setEnabled', name: 'clowdy:docs', enabled: false })
-        ).toMatchObject({ ok: false, error: { code: 'invalid' } });
-        expect(
             await transport.command({ type: 'skills.setEnabled', name: 'booking-rules', enabled: false })
         ).toMatchObject({ ok: false, error: { code: 'invalid' } });
         expect(await transport.command({ type: 'skills.setEnabled', name: 'user:nope', enabled: false })).toMatchObject(
             { ok: false, error: { code: 'not_found' } }
         );
+    });
+
+    it('keeps individual system choices when the global switch is turned off and back on', async () => {
+        const transport = new FixtureTransport();
+
+        await transport.command({ type: 'skills.setEnabled', name: 'clowdy:thread', enabled: false });
+        await transport.command({ type: 'skills.setEnabled', name: 'clowdy:*', enabled: false });
+        const off = await transport.getSkills();
+        await transport.command({ type: 'skills.setEnabled', name: 'clowdy:*', enabled: true });
+        const on = await transport.getSkills();
+
+        expect([off.systemEnabled, on.systemEnabled]).toEqual([false, true]);
+        expect(on.entries.find(entry => entry.name === 'clowdy:thread')?.enabled).toBe(false);
+        expect(on.tokens).toBeGreaterThan(off.tokens);
     });
 });

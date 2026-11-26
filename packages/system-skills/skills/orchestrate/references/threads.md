@@ -16,18 +16,18 @@ Choose direct work, sub-agents or threads when the gain in speed, quality or con
 
 ## 2. The brief
 
-The thread does not see this conversation or these skills (it has clowdy:orchestrate and clowdy:thread of its own, nothing of your plan). The brief is everything it knows:
+The thread does not see this conversation or your plan.<!-- skill:orchestrate --> It has clowdy:orchestrate of its own.<!-- /skill --><!-- skill:thread --> It has clowdy:thread of its own.<!-- /skill --> The brief is everything it knows:
 
 ```text
 Mode: <autopilot | semi-manual>.
 Goal: <one sentence, in product terms>.
 Tasks: CLW-21 (read it with `clowdy task get CLW-21`; it is assigned to you).
-Read first: the project guide (AGENTS.md or similar), .clowdy/docs/architecture.md (section "API"), <code paths>.
+Read first: the project guide (AGENTS.md or similar), <relevant project documents>, <code paths>.
 Decisions already made: <paths of the settled records, with the reason in a few words>.
 Owns: <paths>. Do not edit anything else; put changes needed elsewhere in your report.
 Contract with other agents: <endpoint, types, format>.
 Done when: <checkable result>. Run: <build, test commands>.
-Where: work in <cwd>. Documents: <absolute path of the main checkout>/.clowdy/docs, never index.md. Commit: <no | yes, your own paths>.
+Where: work in <cwd>. Documents: <relevant paths>; coordinate shared files. Commit: <no | yes, your own paths>.
 Report: end your turn with the verdict first, then the commands you ran and what they showed, then what is left.
 ```
 

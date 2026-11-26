@@ -18,27 +18,27 @@ Rules that always apply:
 
 1. **Pin the state.** Record the date (`date +%F`) and, if the project uses git, `git rev-parse --short HEAD` and `git status --short` (what is uncommitted). Confirm the result is complete: every file and behavior the tasks promise is present. Missing pieces are a failure.
 2. **Derive acceptance criteria before you re-read your diff.** Sources: the task descriptions (Outcome, Check), the documents (`product.md` for behavior), the request. Write a numbered list of checkable statements: "Export of 3 invoices gives a file with a header and 3 rows". Add the standing criteria: it builds; typecheck and lint pass; the relevant existing tests still pass; no debug output, secrets or stub TODOs in the changed files; documented behavior is still true.
-3. **Run the gates.** Use the project's real commands (AGENTS.md, `package.json` scripts, earlier reports in `.clowdy/docs/checks/`): build, typecheck, lint, tests. Record command, exit code, last 20 lines. Start from a clean state when dependencies or generated files changed; if a result looks stale or cached, rerun without the cache. Rerun after every change. A failing gate: check whether it also fails at the base state ([probes](probes.md), "Failing before the change").
+3. **Run the gates.** Use the project's real commands (AGENTS.md, `package.json` scripts): build, typecheck, lint, tests. Record command, exit code, last 20 lines. Start from a clean state when dependencies or generated files changed; if a result looks stale or cached, rerun without the cache. Rerun after every change. A failing gate: check whether it also fails at the base state ([probes](probes.md), "Failing before the change").
 4. **Run the real flow.** Do what a user does: start the app, CLI or service as a user would and perform the steps the criteria describe; read the actual output. UI: drive a real browser (the project's end-to-end tooling, or any browser automation that is installed), take a screenshot and look at it. API: real requests. Data: real before and after. If the flow cannot run (no display, no browser automation, missing credentials, a device you do not have), say exactly why. That criterion is unverified: `blocked` when it is essential. Reading code is not a substitute. Stop everything you started.
 5. **Try to break it.** At least three probes aimed at this change: empty and odd input, repeat, wrong order, cancel midway, restart, concurrent use, old data. Catalog by kind of change: [probes](probes.md). Then read the diff for what you skipped: unhandled branches, `.skip` or `todo` tests, tests that assert nothing or mock the thing under test, added `ts-ignore` or `eslint-disable`, swallowed errors, callers of a changed signature that were not updated (`grep` them).
 6. **Decide.**
    - **Passed**: every criterion verified by something you ran, and no probe found a defect.
    - **Failed**: any criterion or probe failed, or the result is incomplete. Defects only: a style preference is a note, not a failure.
    - **Blocked**: an essential criterion cannot be run for an external reason (credentials, a service down, a missing tool). Say what is needed.
-7. **Record.** Write one check report per significant verification, in the project's main checkout, in the shape clowdy:docs defines for `checks/` (load it first). File: `.clowdy/docs/checks/<date>-<what-was-checked>.md`, date from `date +%F`. Never edit an older report: a re-verification is a new file (`...-recheck`). List the probes as rows in "What was run", passed ones too. Facts only; label a guess "Hypothesis:". Link it in `index.md`. Leave one comment on each verified task: `clowdy task comment <key> "Verification <date>: passed|failed|blocked - <reason> (checks/<file>)"`.
+7. **Record.** Leave the commands, results, probes and limits on each verified task as a comment. Avoid secrets and raw logs.
 8. **Act on the verdict.** Passed: set the tasks Done. Failed: reopen them (In progress) with the reason, fix, and verify again. Blocked: keep them out of Done and report what is needed.
 
 A failure entry always has: the criterion, expected, actual (exact command and output), a repro in three steps or fewer, and where to look if you know (marked as a hypothesis). Most serious first.
 
 ## Re-verification
 
-After a fix, verify again from step 1: all gates, not only the failed criterion, plus a regression look at what the fix touched. It gets its own check report.
+After a fix, verify again from step 1: all gates, not only the failed criterion, plus a regression look at what the fix touched. Record the new result on the task.
 
 ## Compact steps
 
 For work done on the spot, check the actual change proportionately: inspect the diff and run the nearest meaningful check or flow. Report what you checked and any limit; do not create a task or report just to record it. If the chat is bound to an existing task, record relevant evidence there and follow its status flow.
 
-For a foundation task that others wait on, put 2-4 criteria in the task, run the nearest gates (build, typecheck, affected tests), exercise the user-visible flow, try one probe and read the diff. Leave the command and result as a task comment. Write a check report only for significant checks. If anything fails, fix it and repeat the relevant checks. The final result of a larger cycle gets the full steps.
+For a foundation task that others wait on, put 2-4 criteria in the task, run the nearest gates (build, typecheck, affected tests), exercise the user-visible flow, try one probe and read the diff. Leave the command and result as a task comment. Record significant checks on the task. If anything fails, fix it and repeat the relevant checks. The final result of a larger cycle gets the full steps.
 
 ## Example
 

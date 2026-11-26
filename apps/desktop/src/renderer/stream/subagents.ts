@@ -30,13 +30,16 @@ export function subagentName(input: unknown): string | undefined {
     return firstString(input, ['name', 'subagent_type', 'agent_type', 'agentType']);
 }
 
-/** The card's title: a verb while the sub-agent works, `Ran Explore agent` once it is over. */
+/** The label as a name: `General` is `General agent`, and a label that already says agent stays as it is. */
+const asAgent = (label: string): string => (/agent$/i.test(label) ? label : `${label} agent`);
+
+/** The card's title: a verb while the sub-agent works, `Ran Explore agent` once it is over, and the same name (`General agent`) the banner, the header and the list use. */
 export function subagentTitle(label: string | undefined, live: boolean): string {
-    if (!live) return label ? `Ran ${label} agent` : 'Ran agent';
+    if (!live) return label ? `Ran ${asAgent(label)}` : 'Ran agent';
 
     if (!label) return 'Running agent';
 
-    return LIVE_VERBS[label.toLowerCase()] ?? `Running ${label}`;
+    return LIVE_VERBS[label.toLowerCase()] ?? `Running ${asAgent(label)}`;
 }
 
 /** The verbs of `describeTool` as a sub-agent's activity says them, with the thing it works on after them. */

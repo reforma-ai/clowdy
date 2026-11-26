@@ -283,10 +283,8 @@ describe('Add to chat from the tree', () => {
                 new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 20, clientY: 20 })
             );
         });
-    const menuItem = () =>
-        [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
-            item => item.textContent === 'Add to chat'
-        );
+    const menuItems = () => [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+    const menuItem = () => menuItems().find(item => item.textContent === 'Add to chat');
     const press = (target: HTMLElement) =>
         act(async () => {
             target.dispatchEvent(
@@ -311,6 +309,7 @@ describe('Add to chat from the tree', () => {
             await draw();
 
             await openMenu(rowFor('README.md'));
+            expect(menuItems()[0]).toBe(menuItem());
             await press(menuItem()!);
             expect(mention).toHaveBeenLastCalledWith([
                 { path: `${FIXTURE_WORKTREE_PATH}/README.md`, name: 'README.md', kind: 'file' },
@@ -318,6 +317,7 @@ describe('Add to chat from the tree', () => {
             expect(ui().sidePanelOpen).toBe(false);
 
             await openMenu(rowFor('src'));
+            expect(menuItems()[0]).toBe(menuItem());
             await press(menuItem()!);
             expect(mention).toHaveBeenLastCalledWith([
                 { path: `${FIXTURE_WORKTREE_PATH}/src`, name: 'src', kind: 'directory' },

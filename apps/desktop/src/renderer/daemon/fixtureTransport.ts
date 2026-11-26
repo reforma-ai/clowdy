@@ -5,6 +5,7 @@ import {
     branchPrefixProblem,
     COMMIT_MESSAGE_SETTING_ID,
     commitMessageAgent,
+    DEFAULT_SLEEP_MODE,
     folderNames,
     isBusyRunStatus,
     isTerminalRunStatus,
@@ -107,6 +108,7 @@ import type {
     GitSyncTarget,
     GitViewedMark,
     Health,
+    PowerSettings,
     Project,
     ProjectFileMatch,
     ProjectId,
@@ -119,6 +121,7 @@ import type {
     Run,
     RunId,
     SkillCatalog,
+    SleepMode,
     StreamItem,
     StreamItemBody,
     Task,
@@ -268,6 +271,7 @@ const named = <T>(change: T | null | undefined, kept: T | undefined): T | undefi
  */
 export class FixtureTransport implements Transport {
     readonly #data: FixtureData;
+    #systemSkillsEnabled = true;
     readonly #timeline: boolean;
     readonly #startedAt = Date.now();
     readonly #log: ClowdyEvent[] = [];
@@ -1498,7 +1502,25 @@ export class FixtureTransport implements Transport {
             .filter(skill => skill.projectId === undefined || skill.projectId === projectId)
             .map(({ projectId: _projectId, ...entry }) => entry);
 
-        return structuredClone({ entries, tokens: catalogTokens(entries), warnings: this.#data.skillWarnings });
+        const active = this.#systemSkillsEnabled ? entries : entries.filter(entry => entry.source !== 'system');
+
+        return structuredClone({
+            entries,
+            systemEnabled: this.#systemSkillsEnabled,
+            tokens: catalogTokens(active),
+            warnings: this.#data.skillWarnings,
+        });
+    }
+
+    #sleepMode: SleepMode = DEFAULT_SLEEP_MODE;
+
+    async getPowerSettings(): Promise<PowerSettings> {
+        return { sleepMode: this.#sleepMode };
+    }
+
+    async setSleepMode(sleepMode: SleepMode): Promise<PowerSettings> {
+        this.#sleepMode = sleepMode;
+        return this.getPowerSettings();
     }
 
     async getHealth(): Promise<Health> {
@@ -2387,17 +2409,20 @@ export class FixtureTransport implements Transport {
                 return this.#decideApproval(command.runId, command.approvalId, command.decision);
 
             case 'skills.setEnabled': {
+                if (command.name === 'clowdy:*') {
+                    if (this.#systemSkillsEnabled !== command.enabled) {
+                        this.#systemSkillsEnabled = command.enabled;
+                        data.projects.forEach(project => this.#emit(project.id, { type: 'skills.changed' }));
+                    }
+
+                    return ok({ name: command.name, enabled: command.enabled });
+                }
+
                 const skill = data.skills.find(candidate => candidate.name === command.name);
 
                 if (!skill) return fail('not_found', `Skill ${command.name} does not exist`);
 
-                if (skill.source !== 'user')
-                    return fail(
-                        'invalid',
-                        skill.source === 'system'
-                            ? 'System skills cannot be switched off'
-                            : 'Only user skills can be switched on or off'
-                    );
+                if (skill.source === 'project') return fail('invalid', 'Project skills cannot be switched off');
 
                 if (skill.enabled !== command.enabled) {
                     skill.enabled = command.enabled;

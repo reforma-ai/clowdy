@@ -1,5 +1,4 @@
 import { Switch } from '@clowdy/components/Switch';
-import { Badge } from '@clowdy/components/Tag';
 import { Text } from '@clowdy/components/Text';
 import { Lock } from '@clowdy/icons/12';
 
@@ -10,17 +9,16 @@ import { engineLabel, tokenLabel } from './skillView';
 
 import type { SkillEntry } from '@clowdy/protocol';
 
-const SOURCE_LABEL = { system: 'System', user: 'User', project: 'Project' } as const;
-
 export interface SkillRowProps {
     skill: SkillEntry;
     /** A switch is on its way to the daemon. */
     isPending: boolean;
+    isDisabled?: boolean;
     onToggle: (enabled: boolean) => void;
 }
 
-/** One skill: name and source, what it is for, where it lives, what it costs, and the switch (a lock for system skills). */
-export function SkillRow({ skill, isPending, onToggle }: SkillRowProps) {
+/** One skill and its availability, source and estimated cost. */
+export function SkillRow({ skill, isPending, isDisabled, onToggle }: SkillRowProps) {
     const { name, source, description, enabled, path, tokens, engines } = skill;
 
     return (
@@ -30,13 +28,6 @@ export function SkillRow({ skill, isPending, onToggle }: SkillRowProps) {
                     <Text weight="medium" truncate className={styles.name}>
                         {name}
                     </Text>
-                    <Badge
-                        size="xs"
-                        color={source === 'system' ? 'primary' : 'secondary'}
-                        textValue={SOURCE_LABEL[source]}
-                    >
-                        {SOURCE_LABEL[source]}
-                    </Badge>
                 </div>
                 <Text variant="sm" color="secondary" className={styles.description}>
                     {description}
@@ -58,11 +49,12 @@ export function SkillRow({ skill, isPending, onToggle }: SkillRowProps) {
                 >
                     {tokenLabel(tokens)}
                 </Text>
-                {source === 'user' ? (
+                {source !== 'project' ? (
                     <Switch
                         size="sm"
                         isSelected={enabled}
                         isPending={isPending}
+                        isDisabled={isDisabled}
                         aria-label={`Use ${name}`}
                         onChange={onToggle}
                     />

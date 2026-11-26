@@ -5,9 +5,12 @@ import { GridList, GridListItem, useCellEditMode } from '@clowdy/components/List
 import { Show } from '@clowdy/components/Show';
 import { Text } from '@clowdy/components/Text';
 import { Textarea } from '@clowdy/components/Textarea';
+import { TooltipContent, TooltipTrigger } from '@clowdy/components/Tooltip';
 import { Edit } from '@clowdy/icons/12';
+import { CircleCheck } from '@clowdy/icons/14';
 import { SendBold } from '@clowdy/icons/16';
 import { useRef, useState } from 'react';
+import { Focusable } from 'react-aria-components';
 
 import styles from './QuestionPanel.module.css';
 import { SKIPPED_ANSWER, splitQuestion } from './questionParts';
@@ -27,6 +30,29 @@ export interface QuestionPanelProps {
     onAnswer?: (answer: string) => void | Promise<void>;
     /** The panel stands in the box under the chat, where it may not take more than half of the window: the question and the options scroll inside it, and Skip and send stay in sight. */
     bounded?: boolean;
+}
+
+/** The label of the option the agent recommends, with a check mark after it whose tip says so. The mark sticks to the last word, so it never wraps onto a line of its own. */
+function WithRecommendedMark({ label }: { label: string }) {
+    const split = label.lastIndexOf(' ') + 1;
+
+    return (
+        <>
+            {label.slice(0, split)}
+            <span className={styles.tail}>
+                {label.slice(split)}
+                <TooltipTrigger>
+                    {/* The tip is for the pointer: the mark is no stop of its own in the list, and its meaning is in the name. */}
+                    <Focusable excludeFromTabOrder>
+                        <span className={styles.recommended} role="img" aria-label="Recommended option">
+                            <CircleCheck aria-hidden />
+                        </span>
+                    </Focusable>
+                    <TooltipContent>Recommended option</TooltipContent>
+                </TooltipTrigger>
+            </span>
+        </>
+    );
 }
 
 /**
@@ -72,6 +98,13 @@ export function QuestionPanel({ question, onAnswer, bounded }: QuestionPanelProp
         if (id === CUSTOM_ID) requestAnimationFrame(() => fieldRef.current?.focus({ preventScroll: true }));
     };
 
+    // The words of an option can be selected, to carry a piece of one into the person's own answer. While a row is pressed the library keeps text from being
+    // selected, so a press on the words does not reach the row, and a click that left nothing selected picks it instead.
+    const keepFromRow = (event: PointerEvent<Element>) => event.stopPropagation();
+    const pickUnlessSelecting = (id: string) => {
+        if (!window.getSelection()?.toString()) select(id);
+    };
+
     // Reaching into the field picks its row, and the list must not take the press for a toggle of its own.
     const pickField = (event: PointerEvent<Element> | FocusEvent<Element>) => {
         event.stopPropagation();
@@ -87,23 +120,22 @@ export function QuestionPanel({ question, onAnswer, bounded }: QuestionPanelProp
             }}
         >
             <div className={styles.scroll} data-bounded={bounded || undefined}>
-                <div className={styles.header}>
+                <div className={styles.head}>
                     <Text variant="md" weight="medium" wrap="anywhere" whitespace="pre-line">
                         {title}
                     </Text>
+                    <Show when={paragraphs.length > 0}>
+                        <div className={styles.facts}>
+                            <For each={paragraphs}>
+                                {paragraph => (
+                                    <Text key={paragraph} variant="sm" color="secondary" whitespace="pre-line">
+                                        {paragraph}
+                                    </Text>
+                                )}
+                            </For>
+                        </div>
+                    </Show>
                 </div>
-
-                <Show when={paragraphs.length > 0}>
-                    <div className={styles.facts}>
-                        <For each={paragraphs}>
-                            {paragraph => (
-                                <Text key={paragraph} variant="sm" color="secondary" whitespace="pre-line">
-                                    {paragraph}
-                                </Text>
-                            )}
-                        </For>
-                    </div>
-                </Show>
 
                 <GridList
                     className={styles.options}
@@ -131,12 +163,18 @@ export function QuestionPanel({ question, onAnswer, bounded }: QuestionPanelProp
                                 <Text slot="icon" variant="sm" className={styles.number} aria-hidden>
                                     {index + 1}
                                 </Text>
-                                <Box slot="label" className={styles.body}>
-                                    <span className={styles.labelLine}>
-                                        {option.label}
-                                        <Show when={option.id === recommended}>
-                                            <span className={styles.recommended}>Recommended</span>
-                                        </Show>
+                                <Box
+                                    slot="label"
+                                    className={styles.body}
+                                    onPointerDown={keepFromRow}
+                                    onClick={() => pickUnlessSelecting(option.id)}
+                                >
+                                    <span>
+                                        {option.id === recommended ? (
+                                            <WithRecommendedMark label={option.label} />
+                                        ) : (
+                                            option.label
+                                        )}
                                     </span>
                                     <Show when={option.consequence}>
                                         {consequence => (

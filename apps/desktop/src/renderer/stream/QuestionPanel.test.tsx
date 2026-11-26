@@ -62,12 +62,15 @@ describe('QuestionPanel', () => {
 
         expect(container.querySelector('form')?.textContent).toContain('Who can export orders?');
         expect(rows().map(candidate => candidate.textContent)).toEqual([
-            expect.stringMatching(/^1Admins onlyRecommendedNobody gains access to personal data$/),
+            expect.stringMatching(/^1Admins onlyNobody gains access to personal data$/),
             '2Everyone who sees orders',
             '',
         ]);
         expect(row('Admins only')?.getAttribute('aria-selected')).toBe('true');
         expect(row('Everyone')?.getAttribute('aria-selected')).toBe('false');
+        // The agent's pick is marked with a check, and only that row.
+        expect(row('Admins only')?.querySelector('[aria-label="Recommended option"]')).not.toBeNull();
+        expect(row('Everyone')?.querySelector('[aria-label="Recommended option"]')).toBeNull();
     });
 
     it('sends the label of the preselected option', async () => {
@@ -191,6 +194,45 @@ describe('QuestionPanel', () => {
             await draw(undefined, vi.fn());
 
             expect(container.querySelector('[data-bounded]')).toBeNull();
+        });
+    });
+
+    describe('the words of an option', () => {
+        const words = (label: string) =>
+            [...container.querySelectorAll('span')].find(span => span.textContent === label)!;
+        /** A click as a mouse makes it: with a count, so that the library does not take it for a press by keyboard. */
+        const click = (element: Element) =>
+            act(async () => {
+                element.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+            });
+        const press = (element: Element) =>
+            act(async () => {
+                element.dispatchEvent(
+                    new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0 })
+                );
+            });
+
+        it('can be pressed on without picking the option, which a click that selected nothing then does', async () => {
+            await draw(undefined, vi.fn());
+            await press(words('Everyone who sees orders'));
+
+            expect(row('Admins only')?.getAttribute('aria-selected')).toBe('true');
+
+            await click(words('Everyone who sees orders'));
+
+            expect(row('Everyone')?.getAttribute('aria-selected')).toBe('true');
+        });
+
+        it('leave the choice alone when the click ends a selection of them', async () => {
+            vi.spyOn(window, 'getSelection').mockReturnValue({ toString: () => 'Everyone who' } as Selection);
+            await draw(undefined, vi.fn());
+            await press(words('Everyone who sees orders'));
+            await click(words('Everyone who sees orders'));
+
+            expect(row('Admins only')?.getAttribute('aria-selected')).toBe('true');
+            expect(row('Everyone')?.getAttribute('aria-selected')).toBe('false');
+
+            vi.restoreAllMocks();
         });
     });
 });

@@ -60,12 +60,14 @@ import type {
     GitViewedMark,
     GitViewedSet,
     Health,
+    PowerSettings,
     ProjectFileMatch,
     ProjectId,
     ProjectInfo,
     ProjectSnapshot,
     RootSnapshot,
     SkillCatalog,
+    SleepMode,
     StreamItem,
     TaskArchivePage,
     TaskCommentsPage,
@@ -549,6 +551,14 @@ export class HttpTransport implements Transport {
         return this.#get(
             projectId === undefined ? ROUTES.skills : `${ROUTES.skills}?projectId=${encodeURIComponent(projectId)}`
         );
+    }
+
+    getPowerSettings(): Promise<PowerSettings> {
+        return this.#get(ROUTES.power);
+    }
+
+    setSleepMode(sleepMode: SleepMode): Promise<PowerSettings> {
+        return this.#write(ROUTES.power, { sleepMode });
     }
 
     getHealth(): Promise<Health> {

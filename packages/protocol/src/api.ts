@@ -10,6 +10,8 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  * HTTP surface, loopback only, `Authorization: Bearer <token>` on everything but `/v1/health`.
  *
  * GET  /v1/health                         -> Health
+ * GET  /v1/power                          -> PowerSettings (computer-wide idle sleep preference, kept by the daemon)
+ * POST /v1/power                          -> PowerSettings (body PowerSettings; changes the idle sleep preference immediately)
  * GET  /v1/snapshot                       -> RootSnapshot
  * GET  /v1/projects/:id/snapshot          -> ProjectSnapshot
  * GET  /v1/projects/info                  -> ProjectInfo[] (one per project, in the order of the snapshot: whether each of its folders exists, its
@@ -120,6 +122,7 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  */
 export const ROUTES = {
     health: '/v1/health',
+    power: '/v1/power',
     snapshot: '/v1/snapshot',
     projectsInfo: '/v1/projects/info',
     projectSnapshot: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/snapshot`,

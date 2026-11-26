@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { mainFolder } from '@clowdy/protocol';
 
@@ -15,8 +15,12 @@ const ENTRY_SKILL = 'orchestrate';
 /** The system skill a thread's orchestrator also has in its system prompt: how a thread takes its assignment and reports to its parent. */
 const THREAD_SKILL = 'thread';
 
-const INTRO =
-    'You are the orchestrator of a Clowdy chat. Follow clowdy:orchestrate; it names the other system skills (clowdy:autopilot, clowdy:semi-manual, clowdy:scaffold, clowdy:docs).';
+const INTRO = 'You are the orchestrator of a Clowdy chat. Follow clowdy:orchestrate.';
+
+/** Undefined is used by callers without skill configuration. */
+export function skillAvailable(dir: string | undefined, name: string): boolean {
+    return dir === undefined || existsSync(join(dir, 'skills', name, 'SKILL.md'));
+}
 
 /**
  * What every orchestrator is told about the task tools. Most agents have them as the shell command `clowdy task`; one that uses the MCP door
@@ -74,14 +78,14 @@ function workspaceFacts({ path, branch, folder, nameable }: PromptWorkspace): st
 }
 
 /** What the orchestrator of a thread is told about its place: who started it, what its report is, and whom it may write to. */
-function threadIntro(parent: PromptParent): string {
+function threadIntro(parent: PromptParent, threadEnabled: boolean): string {
     return [
         `This chat is a thread: the chat "${parent.title}" (${parent.id}) started it, and the first message is your assignment from that chat.`,
         parent.worktreeBase &&
             `It had a git worktree made for you alone, on a branch started from ${parent.worktreeBase}: commit your work on your own branch and name that branch in your report. Merging it back is your parent's job, so do not merge it or switch to another branch.`,
         'Your last message of each turn is your report to it, delivered when you stop: the verdict first (done, partly done, failed or blocked), then the evidence (what you ran and saw), then what is left.',
         `Ask your parent with \`clowdy thread tell ${parent.id} "<question>"\` only when you are blocked. Write to no other chat unless your assignment says so. You may start threads of your own while the depth limit allows.`,
-        'Follow clowdy:thread as well.',
+        threadEnabled && 'Follow clowdy:thread as well.',
     ]
         .filter(Boolean)
         .join(' ');
@@ -103,7 +107,7 @@ function projectFacts(project: Project, cwd: string, worktreeOf?: string): strin
             ? `the person's personal space, a folder at ${folder} that belongs to no repository`
             : `folder at ${folder}`;
 
-        return `Project: ${project.name}, ${where}, ${keys}, project documents in .clowdy/docs/.`;
+        return `Project: ${project.name}, ${where}, ${keys}.`;
     }
 
     const folders = project.folders.map(({ path }, index) => {
@@ -120,7 +124,6 @@ function projectFacts(project: Project, cwd: string, worktreeOf?: string): strin
         `Project: ${project.name}, ${keys}, folders (use absolute paths outside the folder you work in):`,
         ...folders,
         'Each folder may have its own AGENTS.md or CLAUDE.md; read it before you change files in that folder.',
-        "Documents: each folder has its own .clowdy/docs/. A document about one folder goes into that folder's; one about several folders or the whole project goes into the main folder's.",
     ].join('\n');
 }
 
@@ -134,13 +137,16 @@ export function systemPrompt(
     project: Project,
     cwd = mainFolder(project).path,
     chat?: PromptChat,
-    terminalsDir?: string
+    terminalsDir?: string,
+    skillsDir?: string
 ): string {
     return [
         'Clowdy is a desktop app where a person who manages software work chats with an orchestrator and watches tasks, agents and documents while agents do the engineering.',
-        INTRO,
-        chat?.parent && threadIntro(chat.parent),
-        `Mode: ${modeLabel(mode)}.`,
+        skillAvailable(skillsDir, ENTRY_SKILL) ? INTRO : 'You are the orchestrator of a Clowdy chat.',
+        chat?.parent && threadIntro(chat.parent, skillAvailable(skillsDir, THREAD_SKILL)),
+        mode === 'semi'
+            ? 'Mode: semi-manual. Ask the user about significant unresolved product or scope decisions with ask_user; decide routine matters yourself.'
+            : 'Mode: autopilot. Decide within the user’s request and continue independently; report significant choices and stop when the user’s input is necessary.',
         projectFacts(project, cwd, chat?.workspace?.folder),
         terminalsDir &&
             `The app's terminal logs for this project are in ${terminalsDir}, one plain file per shell. Read one when the person mentions the terminal.`,

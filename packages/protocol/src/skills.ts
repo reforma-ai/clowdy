@@ -1,5 +1,5 @@
 /**
- * Where a skill comes from. System skills ship with Clowdy and cannot be switched off, user skills live in the
+ * Where a skill comes from. System skills ship with Clowdy, user skills live in the
  * person's own skill folders (`~/.claude/skills`, `~/.agents/skills`), project skills in the repository.
  */
 export type SkillSource = 'system' | 'user' | 'project';
@@ -14,7 +14,7 @@ export interface SkillEntry {
     name: string;
     source: SkillSource;
     description: string;
-    /** Always true for system and project skills; only user skills can be switched off. */
+    /** Individual selection; system entries are also subject to the catalog-wide systemEnabled switch. */
     enabled: boolean;
     /** The skill's folder; absent for system skills. */
     path?: string;
@@ -26,6 +26,8 @@ export interface SkillEntry {
 /** What `GET /v1/skills` returns. */
 export interface SkillCatalog {
     entries: SkillEntry[];
+    /** Whether selected system skills are delivered to new agent sessions. */
+    systemEnabled: boolean;
     /** Estimated tokens the enabled skills cost in every run, for the engine that sees the most. */
     tokens: number;
     /** Problems found while reading the skill folders (a skipped skill, a cap hit, a large catalog), in plain words. */

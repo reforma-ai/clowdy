@@ -78,7 +78,11 @@ button.row:focus-visible {
 
 .rowName {
     flex-shrink: 0;
+    max-width: 70%;
+    overflow: hidden;
     font-weight: 500;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .rowTitle {
