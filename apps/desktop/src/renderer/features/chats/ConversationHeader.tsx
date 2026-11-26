@@ -1,7 +1,7 @@
 import { Breadcrumb } from '@clowdy/components/Breadcrumb';
 import { ContentColumn } from '@clowdy/components/ContentColumn';
 import { Text } from '@clowdy/components/Text';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { RunStatusPill, useRunLabel } from '../../shared';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
@@ -32,6 +32,8 @@ export function ConversationHeader({ chat, subagent }: ConversationHeaderProps) 
     const ui = useProjectUi();
     const label = useRunLabel();
     const [isOpenedOut, setIsOpenedOut] = useState(false);
+    const pathRef = useRef<HTMLDivElement>(null);
+
     const parts = conversationHeaderPath({
         chats: project.chats,
         runs: project.runs,
@@ -39,6 +41,20 @@ export function ConversationHeader({ chat, subagent }: ConversationHeaderProps) 
         subagent,
         label,
     });
+    const firstHidden = useRef(parts[1]?.label);
+
+    firstHidden.current = parts[1]?.label;
+
+    // The `…` that was pressed is gone: the keyboard goes to the first part it uncovered, not back to the top of the page. The part is found by its name, since the `…` may
+    // still be in the page when this runs (the path removes a part after the render that drops it).
+    useEffect(() => {
+        if (!isOpenedOut) return;
+
+        [...(pathRef.current?.querySelectorAll('button') ?? [])]
+            .find(button => button.textContent === firstHidden.current)
+            ?.focus();
+    }, [isOpenedOut]);
+
     const run = subagent ?? (chat && orchestratorOf(chat, project.runs));
     const summary = subagent?.summary.trim();
 
@@ -50,7 +66,7 @@ export function ConversationHeader({ chat, subagent }: ConversationHeaderProps) 
     return (
         <ContentColumn className={styles.header}>
             <div className={styles.line}>
-                <div className={styles.path}>
+                <div ref={pathRef} className={styles.path}>
                     <Breadcrumb variant="sm" aria-label="Conversation path">
                         {foldedPath(parts, isOpenedOut).map((item, index, items) => {
                             if ('fold' in item)
@@ -65,7 +81,7 @@ export function ConversationHeader({ chat, subagent }: ConversationHeaderProps) 
 
                             return index === items.length - 1 ? (
                                 <Breadcrumb.Page key={item.key} className={styles.page}>
-                                    {item.label}
+                                    <span title={item.label}>{item.label}</span>
                                 </Breadcrumb.Page>
                             ) : (
                                 <Breadcrumb.Link
@@ -73,7 +89,10 @@ export function ConversationHeader({ chat, subagent }: ConversationHeaderProps) 
                                     isDisabled={target === undefined}
                                     onPress={target && (() => open(target))}
                                 >
-                                    {item.label}
+                                    {/* A title that is cut short reads in full on hover; a chat in the archive says why it does not open. */}
+                                    <span title={target ? item.label : `${item.label}, in the archive`}>
+                                        {item.label}
+                                    </span>
                                 </Breadcrumb.Link>
                             );
                         })}
@@ -84,7 +103,7 @@ export function ConversationHeader({ chat, subagent }: ConversationHeaderProps) 
             </div>
 
             {summary && (
-                <Text variant="xs" color="secondary" truncate className={styles.summary}>
+                <Text variant="xs" color="secondary" truncate title={summary} className={styles.summary}>
                     {summary}
                 </Text>
             )}
