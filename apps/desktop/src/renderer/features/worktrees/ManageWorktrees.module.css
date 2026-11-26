@@ -267,3 +267,8 @@
     flex-shrink: 0;
     align-self: center;
 }
+
+.tidyMarkIcon {
+    width: var(--spacing-12);
+    height: var(--spacing-12);
+}

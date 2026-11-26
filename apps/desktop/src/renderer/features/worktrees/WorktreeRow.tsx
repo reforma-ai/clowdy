@@ -93,7 +93,7 @@ export function WorktreeRowSummary({
             color={tidy && mark.label === 'Merged' ? 'accent' : mark.color}
             textValue={mark.label}
             tooltip={tidy ? undefined : mark.tip}
-            icon={tidy ? <MarkIcon aria-hidden="true" /> : undefined}
+            icon={tidy ? <MarkIcon className={styles.tidyMarkIcon} aria-hidden="true" /> : undefined}
         >
             {mark.label}
         </Badge>
