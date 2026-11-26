@@ -35,15 +35,27 @@ function useOpenChat(chatId: ChatId): (() => void) | undefined {
     return () => onOpenChat(chatId);
 }
 
+/**
+ * The name a chat has now, for a card that was written when it had another: a message and a notice keep the title the chat had then, and a rename would leave the old one on its
+ * cards while the header, the list and the strip say the new. Without links, or when the project no longer has the chat, it is the title the card kept.
+ */
+function useChatTitle(chatId: ChatId, kept: string): string {
+    const { chatOfId } = use(StreamLinksContext);
+    const now = chatOfId?.(chatId)?.title;
+
+    return now !== undefined && now.trim() !== '' ? now : kept;
+}
+
 /** A thread's name in a card: a link that opens the thread, or plain words when the project no longer has it (or nothing opens chats here). */
 function ChatName({ chatId, title }: { chatId: ChatId; title: string }) {
     const open = useOpenChat(chatId);
+    const shown = useChatTitle(chatId, title);
 
-    if (!open) return <span>{title}</span>;
+    if (!open) return <span>{shown}</span>;
 
     return (
         <Button variant="inline" className={styles.link} onPress={open}>
-            {title}
+            {shown}
         </Button>
     );
 }
@@ -165,15 +177,10 @@ export function ThreadMessageCard({ chatId, title, text, turn }: ThreadMessageCa
 /** One thread that stopped, as an agent's card: its name, how it ended, its last words. */
 function NoticeCard({ notice }: { notice: ThreadNotice }) {
     const open = useOpenChat(notice.chatId);
+    const title = useChatTitle(notice.chatId, notice.title);
 
     return (
-        <AgentCard
-            name={notice.title}
-            outcome={notice.outcome}
-            report={notice.text}
-            open={notice.background}
-            onOpen={open}
-        />
+        <AgentCard name={title} outcome={notice.outcome} report={notice.text} open={notice.background} onOpen={open} />
     );
 }
 
