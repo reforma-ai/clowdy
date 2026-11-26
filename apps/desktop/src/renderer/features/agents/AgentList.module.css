@@ -34,25 +34,20 @@
     cursor: grab;
 }
 
-.chatRow[data-drop-position]::after,
-.agentRow[data-drop-position]::after {
-    position: absolute;
-    inset-inline: 0;
-    height: var(--spacing-2);
-    border-radius: var(--radius-full);
-    background-color: var(--color-primary);
-    pointer-events: none;
-    content: '';
+/* Keep the accessible grid in place while each visible block previews its new slot. */
+:is(.chatRow, .agentRow, .worktreeCard) {
+    transform: translateY(var(--reorder-offset));
+    transition: transform 160ms cubic-bezier(0.25, 1, 0.5, 1);
 }
 
-.chatRow[data-drop-position='before']::after,
-.agentRow[data-drop-position='before']::after {
-    inset-block-start: 0;
+:is(.chatRow, .agentRow, .worktreeCard)[data-reorder-source] {
+    opacity: 0.4;
 }
 
-.chatRow[data-drop-position='after']::after,
-.agentRow[data-drop-position='after']::after {
-    inset-block-end: 0;
+@media (prefers-reduced-motion: reduce) {
+    :is(.chatRow, .agentRow, .worktreeCard) {
+        transition: none;
+    }
 }
 
 .end,
@@ -257,24 +252,6 @@
 
 .worktreeCard + .worktreeCard {
     margin-block-start: var(--spacing-2);
-}
-
-.worktreeCard[data-drop-position]::after {
-    position: absolute;
-    inset-inline: 0;
-    height: var(--spacing-2);
-    border-radius: var(--radius-full);
-    background: var(--color-primary);
-    content: '';
-    pointer-events: none;
-}
-
-.worktreeCard[data-drop-position='before']::after {
-    inset-block-start: 0;
-}
-
-.worktreeCard[data-drop-position='after']::after {
-    inset-block-end: 0;
 }
 
 .worktreeHeader {
