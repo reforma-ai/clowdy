@@ -19,16 +19,16 @@
 
 **Depends on:** None.
 
-**This stage:** `workspace.remove` accepts optional `chatDisposition: 'archive' | 'delete'` and `tidy: boolean`. Without either option, preserve current behavior. During explicit disposition preflight affected chats and their descendants (existing cascade semantics, deduplicate), protect any active runs, preserve history on archive, and delete permanently only when explicitly requested. Do not dispose of chats if removing the tree fails. Tidy refuses any non-merged, dirty, submodule, missing, blocked, or in-use tree and refuses discard or chat disposition; revalidate just before Git mutates the tree. Guard base branch deletion. Keep fixture transport behavior faithful.
+**This stage:** `workspace.remove` accepts optional `chatDisposition: 'archive' | 'delete'` and `tidy: boolean`. Optional `expectedChatIds: string[]` pins disposition to the exact set of linked chats and descendants confirmed in the UI; a difference refuses removal. Without either option, preserve current behavior. During explicit disposition preflight affected chats and their descendants (existing cascade semantics, deduplicate), protect any active runs, preserve history on archive, and delete permanently only when explicitly requested. Do not dispose of chats if removing the tree fails. Tidy refuses any non-merged, dirty, submodule, missing, blocked, or in-use tree and refuses discard or chat disposition; revalidate just before Git mutates the tree. Guard base branch deletion. Keep fixture transport behavior faithful.
 
-- [ ] Complete
-  - [ ] Protocol, daemon and fixture behavior, with real Git and fixture tests
-  - [ ] Review race checks and refusal/partial failure behavior
+- [x] Complete
+  - [x] Protocol, daemon and fixture behavior, with real Git and fixture tests
+  - [x] Review race checks and refusal/partial failure behavior
 
 **Files:** `packages/protocol/src/commands.ts`, `apps/daemon/src/domain/workspaceRemoval.ts`, `apps/daemon/src/commands/workspace.ts` plus necessary chat lifecycle guards and daemon tests/guidance; `apps/desktop/src/renderer/daemon/fixtureTransport.ts` and transport tests.
 **Done when:** explicit removal works for idle linked chats with both choices, leaves chats/disk unchanged on refusal, and tidy cannot remove changed or in-use worktrees.
 **Verify:** daemon worktree removal, chat removal, and worktree list suites; desktop projectsTransport tests; affected typechecks and lint.
-**Commits:** None yet.
+**Commits:** `ee4d5aa1` — guarded removal with disposition and cleanup; independent review fixed preview-to-confirm races, explicit working-directory threads, and cross-project chat protection. 407 daemon, 103 desktop transport and 28 protocol tests passed; all three typechecks, target Biome and diff checks passed. External Git remains outside daemon reservations.
 
 ## Stage 2 — Sidebar cards (CLO-203)
 
@@ -49,7 +49,7 @@
 
 **Depends on:** Stage 1 and Stage 2.
 
-**This stage:** update the existing `openRemoveWorktree` confirmation and worktree actions to use the guarded command; expose it from card and current chat place. Preview actual affected chats (including cascaded descendants across worktrees) and handle selection after archive/delete. Add a reusable tidy preview/dialog and entry points. Refresh data after completion or refusal.
+**This stage:** update the existing `openRemoveWorktree` confirmation and worktree actions to use the guarded command; expose it from card and current chat place. Preview actual affected chats (including archived chats and cascaded descendants across worktrees), send their exact IDs as `expectedChatIds` with disposition, and handle selection after archive/delete. Add a reusable tidy preview/dialog and entry points. Refresh data after completion or refusal.
 
 - [ ] Complete
   - [ ] Unified removal confirmation, chat disposition, direct actions and archive all
