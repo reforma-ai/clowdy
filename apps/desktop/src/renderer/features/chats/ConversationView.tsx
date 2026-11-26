@@ -29,7 +29,7 @@ export interface ConversationViewProps
     stream: RunStream | undefined;
     /** What the text may point at (`useStreamLinks`), read by the page that holds this one, which opens chats and reads files with it too. */
     links: ConversationLinks;
-    /** Over the stream: a line that says whose conversation it is (a thread's, a sub-agent's). */
+    /** Over the stream: the header that says where the conversation is, `ConversationHeader`. */
     top?: ReactNode;
     /** Over the stream's bottom, above the box: the plates that tell what the chat is doing (its agents, its last run, its tasks). */
     banners?: ReactNode;
@@ -46,7 +46,7 @@ export interface ConversationViewProps
 /**
  * One conversation: a run's stream with its loading, failure and empty states, the answers to its questions and the decisions on its requests for permission,
  * the live line while the run works, and over the stream's bottom the banners and the box, which the stream scrolls behind. A chat, a thread and a native
- * sub-agent all open on it; they differ in the line over the stream (`top`), the plates above the box (`banners`) and the box itself (`bottom`).
+ * sub-agent all open on it, with the same header over the stream (`top`); they differ in the plates above the box (`banners`) and the box itself (`bottom`).
  */
 export function ConversationView({
     run,

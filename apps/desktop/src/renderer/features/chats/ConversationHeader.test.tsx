@@ -179,7 +179,7 @@ describe('ConversationHeader, a sub-agent', () => {
         expect(status()).toBeUndefined();
     });
 
-    it('shows the status of the sub-agent, not of its chat, when the chat is done and the sub-agent is not', async () => {
+    it('shows the status of the sub-agent, not of its chat, when they differ', async () => {
         await draw(chatOf('c-1'), { ...runOf('r-na-02'), status: 'waiting_user' });
 
         expect(status()).toBe('Waiting');
@@ -218,6 +218,42 @@ describe('ConversationHeader, a sub-agent', () => {
         await vi.waitFor(() => expect(ui().runId).toBe('r-na-03'));
     });
 
+    it('names an archived chat above a sub-agent without opening it, and opens the ones that are not', async () => {
+        await open(data => {
+            data.chats.find(chat => chat.id === 'c-6')!.archivedAt = Date.now();
+            data.runs.push({
+                ...data.runs.find(run => run.id === 'r-na-02')!,
+                id: 'r-na-72',
+                parentRunId: 'r-orch-6a',
+                rootRunId: 'r-orch-6a',
+            });
+        });
+        await draw(chatOf('c-6a'), runOf('r-na-72'));
+
+        expect(pathText()).toEqual(['Ship the checkout', 'Fix the price rounding', 'Explore agent']);
+        expect(part('Ship the checkout')!.querySelector('button')!.disabled).toBe(true);
+        expect(part('Fix the price rounding')!.querySelector('button')!.disabled).toBe(false);
+    });
+
+    it('goes below a thread twice over: its chats, the sub-agent it runs inside, and its own name', async () => {
+        await open(data => {
+            const general = {
+                ...data.runs.find(run => run.id === 'r-na-03')!,
+                id: 'r-na-73',
+                parentRunId: 'r-orch-6a',
+                rootRunId: 'r-orch-6a',
+            };
+
+            data.runs.push(general, { ...general, id: 'r-na-74', parentRunId: 'r-na-73' });
+        });
+        await draw(chatOf('c-6a'), runOf('r-na-74'));
+
+        expect(pathText()).toEqual(['Ship the checkout', 'Fix the price rounding', 'General agent', 'General agent']);
+
+        await press('Ship the checkout');
+        await vi.waitFor(() => expect(ui().chatId).toBe('c-6'));
+    });
+
     it('is the sub-agent alone when its chat is gone', async () => {
         await draw(undefined, runOf('r-na-02'));
 
@@ -232,6 +268,27 @@ describe('ConversationHeader, a long path', () => {
         for (const [index, parent] of ['c-6a1', 'c-x1', 'c-x2'].entries())
             data.chats.push({ ...base, id: `c-x${index + 1}`, title: `Deeper ${index + 1}`, parentChatId: parent });
     };
+
+    it('does not fold a path of exactly four parts', async () => {
+        await open(deep);
+        await draw(chatOf('c-x1'));
+
+        expect(pathText()).toEqual([
+            'Ship the checkout',
+            'Fix the price rounding',
+            'Check the currency table',
+            'Deeper 1',
+        ]);
+        expect(container.querySelector('nav li:nth-child(2) button')?.textContent).toBe('Fix the price rounding');
+    });
+
+    it('moves the keyboard to the first part the … uncovered', async () => {
+        await open(deep);
+        await draw(chatOf('c-x3'));
+        await act(async () => container.querySelector<HTMLButtonElement>('nav li:nth-child(2) button')!.click());
+
+        expect(document.activeElement?.textContent).toBe('Fix the price rounding');
+    });
 
     it('folds its middle into …, keeping the first part, the last two and the page', async () => {
         await open(deep);
@@ -259,10 +316,11 @@ describe('ConversationHeader, a long path', () => {
         await vi.waitFor(() => expect(ui().chatId).toBe('c-6a1'));
     });
 
-    it('keeps the last part of a long path with a long sub-agent name too', async () => {
+    it('folds the path of a sub-agent too, and the sub-agent stays as the last part', async () => {
         await open(deep);
         await draw(chatOf('c-x3'), runOf('r-na-02'));
 
+        expect(pathText()).toEqual(['Ship the checkout', '…Show 4 more', 'Deeper 3', 'Explore agent']);
         expect(path()?.querySelector('[aria-current="page"]')?.textContent).toBe('Explore agent');
     });
 });

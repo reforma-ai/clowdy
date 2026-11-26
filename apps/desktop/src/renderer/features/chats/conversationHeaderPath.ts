@@ -22,7 +22,7 @@ const UNTITLED = 'New chat';
 
 const chatLabel = (chat: Chat) => (chat.title.trim() === '' ? UNTITLED : chat.title);
 
-export interface HeaderPathInput {
+interface HeaderPathInput {
     chats: ReadonlyMap<ChatId, Chat>;
     runs: ReadonlyMap<RunId, Run>;
     /** The chat the page belongs to: the page itself, or the chat of the sub-agent. Absent when the sub-agent's chat is gone. */
@@ -80,7 +80,7 @@ export function conversationHeaderPath({ chats, runs, chat, subagent, label }: H
 }
 
 /** A part of the path as drawn: a part of it, or the `…` that stands for the parts folded away. */
-export type HeaderItem = HeaderPart | { fold: true; hidden: number };
+type HeaderItem = HeaderPart | { fold: true; hidden: number };
 
 /** The path to draw: all of it, or with its middle folded into one `…` when it is longer than `MAX_PARTS` and has not been opened out. The last part always stays. */
 export function foldedPath(parts: readonly HeaderPart[], isOpenedOut: boolean): HeaderItem[] {
