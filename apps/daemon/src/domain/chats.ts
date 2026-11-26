@@ -33,12 +33,25 @@ export function titleFrom(text: string): string {
     return line.length > TITLE_LENGTH ? `${line.slice(0, TITLE_LENGTH - 1)}…` : line;
 }
 
+interface TitleMessage {
+    text: string;
+    attachments?: readonly { name: string }[];
+}
+
 /**
- * The title a chat gets from its first message, before an agent names it: the first words of what the person wrote, or the name of the first file
- * when they wrote nothing. A chat whose title is still this has not been named by anybody.
+ * Prefer the person's request to any web links pasted before it. If there is no request after the links, keep the first link; if there is no text,
+ * use the first attachment's name.
  */
-export function firstWords({ text, attachments }: { text: string; attachments?: readonly { name: string }[] }): string {
-    return titleFrom(text || attachments?.[0]?.name || '');
+export function firstWords({ text, attachments }: TitleMessage): string {
+    const message = text.trimStart();
+    const request = message.replace(/^(?:(?:<https?:\/\/[^\s<>]+>|(?:https?:\/\/|www\.)[^\s<>]+)(?:\s+|$))+/i, '');
+
+    return titleFrom(request || message || attachments?.[0]?.name || '');
+}
+
+/** Titles made before leading links were skipped remain eligible for a generated title or a first-message edit. */
+export function isFirstWords(title: string, message: TitleMessage): boolean {
+    return title === firstWords(message) || title === titleFrom(message.text || message.attachments?.[0]?.name || '');
 }
 
 export function requireChat(store: Store, chatId: string): Chat {
