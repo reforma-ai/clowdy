@@ -33,7 +33,7 @@ import { starCardPreferences } from './starCardState';
 import { chatWorktreeKey } from './worktreeCards';
 
 import type { Editor } from '@tiptap/core';
-import type { ReactElement, ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import type { KeyValueStorage } from '../../stores/storage';
 
 // `Modal` cannot load under the desktop's Vitest (decorators), and no confirmation is opened here.
@@ -2374,7 +2374,8 @@ describe('worktree cards', () => {
 
     it.each(['card', 'chip'] as const)('removes the selected worktree from the %s menu', async entry => {
         await restart();
-        const dialog = vi.spyOn(Modal, 'create').mockImplementationOnce(() => undefined as never);
+        const create = Modal.create.bind(Modal);
+        const dialog = vi.spyOn(Modal, 'create').mockImplementation(options => create({ ...options, animate: false }));
         window.desktop = {
             getOpenApps: async () => ({ editors: [], terminals: [], fileManagers: [] }),
             openPath: async () => undefined,
@@ -2391,10 +2392,13 @@ describe('worktree cards', () => {
             await press(button);
             await press(menuItem('Remove worktree…'));
             await vi.waitFor(() => expect(dialog).toHaveBeenCalled());
-            const content = dialog.mock.calls[0]![0]!.component as ReactElement<{ onConfirm: () => Promise<void> }>;
-            await act(async () => {
-                await content.props.onConfirm();
-            });
+            const confirm = () =>
+                [...document.querySelectorAll<HTMLButtonElement>('[data-modal-window] button')].find(
+                    button => button.textContent?.trim() === 'Remove worktree'
+                );
+            await vi.waitFor(() => expect(confirm()).toBeDefined());
+            await press(confirm()!);
+            await vi.waitFor(() => expect(Modal.opened).toHaveLength(0));
             await draw();
             const snapshot = await store.transport.getProjectSnapshot(FIXTURE_PROJECT_ID);
             expect({
@@ -2407,6 +2411,7 @@ describe('worktree cards', () => {
                     .some(row => row.workspaceId === 'wks_ab12cd34'),
             }).toEqual({ archived: [true, true], selected: false, listed: false });
         } finally {
+            for (const modal of [...Modal.opened].reverse()) await act(async () => modal.close(false));
             dialog.mockRestore();
             window.desktop = undefined;
         }
