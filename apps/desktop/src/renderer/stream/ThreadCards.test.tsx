@@ -135,26 +135,26 @@ describe('threads that stopped', () => {
         const group = container.querySelector('[role="group"][aria-label="Threads that stopped"]')!;
 
         expect(group.getAttribute('data-turn')).toBe('i-1');
-        expect(cards('thread-notice').map(card => card.querySelector('span[class*="title"]')?.textContent)).toEqual([
+        expect(cards('agent-card').map(card => card.querySelector('span[class*="title"]')?.textContent)).toEqual([
             'Write the refund tests finished',
             'Migrate the payments table failed',
             'Fix login was interrupted',
             'Load test finished',
         ]);
-        expect(cards('thread-notice').map(card => card.getAttribute('data-outcome'))).toEqual([
+        expect(cards('agent-card').map(card => card.getAttribute('data-outcome'))).toEqual([
             'finished',
             'failed',
             'interrupted',
             'finished',
         ]);
-        expect(cards('thread-notice').every(card => card.querySelector('svg'))).toBe(true);
+        expect(cards('agent-card').every(card => card.querySelector('svg'))).toBe(true);
         expect(group.textContent).not.toMatch(/(finished|failed|interrupted)\./);
     });
 
     it("shows the thread's words, and nothing for a thread that said nothing", async () => {
         await draw([notice]);
 
-        const [refunds, , login] = cards('thread-notice');
+        const [refunds, , login] = cards('agent-card');
 
         expect(refunds.textContent).toContain('14 cases, all passing.');
         expect(login.textContent).toBe('Fix login was interrupted');
@@ -163,7 +163,7 @@ describe('threads that stopped', () => {
     it('says what a thread still runs, and that its words are not its final result', async () => {
         await draw([notice]);
 
-        const [refunds, , , load] = cards('thread-notice');
+        const [refunds, , , load] = cards('agent-card');
 
         expect(load.textContent).toContain('Still running: k6 run long.js, bun run report');
         expect(load.textContent).toContain('Not the final result');
@@ -171,26 +171,35 @@ describe('threads that stopped', () => {
         expect(refunds.textContent).not.toContain('Not the final result');
     });
 
-    it('clamps long words to a few lines with a toggle that opens the rest', async () => {
+    it("clamps long words to a few lines with a toggle that opens the rest, as a thread's message and a person's long message have", async () => {
         layout = { scrollHeight: 400, clientHeight: 80 };
         await draw([notice]);
 
-        const toggle = linkNamed(cards('thread-notice')[0], 'Show more')!;
+        const toggle = linkNamed(cards('agent-card')[0], 'Show full message')!;
 
         expect(toggle.getAttribute('aria-expanded')).toBe('false');
 
         await act(async () => toggle.click());
 
-        expect(linkNamed(cards('thread-notice')[0], 'Show less')?.getAttribute('aria-expanded')).toBe('true');
+        expect(linkNamed(cards('agent-card')[0], 'Show less')?.getAttribute('aria-expanded')).toBe('true');
     });
 
-    it('opens the thread from its name', async () => {
+    it('opens the thread from a press on its title, and from nowhere in the card when the project no longer has it', async () => {
         const onOpenChat = vi.fn();
 
-        await draw([notice], { onOpenChat, hasChat: () => true });
-        await act(async () => linkNamed(cards('thread-notice')[1], 'Migrate the payments table')!.click());
+        await draw([notice], { onOpenChat, hasChat: chatId => chatId !== 'c-a' });
+        await act(async () => linkNamed(cards('agent-card')[1], 'Migrate the payments table failed')!.click());
 
         expect(onOpenChat).toHaveBeenCalledWith('c-b');
+        expect(cards('agent-card')[0].querySelector('button')).toBeNull();
+        expect(cards('agent-card')[0].getAttribute('data-pressable')).toBeNull();
+        expect(cards('agent-card')[1].getAttribute('data-pressable')).toBe('');
+    });
+
+    it('has nothing to press where nothing opens chats', async () => {
+        await draw([notice]);
+
+        expect(cards('agent-card').some(card => card.querySelector('button[class*="press"]'))).toBe(false);
     });
 
     it('is a turn of the rail, named by the threads that stopped', () => {

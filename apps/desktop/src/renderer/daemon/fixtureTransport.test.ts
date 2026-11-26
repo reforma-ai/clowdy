@@ -2090,3 +2090,55 @@ describe('FixtureTransport edits', () => {
         ]);
     });
 });
+
+describe('the fixture sub-agents', () => {
+    it('begin their streams as the daemon writes them: what the parent asked, from the chat of the run they run inside, as the first message of a thread', async () => {
+        const { transport } = await connected();
+        const { runs, chats } = await transport.getProjectSnapshot(FIXTURE_PROJECT_ID);
+        const natives = runs.filter(run => run.origin === 'native');
+
+        expect(natives.map(run => run.id)).toEqual(
+            expect.arrayContaining(['r-na-01', 'r-na-02', 'r-na-03', 'r-na-04', 'r-na-05', 'r-na-06', 'r-na-07'])
+        );
+
+        for (const run of natives) {
+            const [first] = await transport.getItems({ runId: run.id });
+            const chat = chats.find(found => found.orchestratorRunId === run.rootRunId)!;
+
+            expect(first?.body).toMatchObject({
+                kind: 'user',
+                from: { kind: 'thread', chatId: chat.id, title: chat.title },
+            });
+            expect(first?.body.kind === 'user' && first.body.text.trim()).not.toBe('');
+        }
+    });
+
+    it("were asked the same thing by the call that started them, in the parent's stream, as by the first item of their own", async () => {
+        const { transport } = await connected();
+        const { runs } = await transport.getProjectSnapshot(FIXTURE_PROJECT_ID);
+
+        for (const run of runs.filter(found => found.origin === 'native' && found.parentToolCallId)) {
+            const [first] = await transport.getItems({ runId: run.id });
+            const call = (await transport.getItems({ runId: run.parentRunId! })).find(
+                item => item.body.kind === 'tool' && item.body.toolCallId === run.parentToolCallId
+            );
+
+            expect(call?.body.kind === 'tool' && (call.body.input as { prompt?: string }).prompt).toBe(
+                first?.body.kind === 'user' ? first.body.text : undefined
+            );
+        }
+    });
+
+    it('include a prompt of several lines, and one long enough to be clamped', async () => {
+        const { transport } = await connected();
+        const lines = async (runId: string) => {
+            const [first] = await transport.getItems({ runId });
+
+            return first?.body.kind === 'user' ? first.body.text.split('\n').length : 0;
+        };
+
+        expect(await lines('r-na-01')).toBe(1);
+        expect(await lines('r-na-03')).toBeGreaterThan(4);
+        expect(await lines('r-na-04')).toBeGreaterThan(16);
+    });
+});

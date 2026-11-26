@@ -147,7 +147,155 @@ describe('RunDetail, the page', () => {
         expect(container.querySelector('[aria-label*="Fork"]')).toBeNull();
     });
 
-    it('says so when a sub-agent has not written anything yet', async () => {
+    it('says so when a sub-agent has not written anything yet, and has no call to take what it was asked from', async () => {
+        const data = createFixtureData();
+
+        data.items['r-na-02'] = [];
+        data.runs.find(found => found.id === 'r-na-02')!.parentToolCallId = undefined;
+        await open(data);
+        await draw(runOf('r-na-02'));
+        await draw(runOf('r-na-02'));
+
+        expect(container.textContent).toContain('This sub-agent has not written anything yet');
+    });
+});
+
+describe('RunDetail, what its parent asked', () => {
+    const cards = () => [...container.querySelectorAll<HTMLElement>('[data-slot="thread-message"]')];
+    const parentCall = (data: FixtureData, toolCallId: string) =>
+        data.items['r-orch-1']!.find(found => found.body.kind === 'tool' && found.body.toolCallId === toolCallId)!;
+    /** The page, drawn twice: once the streams the page reads have been fetched. */
+    const show = async (id: string) => {
+        await draw(runOf(id));
+        await draw(runOf(id));
+    };
+
+    it("begins with the card of the first message of its stream, as a thread's page does, in the words of its parent", async () => {
+        await show('r-na-02');
+
+        expect(cards()).toHaveLength(1);
+        expect(cards()[0].textContent).toContain('Message from Simplify booking');
+        expect(cards()[0].textContent).toContain('Find where the booking price is computed and who calls it.');
+        // The card comes before everything the sub-agent did, and is the only thing in the stream that is not its own.
+        expect(container.querySelector('[data-turn]')).toBe(cards()[0]);
+        expect(container.querySelector('time')).toBeNull();
+    });
+
+    it('holds the whole prompt, with its lines, for a sub-agent that was given a long one', async () => {
+        await show('r-na-04');
+
+        const words = cards()[0].textContent!;
+
+        expect(words).toContain('Add the weekend surcharge to the price helper and keep the typecheck green.');
+        expect(words).toContain('Round the total once, at the end, to the cent.');
+        expect(cards()[0].querySelectorAll('li').length).toBeGreaterThan(4);
+    });
+
+    it('opens the chat that runs it from the title of the card', async () => {
+        await show('r-na-02');
+        store.ui.forProject(FIXTURE_PROJECT_ID).openChat('c-2');
+
+        const title = [...cards()[0].querySelectorAll('button')].find(
+            button => button.textContent === 'Simplify booking'
+        );
+
+        await act(async () => title!.click());
+
+        expect(store.ui.forProject(FIXTURE_PROJECT_ID).chatId).toBe('c-1');
+    });
+
+    it('names the chat of the root run for a sub-agent that runs inside another sub-agent', async () => {
+        await show('r-na-05');
+
+        expect(cards()[0].textContent).toContain('Message from Simplify booking');
+        expect(cards()[0].textContent).toContain('List every caller of');
+    });
+
+    it('is made from the prompt of the call that started a sub-agent stored before its stream began with one, and only then', async () => {
+        const data = createFixtureData();
+
+        data.items['r-na-02'] = data.items['r-na-02']!.slice(1);
+        await open(data);
+        await show('r-na-02');
+
+        expect(cards()).toHaveLength(1);
+        expect(cards()[0].textContent).toContain('Message from Simplify booking');
+        expect(cards()[0].textContent).toContain('Find where the booking price is computed and who calls it.');
+        expect(container.querySelector('[data-turn]')).toBe(cards()[0]);
+        // View state: the stream of the run is still what the daemon stored.
+        expect(store.streams.of('r-na-02').items.map(found => found.body.kind)).not.toContain('user');
+    });
+
+    it("takes the message a call carries when it has no prompt, as Codex's does", async () => {
+        const data = createFixtureData();
+
+        data.items['r-na-02'] = data.items['r-na-02']!.slice(1);
+        parentCall(data, 'tc-agent-2').body = {
+            kind: 'tool',
+            toolCallId: 'tc-agent-2',
+            name: 'spawnAgent',
+            input: { message: 'Look for the callers' },
+            state: 'running',
+        };
+        await open(data);
+        await show('r-na-02');
+
+        expect(cards()[0].textContent).toContain('Look for the callers');
+    });
+
+    it('does not make it a second time when the stream of a sub-agent begins with one, whatever the call says', async () => {
+        const data = createFixtureData();
+        const call = parentCall(data, 'tc-agent-2');
+
+        if (call.body.kind === 'tool') call.body.input = { prompt: 'Something the call said differently' };
+        await open(data);
+        await show('r-na-02');
+
+        expect(cards()).toHaveLength(1);
+        expect(cards()[0].textContent).toContain('Find where the booking price is computed and who calls it.');
+        expect(cards()[0].textContent).not.toContain('Something the call said differently');
+    });
+
+    it("shows nothing, and breaks nothing, for a sub-agent whose call has no prompt or is not in its parent's stream", async () => {
+        const data = createFixtureData();
+
+        data.items['r-na-02'] = data.items['r-na-02']!.slice(1);
+        data.items['r-na-03'] = data.items['r-na-03']!.slice(1);
+        data.items['r-orch-1'] = data.items['r-orch-1']!.filter(
+            found => !(found.body.kind === 'tool' && found.body.toolCallId === 'tc-agent-3')
+        );
+        parentCall(data, 'tc-agent-2').body = {
+            kind: 'tool',
+            toolCallId: 'tc-agent-2',
+            name: 'Agent',
+            input: { description: 'Find where the price is computed' },
+            state: 'running',
+        };
+        await open(data);
+
+        await show('r-na-02');
+
+        expect(cards()).toHaveLength(0);
+        expect(container.textContent).toContain('Looking for the price helper and its callers.');
+
+        await show('r-na-03');
+
+        expect(cards()).toHaveLength(0);
+        expect(container.textContent).toContain('I will start by reading the current form and the price helper.');
+    });
+
+    it('shows nothing for a sub-agent that no call started', async () => {
+        const data = createFixtureData();
+
+        data.items['r-na-02'] = data.items['r-na-02']!.slice(1);
+        data.runs.find(found => found.id === 'r-na-02')!.parentToolCallId = undefined;
+        await open(data);
+        await show('r-na-02');
+
+        expect(cards()).toHaveLength(0);
+    });
+
+    it('stands alone for a sub-agent that has not written anything yet, without the empty notice', async () => {
         const data = createFixtureData();
 
         data.items['r-na-02'] = [];
@@ -155,7 +303,8 @@ describe('RunDetail, the page', () => {
         await draw(runOf('r-na-02'));
         await draw(runOf('r-na-02'));
 
-        expect(container.textContent).toContain('This sub-agent has not written anything yet');
+        expect(cards()).toHaveLength(1);
+        expect(container.textContent).not.toContain('This sub-agent has not written anything yet');
     });
 });
 

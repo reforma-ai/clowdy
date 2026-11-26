@@ -13,7 +13,7 @@ import styles from './ConversationView.module.css';
 import { isRunActive, liveLine } from './chatRun';
 import { perform } from './commands';
 
-import type { Run } from '@clowdy/protocol';
+import type { Run, StreamItem } from '@clowdy/protocol';
 import type { ReactNode, Ref } from 'react';
 import type { RunStream } from '../../stores';
 import type { ConversationLinks } from './useStreamLinks';
@@ -29,6 +29,8 @@ export interface ConversationViewProps
     stream: RunStream | undefined;
     /** What the text may point at (`useStreamLinks`), read by the page that holds this one, which opens chats and reads files with it too. */
     links: ConversationLinks;
+    /** An item drawn before the stream's own: what the page makes of what it knows (a sub-agent's page, the prompt of the call that started it). It is not stored and not part of the stream. */
+    leading?: StreamItem;
     /** Over the stream: the header that says where the conversation is, `ConversationHeader`. */
     top?: ReactNode;
     /** Over the stream's bottom, above the box: the plates that tell what the chat is doing (its agents, its last run, its tasks). */
@@ -52,6 +54,7 @@ export function ConversationView({
     run,
     stream,
     links,
+    leading,
     top,
     banners,
     bottom,
@@ -95,8 +98,9 @@ export function ConversationView({
     }, [measureOverlay]);
 
     // A stream that is read again (the app resyncs) keeps what it shows until the new items replace them, so the page keeps its place; only one with nothing to show says it is loading.
-    const items = stream?.items ?? [];
-    const hasItems = items.length > 0;
+    const streamItems = stream?.items ?? [];
+    const hasItems = streamItems.length > 0;
+    const items = leading ? [leading, ...streamItems] : streamItems;
     const shown = run && shownRunStatus(run);
     // The live line follows what the person reads of the run: none while a card waits for them.
     const working =
