@@ -166,7 +166,8 @@
 }
 
 /*
- * A sub-agent's row has no actions, so its dot stays where it is on hover, in the room the chat's dot takes at rest (24px, the dot itself 6px). The group of
+ * A sub-agent's row has no actions, so its dot stays where it is on hover, in the room the chat's dot takes at rest (24px, the dot itself 6px) and as far
+ * from the row's edge (a chat's row has a button at its end, which sets that inset: `ListBox.module.css`). The group of
  * finished sub-agents is muted, and its count stands in the same room, at the end.
  */
 .agentStatus,
@@ -186,6 +187,10 @@
 .agentStatus [data-tone] {
     width: var(--spacing-6);
     height: var(--spacing-6);
+}
+
+.agentRow {
+    padding-inline-end: calc((var(--clowdy-listbox-item-height) - var(--spacing-24)) / 2);
 }
 
 .agentRow[data-finished] {
