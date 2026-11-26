@@ -26,7 +26,7 @@ const CHOICES: ReadonlyArray<{ id: QueuedMessageMode; label: string; tip: string
     { id: 'queue', label: 'Queue', tip: 'Waits until the agent finishes its current turn' },
 ];
 
-const FINISHED_LABEL = 'Finished threads and sub-agents';
+const FINISHED_LABEL = 'Show completed threads';
 
 /**
  * Settings > Chat: how the message box sends, whether a swipe over a message replies to it, what a new chat starts with where its project follows the app,
@@ -110,7 +110,7 @@ export function ChatPage() {
                 <SettingsCard>
                     <SettingsRow
                         title={FINISHED_LABEL}
-                        description="List the threads and sub-agents whose run is over, below the chat that started them"
+                        description="Show completed threads below the chat that started them"
                     >
                         <Switch
                             size="sm"

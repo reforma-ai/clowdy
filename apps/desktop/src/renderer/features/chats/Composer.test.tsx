@@ -434,6 +434,7 @@ describe('Composer', () => {
 
             await choose('CAR-24');
             expect(container.querySelector('[data-chip]')?.getAttribute('data-tone')).toBe('success');
+            expect(container.querySelector<HTMLElement>('[data-chip]')?.tabIndex).toBe(-1);
             await press('Enter');
 
             expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Do CAR-24', mode: 'steer' }]);

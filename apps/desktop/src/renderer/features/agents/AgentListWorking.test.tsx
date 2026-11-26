@@ -101,6 +101,11 @@ const key = (target: Element, name: string) =>
         target.dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true }));
     });
 
+const openFilter = async () => {
+    await press(container.querySelector<HTMLElement>('button[aria-label="Project menu"]')!);
+    await key(menuItem('Filter'), 'ArrowRight');
+};
+
 beforeEach(async () => {
     chatListPreferences.setShowFinishedThreads(true);
     chatListPreferences.setExpandRunningAgents(true);
@@ -247,10 +252,10 @@ describe('finished sub-agents', () => {
         expect(rowOf('r-na-01').querySelector('[role="img"]')).toBeNull();
     });
 
-    it('are left out with the finished threads when Show finished sub-threads is turned off, the ones that work staying', async () => {
+    it('are left out with the finished threads when the completed threads filter is turned off, the ones that work staying', async () => {
         await draw(() => ['c-1', 'c-6'].forEach(id => ui().toggleChatExpanded(id)));
-        await press(container.querySelector<HTMLElement>('button[aria-label="Filters"]')!);
-        await press(menuItem('Show finished sub-threads'));
+        await openFilter();
+        await press(menuItem('Show completed threads'));
         await draw();
 
         expect(chatListPreferences.showFinishedThreads).toBe(false);
@@ -337,30 +342,37 @@ describe('finished sub-agents', () => {
     });
 });
 
-describe('the Expand running agents check', () => {
-    const filters = () => container.querySelector<HTMLElement>('button[aria-label="Filters"]')!;
+describe('the active threads filter', () => {
+    it('toggles the completed filter with the keyboard and keeps the submenu open', async () => {
+        await openFilter();
+        const completed = menuItem('Show completed threads');
+        completed.focus();
 
-    it('stands next to Show finished sub-threads, ticked until it is turned off, and turns the working rows off and on', async () => {
-        await press(filters());
+        await key(completed, ' ');
+        await draw();
 
-        expect([...document.body.querySelectorAll('[role^="menuitem"]')].map(row => row.textContent)).toEqual([
-            'Show finished sub-threads',
-            'Expand running agents',
-            'Group chats by folder',
-            'Group chats by worktree',
-        ]);
-        expect(menuItem('Expand running agents').getAttribute('aria-checked')).toBe('true');
+        expect(chatListPreferences.showFinishedThreads).toBe(false);
+        expect(menuItem('Show completed threads').getAttribute('aria-checked')).toBe('false');
+        expect(menuItem('Expand active threads')).toBeTruthy();
+    });
 
-        await press(menuItem('Expand running agents'));
+    it('turns active rows off and on without closing the filter submenu', async () => {
+        await openFilter();
+
+        expect(menuItem('Show completed threads').getAttribute('role')).toBe('menuitemcheckbox');
+        expect(menuItem('Expand active threads').getAttribute('aria-checked')).toBe('true');
+
+        await press(menuItem('Expand active threads'));
         await draw();
 
         expect(chatListPreferences.expandRunningAgents).toBe(false);
         expect(shown('r-na-03', 'r-na-02', 'c-6a')).toEqual([]);
-        // The other checks are as they were.
+        // The other setting and layout are unchanged.
         expect(chatListPreferences.showFinishedThreads).toBe(true);
         expect(ui().groupByFolder).toBe(true);
+        expect(menuItem('Expand active threads')).toBeTruthy();
 
-        await press(menuItem('Expand running agents'));
+        await press(menuItem('Expand active threads'));
         await draw();
 
         expect(chatListPreferences.expandRunningAgents).toBe(true);

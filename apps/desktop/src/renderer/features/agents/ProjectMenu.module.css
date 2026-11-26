@@ -1,0 +1,14 @@
+.summary {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    color: var(--color-secondary-muted-text);
+}
+
+.summary svg {
+    flex-shrink: 0;
+}
+
+.switch {
+    pointer-events: none;
+}

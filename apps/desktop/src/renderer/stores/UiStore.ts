@@ -304,6 +304,8 @@ export class ProjectUi {
         }
 
         Object.assign(this, initialView);
+        // The old worktree-only layout becomes the nested layout, which keeps its worktree cards visible.
+        if (this.groupByWorktree) this.groupByFolder = true;
         makeAutoObservable(this, {
             projectId: false,
             pendingFiles: observableRef,
@@ -540,6 +542,11 @@ export class ProjectUi {
 
     setGroupByWorktree(group: boolean): void {
         this.groupByWorktree = group;
+    }
+
+    setChatListLayout(layout: 'simple' | 'folder' | 'worktree'): void {
+        this.groupByFolder = layout !== 'simple';
+        this.groupByWorktree = layout === 'worktree';
     }
 
     setWorktreeOrder(order: readonly string[]): void {

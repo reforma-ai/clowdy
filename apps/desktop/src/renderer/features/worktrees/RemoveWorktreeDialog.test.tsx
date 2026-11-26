@@ -730,9 +730,9 @@ describe('Remove in Manage worktrees', () => {
                 row.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked,
             ])
         ).toEqual([
-            ['feature/doneMergedNo local changes', true],
-            ['secondMergedNo local changes', true],
-            ['keptMergedNo local changes', true],
+            ['feature/doneNo local changesMerged', true],
+            ['secondNo local changesMerged', true],
+            ['keptNo local changesMerged', true],
         ]);
         expect(confirmation().querySelectorAll('input[type="checkbox"]')).toHaveLength(4);
         const choices = [...confirmation().querySelectorAll<HTMLInputElement>('input[type="checkbox"]')];
@@ -743,7 +743,7 @@ describe('Remove in Manage worktrees', () => {
         ]);
         await click(choices.find(choice => choice.getAttribute('aria-label')?.endsWith(kept))!);
         data.worktrees![CAR_RENTAL]!.find(row => row.path === second)!.changes = 1;
-        await confirm('Remove selected');
+        await confirm('Remove 2 workspaces');
         expect(confirmation().textContent).toContain(second);
         expect({
             commands: removals(),
@@ -773,6 +773,21 @@ describe('Remove in Manage worktrees', () => {
         });
     });
 
+    it('disables removal when nothing is selected and closes without removing', async () => {
+        await open({ data: dataWithKinds() });
+        await click(textButton(confirmation(), 'Tidy up…')!);
+        await settle();
+        const choice = confirmation().querySelector<HTMLInputElement>(
+            `input[aria-label="Remove feature/done: ${CLEAN_MERGED}"]`
+        )!;
+        await click(choice);
+        expect(textButton(confirmation(), 'Remove 0 workspaces')?.disabled).toBe(true);
+        await click(confirmation().querySelector<HTMLButtonElement>('button[aria-label="Close"]')!);
+        await settle();
+        expect(removals()).toEqual([]);
+        expect(row(CLEAN_MERGED)).not.toBeNull();
+    });
+
     it('tidies an archived-only worktree without disposing of its history or an unarchived thread elsewhere', async () => {
         const data = dataWithKinds();
         const archived = data.chats.find(chat => chat.id === 'c-10')!;
@@ -799,7 +814,7 @@ describe('Remove in Manage worktrees', () => {
             confirmation().querySelector<HTMLInputElement>(`input[aria-label="Remove feature/done: ${CLEAN_MERGED}"]`)
                 ?.checked
         ).toBe(true);
-        await confirm('Remove selected');
+        await confirm('Remove 1 workspace');
         const snapshot = await store.transport.getProjectSnapshot(FIXTURE_PROJECT_ID);
         expect({
             commands: removals(),
