@@ -30,7 +30,7 @@ import { classifyThrown, failureEvent, processEnded } from './failure';
 import { BACKGROUND_HANDOFF_MS, BACKGROUND_REPORT_MS } from './layer';
 import { UpdateMapperV2 } from './mapper-v2';
 import { paramsOfV2 } from './permission';
-import { bestPromptSuggestion, SUGGESTION_WAIT_MS } from './promptSuggestions';
+import { PromptSuggestionWindow } from './promptSuggestions';
 import { Turns } from './turns';
 
 import type {
@@ -89,7 +89,7 @@ function sessionRequest(
 const FORK_TIMEOUT_MS = 120_000;
 
 /** The timers of a session that lives on: the handoff guard before it ends, and the wait for the turn that a message which landed in a turn may have to come. */
-type Wake = 'handoff' | 'release' | 'prediction';
+type Wake = 'handoff' | 'release';
 
 type Item =
     /** An update of the session the engine talks to, or, with `from`, of a sub-agent's session. */
@@ -106,8 +106,6 @@ type Item =
 /** Where the conversation stands, which the loop reads and moves. */
 interface Course {
     /** A prediction is only safe for the initial, uninterrupted foreground turn. */
-    predictionWaiting?: boolean;
-    prediction?: string;
     predictionInvalidated?: boolean;
     /** A turn is in progress: the agent said `running` or `requires_action` since its last `idle`. */
     working: boolean;
@@ -217,6 +215,11 @@ export class V2Layer implements ProtocolLayer {
     /** The agent says it names sessions (`session.title`) and this session is new: it takes a title from the client, and may send one. */
     naming = false;
     answered = false;
+    private prediction = new PromptSuggestionWindow();
+
+    get latePromptSuggestion() {
+        return this.prediction.late;
+    }
     restartOn?: AgentProtocol;
     /** What the agent says, the timers and the messages in flight, in the order the loop reads them. */
     private channel = new Channel<Item>();
@@ -667,6 +670,9 @@ export class V2Layer implements ProtocolLayer {
         let current: string | undefined;
         // What the session says before the prompt is in (the state it resumed in, a replay of its history) is not news of the turn.
         let listening = false;
+        let predictionWorking = false;
+        let predictionIdle = false;
+        const suggestions = Boolean(agent.promptSuggestions && options.promptSuggestions);
         // The sessions of the sub-agents the session announced, in the order the agent said so: a child's first word comes after its announcement.
         const children = new Set<string>();
 
@@ -688,12 +694,36 @@ export class V2Layer implements ProtocolLayer {
                         host.offerTitle(params.update.title);
                     }
 
+                    if (suggestions) {
+                        const update = params.update;
+                        if (SessionUpdate.isPromptSuggestionsUpdate(update)) {
+                            if (predictionWorking) this.prediction.observe(update.suggestions);
+                            return;
+                        }
+                        if (SessionUpdate.isStateUpdate(update)) {
+                            if (
+                                'background' in update &&
+                                Array.isArray(update.background) &&
+                                update.background.length > 0
+                            ) {
+                                this.prediction.invalidate();
+                            }
+                            if (StateUpdate.isRunning(update) || StateUpdate.isRequiresAction(update)) {
+                                if (predictionIdle) this.prediction.invalidate();
+                                predictionWorking = true;
+                            } else if (StateUpdate.isIdle(update) && predictionWorking) {
+                                predictionIdle = true;
+                            }
+                        }
+                    }
+
+                    if (this.finished) return;
                     if (SessionUpdate.isSubagentUpdate(params.update)) {
                         children.add(params.update.sessionId);
                     }
 
                     channel.push({ kind: 'update', update: params.update });
-                } else if (children.has(params.sessionId)) {
+                } else if (!this.finished && children.has(params.sessionId)) {
                     // A sub-agent of a sub-agent is announced on the session of the one that started it.
                     if (SessionUpdate.isSubagentUpdate(params.update)) {
                         children.add(params.update.sessionId);
@@ -880,7 +910,6 @@ export class V2Layer implements ProtocolLayer {
             this.finished = true;
             this.disarm('handoff');
             this.disarm('release');
-            this.disarm('prediction');
             this.clearDeadlines();
             this.markEnded();
         }
@@ -987,17 +1016,6 @@ export class V2Layer implements ProtocolLayer {
             case 'failed':
                 this.endTurn();
 
-                // A prediction is optional. An agent that closes the connection after a successful idle does not lose its answer.
-                if (
-                    course.predictionWaiting &&
-                    !course.working &&
-                    course.items.length === 0 &&
-                    !this.review().blocked
-                ) {
-                    yield* this.deliver(id, course, mapper, false);
-                    return true;
-                }
-
                 if (item.kind === 'failed') {
                     yield* mapper.close();
                     yield failureEvent(classifyThrown(item.error, context, await stderrOf(proc)));
@@ -1033,23 +1051,7 @@ export class V2Layer implements ProtocolLayer {
             return false;
         }
 
-        if (SessionUpdate.isPromptSuggestionsUpdate(update)) {
-            if (
-                this.host.agent.promptSuggestions &&
-                this.host.options.promptSuggestions &&
-                !course.predictionInvalidated &&
-                !course.delivered &&
-                course.items.length === 0 &&
-                (course.working || course.predictionWaiting)
-            ) {
-                course.prediction = bestPromptSuggestion(update.suggestions);
-                // A suggestion can precede idle. Hold it until we know the turn actually succeeded.
-                if (course.predictionWaiting && !this.review().blocked) {
-                    yield* this.deliver(id, course, mapper, false);
-                }
-            }
-            return false;
-        }
+        if (SessionUpdate.isPromptSuggestionsUpdate(update)) return false;
 
         if (!SessionUpdate.isStateUpdate(update)) {
             yield* mapper.update(update);
@@ -1083,10 +1085,7 @@ export class V2Layer implements ProtocolLayer {
 
             if (course.items.length > 0) {
                 course.predictionInvalidated = true;
-                course.prediction = undefined;
-                if (course.predictionWaiting) {
-                    yield* this.deliver(id, course, mapper, false);
-                }
+                this.prediction.invalidate();
             }
         }
 
@@ -1122,12 +1121,10 @@ export class V2Layer implements ProtocolLayer {
             return;
         }
 
-        this.disarm('prediction');
-        course.predictionWaiting = false;
-        course.prediction = undefined;
         // An autonomous or queued turn has begun before a prediction could be offered.
         // The protocol has no turn ID on suggestions; never let a late prediction from the previous turn leak here.
         course.predictionInvalidated ||= this.turns.count > 0;
+        if (course.predictionInvalidated) this.prediction.invalidate();
         course.working = true;
         // A turn that answers a message sent into the session is not the report that is owed: that one may still come.
         course.owed &&= this.turns.sending;
@@ -1214,7 +1211,7 @@ export class V2Layer implements ProtocolLayer {
 
         if (blocked) {
             course.predictionInvalidated = true;
-            course.prediction = undefined;
+            this.prediction.invalidate();
             course.held = true;
             yield* mapper.close();
 
@@ -1235,14 +1232,9 @@ export class V2Layer implements ProtocolLayer {
             !course.delivered &&
             !course.predictionInvalidated;
 
-        if (eligible && !course.prediction) {
-            course.predictionWaiting = true;
-            yield* mapper.close();
-            this.arm('prediction', SUGGESTION_WAIT_MS);
-        } else {
-            if (!eligible) course.prediction = undefined;
-            yield* this.deliver(id, course, mapper, false);
-        }
+        if (!eligible) this.prediction.invalidate();
+        const prediction = eligible ? this.prediction.completed() : {};
+        yield* this.deliver(id, course, mapper, false, prediction);
 
         return false;
     }
@@ -1255,13 +1247,9 @@ export class V2Layer implements ProtocolLayer {
         id: string,
         course: Course,
         mapper: UpdateMapperV2,
-        fold: boolean
+        fold: boolean,
+        prediction: Pick<Extract<EngineEvent, { type: 'done' }>, 'promptSuggestion' | 'latePromptSuggestion'> = {}
     ): AsyncGenerator<EngineEvent> {
-        this.disarm('prediction');
-        course.predictionWaiting = false;
-        const prediction =
-            !fold && !course.predictionInvalidated && course.items.length === 0 ? course.prediction : undefined;
-        course.prediction = undefined;
         const sends = this.turns.release(fold);
 
         yield* mapper.stop(course.tokens);
@@ -1277,7 +1265,7 @@ export class V2Layer implements ProtocolLayer {
         this.disarm('release');
 
         for (let owed = Math.max(1, sends); owed > 0; owed--) {
-            yield { type: 'done', result, ...(owed === 1 && prediction && { promptSuggestion: prediction }) };
+            yield { type: 'done', result, ...(owed === 1 ? prediction : {}) };
         }
     }
 
@@ -1296,13 +1284,6 @@ export class V2Layer implements ProtocolLayer {
         mapper: UpdateMapperV2
     ): AsyncGenerator<EngineEvent, boolean> {
         if (!this.fires(item.which, item.id)) {
-            return false;
-        }
-
-        if (item.which === 'prediction') {
-            if (course.predictionWaiting && !course.working) {
-                yield* this.deliver(id, course, mapper, false);
-            }
             return false;
         }
 

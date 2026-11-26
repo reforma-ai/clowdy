@@ -1508,8 +1508,8 @@ async function turn(session: FakeSession, sessionId: string, text: string, clien
             await Bun.sleep(20);
             process.exit(0);
         }
-        if (prediction && predictionMode === '1') {
-            setTimeout(() => void send(prediction), 20);
+        if (prediction && (predictionMode === '1' || predictionMode === 'slow')) {
+            setTimeout(() => void send(prediction), predictionMode === 'slow' ? 1500 : 20);
         }
 
         // A prompt held for this turn's end (`FAKE_ACP_QUEUE`) runs next; work that ended meanwhile is reported once the agent is free.

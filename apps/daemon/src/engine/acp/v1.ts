@@ -17,7 +17,7 @@ import {
 } from './conversation';
 import { classifyThrown, failureEvent, processEnded } from './failure';
 import { UpdateMapper } from './mapper';
-import { bestPromptSuggestion, SUGGESTION_WAIT_MS } from './promptSuggestions';
+import { PromptSuggestionWindow } from './promptSuggestions';
 
 import type {
     ClientCapabilities,
@@ -50,8 +50,7 @@ type Item =
     | { kind: 'stop'; response: PromptResponse }
     | { kind: 'failed'; error: unknown }
     | { kind: 'exited' }
-    | { kind: 'aborted' }
-    | { kind: 'suggestionTimeout' };
+    | { kind: 'aborted' };
 
 /**
  * Why an agent spoken to over ACP v1 cannot be forked: v1 has no fork that cuts a session at a message, and none of the agents that speak v1 is known to
@@ -103,6 +102,11 @@ export class V1Layer implements ProtocolLayer {
      */
     naming = false;
     answered = false;
+    private prediction = new PromptSuggestionWindow();
+
+    get latePromptSuggestion() {
+        return this.prediction.late;
+    }
 
     constructor(private host: LayerHost) {}
 
@@ -157,9 +161,8 @@ export class V1Layer implements ProtocolLayer {
         let current: string | undefined;
         let replaying = false;
         const suggestions = Boolean(agent.promptSuggestions && options.promptSuggestions);
-        let suggestion: string | undefined;
         let prompting = false;
-        let suggestionTimer: ReturnType<typeof setTimeout> | undefined;
+        let reading = true;
 
         const app = client({ name: 'clowdy' })
             .onNotification(methods.client.session.update, ({ params }) => {
@@ -171,10 +174,11 @@ export class V1Layer implements ProtocolLayer {
                         host.offerTitle(params.update.title);
                     }
 
-                    // Updates from loading/setting up the session are not predictions for this prompt.
-                    if (params.update.sessionUpdate !== 'prompt_suggestions_update' || prompting) {
-                        channel.push({ kind: 'update', update: params.update });
+                    if (params.update.sessionUpdate === 'prompt_suggestions_update') {
+                        if (suggestions && prompting) this.prediction.observe(params.update.suggestions);
+                        return;
                     }
+                    if (reading) channel.push({ kind: 'update', update: params.update });
                 }
             })
             .onRequest(methods.client.session.requestPermission, async ({ params, signal }) => {
@@ -360,11 +364,7 @@ export class V1Layer implements ProtocolLayer {
                 }
 
                 if (item.kind === 'update') {
-                    if (suggestions && item.update.sessionUpdate === 'prompt_suggestions_update') {
-                        suggestion = bestPromptSuggestion(item.update.suggestions);
-                    } else {
-                        yield* mapper.update(item.update);
-                    }
+                    yield* mapper.update(item.update);
                     continue;
                 }
 
@@ -397,23 +397,11 @@ export class V1Layer implements ProtocolLayer {
                 const failure = stopFailure(item.response.stopReason, agent.name);
 
                 this.answered = !failure;
-                if (!failure && item.response.stopReason === 'end_turn' && suggestions && !suggestion) {
-                    suggestionTimer = setTimeout(() => channel.push({ kind: 'suggestionTimeout' }), SUGGESTION_WAIT_MS);
-                    while (!signal.aborted) {
-                        const next = await channel.next();
-                        if (next.kind !== 'update') break;
-                        if (next.update.sessionUpdate === 'prompt_suggestions_update') {
-                            suggestion = bestPromptSuggestion(next.update.suggestions);
-                            break;
-                        }
-                    }
-                }
-                if (!signal.aborted)
-                    yield failure ?? {
-                        type: 'done',
-                        result: mapper.result(),
-                        ...(item.response.stopReason === 'end_turn' && suggestion && { promptSuggestion: suggestion }),
-                    };
+                const prediction =
+                    !failure && item.response.stopReason === 'end_turn' && suggestions
+                        ? this.prediction.completed()
+                        : {};
+                if (!signal.aborted) yield failure ?? { type: 'done', result: mapper.result(), ...prediction };
 
                 return;
             }
@@ -432,7 +420,7 @@ export class V1Layer implements ProtocolLayer {
 
             yield failureEvent(classifyThrown(error, context, await stderrOf(proc)));
         } finally {
-            clearTimeout(suggestionTimer);
+            reading = false;
         }
     }
 }

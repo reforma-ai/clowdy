@@ -182,6 +182,43 @@ describe('Composer', () => {
         expect({ text: text(), sent }).toEqual({ text: '', sent: [] });
     });
 
+    it('offers a prediction that arrives after the completed composer is already usable', async () => {
+        let answer!: (value: { finishedAt: number; text: string }) => void;
+        transport.getPromptSuggestion.mockImplementationOnce(
+            () =>
+                new Promise(resolve => {
+                    answer = resolve;
+                })
+        );
+        await mount(accepted, runWith('running'));
+        await mount(accepted, { ...runWith('succeeded'), finishedAt: 123 });
+        expect(text()).toBe('');
+        await act(async () => answer({ finishedAt: 123, text: 'Late prediction' }));
+        await press('Tab');
+        expect({ text: text(), sent }).toEqual({ text: 'Late prediction', sent: [] });
+    });
+
+    it('allows a new message while a prediction is pending and ignores its later arrival', async () => {
+        let answer!: (value: { finishedAt: number; text: string }) => void;
+        transport.getPromptSuggestion.mockImplementationOnce(
+            () =>
+                new Promise(resolve => {
+                    answer = resolve;
+                })
+        );
+        await mount(accepted, runWith('running'));
+        await mount(accepted, { ...runWith('succeeded'), finishedAt: 123 });
+
+        type('My message');
+        await press('Enter');
+        await act(async () => answer({ finishedAt: 123, text: 'Too late' }));
+        await press('Tab');
+        expect({ text: text(), sent }).toEqual({
+            text: '',
+            sent: [{ type: 'chat.send', chatId: chat.id, text: 'My message', mode: 'steer' }],
+        });
+    });
+
     it('ignores a late prediction after leaving the chat', async () => {
         let answer!: (value: { finishedAt: number; text: string }) => void;
         transport.getPromptSuggestion.mockImplementationOnce(

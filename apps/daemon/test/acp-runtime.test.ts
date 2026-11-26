@@ -58,9 +58,12 @@ async function setup(agentEnv: Record<string, string> = {}, taskTools?: 'cli' | 
 
 describe('ephemeral prompt predictions', () => {
     test('offers the prediction from a successful turn without writing it to the event log or transcript', async () => {
-        const { h, say, chat } = await setup({ FAKE_ACP_PREDICTION: '1' });
+        const { h, say, chat, texts } = await setup({ FAKE_ACP_PREDICTION: 'slow' });
         const runId = say('say Done');
+        await waitFor(() => texts(runId).includes('Done'), 'the final words', 15_000);
+        const answeredAt = performance.now();
         await waitFor(() => h.run(runId).status === 'succeeded', 'prediction', 15_000);
+        expect(performance.now() - answeredAt).toBeLessThan(1200);
         const route = `/v1/runs/${runId}/prompt-suggestion`;
         const prediction = await (await h.fetch(route)).json();
         expect({
@@ -79,6 +82,52 @@ describe('ephemeral prompt predictions', () => {
         expect(await (await h.fetch(route)).json()).toBeNull();
         await waitFor(() => h.run(runId).status === 'succeeded', 'disabled prediction', 15_000);
         expect(await (await h.fetch(route)).json()).toBeNull();
+    });
+    test('an agent with no prediction finishes without delaying the run or counting its idle transport as active', async () => {
+        const { h, say, texts } = await setup();
+        const runId = say('say Done');
+        await waitFor(() => texts(runId).includes('Done'), 'the final words', 15_000);
+        const answeredAt = performance.now();
+        await waitFor(() => h.run(runId).status === 'succeeded', 'completed run', 15_000);
+        expect(performance.now() - answeredAt).toBeLessThan(2000);
+        const health = await (await h.fetch('/v1/health')).json();
+        expect(health.activeRuns).toBe(0);
+        expect(await (await h.fetch(`/v1/runs/${runId}/prompt-suggestion`)).json()).toBeNull();
+    });
+
+    test('dispatches a queued message immediately after the answer, not after the late prediction', async () => {
+        const { h, say, chat, texts } = await setup({ FAKE_ACP_PREDICTION: 'slow' });
+        const runId = say('say First\nsleep 450\nsay Done');
+        await waitFor(() => texts(runId).includes('First'), 'first words', 15_000);
+        h.ok('chat.send', { chatId: chat.id, text: 'say Second', mode: 'queue' });
+        await waitFor(() => texts(runId).includes('Done'), 'first answer', 15_000);
+        const answeredAt = performance.now();
+        await waitFor(
+            () => texts(runId).includes('Second') && h.run(runId).status === 'succeeded',
+            'queued answer',
+            15_000
+        );
+        expect(performance.now() - answeredAt).toBeLessThan(1200);
+    });
+
+    test('a new message invalidates the pending prediction without waiting for it', async () => {
+        const { h, say, chat, texts } = await setup({ FAKE_ACP_PREDICTION: 'slow' });
+        const runId = say('say First');
+        await waitFor(() => h.run(runId).status === 'succeeded', 'first answer', 15_000);
+
+        const route = `/v1/runs/${runId}/prompt-suggestion`;
+        const oldPrediction = h.fetch(route).then(response => response.json());
+        await Bun.sleep(30);
+        const started = performance.now();
+        h.ok('chat.send', { chatId: chat.id, text: 'say Second' });
+        await waitFor(
+            () => texts(runId).includes('Second') && h.run(runId).status === 'succeeded',
+            'second answer',
+            15_000
+        );
+
+        expect({ old: await oldPrediction, answer: h.run(runId).result }).toEqual({ old: null, answer: 'Second' });
+        expect(performance.now() - started).toBeLessThan(1500);
     });
 });
 
@@ -448,6 +497,19 @@ describe('a chat on an ACP v2 agent that works in the background, through the re
 
         return { h, chat, say, pid, stream };
     }
+
+    test('v2 lets a quiet turn settle before late prediction delivery', async () => {
+        const { h, say, stream } = await setupV2({ FAKE_ACP_PREDICTION: 'slow' });
+        const runId = say('say Done');
+        await waitFor(() => stream(runId).includes('< Done'), 'the final words', 15_000);
+        const answeredAt = performance.now();
+        await waitFor(() => h.run(runId).status === 'succeeded', 'completed run', 15_000);
+        expect(performance.now() - answeredAt).toBeLessThan(1200);
+        expect(await (await h.fetch(`/v1/runs/${runId}/prompt-suggestion`)).json()).toEqual({
+            finishedAt: h.run(runId).finishedAt,
+            text: 'Check the result',
+        });
+    });
 
     test('does not offer a prediction from a turn that has background work or its autonomous report', async () => {
         const { h, say } = await setupV2({ FAKE_ACP_PREDICTION: '1' });

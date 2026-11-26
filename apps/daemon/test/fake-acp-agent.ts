@@ -766,7 +766,7 @@ const app = agent({ name: 'fake-acp-agent' })
                             { prompt: [{ type: 'text', text: 'Another prediction' }] },
                         ],
                     }),
-                20
+                process.env.FAKE_ACP_PREDICTION === 'slow' ? 1500 : 20
             );
         }
 

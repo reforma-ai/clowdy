@@ -70,6 +70,16 @@ export interface ApprovalRequest {
 /** Puts a request to the person and answers with the decision; `undefined` when it was withdrawn (the agent is told `cancelled`). Rejects never; `signal` ends the wait. */
 export type Approver = (request: ApprovalRequest, signal: AbortSignal) => Promise<ApprovalDecision | undefined>;
 
+/** Optional data from a completed turn. Cancellation settles the result without waiting for an agent. */
+export interface LatePromptSuggestion {
+    result: Promise<string | undefined>;
+    /** A wire update may invalidate a resolved prediction before the caller can publish it. */
+    readonly valid: boolean;
+    cancel(): void;
+    /** Releases an unfinished optional read when the transport closes; a resolved prediction stays valid. */
+    close(): void;
+}
+
 export interface EngineStartOptions {
     /** Working directory of the agent. */
     cwd: string;
@@ -232,7 +242,7 @@ export type EngineEvent =
      * a command that outlived its turn running for as long as the command does, so the turn's end must not fail it. Absent when there are none.
      */
     | { type: 'background'; items: BackgroundItem[]; calls?: string[] }
-    | { type: 'done'; result?: string; promptSuggestion?: string }
+    | { type: 'done'; result?: string; promptSuggestion?: string; latePromptSuggestion?: LatePromptSuggestion }
     /** A failure that ends the turn. `code` is a stable identifier of the cause (`not_logged_in`, `usage_limit`, ...). */
     | { type: 'error'; message: string; retryable?: boolean; code?: string };
 

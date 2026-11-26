@@ -384,18 +384,24 @@ export function createRoutes(context: RouteContext): Route[] {
         {
             method: 'GET',
             pattern: /^\/v1\/runs\/([^/]+)\/prompt-suggestion$/,
-            handle: (_request, _url, [id]) => {
-                const run = getRun(store.db, id);
-                if (run && services.agents.setting(run.engine, 'promptSuggestions') === false) {
-                    store.promptSuggestions.delete(id);
-                    return json(null);
-                }
-                const prediction = store.promptSuggestions.get(id);
-                return json(
-                    run?.status === 'succeeded' && prediction?.finishedAt === run.finishedAt
-                        ? (prediction ?? null)
-                        : null
-                );
+            handle: async (_request, _url, [id]) => {
+                const current = () => {
+                    const run = getRun(store.db, id);
+                    if (run && services.agents.setting(run.engine, 'promptSuggestions') === false) {
+                        store.forgetPromptSuggestion(id);
+                        return undefined;
+                    }
+                    const entry = store.promptSuggestions.get(id);
+                    return run?.status === 'succeeded' && entry?.finishedAt === run.finishedAt ? entry : undefined;
+                };
+
+                const entry = current();
+                if (!entry) return json(null);
+
+                // Only this optional read waits. The run, queue and composer are already at rest.
+                const text = typeof entry.prediction === 'string' ? entry.prediction : await entry.prediction.result;
+                const valid = typeof entry.prediction === 'string' || entry.prediction.valid;
+                return json(text && valid && current() === entry ? { finishedAt: entry.finishedAt, text } : null);
             },
         },
         {

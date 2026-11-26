@@ -1,5 +1,6 @@
 import type { Database } from 'bun:sqlite';
-import type { ClowdyEvent, CommandResult, EngineId, EventData, RunPromptSuggestion } from '@clowdy/protocol';
+import type { ClowdyEvent, CommandResult, EngineId, EventData } from '@clowdy/protocol';
+import type { LatePromptSuggestion } from './engine/types';
 
 export type EventListener = (events: ClowdyEvent[]) => void;
 
@@ -30,14 +31,20 @@ export class Store {
     private callbacks: (() => void)[] = [];
     private listeners = new Set<EventListener>();
     /** Predictions are not persisted or replayed with the transcript or the event log. */
-    readonly promptSuggestions = new Map<string, RunPromptSuggestion>();
+    readonly promptSuggestions = new Map<string, { finishedAt: number; prediction: string | LatePromptSuggestion }>();
 
-    rememberPromptSuggestion(runId: string, finishedAt: number, text: string): void {
+    forgetPromptSuggestion(runId: string): void {
+        const previous = this.promptSuggestions.get(runId);
         this.promptSuggestions.delete(runId);
-        this.promptSuggestions.set(runId, { finishedAt, text });
+        if (previous && typeof previous.prediction !== 'string') previous.prediction.cancel();
+    }
+
+    rememberPromptSuggestion(runId: string, finishedAt: number, prediction: string | LatePromptSuggestion): void {
+        this.forgetPromptSuggestion(runId);
+        this.promptSuggestions.set(runId, { finishedAt, prediction });
         if (this.promptSuggestions.size > 128) {
             const oldest = this.promptSuggestions.keys().next().value;
-            if (oldest !== undefined) this.promptSuggestions.delete(oldest);
+            if (oldest !== undefined) this.forgetPromptSuggestion(oldest);
         }
     }
 

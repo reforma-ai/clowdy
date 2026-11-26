@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { Discovery } from '../src/engine/acp/discovery';
+import { PromptSuggestionWindow } from '../src/engine/acp/promptSuggestions';
 import { AgentRegistry } from '../src/engine/acp/registry';
 import { PROVIDERS } from '../src/providers/builtin';
 import { alive, collect, FAKE_AGENT, PROTOCOLS, rig, textOf, tool, types, until } from './acp-helpers';
@@ -162,13 +163,62 @@ describe('the protocol of an agent', () => {
 });
 
 describe('native prompt suggestions', () => {
-    test.each(PROTOCOLS)('%s negotiates and picks one late text prediction', async protocol => {
-        const { session } = (current = rig({ protocol, agentEnv: { FAKE_ACP_PREDICTION: '1' } })).start('say Done', {
-            promptSuggestions: true,
+    test('an invalidation after the prediction resolves still makes the result ineligible', async () => {
+        const window = new PromptSuggestionWindow();
+        const pending = window.completed().latePromptSuggestion!;
+        window.observe([{ prompt: [{ type: 'text', text: 'Check the result' }] }]);
+        window.invalidate();
+
+        expect({ text: await pending.result, valid: pending.valid }).toEqual({
+            text: 'Check the result',
+            valid: false,
         });
+    });
+
+    test('ordinary completion of the transport preserves a prediction already received', async () => {
+        const window = new PromptSuggestionWindow();
+        const pending = window.completed().latePromptSuggestion!;
+        window.observe([{ prompt: [{ type: 'text', text: 'Check the result' }] }]);
+        pending.close();
+
+        expect({ text: await pending.result, valid: pending.valid }).toEqual({
+            text: 'Check the result',
+            valid: true,
+        });
+    });
+
+    test.each(PROTOCOLS)(
+        '%s completes before a late native prediction and then receives it separately',
+        async protocol => {
+            const { session } = (current = rig({ protocol, agentEnv: { FAKE_ACP_PREDICTION: 'slow' } })).start(
+                'say Done',
+                {
+                    promptSuggestions: true,
+                }
+            );
+            const events = await collect(session);
+            await session.close();
+            const done = events.at(-1);
+            if (done?.type !== 'done') throw new Error('No completed turn');
+            const prediction = done.latePromptSuggestion;
+            expect({ result: done.result, immediate: done.promptSuggestion, pending: Boolean(prediction) }).toEqual({
+                result: 'Done',
+                immediate: undefined,
+                pending: true,
+            });
+            expect(await prediction?.result).toBe('Check the result');
+        }
+    );
+
+    test.each(PROTOCOLS)('%s completes immediately when the optional prediction is absent', async protocol => {
+        const { session } = (current = rig({ protocol })).start('say Done', { promptSuggestions: true });
+        const started = performance.now();
         const events = await collect(session);
         await session.close();
-        expect(events.at(-1)).toEqual({ type: 'done', result: 'Done', promptSuggestion: 'Check the result' });
+        const done = events.at(-1);
+        if (done?.type !== 'done') throw new Error('No completed turn');
+        expect(performance.now() - started).toBeLessThan(2000);
+        expect(await done.latePromptSuggestion?.result).toBeUndefined();
     });
 
     test('v2 accepts a prediction delivered just before successful idle', async () => {
@@ -188,7 +238,12 @@ describe('native prompt suggestions', () => {
         );
         const events = await collect(session);
         await session.close();
-        expect(events.at(-1)).toEqual({ type: 'done', result: 'Done' });
+        const done = events.at(-1);
+        if (done?.type !== 'done') throw new Error('No completed turn');
+        expect({ result: done.result, prediction: await done.latePromptSuggestion?.result }).toEqual({
+            result: 'Done',
+            prediction: undefined,
+        });
     });
 
     test.each(PROTOCOLS)('%s omits the capability when disabled', async protocol => {
