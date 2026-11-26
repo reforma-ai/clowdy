@@ -92,6 +92,41 @@ describe('a message from another thread', () => {
         expect(card.getAttribute('data-turn')).toBe('i-0');
     });
 
+    it('is marked with the agent of the chat that wrote it, as the chat is in the list, and with a speech bubble when that agent is not known', async () => {
+        await draw([message], { engineOfChat: () => 'claude' });
+
+        expect(cards('thread-message')[0].querySelector('[data-provider]')?.getAttribute('data-provider')).toBe(
+            'claude'
+        );
+
+        await draw([message], { engineOfChat: () => 'codex' });
+
+        expect(cards('thread-message')[0].querySelector('[data-provider]')?.getAttribute('data-provider')).toBe(
+            'codex'
+        );
+
+        for (const links of [{}, { engineOfChat: () => undefined }, { engineOfChat: () => 'fake' }]) {
+            await draw([message], links);
+
+            expect(cards('thread-message')[0].querySelector('[data-provider]')).toBeNull();
+            expect(cards('thread-message')[0].querySelector('svg')).not.toBeNull();
+        }
+    });
+
+    it('holds the icon in the title line, so the words under it start at the edge of the card and not after the icon', async () => {
+        await draw([message, notice], { engineOfChat: () => 'claude' });
+
+        expect(cards('thread-message')).toHaveLength(1);
+        expect(cards('agent-card')).toHaveLength(notices.length);
+
+        for (const card of [...cards('thread-message'), ...cards('agent-card')]) {
+            const head = card.firstElementChild as HTMLElement;
+
+            expect(head.querySelector('svg')).not.toBeNull();
+            expect(head.textContent).toMatch(/Message from|finished|failed|interrupted/);
+        }
+    });
+
     it('opens the chat that wrote it from its name', async () => {
         const onOpenChat = vi.fn();
 

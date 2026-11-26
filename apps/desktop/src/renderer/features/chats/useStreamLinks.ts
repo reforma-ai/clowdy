@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { openChat } from './archiveChat';
+import { chatProvider } from './chatProvider';
 import { useSkillLookup } from './useSkillLookup';
 
 import type { Attachment } from '@clowdy/protocol';
@@ -28,6 +29,14 @@ export function useStreamLinks(): ConversationLinks {
             attachmentBlob: (attachment: Attachment) => root.transport.getAttachment(project.id, attachment.id),
             hasChat: (chatId: string) => project.chats.has(chatId),
             chatOfId: (chatId: string) => project.chats.get(chatId),
+            engineOfChat: (chatId: string) => {
+                const chat = project.chats.get(chatId);
+
+                return (
+                    chat &&
+                    chatProvider(chat, chat.orchestratorRunId ? project.runs.get(chat.orchestratorRunId) : undefined)
+                );
+            },
             onOpenChat: (chatId: string) => void openChat(root, project, ui, chatId),
         }),
         [project, ui, root, skillOfName]

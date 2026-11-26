@@ -2,15 +2,16 @@
 
 /*
  * The cards of other work in a stream, one family: a message another thread wrote, a thread that stopped and a sub-agent, running or over (`AgentCard`). A bordered plate
- * in the stream for words an agent wrote and not the person, with an icon, a title, and under it what the work says.
+ * in the stream for words an agent wrote and not the person: a title line that opens with an icon, and under it, flush with the plate's own padding and not pushed in
+ * by the icon, what the work says.
  */
 .card {
     @ruleset typography-text-md;
 
     position: relative;
     display: flex;
-    align-items: flex-start;
-    gap: var(--spacing-md);
+    flex-direction: column;
+    gap: var(--spacing-xs);
     width: 100%;
     max-width: 100%;
     padding: var(--spacing-md) var(--spacing-lg);
@@ -19,6 +20,7 @@
     corner-shape: superellipse(var(--squircle-value));
     background-color: var(--color-surface-float);
     overflow: hidden;
+    overflow-wrap: anywhere;
     transition: background-color 0.15s ease;
 }
 
@@ -26,6 +28,14 @@
     display: flex;
     flex-direction: column;
     gap: var(--spacing-sm);
+}
+
+/* The title line: the icon belongs to the title, so what is under it starts at the plate's edge. */
+.head {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--spacing-sm);
+    min-width: 0;
 }
 
 .icon {
@@ -44,16 +54,8 @@
     color: var(--color-danger);
 }
 
-.body {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    gap: var(--spacing-xs);
-    min-width: 0;
-    overflow-wrap: anywhere;
-}
-
 .title {
+    min-width: 0;
     font-weight: 500;
     line-height: var(--spacing-20);
 }

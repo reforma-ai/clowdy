@@ -1,10 +1,11 @@
 import { Button } from '@clowdy/components/Button';
 import { Shimmer } from '@clowdy/components/Shimmer';
 import { Text } from '@clowdy/components/Text';
-import { Completed, Error as ErrorMark, Split, TaskCanceled } from '@clowdy/icons/14';
+import { Completed, Error as ErrorMark, TaskCanceled } from '@clowdy/icons/14';
 import { ProgressLoader } from '@clowdy/icons/assets';
 import { type ReactNode, use, useId } from 'react';
 
+import { AgentMark } from '../features/agents/AgentMark';
 import { Clamp } from './Clamp';
 import { Markdown } from './Markdown';
 import { StreamLinksContext } from './StreamLinks';
@@ -93,10 +94,10 @@ export function AgentCard({ name, outcome, activity, report, open = [], onOpen }
             data-pressable={onOpen ? '' : undefined}
             aria-busy={running || undefined}
         >
-            <span className={styles.icon} aria-hidden>
-                {running ? <ProgressLoader size={14} /> : OUTCOME_ICONS[outcome]}
-            </span>
-            <div className={styles.body}>
+            <div className={styles.head}>
+                <span className={styles.icon} aria-hidden>
+                    {running ? <ProgressLoader size={14} /> : OUTCOME_ICONS[outcome]}
+                </span>
                 <span className={styles.title}>
                     {onOpen ? (
                         <button
@@ -111,31 +112,31 @@ export function AgentCard({ name, outcome, activity, report, open = [], onOpen }
                         title
                     )}
                 </span>
-                {activity && (
-                    <Text id={activityId} variant="sm" color="secondary" truncate>
-                        {activity}
-                    </Text>
-                )}
-                {text !== '' && (
-                    <div className={styles.report}>
-                        {open.length > 0 && (
-                            <Text variant="xs" color="secondary">
-                                Not the final result
-                            </Text>
-                        )}
-                        <Clamp lines={REPORT_LINES} moreLabel={MORE_LABEL} align="start">
-                            <Markdown text={text} />
-                        </Clamp>
-                    </div>
-                )}
-                {open.length > 0 && (
-                    <Text
-                        variant="sm"
-                        color="secondary"
-                        className={styles.open}
-                    >{`Still running: ${open.join(', ')}`}</Text>
-                )}
             </div>
+            {activity && (
+                <Text id={activityId} variant="sm" color="secondary" truncate>
+                    {activity}
+                </Text>
+            )}
+            {text !== '' && (
+                <div className={styles.report}>
+                    {open.length > 0 && (
+                        <Text variant="xs" color="secondary">
+                            Not the final result
+                        </Text>
+                    )}
+                    <Clamp lines={REPORT_LINES} moreLabel={MORE_LABEL} align="start">
+                        <Markdown text={text} />
+                    </Clamp>
+                </div>
+            )}
+            {open.length > 0 && (
+                <Text
+                    variant="sm"
+                    color="secondary"
+                    className={styles.open}
+                >{`Still running: ${open.join(', ')}`}</Text>
+            )}
         </div>
     );
 }
@@ -151,25 +152,27 @@ export interface ThreadMessageCardProps {
 
 /**
  * A message another chat of the thread tree wrote (`clowdy thread tell`, or the first message of a thread or of a sub-agent from its parent): an agent wrote it, not the
- * person, so it is a card in the family of the agent cards and not a bubble. The sender's name opens it; the words are Markdown as an agent's are,
- * clamped when long.
+ * person, so it is a card in the family of the agent cards and not a bubble, marked with the agent of the chat that wrote it (Claude's mark for a Claude chat, as in the
+ * list). The sender's name opens it; the words are Markdown as an agent's are, clamped when long.
  */
 export function ThreadMessageCard({ chatId, title, text, turn }: ThreadMessageCardProps) {
+    const { engineOfChat } = use(StreamLinksContext);
+
     return (
         <div className={styles.card} data-slot="thread-message" data-turn={turn}>
-            <span className={styles.icon} aria-hidden>
-                <Split />
-            </span>
-            <div className={styles.body}>
+            <div className={styles.head}>
+                <span className={styles.icon} aria-hidden>
+                    <AgentMark engine={engineOfChat?.(chatId)} />
+                </span>
                 <span className={styles.title}>
                     Message from <ChatName chatId={chatId} title={title} />
                 </span>
-                {text.trim() !== '' && (
-                    <Clamp lines={MESSAGE_LINES} moreLabel={MORE_LABEL} align="start">
-                        <Markdown text={text} />
-                    </Clamp>
-                )}
             </div>
+            {text.trim() !== '' && (
+                <Clamp lines={MESSAGE_LINES} moreLabel={MORE_LABEL} align="start">
+                    <Markdown text={text} />
+                </Clamp>
+            )}
         </div>
     );
 }
