@@ -40,4 +40,17 @@ describe('RailItem', () => {
         expect(draw({ current: true }).className).not.toContain('accent');
         expect(draw({ current: true, accent: true }).className).toContain('accent');
     });
+
+    it('draws a dot only when it is given one, and the name of the item says what it stands for after the label', () => {
+        expect(draw().querySelector('[data-tone]')).toBeNull();
+        expect(draw().getAttribute('aria-label')).toBeNull();
+
+        const button = draw({ dot: { tone: 'warning', label: '3 uncommitted files' } });
+
+        expect(button.querySelector('[data-tone="warning"]')).not.toBeNull();
+        // A dot read from the content would be the first words of the name.
+        expect(button.getAttribute('aria-label')).toBe('Files, 3 uncommitted files');
+        expect(button.querySelector('[role="img"]')).toBeNull();
+        expect(button.textContent).toBe('Files');
+    });
 });

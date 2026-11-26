@@ -2,8 +2,10 @@ import { Tooltip } from '@clowdy/components/Tooltip';
 import { cn } from '@clowdy/lib';
 
 import styles from './RailItem.module.css';
+import { StatusDot } from './StatusDot';
 
 import type { ComponentProps, ComponentType, ReactNode, SVGProps } from 'react';
+import type { StatusTone } from './runStatus';
 
 export interface RailItemProps {
     label: string;
@@ -15,6 +17,8 @@ export interface RailItemProps {
     /** The current item is drawn in the primary colour instead of the neutral one, as Reforma's rail does for the chat that is open. */
     accent?: boolean;
     disabled?: boolean;
+    /** A small dot on the glyph's top right corner, for something that wants a look while the page is not on show; `label` is what a screen reader hears after the item's own label. */
+    dot?: { tone: StatusTone; label: string };
     /** What a tooltip says (the label is on the button already, so it is for the key that does the same); none, no tooltip. */
     tooltip?: ReactNode;
     /** Beside which edge of the item the tooltip opens: away from the rail's own edge of the window. */
@@ -32,6 +36,7 @@ export function RailItem({
     current,
     accent,
     disabled,
+    dot,
     tooltip,
     tooltipPlacement = 'right',
     className,
@@ -44,12 +49,19 @@ export function RailItem({
                 type="button"
                 className={cn(styles.item, accent && styles.accent, className)}
                 disabled={disabled}
+                // The dot is a picture of this, so the name says it after the label (a dot read from the content would come first: `3 uncommitted files Changes`).
+                aria-label={dot ? `${label}, ${dot.label}` : undefined}
                 aria-current={current ? 'page' : undefined}
                 data-drag-hover-key={dragHoverKey}
                 onClick={onPress}
             >
                 <span className={styles.glyph}>
                     <Icon width={size} height={size} aria-hidden />
+                    {dot && (
+                        <span className={styles.dot}>
+                            <StatusDot tone={dot.tone} />
+                        </span>
+                    )}
                 </span>
                 <span className={styles.label}>{label}</span>
             </button>
