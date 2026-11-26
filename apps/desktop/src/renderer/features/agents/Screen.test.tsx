@@ -4,6 +4,7 @@ import { Modal } from '@clowdy/components/Modal';
 import { openConfirmModal } from '@clowdy/components/modals';
 import { emptyComposerDoc, plainTextToDoc } from '@clowdy/components/RichInput';
 import { runInAction } from 'mobx';
+import { observer } from 'mobx-react-lite';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -36,6 +37,13 @@ import type { KeyValueStorage } from '../../stores/storage';
 
 // `Modal` cannot load under the desktop's Vitest (decorators), and no confirmation is opened here.
 vi.mock('@clowdy/components/modals', () => ({ openConfirmModal: vi.fn() }));
+
+vi.mock('../changes/BranchPicker', async importOriginal => ({
+    BranchPicker: observer((await importOriginal<typeof import('../changes/BranchPicker')>()).BranchPicker),
+}));
+vi.mock('../changes/BranchList', async importOriginal => ({
+    BranchList: observer((await importOriginal<typeof import('../changes/BranchList')>()).BranchList),
+}));
 
 // The pages beside the list are drawn by their own tests; here they only say which one was asked for. A chat's `controls` stand beside it, as the line under its message box.
 vi.mock('../chats/ChatView', () => ({
@@ -2044,6 +2052,47 @@ describe('worktree cards', () => {
         await press(menuItem('Show unused worktrees'));
         await draw();
         expect(cardRows()).toEqual([workspaceKey()]);
+    });
+
+    it('opens branch selection for the clicked unused worktree without changing the selected chat', async () => {
+        await restart();
+        const original = store.transport.command.bind(store.transport);
+        const command = vi.spyOn(store.transport, 'command').mockImplementation(input =>
+            input.type === 'workspace.open'
+                ? Promise.resolve({
+                      ok: true,
+                      requestId: 'test',
+                      data: {
+                          workspace: {
+                              id: 'wks_ab12cd34',
+                              folderId: input.folderId,
+                              path: input.path,
+                              ready: true,
+                              managed: false,
+                          },
+                      },
+                  })
+                : original(input)
+        );
+        await draw(() => {
+            ui().setGroupByWorktree(true);
+            ui().openChat('c-4');
+            chatListPreferences.setShowUnusedWorktrees(true);
+        });
+        await draw();
+        const card = cardRows().find(key => key?.includes('search-filters'))!;
+        await press(rowOf(card).querySelector<HTMLElement>('button[aria-label^="Worktree actions:"]')!);
+        await press(menuItem('Switch branch'));
+        await vi.waitFor(() =>
+            expect(command).toHaveBeenCalledWith({
+                type: 'workspace.open',
+                projectId: FIXTURE_PROJECT_ID,
+                folderId: 'fld_car_rental',
+                path: '/Users/dev/worktrees/car-rental/search-filters',
+            })
+        );
+        expect(ui().chatId).toBe('c-4');
+        await vi.waitFor(() => expect(document.querySelector('input[placeholder="Filter branches"]')).not.toBeNull());
     });
 
     it('starts a draft in a worktree with no chats from its own menu', async () => {

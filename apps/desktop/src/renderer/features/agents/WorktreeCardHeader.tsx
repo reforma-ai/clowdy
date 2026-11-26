@@ -1,20 +1,26 @@
 import { Button } from '@clowdy/components/Button';
 import { GridListItem, listBoxItemDataShow } from '@clowdy/components/List';
 import { Popover, PopoverTrigger } from '@clowdy/components/Popover';
-import { ChevronDown, ChevronRight, More, NewChat, Split } from '@clowdy/icons/14';
+import { toast } from '@clowdy/components/Toast';
+import { ChevronDown, ChevronRight, More, NewChat, Split, Version } from '@clowdy/icons/14';
 import { mainFolder } from '@clowdy/protocol';
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { StatusDot } from '../../shared';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
+import { BranchPicker } from '../changes/BranchPicker';
+import { gitFactsOf } from '../changes/gitFacts';
 import { OpenWithMenu, useFolderGit } from '../openWith';
 import { worktreeMenuExtras } from '../worktrees/worktreeMenuExtras';
 import styles from './AgentList.module.css';
 import { samePath, worktreeLabel } from './workspaceChoice';
 
+import type { ChatWorkspace } from '@clowdy/protocol';
 import type { DragEvent, SyntheticEvent } from 'react';
 import type { ThreadsActivity } from './agentTree';
 import type { WorktreeCard } from './worktreeCards';
+
+let previewGeneration = 0;
 
 export function WorktreeCardHeader({
     card,
@@ -34,6 +40,48 @@ export function WorktreeCardHeader({
     const project = useProjectState();
     const ui = useProjectUi();
     const [menuOpen, setMenuOpen] = useState(false);
+    const [switchWorkspace, setSwitchWorkspace] = useState<ChatWorkspace>();
+    const request = useRef(0);
+    const openingPicker = useRef(false);
+    const beginPreview = useCallback(() => {
+        const current = ++previewGeneration;
+        return () => current === previewGeneration;
+    }, []);
+    const closePicker = useCallback(() => {
+        request.current++;
+        setMenuOpen(false);
+        setSwitchWorkspace(undefined);
+    }, []);
+    useEffect(
+        () => () => {
+            request.current++;
+            previewGeneration++;
+        },
+        [card.path, card.folder.id, project.id]
+    );
+    const root = useRootStore();
+    const switchBranch = async () => {
+        if (card.missing || card.pending || card.workspace?.ready === false) return;
+        openingPicker.current = true;
+        const current = ++request.current;
+        const result = await root.command({
+            type: 'workspace.open',
+            projectId: project.id,
+            folderId: card.folder.id,
+            path: card.path,
+        });
+        if (current !== request.current) return;
+        if (!result.ok) {
+            toast.error({ message: result.error.message });
+            return;
+        }
+        const { workspace } = result.data as { workspace: ChatWorkspace };
+        if (!workspace?.ready) {
+            toast.error({ message: 'Worktree not prepared yet' });
+            return;
+        }
+        setSwitchWorkspace(workspace);
+    };
     const newChat = () =>
         ui.openDraft([], card.folder.id === mainFolder(project.project).id ? null : card.folder.id, {
             mode: 'existing',
@@ -111,7 +159,17 @@ export function WorktreeCardHeader({
                         >
                             <NewChat />
                         </Button>
-                        <PopoverTrigger isOpen={menuOpen} onOpenChange={setMenuOpen}>
+                        <PopoverTrigger
+                            isOpen={menuOpen}
+                            onOpenChange={open => {
+                                if (open) {
+                                    previewGeneration++;
+                                    setMenuOpen(true);
+                                } else if (openingPicker.current) {
+                                    openingPicker.current = false;
+                                } else closePicker();
+                            }}
+                        >
                             <Button
                                 variant="filling"
                                 color="secondary"
@@ -122,8 +180,27 @@ export function WorktreeCardHeader({
                             >
                                 <More />
                             </Button>
-                            <Popover placement="bottom end" spacing="xs">
-                                <WorktreeCardMenu card={card} onNewChat={newChat} />
+                            <Popover
+                                placement="bottom end"
+                                spacing="xs"
+                                width={switchWorkspace ? 288 : undefined}
+                                shouldCloseOnInteractOutside={element => !element.closest('[data-branch-context-menu]')}
+                            >
+                                {switchWorkspace ? (
+                                    <WorktreeBranchPicker
+                                        projectId={project.id}
+                                        workspace={switchWorkspace}
+                                        label={title}
+                                        onClose={closePicker}
+                                        beginPreview={beginPreview}
+                                    />
+                                ) : (
+                                    <WorktreeCardMenu
+                                        card={card}
+                                        onNewChat={newChat}
+                                        onSwitch={() => void switchBranch()}
+                                    />
+                                )}
                             </Popover>
                         </PopoverTrigger>
                     </span>
@@ -140,7 +217,15 @@ export function WorktreeCardHeader({
 }
 
 /** Shared path menu with guarded worktree actions. */
-function WorktreeCardMenu({ card, onNewChat }: { card: WorktreeCard; onNewChat: () => void }) {
+function WorktreeCardMenu({
+    card,
+    onNewChat,
+    onSwitch,
+}: {
+    card: WorktreeCard;
+    onNewChat: () => void;
+    onSwitch: () => void;
+}) {
     const root = useRootStore();
     const project = useProjectState();
     const ui = useProjectUi();
@@ -173,6 +258,16 @@ function WorktreeCardMenu({ card, onNewChat }: { card: WorktreeCard; onNewChat: 
             git={git}
             onNewChat={onNewChat}
             extra={[
+                ...(!card.missing && !card.pending && card.workspace?.ready !== false
+                    ? [
+                          {
+                              id: 'switch-branch',
+                              label: 'Switch branch',
+                              icon: <Version aria-hidden="true" />,
+                              run: onSwitch,
+                          },
+                      ]
+                    : []),
                 ...(!card.pending
                     ? worktreeMenuExtras({
                           root,
@@ -186,4 +281,25 @@ function WorktreeCardMenu({ card, onNewChat }: { card: WorktreeCard; onNewChat: 
             aria-label="Worktree actions"
         />
     );
+}
+
+function WorktreeBranchPicker({
+    projectId,
+    workspace,
+    label,
+    onClose,
+    beginPreview,
+}: {
+    projectId: string;
+    workspace: ChatWorkspace;
+    label: string;
+    onClose: () => void;
+    beginPreview: () => () => boolean;
+}) {
+    const { transport } = useRootStore();
+    const store = gitFactsOf(transport);
+    const key = { projectId, folderId: workspace.folderId, workspaceId: workspace.id };
+    const facts = store.of(key);
+    useEffect(() => store.observe(key), [store, projectId, workspace.folderId, workspace.id]);
+    return <BranchPicker facts={facts} label={label} embeddedClose={onClose} beginPreview={beginPreview} />;
 }
