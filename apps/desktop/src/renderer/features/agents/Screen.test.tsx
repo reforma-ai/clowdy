@@ -1445,6 +1445,8 @@ describe('threads', () => {
             'c-6',
             'c-6a',
             'c-6b',
+            // The sub-agent of the chat itself, made between its threads (it is over, and the finished are listed).
+            'r-na-07',
             'c-6c',
             'c-6e',
             'c-1',
@@ -1570,6 +1572,8 @@ describe('threads', () => {
             'c-6',
             'c-6a',
             'c-6b',
+            // The sub-agent of the chat itself, made between its threads (it is over, and the finished are listed).
+            'r-na-07',
             'c-6c',
             'c-6e',
             'c-1',

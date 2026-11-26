@@ -2273,6 +2273,17 @@ export function createFixtureData(now = Date.now()): FixtureData {
             startedAt: ago(50),
             finishedAt: ago(9),
         }),
+        // A sub-agent of Ship the checkout's own orchestrator, made between its threads (c-6b and c-6c): the Agents list stands it among them.
+        run('r-na-07', 'general-purpose', 'executor', 'succeeded', {
+            parentRunId: 'r-orch-6',
+            rootRunId: 'r-orch-6',
+            origin: 'native',
+            summary: 'Check the refund rules',
+            result: 'The refund rules match the payment provider’s.',
+            createdAt: ago(47.2),
+            startedAt: ago(47.2),
+            finishedAt: ago(47.1),
+        }),
         run('r-orch-6a', 'Orchestrator 07', 'orchestrator', 'running', {
             chatId: 'c-6a',
             summary: 'Fix the price rounding',
@@ -2520,6 +2531,10 @@ export function createFixtureData(now = Date.now()): FixtureData {
     ]);
 
     stream('r-na-05', [[1, { kind: 'assistant', done: true, text: 'Listing the callers of useBookingPrice.' }]]);
+
+    stream('r-na-07', [
+        [47.1, { kind: 'assistant', done: true, text: 'The refund rules match the payment provider’s.' }],
+    ]);
 
     stream('r-na-03', [
         [21, { kind: 'assistant', done: true, text: 'I will start by reading the current form and the price helper.' }],

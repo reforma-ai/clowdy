@@ -58,7 +58,6 @@ import {
     asksThePerson,
     type ChatRow,
     chatDotTone,
-    type FinishedRow,
     groupFolderOf,
     isActiveThread,
     nativeAgentsByRoot,
@@ -84,13 +83,13 @@ const GROUP_PREFIX = '@folder:';
 const EMPTY_PREFIX = '@empty:';
 const groupKey = (folderId: FolderId) => `${GROUP_PREFIX}${folderId}`;
 
-/** What a line of the list is: a chat (or a thread), a sub-agent of one, or a chat's group of finished sub-agents; the heading of a folder's group, or the note of a group that has no chat. */
+/** What a line of the list is: a chat (or a thread) or a sub-agent of one; the heading of a folder's group, or the note of a group that has no chat. */
 type ListEntry =
     | { kind: 'row'; row: AgentRow }
     | { kind: 'group'; group: AgentGroup; isCollapsed: boolean }
     | { kind: 'empty'; folderId: FolderId };
 
-/** The key of a line's row in the grid list: a chat's id, a sub-agent's run id, the id of a finished group, or the id of a heading or a note. */
+/** The key of a line's row in the grid list: a chat's id, a sub-agent's run id, or the id of a heading or a note. */
 const entryKey = (entry: ListEntry) =>
     entry.kind === 'row'
         ? entry.row.id
@@ -118,8 +117,8 @@ interface ChatActions {
 
 /**
  * The project's agents: the row that starts a chat, then the chats in use in the person's order, each with what works for it below: the native sub-agents it
- * started (a row each, and one group row for the finished ones) and the threads its agents started, folded until the person opens them, except what works
- * (with Expand running agents on) or waits for the person. Archived chats are not here, they are in the archive's list (the button
+ * started and the threads its agents started in one list, oldest first, folded until the person opens them, except what works (with Expand running agents on)
+ * or waits for the person. Archived chats are not here, they are in the archive's list (the button
  * in the heading, beside the filters), and take their threads with them. `missing` are the folders gone from the disk (`Screen` reads them once for the list and the new-chat page): their group is marked and its button is off. With the menu's Group chats by folder on (it is, until the person turns it off), the
  * chats stand in a group for the folder they work in, under a heading that folds the group. Its name opens the folder's menu (`GroupFolderName`), and the menu and heading both offer a new chat in that folder.
  */
@@ -216,7 +215,7 @@ export function AgentList({
           })
         : rowsOf(chats).map(row => ({ kind: 'row', row }));
     // The new-chat row is the open one on every new-chat page, whatever folder it is for: the folder is told by the select under the message box.
-    // A sub-agent that is not listed (its group is folded, or its chat is) leaves its chat's row as the open one, so the list never shows nothing open.
+    // A sub-agent that is not listed (its chat or its folder's group is folded) leaves its chat's row as the open one, so the list never shows nothing open.
     const selectedId = selection.draft
         ? NEW_CHAT_ROW
         : openRun && entries.some(entry => entry.kind === 'row' && entry.row.id === openRun.id)
@@ -236,8 +235,8 @@ export function AgentList({
 
     // A thread or a sub-agent opened from elsewhere (a chip, a card, back and forward, the keyboard) may sit below a fold: open the folds above it, and the
     // folded group of the chat it belongs to. For a sub-agent that is its chat, when its row is not listed already (a working one is, under a folded chat, and so
-    // is the open one that is over: it has a row of its own, outside its group, which stays folded). When the open page changes, and when the list turns
-    // grouped; not on other changes, so the person can still fold the chat or the group it sits in.
+    // is the open one that is over). When the open page changes, and when the list turns grouped; not on other changes, so the person can still fold the chat
+    // or the group it sits in.
     const openRunId = openRun?.id;
     const openRunListed = useRef(false);
     openRunListed.current = openRunId !== undefined && selectedId === openRunId;
@@ -280,7 +279,7 @@ export function AgentList({
     const foldOf = (key: string | undefined): { isExpanded: boolean; toggle: () => void } | undefined => {
         const entry = entries.find(candidate => entryKey(candidate) === key);
 
-        // The fold of a chat, and of its group of finished sub-agents, is kept with the chats' (`finishedGroupId`).
+        // Only a chat has a fold: a sub-agent's row has none.
         if (entry?.kind === 'row' && entry.row.childCount > 0)
             return { isExpanded: entry.row.isExpanded, toggle: () => ui.toggleChatExpanded(entry.row.id) };
 
@@ -328,8 +327,6 @@ export function AgentList({
         const row = entry?.kind === 'row' ? entry.row : undefined;
 
         if (id === NEW_CHAT_ROW) openNewChat(project, ui);
-        // The group of finished sub-agents is no page, and a press on its row has nothing else to do but fold it.
-        else if (row?.kind === 'finished') ui.toggleChatExpanded(row.id);
         else if (row?.kind === 'subagent') ui.openRun(row.id);
         // A heading is a label, not a page: only its chevron, and Right and Left on it, fold the group.
         else if (!id.startsWith(GROUP_PREFIX)) ui.openChat(id);
@@ -425,8 +422,6 @@ export function AgentList({
                 return renderRow(row);
             case 'subagent':
                 return renderSubagent(row);
-            case 'finished':
-                return renderFinished(row);
         }
     };
 
@@ -454,34 +449,6 @@ export function AgentList({
                 <span className={styles.title} title={run.summary || undefined}>
                     {label}
                 </span>
-            </GridListItem>
-        );
-    };
-
-    const renderFinished = (row: FinishedRow) => {
-        const { depth, id, isExpanded, childCount } = row;
-
-        return (
-            <GridListItem
-                key={id}
-                id={id}
-                text={`Finished sub-agents of ${row.chat.title}`}
-                icon={
-                    <Fold
-                        label={`${isExpanded ? 'Collapse' : 'Expand'} finished sub-agents of ${row.chat.title}`}
-                        isExpanded={isExpanded}
-                        icon={<Robot />}
-                        onToggle={() => ui.toggleChatExpanded(id)}
-                    />
-                }
-                endAffix={<span className={styles.count}>{childCount}</span>}
-                className={styles.agentRow}
-                style={{ '--depth': depth } as CSSProperties}
-                data-finished
-                data-depth={depth}
-                data-drop-position={order.drop?.indicatorId === id ? order.drop.position : undefined}
-            >
-                <span className={styles.title}>Finished sub-agents</span>
             </GridListItem>
         );
     };

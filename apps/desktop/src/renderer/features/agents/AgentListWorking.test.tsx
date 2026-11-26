@@ -56,7 +56,6 @@ let store: RootStore;
 
 const ui = () => store.ui.forProject(FIXTURE_PROJECT_ID);
 const project = () => store.selectedProject!;
-const GROUP = '@finished:c-1';
 
 const draw = (before?: () => void) =>
     act(async () => {
@@ -120,8 +119,8 @@ afterEach(() => {
 });
 
 describe('the agents that work, under a folded chat', () => {
-    it('lists the working threads and the working sub-agents, the ones below a sub-agent one level in, and folds the finished away', () => {
-        expect(shown('c-1', 'r-na-03', 'r-na-02', 'r-na-05', 'r-na-04', 'r-na-01', GROUP)).toEqual([
+    it('lists the working threads and the working sub-agents, the ones below a sub-agent one level in, and leaves the finished out', () => {
+        expect(shown('c-1', 'r-na-03', 'r-na-02', 'r-na-05', 'r-na-04', 'r-na-01')).toEqual([
             'c-1',
             'r-na-03',
             'r-na-02',
@@ -158,7 +157,7 @@ describe('the agents that work, under a folded chat', () => {
         expect(shown('c-1', 'r-na-03', 'r-na-02', 'r-na-05')).toEqual(['c-1', 'r-na-02', 'r-na-05']);
     });
 
-    it('lists a sub-agent when it starts and drops it from the list when it ends, into the group of the finished', async () => {
+    it('lists a sub-agent when it starts and drops it from a folded chat when it ends', async () => {
         const run = project().runs.get('r-na-03')!;
 
         await draw(() => project().runs.set(run.id, { ...run, status: 'succeeded', finishedAt: Date.now() }));
@@ -186,79 +185,94 @@ describe('the agents that work, under a folded chat', () => {
     });
 });
 
-describe('the group of finished sub-agents', () => {
-    it('stands in an opened chat, folded, with the count, after the sub-agents that work and before the threads', async () => {
+describe('finished sub-agents', () => {
+    it('are rows like those of a finished thread: in an opened chat, oldest first with the others, nested below the one that started them', async () => {
         await draw(() => ui().toggleChatExpanded('c-1'));
 
-        expect(shown('c-1', 'r-na-03', 'r-na-02', 'r-na-05', GROUP, 'r-na-04', 'r-na-01')).toEqual([
+        expect(shown('c-1', 'r-na-01', 'r-na-04', 'r-na-03', 'r-na-02', 'r-na-05')).toEqual([
             'c-1',
+            'r-na-01',
+            'r-na-04',
             'r-na-03',
             'r-na-02',
             'r-na-05',
-            GROUP,
         ]);
-        expect(titleOf(GROUP)).toBe('Finished sub-agents');
-        expect(rowOf(GROUP).textContent).toContain('2');
-        expect(foldOf(GROUP)?.getAttribute('aria-expanded')).toBe('false');
+        expect(['r-na-01', 'r-na-04', 'r-na-03', 'r-na-02', 'r-na-05'].map(id => rowOf(id).dataset.depth)).toEqual([
+            '1',
+            '1',
+            '1',
+            '1',
+            '2',
+        ]);
+        // There is no group row, and no fold but the chat's.
+        expect(rowKeys().some(candidate => candidate?.startsWith('@finished'))).toBe(false);
+        expect(rowOf('r-na-01').textContent).toBe('Explore agent');
+        expect(rowOf('c-1').textContent).toBe('Simplify booking');
     });
 
-    it('folds and unfolds on its own: a press, its chevron, and Right and Left, and opens no page', async () => {
-        await draw(() => ui().toggleChatExpanded('c-1'));
-        await press(rowOf(GROUP));
-        await draw();
+    it('stand among the threads of their chat by the time each was made, a thread’s own below the thread', async () => {
+        await draw(() => ['c-6', 'c-6a'].forEach(id => ui().toggleChatExpanded(id)));
 
-        expect(shown(GROUP, 'r-na-04', 'r-na-01')).toEqual([GROUP, 'r-na-04', 'r-na-01']);
-        expect(container.querySelector('[data-testid="run"]')).toBeNull();
-        expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe('c-4');
-        expect(isSelected(GROUP)).toBe(false);
-        // The newest first, one level in from the group.
-        expect(rowOf('r-na-04').getAttribute('data-depth')).toBe('2');
-
-        await press(foldOf(GROUP)!);
-        await draw();
-
-        expect(shown(GROUP, 'r-na-04', 'r-na-01')).toEqual([GROUP]);
-
-        await key(rowOf(GROUP), 'ArrowRight');
-        await draw();
-        expect(shown('r-na-04', 'r-na-01')).toHaveLength(2);
-
-        await key(rowOf(GROUP), 'ArrowLeft');
-        await draw();
-        expect(shown('r-na-04', 'r-na-01')).toEqual([]);
+        // c-6b, then the sub-agent of the chat itself, then c-6c; c-6a has its own finished thread below it.
+        expect(shown('c-6', 'c-6a', 'c-6a1', 'c-6b', 'r-na-07', 'c-6c', 'c-6e')).toEqual([
+            'c-6',
+            'c-6a',
+            'c-6a1',
+            'c-6b',
+            'r-na-07',
+            'c-6c',
+            'c-6e',
+        ]);
+        expect(rowOf('r-na-07').dataset.depth).toBe('1');
+        expect(titleOf('r-na-07')).toBe('General agent');
     });
 
-    it('is not folded again by folding its chat, and is remembered with the chat folds', async () => {
-        await draw(() => ['c-1', GROUP].forEach(id => ui().toggleChatExpanded(id)));
-
-        expect(ui().expandedChats).toEqual(['c-1', GROUP]);
-
+    it('show the dot of their run as a finished thread does: red when failed, none when done', async () => {
         await draw(() => ui().toggleChatExpanded('c-1'));
 
-        expect(shown(GROUP)).toEqual([]);
-
-        await draw(() => ui().toggleChatExpanded('c-1'));
-
-        expect(shown('r-na-04', 'r-na-01')).toHaveLength(2);
+        expect(rowOf('r-na-04').querySelector('[role="img"]')?.getAttribute('aria-label')).toBe('Failed');
+        expect(rowOf('r-na-04').querySelector('[data-tone]')?.getAttribute('data-tone')).toBe('danger');
+        expect(rowOf('r-na-01').querySelector('[role="img"]')).toBeNull();
     });
 
-    it('is listed only while the finished are, and the check in Filters says so', async () => {
-        await draw(() => ui().toggleChatExpanded('c-1'));
+    it('are left out with the finished threads when Show finished sub-threads is turned off, the ones that work staying', async () => {
+        await draw(() => ['c-1', 'c-6'].forEach(id => ui().toggleChatExpanded(id)));
         await press(container.querySelector<HTMLElement>('button[aria-label="Filters"]')!);
         await press(menuItem('Show finished sub-threads'));
         await draw();
 
         expect(chatListPreferences.showFinishedThreads).toBe(false);
-        expect(shown(GROUP, 'r-na-04', 'r-na-01')).toEqual([]);
-        expect(shown('r-na-03', 'r-na-02')).toEqual(['r-na-03', 'r-na-02']);
+        expect(shown('r-na-01', 'r-na-04', 'r-na-07', 'c-6b', 'c-6c')).toEqual([]);
+        expect(shown('r-na-03', 'r-na-02', 'r-na-05')).toEqual(['r-na-03', 'r-na-02', 'r-na-05']);
     });
 
-    it('has one row for a great many finished sub-agents', async () => {
+    it('keep a finished sub-agent below which one that works is nested, with the setting off', async () => {
         const orchestrator = project().runs.get('r-orch-1')!;
+        const finished = project().runs.get('r-na-01')!;
 
         await draw(() => {
+            chatListPreferences.setShowFinishedThreads(false);
             ui().toggleChatExpanded('c-1');
+            project().runs.set('r-na-08', {
+                ...finished,
+                id: 'r-na-08',
+                parentRunId: finished.id,
+                rootRunId: orchestrator.id,
+                status: 'running',
+                createdAt: finished.createdAt + 1,
+            });
+        });
 
+        expect(shown('r-na-01', 'r-na-08', 'r-na-04')).toEqual(['r-na-01', 'r-na-08']);
+        expect(rowOf('r-na-08').dataset.depth).toBe('2');
+    });
+
+    it('have a row each, however many, in a chat that is open, and none in a folded chat', async () => {
+        const orchestrator = project().runs.get('r-orch-1')!;
+        const rows = () => container.querySelectorAll('[role="row"]').length;
+        const before = rows();
+
+        await draw(() => {
             for (let index = 0; index < 300; index++)
                 project().runs.set(`r-many-${index}`, {
                     ...orchestrator,
@@ -273,8 +287,28 @@ describe('the group of finished sub-agents', () => {
                 });
         });
 
-        expect(rowOf(GROUP).textContent).toContain('302');
-        expect(rowKeys().filter(candidate => candidate?.startsWith('r-many-'))).toEqual([]);
+        // The chat is folded: they add no row to it.
+        expect(rows()).toBe(before);
+        expect(rowOf('c-1').querySelector('button[aria-label^="Expand"]')).not.toBeNull();
+
+        await draw(() => ui().toggleChatExpanded('c-1'));
+
+        expect(rows()).toBe(before + 300 + 2);
+        expect(rowKeys().filter(candidate => candidate?.startsWith('r-many-'))).toHaveLength(300);
+        // The oldest of them first, before the other sub-agents.
+        expect(rowKeys().slice(rowKeys().indexOf('c-1') + 1, rowKeys().indexOf('c-1') + 3)).toEqual([
+            'r-many-0',
+            'r-many-1',
+        ]);
+    });
+
+    it('are only listed under a folded chat when they are open, or have one that works below them', async () => {
+        await draw(() => ui().openRun('r-na-04'));
+        await draw();
+
+        expect(ui().expandedChats).toEqual([]);
+        expect(shown('r-na-01', 'r-na-04')).toEqual(['r-na-04']);
+        expect(isSelected('r-na-04')).toBe(true);
     });
 });
 
@@ -371,25 +405,20 @@ describe('a sub-agent’s row', () => {
         expect(rowOf('c-1').querySelector('[aria-label="Threads working"]')).toBeNull();
     });
 
-    it('gives a finished sub-agent opened from elsewhere a row of its own, and unfolds neither its chat nor the group of the finished', async () => {
+    it('keeps the row of a finished sub-agent opened from elsewhere, and unfolds nothing for it', async () => {
         await draw(() => ui().openRun('r-na-04'));
         await draw();
 
         expect(ui().expandedChats).toEqual([]);
-        // Once, below the ones that work, under the folded chat.
-        expect(shown('r-na-03', 'r-na-02', 'r-na-04', GROUP, 'r-na-01')).toEqual(['r-na-03', 'r-na-02', 'r-na-04']);
+        // Once, among the ones that work, under the folded chat.
+        expect(shown('r-na-03', 'r-na-02', 'r-na-04', 'r-na-01')).toEqual(['r-na-04', 'r-na-03', 'r-na-02']);
         expect(isSelected('r-na-04')).toBe(true);
         expect(isSelected('c-1')).toBe(false);
 
-        // The person opens the chat, and then the group: the sub-agent is in it, once, and still the open one.
+        // The person opens the chat: the others come in, and the sub-agent is still the open one.
         await draw(() => ui().toggleChatExpanded('c-1'));
 
-        expect(shown(GROUP, 'r-na-04', 'r-na-01')).toEqual(['r-na-04', GROUP]);
-
-        await press(foldOf(GROUP)!);
-        await draw();
-
-        expect(shown(GROUP, 'r-na-04', 'r-na-01')).toEqual([GROUP, 'r-na-04', 'r-na-01']);
+        expect(shown('r-na-01', 'r-na-04', 'r-na-03')).toEqual(['r-na-01', 'r-na-04', 'r-na-03']);
         expect(isSelected('r-na-04')).toBe(true);
 
         // The person folds the chat: the page stays, and the sub-agent keeps its row.
@@ -405,7 +434,7 @@ describe('a sub-agent’s row', () => {
 
         expect(isSelected('r-na-03')).toBe(true);
         expect(ui().expandedChats).toEqual([]);
-        expect(shown(GROUP)).toEqual([]);
+        expect(shown('r-na-01', 'r-na-04')).toEqual([]);
     });
 
     it('opens its page from the end of its row too, where the dot is', async () => {
@@ -416,7 +445,7 @@ describe('a sub-agent’s row', () => {
         expect(isSelected('r-na-03')).toBe(true);
     });
 
-    it('keeps the row of the open sub-agent when it ends, and does not unfold the group for it', async () => {
+    it('keeps the row of the open sub-agent when it ends, and unfolds nothing for it', async () => {
         await press(rowOf('r-na-03'));
         await draw();
 
@@ -430,23 +459,27 @@ describe('a sub-agent’s row', () => {
 
         await draw(() => ui().toggleChatExpanded('c-1'));
 
-        expect(rowOf(GROUP).textContent).toContain('3');
-        expect(shown('r-na-04', 'r-na-01')).toEqual([]);
+        expect(shown('r-na-01', 'r-na-04', 'r-na-03')).toEqual(['r-na-01', 'r-na-04', 'r-na-03']);
     });
 
-    it('opens the chat from the chat’s row when that is the open row only because the person folded the chat of the open sub-agent', async () => {
+    it('opens the chat from the chat’s row when that is the open row only because the open run has no row', async () => {
+        const orchestrator = project().runs.get('r-orch-1')!;
+
+        // A child run that is no native sub-agent is no row.
         await draw(() => {
-            chatListPreferences.setExpandRunningAgents(false);
-            ui().openRun('r-na-03');
+            project().runs.set('r-x', {
+                ...orchestrator,
+                id: 'r-x',
+                role: 'executor',
+                parentRunId: orchestrator.id,
+                rootRunId: orchestrator.id,
+                origin: undefined,
+            });
+            ui().openRun('r-x');
         });
         await draw();
 
-        // Opened from elsewhere, with no row of its own to show it, the chat opens; the person folds it again.
-        expect(ui().expandedChats).toEqual(['c-1']);
-        expect(isSelected('r-na-03')).toBe(true);
-
-        await draw(() => ui().toggleChatExpanded('c-1'));
-
+        expect(container.querySelector('[data-testid="run"]')?.getAttribute('data-run-id')).toBe('r-x');
         expect(isSelected('c-1')).toBe(true);
 
         await press(rowOf('c-1'));
@@ -463,14 +496,19 @@ describe('a sub-agent’s row', () => {
         });
         await draw();
 
-        expect(shown(GROUP, 'r-na-04', 'r-na-01')).toEqual(['r-na-04']);
+        expect(shown('r-na-04', 'r-na-01')).toEqual(['r-na-04']);
         expect(isSelected('r-na-04')).toBe(true);
+
+        await draw(() => ui().toggleChatExpanded('c-1'));
+
+        // The finished one that is not open stays out of the open chat as well.
+        expect(shown('r-na-04', 'r-na-01')).toEqual(['r-na-04']);
     });
 });
 
 describe('the keyboard on the list', () => {
-    it('steps with J and K over the rows of the sub-agents and the group as over the others', async () => {
-        await draw(() => ['c-1', GROUP].forEach(id => ui().toggleChatExpanded(id)));
+    it('steps with J and K over the rows of the sub-agents, finished ones too, as over the others', async () => {
+        await draw(() => ui().toggleChatExpanded('c-1'));
 
         const uninstall = installDispatcher(hotkeys);
         const focused = () => document.activeElement?.getAttribute('data-key');
@@ -483,13 +521,13 @@ describe('the keyboard on the list', () => {
         try {
             rowOf('c-1').focus();
 
+            expect(await step('j')).toBe('r-na-01');
+            expect(await step('j')).toBe('r-na-04');
             expect(await step('j')).toBe('r-na-03');
             expect(await step('j')).toBe('r-na-02');
             expect(await step('j')).toBe('r-na-05');
-            expect(await step('j')).toBe(GROUP);
-            expect(await step('j')).toBe('r-na-04');
-            expect(await step('k')).toBe(GROUP);
-            expect(await step('k')).toBe('r-na-05');
+            expect(await step('k')).toBe('r-na-02');
+            expect(await step('k')).toBe('r-na-03');
         } finally {
             uninstall();
         }
@@ -500,15 +538,27 @@ describe('the keyboard on the list', () => {
         await draw();
 
         expect(ui().expandedChats).toContain('c-1');
-        expect(shown(GROUP)).toEqual([GROUP]);
+        expect(shown('r-na-01', 'r-na-04')).toEqual(['r-na-01', 'r-na-04']);
 
         await key(rowOf('c-1'), 'ArrowLeft');
         await draw();
 
         expect(ui().expandedChats).not.toContain('c-1');
+        expect(shown('r-na-01', 'r-na-04')).toEqual([]);
     });
 
-    it('opens a sub-agent from its focused row with Enter, and opens the group with Enter, which opens no page', async () => {
+    it('does nothing with Right and Left on a sub-agent’s row, which has no fold', async () => {
+        await draw(() => ui().toggleChatExpanded('c-1'));
+        await key(rowOf('r-na-02'), 'ArrowLeft');
+        await key(rowOf('r-na-02'), 'ArrowRight');
+
+        expect(ui().expandedChats).toEqual(['c-1']);
+        expect(
+            rowOf('r-na-02').querySelector('button[aria-label^="Expand"], button[aria-label^="Collapse"]')
+        ).toBeNull();
+    });
+
+    it('opens a sub-agent, a finished one too, from its focused row with Enter', async () => {
         await key(rowOf('r-na-03'), 'Enter');
         await draw();
 
@@ -516,13 +566,11 @@ describe('the keyboard on the list', () => {
         expect(isSelected('r-na-03')).toBe(true);
 
         await draw(() => ui().toggleChatExpanded('c-1'));
-        await key(rowOf(GROUP), 'Enter');
+        await key(rowOf('r-na-01'), 'Enter');
         await draw();
 
-        expect(ui().expandedChats).toContain(GROUP);
-        expect(shown('r-na-04', 'r-na-01')).toHaveLength(2);
-        // The group is no page: the sub-agent that was open still is.
-        expect(ui().runId).toBe('r-na-03');
-        expect(isSelected('r-na-03')).toBe(true);
+        expect(ui().runId).toBe('r-na-01');
+        expect(isSelected('r-na-01')).toBe(true);
+        expect(isSelected('r-na-03')).toBe(false);
     });
 });
