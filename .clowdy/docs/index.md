@@ -2,6 +2,8 @@
 
 ## Decisions
 
+- [Archive a merged pull request once the branch has commits of its own since](decisions/2026-11-25-archive-merged-pr-with-new-commits.md) records that a merged pull request leaves the chat list and the visible pull request when the branch has new work. Status: accepted.
+
 - [Remember each chat's reading state](decisions/2026-11-25-chat-reading-state.md) records separate running-agent folds and session-only reading positions. Status: accepted.
 
 - [Chat mentions](decisions/2026-11-25-chat-mentions.md) records the project-wide chat picker, stable references, and on-demand read-only history. Status: accepted.
@@ -36,6 +38,8 @@
 - [CI: red runs and run time](decisions/2026-11-25-ci-red-runs-and-speed.md) records that CI stays a report for now, how the red tests are sorted and fixed, and how the gate and the Windows release tests get faster. Status: accepted.
 
 ## Checks
+
+- [Archive a merged pull request with new commits](checks/2026-11-25-archive-merged-pr-with-new-commits.md) covers the daemon rule on real GitHub data and in tests, the grouping on the desktop and an independent review. Status: passed with limits.
 
 - [Chat reading state](checks/2026-11-25-chat-reading-state.md) covers independent agent folds, scroll restoration, message growth and latest-message following. Status: passed.
 
