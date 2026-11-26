@@ -59,7 +59,6 @@ import {
     type ChatRow,
     chatDotTone,
     type FinishedRow,
-    finishedGroupId,
     groupFolderOf,
     isActiveThread,
     nativeAgentsByRoot,
@@ -118,8 +117,9 @@ interface ChatActions {
 }
 
 /**
- * The project's agents: the row that starts a chat, then the chats in use in the person's order, each with the
- * threads its agents started below it, folded until the person opens them. Archived chats are not here, they are in the archive's list (the button
+ * The project's agents: the row that starts a chat, then the chats in use in the person's order, each with what works for it below: the native sub-agents it
+ * started (a row each, and one group row for the finished ones) and the threads its agents started, folded until the person opens them, except what works
+ * (with Expand running agents on) or waits for the person. Archived chats are not here, they are in the archive's list (the button
  * in the heading, beside the filters), and take their threads with them. `missing` are the folders gone from the disk (`Screen` reads them once for the list and the new-chat page): their group is marked and its button is off. With the menu's Group chats by folder on (it is, until the person turns it off), the
  * chats stand in a group for the folder they work in, under a heading that folds the group. Its name opens the folder's menu (`GroupFolderName`), and the menu and heading both offer a new chat in that folder.
  */
@@ -235,24 +235,24 @@ export function AgentList({
     );
 
     // A thread or a sub-agent opened from elsewhere (a chip, a card, back and forward, the keyboard) may sit below a fold: open the folds above it, and the
-    // folded group of the chat it belongs to. For a sub-agent those are its chat, and the group of the finished ones when it is over. When the open
-    // page changes (a sub-agent moves into the finished group as it ends), and when the list turns grouped; not on other changes, so the person can still fold
-    // the chat or the group it sits in.
+    // folded group of the chat it belongs to. For a sub-agent that is its chat, when its row is not listed already (a working one is, under a folded chat, and so
+    // is the open one that is over: it has a row of its own, outside its group, which stays folded). When the open page changes, and when the list turns
+    // grouped; not on other changes, so the person can still fold the chat or the group it sits in.
     const openRunId = openRun?.id;
-    const openRunFinished = openRun !== undefined && !isRunActive(openRun);
+    const openRunListed = useRef(false);
+    openRunListed.current = openRunId !== undefined && selectedId === openRunId;
     useEffect(() => {
         if (openChatId === undefined) return;
 
         ui.expandChats([
             ...ancestorChats(project.chats, openChatId).map(chat => chat.id),
-            ...(openRunId === undefined ? [] : [openChatId]),
-            ...(openRunFinished && showFinishedThreads ? [finishedGroupId(openChatId)] : []),
+            ...(openRunId === undefined || openRunListed.current ? [] : [openChatId]),
         ]);
 
         const folderId = grouped ? groupFolderOf(project.chats, project.project.folders, openChatId) : undefined;
 
         if (folderId !== undefined) ui.expandFolder(folderId);
-    }, [openChatId, openRunId, openRunFinished, showFinishedThreads, grouped, project, ui]);
+    }, [openChatId, openRunId, grouped, project, ui]);
 
     useHotkeyScope(AGENTS_SCOPE);
     useCommands(
@@ -290,6 +290,10 @@ export function AgentList({
         return undefined;
     };
 
+    // The row that is open is wanted on screen; when it is a chat's only because its sub-agent has no listed row, the chat is wanted, not the sub-agent's page.
+    const showSelected = () =>
+        openRun && openChatId !== undefined && selectedId === openChatId ? ui.openChat(openChatId) : ui.showChat();
+
     // The grid list keeps the arrows between rows; Right opens a fold and Left closes it. Read in the capture phase, because a row with buttons moves
     // the focus into them on these keys and stops the event there; one that toggles a fold does not reach the row.
     const onKeyDownCapture = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -298,7 +302,7 @@ export function AgentList({
         if (!(target instanceof HTMLElement) || target.getAttribute('role') !== 'row') return;
 
         // Enter or Space on the row of the chat that is open selects nothing new, and the list reports no selection: the chat is still wanted on screen.
-        if ((event.key === 'Enter' || event.key === ' ') && target.dataset.key === selectedId) ui.showChat();
+        if ((event.key === 'Enter' || event.key === ' ') && target.dataset.key === selectedId) showSelected();
 
         const folded = foldOf(target.dataset.key);
 
@@ -316,7 +320,7 @@ export function AgentList({
         const target = event.target as Element;
 
         if (!target.closest('button') && target.closest('[role="row"]')?.getAttribute('data-key') === selectedId)
-            ui.showChat();
+            showSelected();
     };
 
     const select = (id: string) => {
@@ -438,7 +442,7 @@ export function AgentList({
                 text={label}
                 icon={<Robot />}
                 endAffix={
-                    <span className={styles.agentStatus} {...ownEvents}>
+                    <span className={styles.agentStatus}>
                         <ChatStatus run={run} />
                     </span>
                 }
@@ -461,7 +465,7 @@ export function AgentList({
             <GridListItem
                 key={id}
                 id={id}
-                text="Finished sub-agents"
+                text={`Finished sub-agents of ${row.chat.title}`}
                 icon={
                     <Fold
                         label={`${isExpanded ? 'Collapse' : 'Expand'} finished sub-agents of ${row.chat.title}`}

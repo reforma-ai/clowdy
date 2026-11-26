@@ -21,7 +21,7 @@ interface RowBase {
     /** The key of the line in the list: a chat's id, a sub-agent's run id, or the id of a chat's finished group (`finishedGroupId`). */
     id: string;
     depth: number;
-    /** How many lines the list has directly below this one, shown or folded away. A line with none has no fold. */
+    /** How many lines the list has below this one, shown or folded away (a chat counts the sub-agents nested below its sub-agents too). A line with none has no fold. */
     childCount: number;
     isExpanded: boolean;
 }
@@ -128,7 +128,8 @@ const NO_AGENTS: ChatAgents = { working: [], surfacing: [], finished: [] };
 
 /**
  * The sub-agents of a chat, from its oldest to newest: those that work (queued, running, blocked, waiting for the person or for their background work) nested
- * below the sub-agent that started them, and those that are over apart. A working sub-agent whose parent is not working stands right below the chat, so none is lost.
+ * below the sub-agent that started them, and those that are over apart. A working sub-agent whose parent is not working stands right below the chat, and so
+ * does one of a parent cycle in corrupt data, so none is lost.
  */
 function listAgents(agents: readonly Run[], expandRunning: boolean): ChatAgents {
     if (agents.length === 0) return NO_AGENTS;
@@ -148,17 +149,16 @@ function listAgents(agents: readonly Run[], expandRunning: boolean): ChatAgents 
     const ordered: ChatAgents['working'] = [];
     const seen = new Set<RunId>();
     // Runs form a tree by contract; the guard keeps a corrupt parent cycle from looping.
-    const visit = (parent: RunId | undefined, level: number) => {
-        for (const run of below.get(parent) ?? []) {
-            if (seen.has(run.id)) continue;
+    const visit = (run: Run, level: number) => {
+        if (seen.has(run.id)) return;
 
-            seen.add(run.id);
-            ordered.push({ run, level });
-            visit(run.id, level + 1);
-        }
+        seen.add(run.id);
+        ordered.push({ run, level });
+        (below.get(run.id) ?? []).forEach(child => visit(child, level + 1));
     };
 
-    visit(undefined, 0);
+    // The cycles are not below any root: their runs are the last, each at the level of the first of them that is met.
+    [...(below.get(undefined) ?? []), ...working].forEach(run => visit(run, 0));
 
     const shown = new Set<RunId>();
 
@@ -179,13 +179,14 @@ function listAgents(agents: readonly Run[], expandRunning: boolean): ChatAgents 
 
 /**
  * The list as rows, top to bottom: each root chat, followed by what is below it when it is expanded: its native sub-agents that work, nested below the sub-agent
- * that started them, then the one group row of its finished sub-agents (folded, whatever their number, with `showFinished` and none of them hidden), then
- * its threads (and theirs, at any depth) in the order they were made.
+ * that started them, then the one group row of its finished sub-agents (with `showFinished`; folded until its own fold is opened, whatever their number), then
+ * its threads (and theirs, at any depth) in the order they were made. The open sub-agent, when it is over and the group does not hold it (the group is folded, or
+ * not listed, or the chat is folded), has a row of its own right below the working ones, so the open page keeps its row when it ends.
  *
  * A folded chat still lists what waits for the person (a thread, a sub-agent, and the chats and sub-agents between), so a question is never behind a
  * fold, and with `expandRunning` what works too; the row keeps its fold, closed, and the rest stays out until the chat is expanded. Archived threads are
  * not rows. Without `showFinished`, a finished thread is left out unless a thread below it is listed (it still works, or it is the open chat) or it
- * is the open chat itself, the group of finished sub-agents is left out unless the open sub-agent is one of them, and a row's fold counts only what is listed.
+ * is the open chat itself, there is no group of finished sub-agents, and a row's fold counts only what is listed.
  */
 export function agentRows({
     roots,
@@ -258,9 +259,11 @@ export function agentRows({
     const walk = (chat: Chat, depth: number) => {
         const threads = listedThreads(chat.id);
         const { working, surfacing: shown, finished } = agentsOfChat(chat);
-        // With the finished listed they are one group; without, the open sub-agent keeps its own row so the open page has one.
+        // With the finished listed they are one group; the open one that is over has a row of its own while the group does not hold it, so the open page has one.
         const group = showFinished && finished.length > 0;
-        const kept = !showFinished ? finished.find(run => run.id === openRunId) : undefined;
+        const holds = group && expanded.has(finishedGroupId(chat.id));
+        const openFinished = finished.find(run => run.id === openRunId);
+        const kept = holds ? undefined : openFinished;
         const childCount = threads.length + working.length + (kept ? 1 : 0) + (group ? 1 : 0);
         const isExpanded = childCount > 0 && expanded.has(chat.id);
         const agentRow = (run: Run, level: number): SubagentRow => ({
@@ -277,6 +280,10 @@ export function agentRows({
 
         if (!isExpanded) {
             rows.push(...shown.map(({ run, level }) => agentRow(run, level)));
+
+            // A folded chat has no group to hold it.
+            if (openFinished) rows.push(agentRow(openFinished, 0));
+
             threads.filter(surfaces).forEach(thread => walk(thread, depth + 1));
             return;
         }
@@ -286,18 +293,16 @@ export function agentRows({
         if (kept) rows.push(agentRow(kept, 0));
 
         if (group) {
-            const open = expanded.has(finishedGroupId(chat.id));
-
             rows.push({
                 kind: 'finished',
                 id: finishedGroupId(chat.id),
                 chat,
                 depth: depth + 1,
                 childCount: finished.length,
-                isExpanded: open,
+                isExpanded: holds,
             });
 
-            if (open) rows.push(...finished.map(run => agentRow(run, 1)));
+            if (holds) rows.push(...finished.map(run => agentRow(run, 1)));
         }
 
         threads.forEach(thread => walk(thread, depth + 1));

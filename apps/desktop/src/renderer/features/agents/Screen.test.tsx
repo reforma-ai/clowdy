@@ -56,8 +56,8 @@ vi.mock('./RunDetail', () => ({
 /*
  * The Agents screen on the fixture project. Chats newest first: c-4 (empty), c-5, c-3, c-6 (Ship the checkout, at rest, with threads),
  * c-1 (Simplify booking, orchestrator r-orch-1), c-2. The threads of c-6, oldest first: c-6a (Fix the price rounding, working, with the finished thread c-6a1),
- * c-6b (finished), c-6c (failed), c-6e (waiting for background work). Native sub-agents live in r-orch-1's session (r-na-01 to r-na-04): cards in its
- * stream, never rows. The test build has no MobX observer plugin, so the screen is drawn again by hand after a change, as the observer does in the app.
+ * c-6b (finished), c-6c (failed), c-6e (waiting for background work). Native sub-agents live in r-orch-1's session (r-na-01 to r-na-05): cards in its
+ * stream, and rows below c-1 once it is opened (with Expand running agents off, as here, they stay out while it is folded; `AgentListWorking.test.tsx` has them). The test build has no MobX observer plugin, so the screen is drawn again by hand after a change, as the observer does in the app.
  */
 
 const memoryStorage = (): KeyValueStorage => {
@@ -135,8 +135,8 @@ describe('the list', () => {
         expect(panel?.style.overflow).toBe('clip');
     });
 
-    it('starts with the new-chat row, then the chats, and has no row for a run', () => {
-        // The orchestrator is the chat, and a native sub-agent is a card on the call that started it: neither is a row.
+    it('starts with the new-chat row, then the chats, and has no row for a run while the chats are folded', () => {
+        // The orchestrator is the chat, and a native sub-agent is a row below its chat once that is opened, or while it works with Expand running agents on.
         expect(rowKeys()).toEqual(['@new-chat', MAIN_GROUP, 'c-4', 'c-5', 'c-3', 'c-6', 'c-1', 'c-2']);
     });
 
@@ -206,7 +206,7 @@ describe('the list', () => {
 });
 
 describe('what is open', () => {
-    it('opens a sub-agent beside its chat, whichever chat was open: its page shows and its chat is the selected row', async () => {
+    it('opens a sub-agent beside its chat, whichever chat was open: its page shows and its own row is the selected one', async () => {
         await draw(() => {
             ui().openChat('c-3');
             ui().openRun('r-na-04');
@@ -214,7 +214,8 @@ describe('what is open', () => {
 
         expect(container.querySelector('[data-testid="run"]')?.getAttribute('data-run-id')).toBe('r-na-04');
         expect(container.querySelector('[data-testid="chat"]')).toBeNull();
-        expect(isSelected('c-1')).toBe(true);
+        expect(isSelected('r-na-04')).toBe(true);
+        expect(isSelected('c-1')).toBe(false);
         expect(isSelected('c-3')).toBe(false);
     });
 

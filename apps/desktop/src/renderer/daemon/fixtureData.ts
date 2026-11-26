@@ -2176,7 +2176,7 @@ export function createFixtureData(now = Date.now()): FixtureData {
             startedAt: ago(94),
             context: { used: 53000, size: 250000 },
         }),
-        // Sub-agents of the orchestrator's own `Agent` calls (tc-agent-1 to tc-agent-4 in its stream): cards there, never rows of the Agents list.
+        // Sub-agents of the orchestrator's own `Agent` calls (tc-agent-1 to tc-agent-4 in its stream): cards there, and rows below the chat in the Agents list.
         run('r-na-01', 'Explore', 'executor', 'succeeded', {
             parentRunId: 'r-orch-1',
             origin: 'native',
@@ -2202,7 +2202,6 @@ export function createFixtureData(now = Date.now()): FixtureData {
         run('r-na-05', 'Explore', 'executor', 'waiting_background', {
             parentRunId: 'r-na-02',
             origin: 'native',
-            parentToolCallId: 'tc-agent-5',
             summary: 'List the callers of the price helper',
             createdAt: ago(1),
             startedAt: ago(1),

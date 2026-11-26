@@ -172,6 +172,14 @@ describe('the agents that work, under a folded chat', () => {
         expect(shown('r-na-new')).toEqual(['r-na-new']);
     });
 
+    it('lists the same rows in a list that is not grouped by folder', async () => {
+        await draw(() => ui().setGroupByFolder(false));
+
+        expect(rowKeys().some(candidate => candidate?.startsWith('@folder:'))).toBe(false);
+        expect(shown('c-1', 'r-na-03', 'r-na-02', 'r-na-05')).toEqual(['c-1', 'r-na-03', 'r-na-02', 'r-na-05']);
+        expect(rowOf('r-na-05').getAttribute('data-depth')).toBe('2');
+    });
+
     it('is a chat with a fold when only sub-agents are below it, and has none when nothing is', () => {
         expect(foldOf('c-1')).not.toBeNull();
         expect(foldOf('c-4')).toBeNull();
@@ -363,20 +371,89 @@ describe('a sub-agent’s row', () => {
         expect(rowOf('c-1').querySelector('[aria-label="Threads working"]')).toBeNull();
     });
 
-    it('opens the folds above a sub-agent opened from elsewhere, its chat and the group when it is over, once per opening', async () => {
+    it('gives a finished sub-agent opened from elsewhere a row of its own, and unfolds neither its chat nor the group of the finished', async () => {
         await draw(() => ui().openRun('r-na-04'));
         await draw();
 
-        expect(ui().expandedChats).toEqual(['c-1', GROUP]);
+        expect(ui().expandedChats).toEqual([]);
+        // Once, below the ones that work, under the folded chat.
+        expect(shown('r-na-03', 'r-na-02', 'r-na-04', GROUP, 'r-na-01')).toEqual(['r-na-03', 'r-na-02', 'r-na-04']);
         expect(isSelected('r-na-04')).toBe(true);
         expect(isSelected('c-1')).toBe(false);
 
-        // The person folds the group: the page stays, and so does the fold, with the chat's row marking the place.
+        // The person opens the chat, and then the group: the sub-agent is in it, once, and still the open one.
+        await draw(() => ui().toggleChatExpanded('c-1'));
+
+        expect(shown(GROUP, 'r-na-04', 'r-na-01')).toEqual(['r-na-04', GROUP]);
+
         await press(foldOf(GROUP)!);
         await draw();
 
-        expect(shown('r-na-04')).toEqual([]);
+        expect(shown(GROUP, 'r-na-04', 'r-na-01')).toEqual([GROUP, 'r-na-04', 'r-na-01']);
+        expect(isSelected('r-na-04')).toBe(true);
+
+        // The person folds the chat: the page stays, and the sub-agent keeps its row.
+        await draw(() => ui().toggleChatExpanded('c-1'));
+
+        expect(shown('r-na-04', 'r-na-01')).toEqual(['r-na-04']);
+        expect(isSelected('r-na-04')).toBe(true);
+    });
+
+    it('leaves a chat folded when a sub-agent that is listed already is opened: the person did not ask for the rest', async () => {
+        await press(rowOf('r-na-03'));
+        await draw();
+
+        expect(isSelected('r-na-03')).toBe(true);
+        expect(ui().expandedChats).toEqual([]);
+        expect(shown(GROUP)).toEqual([]);
+    });
+
+    it('opens its page from the end of its row too, where the dot is', async () => {
+        await press(rowOf('r-na-03').querySelector<HTMLElement>('[role="img"]')!);
+        await draw();
+
+        expect(ui().runId).toBe('r-na-03');
+        expect(isSelected('r-na-03')).toBe(true);
+    });
+
+    it('keeps the row of the open sub-agent when it ends, and does not unfold the group for it', async () => {
+        await press(rowOf('r-na-03'));
+        await draw();
+
+        const run = project().runs.get('r-na-03')!;
+
+        await draw(() => project().runs.set(run.id, { ...run, status: 'succeeded', finishedAt: Date.now() }));
+
+        expect(shown('r-na-03')).toEqual(['r-na-03']);
+        expect(isSelected('r-na-03')).toBe(true);
+        expect(ui().expandedChats).toEqual([]);
+
+        await draw(() => ui().toggleChatExpanded('c-1'));
+
+        expect(rowOf(GROUP).textContent).toContain('3');
+        expect(shown('r-na-04', 'r-na-01')).toEqual([]);
+    });
+
+    it('opens the chat from the chat’s row when that is the open row only because the person folded the chat of the open sub-agent', async () => {
+        await draw(() => {
+            chatListPreferences.setExpandRunningAgents(false);
+            ui().openRun('r-na-03');
+        });
+        await draw();
+
+        // Opened from elsewhere, with no row of its own to show it, the chat opens; the person folds it again.
+        expect(ui().expandedChats).toEqual(['c-1']);
+        expect(isSelected('r-na-03')).toBe(true);
+
+        await draw(() => ui().toggleChatExpanded('c-1'));
+
         expect(isSelected('c-1')).toBe(true);
+
+        await press(rowOf('c-1'));
+        await draw();
+
+        expect(ui().runId).toBeNull();
+        expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe('c-1');
     });
 
     it('keeps a finished sub-agent that is open listed while the finished are not', async () => {
@@ -392,7 +469,7 @@ describe('a sub-agent’s row', () => {
 });
 
 describe('the keyboard on the list', () => {
-    it('steps with J and K, and with the arrows, over the rows of the sub-agents and the group as over the others', async () => {
+    it('steps with J and K over the rows of the sub-agents and the group as over the others', async () => {
         await draw(() => ['c-1', GROUP].forEach(id => ui().toggleChatExpanded(id)));
 
         const uninstall = installDispatcher(hotkeys);
@@ -418,7 +495,7 @@ describe('the keyboard on the list', () => {
         }
     });
 
-    it('opens a sub-agent from its focused row with Enter, and folds a chat that has only sub-agents below it with Left and Right', async () => {
+    it('folds a chat that has only sub-agents below it with Right and Left', async () => {
         await key(rowOf('c-1'), 'ArrowRight');
         await draw();
 
@@ -429,11 +506,23 @@ describe('the keyboard on the list', () => {
         await draw();
 
         expect(ui().expandedChats).not.toContain('c-1');
+    });
 
-        rowOf('r-na-03').focus();
-        await press(rowOf('r-na-03'));
+    it('opens a sub-agent from its focused row with Enter, and opens the group with Enter, which opens no page', async () => {
+        await key(rowOf('r-na-03'), 'Enter');
         await draw();
 
+        expect(ui().runId).toBe('r-na-03');
+        expect(isSelected('r-na-03')).toBe(true);
+
+        await draw(() => ui().toggleChatExpanded('c-1'));
+        await key(rowOf(GROUP), 'Enter');
+        await draw();
+
+        expect(ui().expandedChats).toContain(GROUP);
+        expect(shown('r-na-04', 'r-na-01')).toHaveLength(2);
+        // The group is no page: the sub-agent that was open still is.
+        expect(ui().runId).toBe('r-na-03');
         expect(isSelected('r-na-03')).toBe(true);
     });
 });

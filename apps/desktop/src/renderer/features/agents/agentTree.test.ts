@@ -651,7 +651,7 @@ describe('agentRows, with working agents', () => {
             expect(shape({}, resting)).toEqual(['root +', '  t1 +', '    s1', 'root2']);
         });
 
-        it('leaves the fold as it was: the chat counts what it holds, shown or not, and reads folded', () => {
+        it('counts what it holds below, shown or not, and reads folded', () => {
             expect(rowsWith()[0]).toMatchObject({
                 kind: 'chat',
                 id: 'root',
@@ -733,9 +733,39 @@ describe('agentRows, with working agents', () => {
             ]);
         });
 
-        it('keeps the open sub-agent that is over in the group, which is as open as its fold says', () => {
-            expect(shape({ ...open, openRunId: 'b', openChatId: 'root' })).toContain(`  ${GROUP} +`);
-            expect(shape({ expanded: new Set(['root', GROUP]), openRunId: 'b' })).toContain('    b');
+        it('gives the open sub-agent that is over a row of its own while the group is folded, and keeps the group folded', () => {
+            const lines = shape({ ...open, openRunId: 'b', openChatId: 'root' });
+
+            expect(lines.slice(0, 7)).toEqual(['root -', '  a', '    a1', '  c', '  d', '  b', `  ${GROUP} +`]);
+            expect(lines).not.toContain('    e');
+        });
+
+        it('lists the open sub-agent that is over once, in the group, when the group is open', () => {
+            const lines = shape({ expanded: new Set(['root', GROUP]), openRunId: 'b' });
+
+            expect(lines.filter(line => line.trim() === 'b')).toEqual(['    b']);
+        });
+
+        it('keeps the row of the open sub-agent that is over below a folded chat too, after the ones that work', () => {
+            expect(shape({ openRunId: 'b', openChatId: 'root' })).toEqual([
+                'root +',
+                '  a',
+                '    a1',
+                '  c',
+                '  d',
+                '  b',
+                '  t1 +',
+                '    s1',
+                'root2',
+            ]);
+        });
+
+        it('keeps that row under a folded chat whose group is open, since the folded chat shows no group', () => {
+            expect(shape({ expanded: new Set([GROUP]), openRunId: 'b' })).toContain('  b');
+        });
+
+        it('lists the open sub-agent that works once, where it works', () => {
+            expect(shape({ ...open, openRunId: 'a1' }).filter(line => line.trim() === 'a1')).toEqual(['    a1']);
         });
 
         it('lists the sub-agents of a thread below that thread, when both are open', () => {
@@ -797,10 +827,12 @@ describe('agentRows, with working agents', () => {
         });
     });
 
-    describe('an archived chat, a chat without an orchestrator, and corrupt data', () => {
+    describe('a chat without an orchestrator, and corrupt data', () => {
         it('has no sub-agents for a chat whose first message was never sent', () => {
-            expect(shape({ expanded: new Set(['root2']) })).toContain('root2');
-            expect(shape({ expanded: new Set(['root2']) }).filter(line => line.startsWith('  '))).not.toContain('  s1');
+            const fresh = [...list, { ...chat('fresh'), createdAt: 9 }];
+
+            expect(shape({ expanded: new Set(['fresh']) }, undefined, fresh).slice(-2)).toEqual(['root2', 'fresh']);
+            expect(rowsWith({}, undefined, fresh).at(-1)).toMatchObject({ id: 'fresh', childCount: 0 });
         });
 
         it('survives sub-agents that name each other as their parent', () => {
@@ -811,7 +843,16 @@ describe('agentRows, with working agents', () => {
                 native('z', 'run-root', 'running', 'run-root', 32),
             ];
 
-            expect(shape({ expanded: new Set(['root']) }, loop)).toEqual(['root -', '  z', '  t1', '  t2', 'root2']);
+            // Neither is lost: the first of them that is met stands right below the chat, the other below it.
+            expect(shape({ expanded: new Set(['root']) }, loop)).toEqual([
+                'root -',
+                '  z',
+                '  x',
+                '    y',
+                '  t1',
+                '  t2',
+                'root2',
+            ]);
         });
 
         it('is today’s list for a caller that knows no sub-agents', () => {
