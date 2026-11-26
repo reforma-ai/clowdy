@@ -133,6 +133,20 @@ describe("the card of an agent's own sub-agent", () => {
         expect(ui().runId).toBe('r-na-01');
     });
 
+    it('brings its child back from the archive before it opens it, since the archived one has no row and the card is how it is found', async () => {
+        await store.command({ type: 'run.setArchived', runId: 'r-na-01', archived: true });
+        await vi.waitFor(() => expect(store.selectedProject!.runs.get('r-na-01')?.archivedAt).toBeDefined());
+        await draw([fixtureCall('tc-agent-1')]);
+
+        // The card still finds the archived child: it says how the sub-agent ended and has a title to press.
+        expect(card().getAttribute('data-outcome')).toBe('finished');
+
+        await act(async () => opener()!.click());
+        await vi.waitFor(() => expect(store.selectedProject!.runs.get('r-na-01')?.archivedAt).toBeUndefined());
+
+        expect(ui().runId).toBe('r-na-01');
+    });
+
     it('shimmers what the sub-agent was asked to do while the call runs, with what the child does now as its one live line', async () => {
         await draw([fixtureCall('tc-agent-2')]);
 

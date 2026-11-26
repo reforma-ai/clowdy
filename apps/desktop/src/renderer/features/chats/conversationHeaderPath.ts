@@ -1,4 +1,4 @@
-import { ancestorChats, chatOfRun } from '../agents/agentTree';
+import { ancestorChats, ancestorRuns, chatOfRun } from '../agents/agentTree';
 
 import type { Chat, ChatId, Run, RunId } from '@clowdy/protocol';
 
@@ -52,19 +52,7 @@ export function conversationHeaderPath({ chats, runs, chat, subagent, label }: H
     const chatParts = chatsOf.map(item => chatPart(item, false));
 
     // The sub-agents it runs inside, nearest to the chat first. A run with no parent is an orchestrator: that is the chat itself.
-    const parents: Run[] = [];
-    const seen = new Set([subagent.id]);
-
-    for (let id = subagent.parentRunId; id !== undefined && !seen.has(id); ) {
-        seen.add(id);
-
-        const parent = runs.get(id);
-
-        if (!parent || parent.parentRunId === undefined) break;
-
-        parents.unshift(parent);
-        id = parent.parentRunId;
-    }
+    const parents = ancestorRuns(runs, subagent).reverse();
 
     return [
         ...chatParts,

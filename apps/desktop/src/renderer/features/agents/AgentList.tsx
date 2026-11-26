@@ -16,6 +16,7 @@ import {
     Robot,
     Split,
 } from '@clowdy/icons/14';
+import { cn } from '@clowdy/lib';
 import { observer } from 'mobx-react-lite';
 import {
     type CSSProperties,
@@ -24,6 +25,7 @@ import {
     memo,
     type ReactNode,
     type SyntheticEvent,
+    useCallback,
     useEffect,
     useRef,
     useState,
@@ -41,7 +43,7 @@ import {
     branchPullRequestsOf,
     useBranchPullRequests,
 } from '../changes/branchPullRequests';
-import { archiveChat } from '../chats/archiveChat';
+import { archiveChat, archiveRun } from '../chats/archiveChat';
 import { ChatMenu } from '../chats/ChatMenu';
 import { isRunActive } from '../chats/chatRun';
 import { perform } from '../chats/commands';
@@ -60,6 +62,7 @@ import {
     agentRows,
     ancestorChats,
     asksThePerson,
+    busySubagents,
     type ChatRow,
     chatDotTone,
     groupFolderOf,
@@ -74,6 +77,7 @@ import { GroupFolderName } from './GroupFolderName';
 import { openNewChat } from './openNewChat';
 import { ProjectMenu } from './ProjectMenu';
 import { StarCard } from './StarCard';
+import { SubagentMenu } from './SubagentMenu';
 import { useChatListOrder } from './useChatListOrder';
 import { useSidebarWorktrees } from './useSidebarWorktrees';
 import { WorktreeCardHeader } from './WorktreeCardHeader';
@@ -159,6 +163,8 @@ export function AgentList({
     const [renamingId, setRenamingId] = useState<ChatId | null>(null);
     const saveRename = useRef<() => void>(() => {});
     const [menuChat, setMenuChat] = useState<Chat | null>(null);
+    // The sub-agent whose right-click menu is open; at most one of this and `menuChat` is set.
+    const [menuRun, setMenuRun] = useState<Run | null>(null);
     // The chat whose `⋯` menu is open: its row keeps the hover plate while the pointer is in the menu.
     const [menuOpenId, setMenuOpenId] = useState<ChatId | null>(null);
     const list = useRef<HTMLDivElement>(null);
@@ -209,6 +215,13 @@ export function AgentList({
     const agentsByRoot = nativeAgentsByRoot(project.runs.values());
     const agentsOf = (chat: Chat): readonly Run[] =>
         (chat.orchestratorRunId !== undefined && agentsByRoot.get(chat.orchestratorRunId)) || NO_RUNS;
+    // Put away from a row of a sub-agent. The rows are memoised, so the handler they get never changes; it reads the page that is open when it is pressed.
+    const archiveSubagent = useRef<(run: Run) => void>(() => {});
+    archiveSubagent.current = run =>
+        void archiveRun(root, project, ui, run, selection.draft ? undefined : selection.run);
+    const onArchiveSubagent = useCallback((run: Run) => archiveSubagent.current(run), []);
+    // The daemon refuses a sub-agent that works, or that started one that does: the row offers no Archive then.
+    const busySubagentIds = busySubagents(project.runs);
     const rowsOf = (roots: readonly Chat[]) =>
         agentRows({
             roots,
@@ -319,14 +332,17 @@ export function AgentList({
         })
     );
 
-    // Right-click anywhere on a chat's row: the rows are the list's own elements, so the click is found by its row's key.
+    // Right-click anywhere on a chat's row, or on the row of a sub-agent that is over: the rows are the list's own elements, so the click is found by its row's key.
     const openContextMenu = (event: MouseEvent) => {
         const key = (event.target as Element).closest('[role="row"]')?.getAttribute('data-key');
         const chat = key ? project.chats.get(key) : undefined;
+        const row = key ? visibleRows.get(key) : undefined;
+        const run = row?.kind === 'subagent' && !busySubagentIds.has(row.id) ? row.run : undefined;
 
-        if (!chat) return;
+        if (!chat && !run) return;
 
-        setMenuChat(chat);
+        setMenuChat(chat ?? null);
+        setMenuRun(run ?? null);
         contextMenu.areaProps.onContextMenu(event);
     };
 
@@ -544,8 +560,8 @@ export function AgentList({
         }
     };
 
-    // A sub-agent is the page of its parent's work, not a chat of its own: nothing to rename, archive, delete, move or drag, and the parent's guards
-    // and unread mark do not read it. Its row opens the page and shows the state it is in.
+    // A sub-agent is the page of its parent's work, not a chat of its own: nothing to rename, delete, move or drag, and the parent's guards and unread mark do not
+    // read it. Its row opens the page and shows the state it is in, and once it and what it started are over it offers Archive, as a chat's row does.
     const renderSubagent = ({ run, depth, id }: SubagentRow) => (
         <SubagentItem
             key={id}
@@ -553,6 +569,9 @@ export function AgentList({
             label={runLabel(run)}
             depth={depth}
             drop={order.drop?.indicatorId === id ? order.drop.position : undefined}
+            canArchive={!busySubagentIds.has(id)}
+            isMenuOpen={contextMenu.isOpen && menuRun?.id === id}
+            onArchive={onArchiveSubagent}
         />
     );
 
@@ -722,24 +741,39 @@ export function AgentList({
                     </Popover>
                 )}
             </Show>
+            <Show when={contextMenu.isOpen ? menuRun : null}>
+                {run => (
+                    <Popover {...contextMenu.popoverProps} placement="bottom start" spacing="xs">
+                        <SubagentMenu onClose={contextMenu.close} onArchive={() => onArchiveSubagent(run)} />
+                    </Popover>
+                )}
+            </Show>
         </Panel>
     );
 }
 
 /**
- * A sub-agent's row. A component of its own that the list draws again only when its run, its place or its drop mark changes, since a chat that ran a workflow lists
- * hundreds of them and every change to any run draws the list again.
+ * A sub-agent's row. A component of its own that the list draws again only when its run, its place, its drop mark or what it can do changes, since a chat that
+ * ran a workflow lists hundreds of them and every change to any run draws the list again (so `onArchive` must be the same function every time). While it or a
+ * sub-agent it started works, the row shows its state; once they are over, its state gives way to Archive on hover, as a chat's row does.
  */
 const SubagentItem = memo(function SubagentItem({
     run,
     label,
     depth,
     drop,
+    canArchive,
+    isMenuOpen,
+    onArchive,
 }: {
     run: Run;
     label: string;
     depth: number;
     drop: 'before' | 'after' | undefined;
+    canArchive: boolean;
+    /** Its right-click menu is open: the row stays as if hovered, since the pointer is in the menu. */
+    isMenuOpen: boolean;
+    onArchive: (run: Run) => void;
 }) {
     return (
         <GridListItem
@@ -747,14 +781,35 @@ const SubagentItem = memo(function SubagentItem({
             text={label}
             icon={<Robot />}
             endAffix={
-                <span className={styles.agentStatus}>
-                    <ChatStatus run={run} />
-                </span>
+                canArchive ? (
+                    // The button is a React child of the row, so its clicks and keys would reach the row through the tree.
+                    <span className={styles.chatActions} {...ownEvents}>
+                        <ChatStatus run={run} className={styles.archiveStatus} />
+                        <Button
+                            className={styles.rowAction}
+                            variant="filling"
+                            color="secondary"
+                            size="xs"
+                            iconOnly
+                            aria-label="Archive"
+                            tooltip="Archive"
+                            preventFocusOnPress
+                            onPress={() => onArchive(run)}
+                        >
+                            <Archive />
+                        </Button>
+                    </span>
+                ) : (
+                    <span className={styles.agentStatus}>
+                        <ChatStatus run={run} />
+                    </span>
+                )
             }
-            className={styles.agentRow}
+            className={cn(styles.agentRow, canArchive && styles.archivable)}
             style={{ '--depth': depth } as CSSProperties}
             data-depth={depth}
             data-drop-position={drop}
+            data-open={isMenuOpen || undefined}
         >
             <span className={styles.title} title={label}>
                 {label}
