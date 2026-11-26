@@ -5,6 +5,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useCommands, useHotkeyScope } from '../../hotkeys';
 import { ListCursor } from '../../hotkeys/listCursor';
 import { undoStack } from '../../hotkeys/undo';
+import { useRunLabel } from '../../shared';
 import { PickerPopover, type PickerRequest } from '../../shared/PickerPopover';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { openChat } from '../chats/archiveChat';
@@ -73,6 +74,7 @@ interface OpenPicker {
 export function Screen() {
     const root = useRootStore();
     const project = useProjectState();
+    const labelOf = useRunLabel();
     const ui = useProjectUi();
     const [filter, setFilter] = useState(NO_FILTER);
     const [cursor] = useState(() => new ListCursor());
@@ -209,7 +211,7 @@ export function Screen() {
             tasks: () => project.taskList,
             statuses: () => project.statuses,
             startBlocked: taskId =>
-                startBlockedReason(runsByTask(project.runTaskLinks.values(), project.runs).get(taskId)),
+                startBlockedReason(runsByTask(project.runTaskLinks.values(), project.runs).get(taskId), labelOf),
             send: inputs => sendWithUndo(root, project, inputs),
             // Only this project's changes: the stack is the window's, an entry belongs to the project it was made in.
             undo: { canUndo: () => undoStack.canUndo(project.id), undoLatest: () => undoStack.undoLatest(project.id) },
@@ -340,7 +342,7 @@ export function Screen() {
                     filter={filter}
                     onFilterChange={setFilter}
                     statuses={project.statuses}
-                    agents={agentOptions(runsOfTask)}
+                    agents={agentOptions(runsOfTask, labelOf)}
                     searchRef={searchField}
                     onSearchExit={exitSearch}
                     isFilterOpen={isFilterOpen}

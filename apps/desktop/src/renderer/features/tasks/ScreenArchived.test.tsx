@@ -372,7 +372,7 @@ describe('the panel of an archived task', () => {
 
         const link = sectionOf('CAR-38', 'Comments').querySelector<HTMLElement>('header button')!;
 
-        expect(link.textContent).toBe('Orchestrator 01');
+        expect(link.textContent).toBe('Simplify booking');
 
         await click(link);
         expect(ui().runId).toBe('r-orch-1');

@@ -125,18 +125,20 @@ describe('dependencyState', () => {
 
 describe('start', () => {
     it('is blocked by an active assigned run, and names it', () => {
-        expect(startBlockedReason([run('07', 'running', { name: 'Orchestrator 07' })])).toBe(
-            'Orchestrator 07 is already working on this task'
+        const nameOf = (item: Run) => (item.id === '07' ? 'Clone route' : item.name);
+
+        expect(startBlockedReason([run('07', 'running', { name: 'Orchestrator 07' })], nameOf)).toBe(
+            'Clone route is already working on this task'
         );
-        expect(startBlockedReason([run('a', 'queued'), run('b', 'waiting_user')])).toBe(
+        expect(startBlockedReason([run('a', 'queued'), run('b', 'waiting_user')], nameOf)).toBe(
             '2 agents are already working on this task'
         );
     });
 
     it('is open when the runs finished, or there are no runs', () => {
-        expect(startBlockedReason([run('a', 'failed'), run('b', 'cancelled')])).toBeNull();
-        expect(startBlockedReason([])).toBeNull();
-        expect(startBlockedReason(undefined)).toBeNull();
+        expect(startBlockedReason([run('a', 'failed'), run('b', 'cancelled')], run => run.name)).toBeNull();
+        expect(startBlockedReason([], run => run.name)).toBeNull();
+        expect(startBlockedReason(undefined, run => run.name)).toBeNull();
     });
 
     it('shows only the runs that are still active on the card', () => {
@@ -188,10 +190,28 @@ describe('filters', () => {
                     run('b', 'running', { name: 'Orchestrator 10' }),
                     run('c', 'running', { name: 'Orchestrator 09' })
                 )
-            )
+            ),
+            item => item.name
         );
 
         expect(options.map(item => item.name)).toEqual(['Orchestrator 09', 'Orchestrator 10', 'Orchestrator 02']);
+    });
+
+    it('sorts the agents by the name the person reads, not by the daemon number', () => {
+        const titles: Record<string, string> = { a: 'Docs', b: 'Clone route', c: 'Providers' };
+        const options = agentOptions(
+            runsByTask(
+                [link('a', 't-1', 'assigned'), link('b', 't-1', 'assigned'), link('c', 't-1', 'assigned')],
+                runMap(
+                    run('a', 'running', { name: 'Orchestrator 01' }),
+                    run('b', 'running', { name: 'Orchestrator 02' }),
+                    run('c', 'running', { name: 'Orchestrator 03' })
+                )
+            ),
+            item => titles[item.id]
+        );
+
+        expect(options.map(item => item.id)).toEqual(['b', 'a', 'c']);
     });
 
     it('groups tasks by status in the order given', () => {
@@ -360,7 +380,7 @@ describe('taskActivity', () => {
         });
         const live = run('y', 'running', { name: 'Orchestrator 07', startedAt: now - 20 * MINUTE });
         const queued = run('z', 'queued', { name: 'Orchestrator 02', createdAt: now - MINUTE });
-        const activity = taskActivity(t, [done, live, queued], runMap(orch, done, live, queued));
+        const activity = taskActivity(t, [done, live, queued], runMap(orch, done, live, queued), item => item.name);
 
         expect(activity.map(item => item.text)).toEqual([
             'Orchestrator 02 is waiting to start',
@@ -374,7 +394,7 @@ describe('taskActivity', () => {
 
     it('says who created the task, whoever they are', () => {
         const textOf = (createdBy: Task['createdBy'], runs = runMap()) =>
-            taskActivity(task(1, { createdBy }), [], runs)[0].text;
+            taskActivity(task(1, { createdBy }), [], runs, item => item.name)[0].text;
 
         expect(textOf({ kind: 'user' })).toBe('You created the task');
         expect(textOf({ kind: 'provider', provider: 'linear' })).toBe('Imported from Linear');
@@ -384,9 +404,29 @@ describe('taskActivity', () => {
         expect(textOf({ kind: 'run', runId: 'gone' })).toBe('An agent created the task');
     });
 
+    it('names runs the way its caller says, so a run is read as its chat and not as the daemon number', () => {
+        const orch = run('orch', 'running', { name: 'Orchestrator 41' });
+        const done = run('d', 'succeeded', { name: 'Orchestrator 42', startedAt: 10, finishedAt: 20 });
+        const nameOf = (item: Run) => (item.id === 'orch' ? 'Clone route' : 'Docs');
+        const text = taskActivity(
+            task(1, { createdBy: { kind: 'run', runId: 'orch' }, createdAt: 0, updatedAt: 0 }),
+            [done],
+            runMap(orch, done),
+            nameOf
+        ).map(item => item.text);
+
+        expect(text).toEqual(['Docs finished', 'Docs started working', 'Clone route created the task']);
+    });
+
     it('reports a failed run with its error and keeps to the limit', () => {
         const failed = run('f', 'failed', { startedAt: 1, finishedAt: 2, error: 'Typecheck failed' });
-        const activity = taskActivity(task(1, { createdAt: 0, updatedAt: 0 }), [failed], runMap(failed), 2);
+        const activity = taskActivity(
+            task(1, { createdAt: 0, updatedAt: 0 }),
+            [failed],
+            runMap(failed),
+            item => item.name,
+            2
+        );
 
         expect(activity).toHaveLength(2);
         expect(activity[0]).toMatchObject({ text: 'Orchestrator f failed', detail: 'Typecheck failed' });
