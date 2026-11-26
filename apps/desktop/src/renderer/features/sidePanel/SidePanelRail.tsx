@@ -3,7 +3,7 @@ import { File, Folder, Settings } from '@clowdy/icons/16';
 import { useRef } from 'react';
 
 import { commandTooltip } from '../../hotkeys';
-import { RailItem } from '../../shared/RailItem';
+import { type RailBadge, RailItem } from '../../shared/RailItem';
 import { useFileDragHover } from '../../shared/useFileDragHover';
 import { useRootStore } from '../../stores';
 import { SETTINGS_COMMAND } from '../settings/commands';
@@ -11,7 +11,7 @@ import { SIDE_PANEL_TAB_LABELS, sidePanelTabCommand } from './commands';
 import { panelOrder } from './panelOrder';
 import { SidePanelCorner } from './SidePanelCorner';
 import styles from './SidePanelRail.module.css';
-import { useChangesSummary } from './useChangesSummary';
+import { type RailChanges, useChangesSummary } from './useChangesSummary';
 import { useSidePanel } from './useSidePanel';
 
 import type { SidePanelTab } from '../../stores';
@@ -25,14 +25,28 @@ const TABS = {
     tasks: { icon: Checkbox, size: 14 },
 } satisfies Record<SidePanelTab, { icon: typeof Folder; size: number }>;
 
+/** What the Changes tab says beside its icon, whether the tab is on show or not: the count the sync button shows, else a small dot while files are uncommitted. */
+function railBadge(changes: RailChanges | undefined): RailBadge | undefined {
+    if (!changes) return undefined;
+
+    if (changes.sync) {
+        const { arrow, count, line } = changes.sync;
+
+        return { kind: 'count', arrow, count, label: line };
+    }
+
+    return changes.uncommittedLine ? { kind: 'dot', tone: 'warning', label: changes.uncommittedLine } : undefined;
+}
+
 /**
  * The rail at the right edge of the window, as tall as the window and there whether the side panel is open or not: the button that steps the panel first (`SidePanelCorner`,
  * where the title band's height is, so it is the first thing the Windows caption buttons leave room for), then an item for each tab of the panel, and Settings
  * pinned at the bottom. A click on a tab opens the panel on it, or shuts it when that tab is the one it shows,
  * and the key of the tab does the same (`ProjectUi.toggleSidePanelTab`; `Cmd+Esc` shuts or opens the panel whatever tab it shows). Only the tab the panel shows is
  * current (in the primary colour, as the open chat is in Reforma's rail), and none is while the panel is shut. The button and the tabs are not drawn where the window shows
- * no project; Settings, which is the window's and not a project's, always is. The Changes tab draws the merge icon while the branch has a pull request to show (the one Source Control lists), and a dot while files are uncommitted and the tab is not the one on show; its tooltip says
- * the same in words.
+ * no project; Settings, which is the window's and not a project's, always is. The Changes tab draws the merge icon while the branch has a pull request to show (the one Source Control lists), the commit icon otherwise, and beside it the count that the sync button of
+ * Source Control shows (an arrow and a number) or, with no count, a small dot while files are uncommitted. The icon and the badge stay while the tab is on show and while the panel is shut;
+ * the tooltip says the same in words, and the stage of the work besides.
  */
 export function SidePanelRail() {
     const root = useRootStore();
@@ -61,7 +75,10 @@ export function SidePanelRail() {
                         const label = SIDE_PANEL_TAB_LABELS[tab];
                         const current = open && tab === shown;
                         const hint = commandTooltip(label, sidePanelTabCommand(tab));
-                        const details = tab === 'changes' ? [changes?.stageLine, changes?.uncommittedLine] : [];
+                        const details =
+                            tab === 'changes'
+                                ? [changes?.stageLine, changes?.sync?.line, changes?.uncommittedLine]
+                                : [];
                         const lines = details.filter(line => line !== undefined);
 
                         return (
@@ -73,11 +90,7 @@ export function SidePanelRail() {
                                 size={TABS[tab].size}
                                 current={current}
                                 accent
-                                dot={
-                                    tab === 'changes' && changes?.uncommittedLine && !current
-                                        ? { tone: 'warning', label: changes.uncommittedLine }
-                                        : undefined
-                                }
+                                badge={tab === 'changes' ? railBadge(changes) : undefined}
                                 tooltip={
                                     lines.length > 0 ? (
                                         <>
