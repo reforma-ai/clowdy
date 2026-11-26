@@ -8,6 +8,7 @@ import styles from './ChangesList.module.css';
 import { DiffCard } from './DiffCard';
 import { LIST_TEXT, listStateOf } from './listState';
 
+import type { Place } from '../sidePanel/currentPlace';
 import type { PlaceChanges } from './PlaceChanges';
 
 /** How many cards at the top of the list are built in the first frame, before the scroller has said which are near: more than a screen holds of shut cards. */
@@ -23,7 +24,15 @@ export interface ChangesListHandle {
  * failed, a scope with no change, a filter that lets nothing through). The scroller keeps the browser's own scroll anchoring on (it is not a chat that sticks to its end), so a
  * diff that is built above what is on screen does not move it.
  */
-export function ChangesList({ model, ref }: { model: PlaceChanges; ref?: Ref<ChangesListHandle> }) {
+export function ChangesList({
+    model,
+    place,
+    ref,
+}: {
+    model: PlaceChanges;
+    place: Place;
+    ref?: Ref<ChangesListHandle>;
+}) {
     const root = useRef<HTMLDivElement>(null);
     const state = listStateOf(model);
 
@@ -94,7 +103,13 @@ export function ChangesList({ model, ref }: { model: PlaceChanges; ref?: Ref<Cha
                 <Scrollable ref={root} className={styles.list} contentClass={styles.cards}>
                     <For each={[...model.files]}>
                         {(file, index) => (
-                            <DiffCard key={file.path} model={model} file={file} eager={index < EAGER_CARDS} />
+                            <DiffCard
+                                key={file.path}
+                                model={model}
+                                place={place}
+                                file={file}
+                                eager={index < EAGER_CARDS}
+                            />
                         )}
                     </For>
                 </Scrollable>

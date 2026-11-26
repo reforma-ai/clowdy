@@ -120,10 +120,18 @@ async function start({
 }
 
 async function draw() {
+    const { projectId, folderId } = model.facts.key;
+    // A project the store has not opened has no folders of its own: the box only needs a folder to name.
+    const folder = store.projectState(projectId)?.project.folders.find(({ id }) => id === folderId) ?? {
+        id: folderId,
+        path: '/Users/dev/personal',
+    };
+    const place = { folder };
+
     act(() =>
         root.render(
             <RootStoreProvider value={store}>
-                <Box model={model} />
+                <Box model={model} place={place} />
             </RootStoreProvider>
         )
     );

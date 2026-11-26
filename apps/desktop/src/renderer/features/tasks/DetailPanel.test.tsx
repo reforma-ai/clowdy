@@ -607,7 +607,7 @@ describe('the Comments section', () => {
 
         const link = articles()[1].querySelector<HTMLElement>('header button')!;
 
-        expect(link.textContent).toBe('Orchestrator 01');
+        expect(link.textContent).toBe('Simplify booking');
         expect(articles().at(-1)!.querySelector('header')!.textContent).toMatch(/^Agent/);
         expect(articles().at(-1)!.querySelector('header button')).toBeNull();
 
@@ -873,5 +873,18 @@ describe('the Comments section', () => {
 
         // Only the one the person stopped on.
         expect(reads).toEqual(['t-35']);
+    });
+});
+
+describe('the names of the agents on a task', () => {
+    it('reads the orchestrator of a chat by the chat title in Executors, beside Start and in the activity, never as the daemon number', async () => {
+        await mountScreen({ prepare: window => window.openTask('t-25'), transport: daemon });
+
+        const executors = sectionOf('CAR-25', 'Executors');
+
+        expect(executors.textContent).toContain('Simplify booking');
+        expect(panel('CAR-25').textContent).toContain('Simplify booking is already working on this task');
+        expect(sectionOf('CAR-25', 'Latest activity').textContent).toContain('Simplify booking');
+        expect(panel('CAR-25').textContent).not.toMatch(/Orchestrator \d/);
     });
 });

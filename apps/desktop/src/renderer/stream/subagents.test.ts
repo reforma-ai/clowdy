@@ -45,7 +45,10 @@ describe('what a sub-agent call is called', () => {
     it('works with a verb and is done with `Ran <Label> agent`', () => {
         expect(subagentTitle('Explore', true)).toBe('Exploring');
         expect(subagentTitle('Plan', true)).toBe('Planning');
-        expect(subagentTitle('Reviewer', true)).toBe('Running Reviewer');
+        expect(subagentTitle('Reviewer', true)).toBe('Running Reviewer agent');
+        expect(subagentTitle('General', true)).toBe('Running General agent');
+        expect(subagentTitle('Sub-agent', true)).toBe('Running Sub-agent');
+        expect(subagentTitle('Sub-agent', false)).toBe('Ran Sub-agent');
         expect(subagentTitle(undefined, true)).toBe('Running agent');
         expect(subagentTitle('Explore', false)).toBe('Ran Explore agent');
         expect(subagentTitle(undefined, false)).toBe('Ran agent');

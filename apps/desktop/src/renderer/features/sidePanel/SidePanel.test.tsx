@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { Commit, Merge, Version, VersionWarn } from '@clowdy/icons/14';
+import { Commit, Merge } from '@clowdy/icons/14';
 import { observer } from 'mobx-react-lite';
 import { act, useEffect } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -752,18 +752,41 @@ describe('the Changes item of the rail', () => {
         expect(tab('Changes')!.getAttribute('aria-label')).toBe('Changes, 3 uncommitted files');
     });
 
-    it('draws the icon of the branch while commits wait for a pull request, and the one with the warning while the pull request fails its checks', async () => {
-        await inWorktree('none');
+    it('draws the merge icon while the branch has a pull request to show, as Source Control lists it: open, a draft, or a merged one', async () => {
+        for (const script of ['open', 'draft', 'merged'] as const) {
+            await inWorktree(script);
 
-        expect(iconOf()).toBe(markupOf(Version));
-
-        await inWorktree('open');
-
-        expect(iconOf()).toBe(markupOf(VersionWarn));
+            expect(iconOf()).toBe(markupOf(Merge));
+        }
     });
 
-    it('goes back to the commit icon once a pull request has merged', async () => {
-        await inWorktree('merged');
+    it('draws the commit icon in every other case: no pull request whether commits wait or not, and a merged one the branch has moved past', async () => {
+        const merged = (movedPast?: true) => ({
+            number: 9,
+            state: 'merged' as const,
+            head: 'clowdy/ab12cd34',
+            base: 'main',
+            title: 'Earlier work',
+            url: 'https://github.com/acme/car-rental/pull/9',
+            updatedAt: 9,
+            ...(movedPast && { movedPast }),
+        });
+        const history =
+            (...rows: ReturnType<typeof merged>[]) =>
+            (data: FixtureData) => {
+                data.branchPullRequests = { '/Users/dev/car-rental': { 'clowdy/ab12cd34': rows } };
+            };
+
+        await inWorktree('none');
+
+        expect(iconOf()).toBe(markupOf(Commit));
+
+        // Only the history knows the pull request here, which Source Control lists as long as the branch has not moved past it.
+        await inWorktree('none', history(merged()));
+
+        expect(iconOf()).toBe(markupOf(Merge));
+
+        await inWorktree('none', history(merged(true)));
 
         expect(iconOf()).toBe(markupOf(Commit));
     });

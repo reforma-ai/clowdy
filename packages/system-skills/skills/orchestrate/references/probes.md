@@ -1,6 +1,6 @@
 # Probes: ways to break a change
 
-Pick at least three that fit the change. A probe is a real run with a real observation; write the input and the result in the check report (rows in "What was run"), including the probes that passed.
+Pick at least three that fit the change. A probe is a real run with a real observation; write the input and the result in the task (rows in "What was run"), including the probes that passed.
 
 ## By kind of change
 
@@ -22,7 +22,7 @@ Pick at least three that fit the change. A probe is a real run with a real obser
 - **Neighbors.** Run the tests of the modules next to the change, not only the new tests.
 - **Weak tests.** Would the new tests fail if the feature were deleted? Delete or break the feature locally in a scratch copy and see. Tests that mock the thing they test prove nothing.
 - **Leftovers.** Debug output, commented code, `console.log`, stray files in `git status`, a dev server still running.
-- **Docs.** Does the behavior documented in `.clowdy/docs/` still match what you saw?
+- **Docs.** Does the behavior documented in relevant project documents still match what you saw?
 
 ## Failing before the change
 
@@ -34,7 +34,7 @@ cd "$TMPDIR/base-check" && <install if needed> && <the same command>
 cd - && git worktree remove --force "$TMPDIR/base-check"
 ```
 
-Uncommitted work is not in that copy. A failure there existed before the uncommitted changes. Record it under "Known limits" of the check report. A pre-existing failure is not a defect of the change, but it can make a criterion unverifiable: then it is `blocked` for that criterion, with the exact command and output.
+Uncommitted work is not in that copy. A failure there existed before the uncommitted changes. Record it under "Known limits" of the task. A pre-existing failure is not a defect of the change, but it can make a criterion unverifiable: then it is `blocked` for that criterion, with the exact command and output.
 
 ## Flaky results
 

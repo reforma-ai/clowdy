@@ -14,6 +14,7 @@ import { type MouseEvent, type KeyboardEvent as ReactKeyboardEvent, useEffect, u
 import { Unavailable } from '../../shared/Unavailable';
 import { useAgents, useProjectUi, useRootStore } from '../../stores';
 import { quoteIntoComposer } from '../chats/composerBridge';
+import { PathMenu, placeTarget } from '../openWith';
 import styles from './CommitBox.module.css';
 import { commitDraftOf } from './CommitDraft';
 import { commitLabel, commitTarget, isFetchFirst, SYNC_WORDS } from './changesActions';
@@ -27,6 +28,7 @@ import { useRemoteActions } from './useRemoteActions';
 
 import type { GitChangedFile, GitStatusEntry } from '@clowdy/protocol';
 import type { ReactNode } from 'react';
+import type { Place } from '../sidePanel/currentPlace';
 import type { CommitDraft } from './CommitDraft';
 import type { PlaceChanges } from './PlaceChanges';
 import type { RemoteActions } from './RemoteActions';
@@ -146,12 +148,18 @@ function CommitFileRow({
     );
 }
 
+/**
+ * The checklist of the files a commit takes. A right-click on a row (or the menu key on it) opens the menu of its path (`PathMenu`: Open in Files, the copies of the path, `Open in…`),
+ * with `Discard changes…` at its end for a file whose uncommitted changes can be discarded.
+ */
 function CommitFileList({
     files,
+    place,
     draft,
     mergeGroup,
 }: {
     files: readonly CommitFile[];
+    place: Place;
     draft: CommitDraft;
     mergeGroup?: 'conflicts' | 'staged';
 }) {
@@ -165,7 +173,8 @@ function CommitFileList({
         draft.writing || model.facts.switching || mergeGroup === 'conflicts'
             ? undefined
             : discardableFiles('uncommitted', model.uncommitted);
-    const menuFile = menuPath && files.some(file => file.path === menuPath) ? discardable?.get(menuPath) : undefined;
+    const menuFile = menuPath ? files.find(file => file.path === menuPath) : undefined;
+    const discardFile = menuFile && discardable?.get(menuFile.path);
 
     useEffect(() => () => close(), [close, model]);
     useEffect(() => {
@@ -174,7 +183,7 @@ function CommitFileList({
 
     const selectMenuFile = (row: Element | null) => {
         const path = row?.getAttribute('data-key');
-        if (!path || !discardable?.has(path) || !files.some(file => file.path === path)) return false;
+        if (!path || !files.some(file => file.path === path)) return false;
 
         setMenuPath(path);
         return true;
@@ -198,11 +207,10 @@ function CommitFileList({
     };
 
     const discard = () => {
-        if (!menuFile) return;
-        close();
+        if (!discardFile) return;
         openDiscardDialog({
-            file: menuFile,
-            discard: () => discardChanges(model, transport, menuFile.path),
+            file: discardFile,
+            discard: () => discardChanges(model, transport, discardFile.path),
         });
     };
 
@@ -227,9 +235,24 @@ function CommitFileList({
             </GridList>
             {contextMenu.isOpen && menuFile && (
                 <Popover {...contextMenu.popoverProps} placement="bottom start" spacing="xs">
-                    <Menu aria-label="File actions" size="sm" onAction={discard}>
-                        <MenuItem id="discard" icon={<Undo aria-hidden="true" />} text="Discard changes…" isDanger />
-                    </Menu>
+                    <PathMenu
+                        target={placeTarget(model.facts.key.projectId, place, menuFile.path)}
+                        expectGone={menuFile.kind === 'deleted'}
+                        extra={
+                            discardFile
+                                ? [
+                                      {
+                                          id: 'discard',
+                                          label: 'Discard changes…',
+                                          icon: <Undo aria-hidden="true" />,
+                                          isDanger: true,
+                                          run: discard,
+                                      },
+                                  ]
+                                : undefined
+                        }
+                        onClose={close}
+                    />
                 </Popover>
             )}
         </div>
@@ -258,7 +281,14 @@ function ConflictActions({
 
     return (
         <div className={styles.conflictActions}>
-            <Button variant="ghost" color="primary" size="xs" aria-label="Ask agent to resolve conflicts" onPress={ask}>
+            <Button
+                variant="ghost"
+                color="primary"
+                size="xs"
+                fullWidth
+                aria-label="Ask agent to resolve conflicts"
+                onPress={ask}
+            >
                 <AiStar aria-hidden="true" />
                 Ask agent
             </Button>
@@ -266,6 +296,7 @@ function ConflictActions({
                 variant="bordered"
                 color="secondary"
                 size="xs"
+                fullWidth
                 isDisabled={writing || remote.busy}
                 isPending={remote.running === 'abort'}
                 onPress={() =>
@@ -309,7 +340,7 @@ function CommitSectionHeading({
  * Shift or the menu offers the other action for this commit.
  * A clean checkout still has a message field and a disabled commit button.
  */
-export function CommitBox({ model }: { model: PlaceChanges }) {
+export function CommitBox({ model, place }: { model: PlaceChanges; place: Place }) {
     const root = useRootStore();
     const { agents } = useAgents();
     const remote = useRemoteActions(model.facts);
@@ -440,11 +471,21 @@ export function CommitBox({ model }: { model: PlaceChanges }) {
                 <Scrollable className={styles.list} contentClass={styles.rows}>
                     {showConflicts && (
                         <>
-                            <CommitFileList files={mergeFiles.conflicts} draft={draft} mergeGroup="conflicts" />
+                            <CommitFileList
+                                files={mergeFiles.conflicts}
+                                place={place}
+                                draft={draft}
+                                mergeGroup="conflicts"
+                            />
                             <CommitSectionHeading label={heading} count={count} />
                         </>
                     )}
-                    <CommitFileList files={commitFiles} draft={draft} mergeGroup={mergeFiles ? 'staged' : undefined} />
+                    <CommitFileList
+                        files={commitFiles}
+                        place={place}
+                        draft={draft}
+                        mergeGroup={mergeFiles ? 'staged' : undefined}
+                    />
                 </Scrollable>
             )}
             {truncationNotice && (

@@ -38,19 +38,25 @@ export function runsByTask(links: Iterable<RunTaskLink>, runs: ReadonlyMap<RunId
     return new Map([...byTask].map(([taskId, taskRuns]) => [taskId, [...taskRuns.values()].sort(byCreatedAt)]));
 }
 
+/**
+ * How a run is named to the person (`runLabel` over the project's chats, `useRunLabel`). The views take it from their caller: a run's own `name` is the
+ * daemon's number (`Orchestrator 41`), which says nothing, so nothing in here falls back to it.
+ */
+export type RunNamer = (run: Run) => string;
+
 /** The runs executing the task right now: what a card shows and what blocks another start. */
 export function activeExecutors(taskRuns: readonly Run[] = []): Run[] {
     return taskRuns.filter(run => !isTerminalRunStatus(run.status));
 }
 
 /** Why "Start" is unavailable, or `null` when it is. The daemon allows one executing run per task. */
-export function startBlockedReason(taskRuns: readonly Run[] = []): string | null {
+export function startBlockedReason(taskRuns: readonly Run[] | undefined, nameOf: RunNamer): string | null {
     const active = activeExecutors(taskRuns);
 
     if (active.length === 0) return null;
 
     return active.length === 1
-        ? `${active[0].name} is already working on this task`
+        ? `${nameOf(active[0])} is already working on this task`
         : `${active.length} agents are already working on this task`;
 }
 
@@ -93,8 +99,8 @@ export function filterTasks(
     });
 }
 
-/** The runs a person may filter by: those linked to some task, the working ones first. */
-export function agentOptions(runsOfTask: ReadonlyMap<TaskId, readonly Run[]>): Run[] {
+/** The runs a person may filter by: those linked to some task, the working ones first, then by the name the person reads. */
+export function agentOptions(runsOfTask: ReadonlyMap<TaskId, readonly Run[]>, nameOf: RunNamer): Run[] {
     const runs = new Map<RunId, Run>();
 
     for (const taskRuns of runsOfTask.values()) for (const run of taskRuns) runs.set(run.id, run);
@@ -102,7 +108,7 @@ export function agentOptions(runsOfTask: ReadonlyMap<TaskId, readonly Run[]>): R
     const rank = (run: Run) => (isTerminalRunStatus(run.status) ? 1 : 0);
 
     return [...runs.values()].sort(
-        (a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name, 'en', { numeric: true })
+        (a, b) => rank(a) - rank(b) || nameOf(a).localeCompare(nameOf(b), 'en', { numeric: true })
     );
 }
 
@@ -269,44 +275,57 @@ const FINISHED_TEXT: Record<string, string> = {
     interrupted: 'was interrupted',
 };
 
-function createdText(actor: Actor, creator: Run | undefined): string {
+function createdText(actor: Actor, creator: Run | undefined, nameOf: RunNamer): string {
     switch (actor.kind) {
         case 'user':
             return 'You created the task';
         case 'run':
-            return `${creator?.name ?? 'An agent'} created the task`;
+            return `${creator ? nameOf(creator) : 'An agent'} created the task`;
         case 'provider':
             return `Imported from ${providerName(actor.provider)}`;
     }
 }
 
-/** What happened to the task, newest first, derived from the task and the runs on it. */
+/**
+ * What happened to the task, newest first, derived from the task and the runs on it.
+ */
 export function taskActivity(
     task: Task,
     taskRuns: readonly Run[],
     runsById: ReadonlyMap<RunId, Run>,
+    nameOf: RunNamer,
     limit = 5
 ): Activity[] {
     const activity: Activity[] = [];
     const creator = task.createdBy.kind === 'run' ? runsById.get(task.createdBy.runId) : undefined;
 
-    activity.push({ id: 'created', at: task.createdAt, text: createdText(task.createdBy, creator), run: creator });
+    activity.push({
+        id: 'created',
+        at: task.createdAt,
+        text: createdText(task.createdBy, creator, nameOf),
+        run: creator,
+    });
 
     if (task.updatedAt - task.createdAt > 1000)
         activity.push({ id: 'updated', at: task.updatedAt, text: 'Task updated' });
 
     for (const run of taskRuns) {
         if (run.startedAt === undefined) {
-            activity.push({ id: `${run.id}:queued`, at: run.createdAt, text: `${run.name} is waiting to start`, run });
+            activity.push({
+                id: `${run.id}:queued`,
+                at: run.createdAt,
+                text: `${nameOf(run)} is waiting to start`,
+                run,
+            });
         } else {
-            activity.push({ id: `${run.id}:started`, at: run.startedAt, text: `${run.name} started working`, run });
+            activity.push({ id: `${run.id}:started`, at: run.startedAt, text: `${nameOf(run)} started working`, run });
         }
 
         if (run.finishedAt !== undefined && FINISHED_TEXT[run.status]) {
             activity.push({
                 id: `${run.id}:finished`,
                 at: run.finishedAt,
-                text: `${run.name} ${FINISHED_TEXT[run.status]}`,
+                text: `${nameOf(run)} ${FINISHED_TEXT[run.status]}`,
                 detail: run.error ?? run.result,
                 run,
             });

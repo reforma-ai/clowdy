@@ -90,14 +90,14 @@ describe('FixtureTransport skills', () => {
     it('keeps individual system choices when the global switch is turned off and back on', async () => {
         const transport = new FixtureTransport();
 
-        await transport.command({ type: 'skills.setEnabled', name: 'clowdy:docs', enabled: false });
+        await transport.command({ type: 'skills.setEnabled', name: 'clowdy:thread', enabled: false });
         await transport.command({ type: 'skills.setEnabled', name: 'clowdy:*', enabled: false });
         const off = await transport.getSkills();
         await transport.command({ type: 'skills.setEnabled', name: 'clowdy:*', enabled: true });
         const on = await transport.getSkills();
 
         expect([off.systemEnabled, on.systemEnabled]).toEqual([false, true]);
-        expect(on.entries.find(entry => entry.name === 'clowdy:docs')?.enabled).toBe(false);
+        expect(on.entries.find(entry => entry.name === 'clowdy:thread')?.enabled).toBe(false);
         expect(on.tokens).toBeGreaterThan(off.tokens);
     });
 });

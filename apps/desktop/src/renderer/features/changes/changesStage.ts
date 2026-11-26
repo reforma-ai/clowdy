@@ -2,10 +2,10 @@ import { MAX_GIT_STATUS_ENTRIES } from '@clowdy/protocol';
 
 import type { GitPullRequest, GitStatus } from '@clowdy/protocol';
 
-/** How far the work of a place is on its way to the base branch: nothing to land, commits waiting, a pull request open, or something that needs a person. */
+/** What the first tooltip line of the rail is about: nothing, commits that are not in the base yet, a pull request that is open, or something that needs a person. */
 export type ChangesStage = 'clean' | 'ahead' | 'pullRequest' | 'problem';
 
-/** What the rail says of a place's changes while the Changes tab is shut: the stage (the tab's icon) and the uncommitted files (a dot), each with the line the tooltip adds under the label. */
+/** What the rail says of a place's changes in the tooltip of the Changes tab: the stage and the uncommitted files, each with the line the tooltip adds under the label. */
 export interface ChangesSummary {
     stage: ChangesStage;
     /** How many paths are uncommitted. */

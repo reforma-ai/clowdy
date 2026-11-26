@@ -4,12 +4,12 @@ import { Menu, MenuHeader, MenuItem, MenuSection } from '@clowdy/components/List
 import { Popover, PopoverScroll, useContextMenu } from '@clowdy/components/Popover';
 import { Show } from '@clowdy/components/Show';
 import { toast } from '@clowdy/components/Toast';
-import { Copy } from '@clowdy/icons/14';
 import { cn } from '@clowdy/lib';
 
 import { openInFiles } from '../../features/files/openInFiles';
 import { useKindOnDisk } from '../../features/files/useKindOnDisk';
 import {
+    AbsentMenu,
     absolutePath,
     actionItem,
     chosenPrograms,
@@ -125,49 +125,6 @@ function MatchesMenu({ target, found, onClose }: { target: OpenTarget; found: st
                             </MenuItem>
                         )}
                     </For>
-                </MenuSection>
-            </Menu>
-        </PopoverScroll>
-    );
-}
-
-/**
- * The menu of a path that is not on the disk and that no file of the project ends with (an agent named a file it has not made, or one that was moved): it says so, and keeps the
- * copies of the path, the one thing that still works. While the project is searched for it, it says that instead.
- */
-function AbsentMenu({
-    target,
-    isLooking = false,
-    onClose,
-}: {
-    target: OpenTarget;
-    isLooking?: boolean;
-    onClose: () => void;
-}) {
-    return (
-        <PopoverScroll>
-            <Menu
-                aria-label="File actions"
-                size="sm"
-                onAction={key => {
-                    onClose();
-                    openEffects.copy(key === 'copyRelative' ? target.relative : target.path);
-                }}
-            >
-                <MenuSection aria-label="Path">
-                    <MenuHeader>
-                        {isLooking
-                            ? 'Looking for this file'
-                            : `This ${target.kind === 'directory' ? 'folder' : 'file'} doesn't exist`}
-                    </MenuHeader>
-                    <MenuItem id="copyPath" icon={<Copy aria-hidden="true" />} textValue="Copy path">
-                        Copy path
-                    </MenuItem>
-                    {target.relative !== '' && (
-                        <MenuItem id="copyRelative" icon={<Copy aria-hidden="true" />} textValue="Copy relative path">
-                            Copy relative path
-                        </MenuItem>
-                    )}
                 </MenuSection>
             </Menu>
         </PopoverScroll>

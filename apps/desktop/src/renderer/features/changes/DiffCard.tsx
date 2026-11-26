@@ -1,15 +1,18 @@
 import { Button } from '@clowdy/components/Button';
 import { Checkbox } from '@clowdy/components/Checkbox';
-import { CopyButton } from '@clowdy/components/CopyButton';
+import { MenuTrigger } from '@clowdy/components/List';
+import { Popover, useContextMenu } from '@clowdy/components/Popover';
 import { Separator } from '@clowdy/components/Separator';
+import { Show } from '@clowdy/components/Show';
 import { Spinner } from '@clowdy/components/Spinner';
 import { Text } from '@clowdy/components/Text';
 import { DiffView } from '@clowdy/file-manager/react';
-import { ChevronDown, ChevronRight } from '@clowdy/icons/14';
+import { ChevronDown, ChevronRight, More } from '@clowdy/icons/14';
 import { cn } from '@clowdy/lib';
 import { type CSSProperties, useEffect, useRef, useState } from 'react';
 
 import { useAddToChat } from '../chats/useAddToChat';
+import { PathMenu, placeTarget } from '../openWith';
 import { CARD_TEXT, type CardBody, cardBody, estimatedLines, needsSides } from './cardView';
 import styles from './DiffCard.module.css';
 import { sidesKey } from './fileSides';
@@ -17,6 +20,7 @@ import { CHANGE_KIND_VIEW, splitPath } from './gitSummary';
 import { useNearViewport } from './useNearViewport';
 
 import type { GitChangedFile } from '@clowdy/protocol';
+import type { Place } from '../sidePanel/currentPlace';
 import type { PlaceChanges } from './PlaceChanges';
 
 /** The added and removed lines of a file as its header shows them, in the colours of the tool cards: nothing for a file whose lines were not counted. */
@@ -95,18 +99,22 @@ function Body({ body, file, onRetry }: { body: CardBody; file: GitChangedFile; o
 
 /**
  * One changed file of the list: a header with a chevron, the file's path (the folder dimmed, the name strong, cut at the start when it does not fit), what happened to it
- * (added, modified, deleted, renamed, with the old path of a rename under it), a button that copies the path, its added and removed lines, and a divider and `Viewed` checkbox; and, when it is
- * open, the diff of its two texts. Ticking `Viewed` shuts the card and unticking opens it (the model decides, and the tick shows before the daemon has answered). Its texts are asked of the cache while the card is near the scroller's edge and open, and not before, and a read that has not begun is
+ * (added, modified, deleted, renamed, with the old path of a rename under it), a More button, its added and removed lines, and a divider and `Viewed` checkbox; and, when it is
+ * open, the diff of its two texts. The More button and a right-click on the header open the menu of the file's path (`PathMenu`: Open in Files, the copies of the path, `Open in…`; a file the disk has not got, a deleted one,
+ * has the copies alone). Ticking `Viewed` shuts the card and unticking opens it (the model decides, and the tick shows before the daemon has answered). Its texts are asked of the cache while the card is near the scroller's edge and open, and not before, and a read that has not begun is
  * let go of when it stops being near, so a list of hundreds costs what is on screen; the header sticks to the top of the list while its diff scrolls. A card far from the edge is
  * an empty box of the height it had when it went far, or of the height it will likely take when it was never built, so the list scrolls as if it were all there. `eager` builds it
  * before the scroller has said where it is: the cards at the top of the list, which are on screen at once.
  */
 export function DiffCard({
     model,
+    place,
     file,
     eager = false,
 }: {
     model: PlaceChanges;
+    /** The place the list is of: the folder, or the worktree of the open chat, which the menu of the file's path opens it in. */
+    place: Place;
     file: GitChangedFile;
     eager?: boolean;
 }) {
@@ -116,6 +124,8 @@ export function DiffCard({
     const { near, known, height } = useNearViewport(element);
     // Whether the focus is in the card: a card is not emptied under a focused control, which would drop the focus to the page.
     const [focused, setFocused] = useState(false);
+    const [moreOpen, setMoreOpen] = useState(false);
+    const contextMenu = useContextMenu();
     // An eager card is built before the scroller has said where it is; its texts still wait for that.
     const built = near || focused || (eager && !known);
     // Whether the card was open when it was last built: the height it had then stands for it only while that is still so.
@@ -144,6 +154,8 @@ export function DiffCard({
     const renamedFrom =
         (file.kind === 'renamed' || file.kind === 'copied') && file.oldPath !== undefined ? file.oldPath : undefined;
     const Chevron = open ? ChevronDown : ChevronRight;
+    const target = placeTarget(model.facts.key.projectId, place, file.path);
+    const gone = file.kind === 'deleted';
     // An empty card is the size it had when it went far, while it is as open as it was then, or the size it will likely take.
     const kept = height !== undefined && builtOpen.current === open ? height : undefined;
     const box = built
@@ -165,7 +177,11 @@ export function DiffCard({
         >
             {built && (
                 <>
-                    <div className={styles.header}>
+                    <div
+                        className={styles.header}
+                        data-menu-open={moreOpen || contextMenu.isOpen || undefined}
+                        {...contextMenu.areaProps}
+                    >
                         <Button
                             variant="transparent"
                             size="sm"
@@ -199,15 +215,22 @@ export function DiffCard({
                                 )}
                             </span>
                         </Button>
-                        <CopyButton
-                            className={styles.copy}
-                            value={file.path}
-                            size="xs"
-                            variant="filling"
-                            color="secondary"
-                            tooltip="Copy path"
-                            aria-label={`Copy the path of ${file.path}`}
-                        />
+                        <MenuTrigger isOpen={moreOpen} onOpenChange={setMoreOpen}>
+                            <Button
+                                className={styles.more}
+                                variant="filling"
+                                color="secondary"
+                                size="xs"
+                                iconOnly
+                                aria-label={`More for ${file.path}`}
+                                tooltip="More"
+                            >
+                                <More aria-hidden="true" />
+                            </Button>
+                            <Popover placement="bottom start" spacing="xs">
+                                <PathMenu target={target} expectGone={gone} />
+                            </Popover>
+                        </MenuTrigger>
                         <LineCounts file={file} />
                         <Separator orientation="vertical" spacing={0} className={styles.divider} aria-hidden="true" />
                         <Checkbox
@@ -222,6 +245,11 @@ export function DiffCard({
                             </Text>
                         </Checkbox>
                     </div>
+                    <Show when={contextMenu.isOpen}>
+                        <Popover {...contextMenu.popoverProps} placement="bottom start" spacing="xs">
+                            <PathMenu target={target} expectGone={gone} onClose={contextMenu.close} />
+                        </Popover>
+                    </Show>
                     {open && (
                         <div className={styles.body}>
                             <Body

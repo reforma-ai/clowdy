@@ -1,90 +1,16 @@
-# Plan and sizing
+# Planning tracked work
 
-Load this when you write the task graph.
+Create a task when someone needs to track, coordinate or resume the work. Use the existing task when the chat started from one. A quick fix or a question needs no task just for the record.
 
-## Task template
+## Shape the work
 
-`clowdy task create "<title>" --description-file - --depends-on <keys>`, the description as a heredoc. `--depends-on` takes the keys (such as CLW-21) that `clowdy task create` returned, so create dependencies first; `--blocks <keys>` makes tasks that already exist wait for the new one, and `--parent <key>` makes the new task a stage of a larger one (see "Stages and checklists"). Title: the outcome in a few words ("CSV export endpoint"), not an activity ("work on export"). Description, the same five parts for every task, in the project's language:
+- Make each task a useful outcome that can be checked. Keep the title clear; briefly describe the result and how to verify it. Add constraints, ownership, context or exclusions when they help the next person. No fixed template is required.
+- Split work into tasks when the pieces need separate tracking, ordering or ownership. Use `--parent` to group stages of a larger outcome. A checklist (`- [ ]`) is enough for steps inside a task. A thread or reviewer can work on an existing task; neither automatically needs a new one.
+- Use `--depends-on` only when one task truly needs another first. Run independent work together when contracts and file ownership allow it; otherwise sequence it. An open task is ready when its dependencies are Done or Canceled. A canceled dependency releases its dependents, so check that they can still proceed.
+- The parent task is the whole, not an automatic dependency on its children. Start ready stages and close the parent only after the whole is verified. The parent chooses direct work or delegation and integrates the result.
 
-```text
-Outcome: <what is true when this is done, in product terms, 1-2 sentences>
-Owns: <directories or files this task may edit; exclusive among parallel tasks>
-Needs: <contracts, decisions, docs to read; what it relies on from other tasks>
-Check: <how it will be verified: commands, the user flow, the observable result>
-Out of scope: <what a reader might assume but must not do>
-```
+## Keep the board useful
 
-A task without a Check is not ready to start. A task without Owns cannot be shared with a sub-agent or a thread while others edit.
+Use the project's actual statuses. Move tracked work to In progress when started, Review when ready for review, and Done after the required checks and review. If verification fails, return it to In progress. Cancel dropped work with a reason; record blockers and useful findings on the task. Update the plan and dependencies when the work changes.
 
-## Size
-
-One stage is a coherent outcome and an implementation, verification, review and commit boundary. It need not be independently deployable; leave the repository internally consistent and pass its scoped checks. Size by outcome, dependencies and reviewability, not file count. A task is a stage or another independently tracked outcome.
-
-- Too small: rename a function, add one test, update imports, "write docs" for code another task writes. Merge it into the task that owns the code.
-- Too big: spans unrelated outcomes, has no single Check, or would end as "partly done". Split by outcome, dependency and reviewability, not by activity (code, tests, docs). Give concurrent work compatible ownership.
-- Task count is a warning that the work may need regrouping, not a target or an automatic reason to split.
-
-## Dependencies
-
-Use `--depends-on` only for real ordering: a task needs another's output (a schema, a type, an API) or must edit the same files after it. Fix shared contracts up front where possible. Run ready stages in parallel only when their independence, ownership and contracts are established; otherwise preserve their written order. The coordinator chooses direct or delegated execution, integrates the results and keeps the graph current.
-
-Common shapes:
-
-```text
-Fan:        A  B  C                   (no ordering; verify them together)
-Foundation: Contract -> A  B  C       (Contract is verified and Done before A, B, C start)
-Line:       A -> B -> C               (one after another)
-```
-
-A task is ready when everything it depends on is closed: Done, which means verified, or Canceled, which releases the tasks waiting for it, so look again at what a canceled dependency leaves them. A task that others wait on gets checked first (its Check, build, typecheck, tests, a read of the diff) and is set Done before you start the dependents. Never start a task whose dependencies are still open. Verification is not a task: you verify the tasks you built.
-
-## Stages and checklists
-
-A task can contain tasks. Larger work that splits is one whole (the bound task, or one you create) with its stages inside it: `clowdy task create "<title>" --parent <whole>`, or `clowdy task update <key> --parent <whole>` for a task that exists (`--clear-parent` takes it out again). The whole does not depend on its stages, and nothing sets its status for you: move it to In progress when the first stage starts and to Done only after you verified the whole. `clowdy task get <whole>` lists its stages and counts the tasks below it by category.
-
-- **Child task**: a stage that is delegated to a thread or a sub-agent, checked on its own, waited for by another task, or should show on its own on the board. One level of stages is usual.
-- **Checklist**: the steps one owner takes, as Markdown lines in the description (`- [ ] step`; nothing else counts). Listings show how many are ticked. No tool ticks a line: read the description, change the line to `- [x]` and send the whole text with `clowdy task update <key> --description-file -`.
-
-Never list a step both ways.
-
-## Status flow
-
-Statuses are the project's columns; the default is To do, In progress, Review, Done, Canceled. Name a status the way the task tools return it (its name, its category or its id); never invent one. There is no Blocked column: a blocker goes in the task description.
-
-| Move | When |
-| --- | --- |
-| To do -> In progress | You start the work |
-| In progress -> Review | The work is built and its own narrow check passed; Review means built, not yet verified |
-| Review -> Done | Verification and review passed (separate reviewer when available); commit the stage or stage its files as project rules require. For the final result, also run the full integrated checks |
-| Any -> Canceled | The task is dropped; leave the reason as a comment |
-| Review or Done -> In progress | Verification failed; leave the failure as a comment |
-
-To replan, cancel tasks with a reason and create new ones; do not delete them. History lets the manager follow what happened.
-
-## Replanning
-
-Replan when a result changes the facts: the premise was false, a dependency cannot be met, two tasks collided on a file, scope grew, or a decision changed the shape.
-
-1. State the new fact in one line.
-2. `clowdy task update <key> --description-file - --depends-on <keys>` the affected tasks (outcome, owns, dependencies); cancel tasks that no longer make sense, with the reason as a comment.
-3. Stop sub-agents working on cancelled or now-wrong pieces, and `clowdy thread stop` such threads; `clowdy thread tell` the others what changed.
-4. If two parallel pieces collided on a file, serialize them with `--add-depends-on`; do not let both continue.
-5. Tell the manager what changed and why in one or two lines. Record a decision when it was significant.
-
-If two sub-agents or threads changed the same area, do not pick a winner silently. A mechanical conflict you resolve, keeping both intents. A semantic one (opposite choices) is decided by the contract in the tasks; if none exists, it is a fork for your mode. Changes outside a task's scope in a sub-agent's answer or a thread's report: read what changed and decide whether to keep it. Keeping needs a line in the report; reverting is deliberate, never a blind `git checkout`.
-
-## Example graph
-
-Request: "Add a password reset flow."
-
-```text
-CLW-30 Reset token model and email sender
-       Owns: apps/api/src/auth/reset/**, migrations/ (the only migration owner)
-       Check: unit tests; a token expires after 1 hour
-CLW-31 Reset request and confirm pages
-       Owns: apps/web/src/auth/reset/**
-       Needs: contract POST /auth/reset, POST /auth/reset/confirm {token, password}
-       Check: component tests; pages render the error states
-```
-
-CLW-30 and CLW-31 do not wait for each other because the contract is written in both. When both are in Review and integrated, you check the full flow on the combined result: a real mail sink, an expired and a reused token, the password rules. Pass: both Done.
+Use `clowdy task --help` for commands and `clowdy task <command> --help` for options. Search existing tasks before starting tracked work when overlap is possible. Assign a task owner with `clowdy thread spawn --tasks <key>`; a reviewer may read the task for context without being assigned or changing its status.

@@ -2,7 +2,7 @@ import type { StreamItem, StreamItemBody } from '@clowdy/protocol';
 
 /**
  * A card's question is a title, then paragraphs after blank lines: the facts and the "My pick: ..." line
- * (the card protocol of clowdy:semi-manual). A question without blank lines is all title.
+ * (the question card protocol). A question without blank lines is all title.
  */
 export function splitQuestion(text: string): { title: string; paragraphs: string[] } {
     const [title = '', ...paragraphs] = text
@@ -13,7 +13,7 @@ export function splitQuestion(text: string): { title: string; paragraphs: string
     return { title, paragraphs };
 }
 
-/** What the Skip button gives the agent: the person chose not to answer, and the agent decides the point itself (clowdy:semi-manual says so). */
+/** What the Skip button gives the agent: the person chose not to answer, and the agent decides the point itself. */
 export const SKIPPED_ANSWER = 'Skipped';
 
 type QuestionItem = StreamItem & { body: Extract<StreamItemBody, { kind: 'question' }> };

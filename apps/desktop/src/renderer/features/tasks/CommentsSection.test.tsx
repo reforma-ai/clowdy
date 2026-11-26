@@ -26,7 +26,7 @@ vi.mock('./useTaskComments', () => ({ MAX_COMMENTS: 1000, useTaskComments: () =>
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 /*
- * The comments section of CAR-32 on the demo project, on a real store: the demo's runs are in it (`r-orch-1` is Orchestrator 01), and the daemon is a stand-in that answers each command
+ * The comments section of CAR-32 on the demo project, on a real store: the demo's runs are in it (`r-orch-1` is the orchestrator of the chat "Simplify booking"), and the daemon is a stand-in that answers each command
  * as the test says and remembers it.
  */
 
@@ -242,7 +242,7 @@ describe('a comment', () => {
     it('names an agent whose run is still there, as a link that opens the run', async () => {
         await show(ready([AGENTS]));
 
-        const link = named('Orchestrator 01', article('c-agent'))!;
+        const link = named('Simplify booking', article('c-agent'))!;
 
         expect(link).toBeDefined();
 
@@ -403,7 +403,7 @@ describe('editing a comment', () => {
         await type('Edit comment', '!');
         await press(named('Save'));
 
-        const elsewhere = named('Orchestrator 01', article('c-agent'))!;
+        const elsewhere = named('Simplify booking', article('c-agent'))!;
 
         await act(async () => elsewhere.focus());
         await act(async () => take(accepted()));

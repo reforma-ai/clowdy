@@ -43,7 +43,7 @@
 }
 
 @media (hover: hover) {
-    .header:not(:hover, :has(:focus-visible)) .copy {
+    .header:not(:hover, :has(:focus-visible), [data-menu-open]) .more {
         opacity: 0;
         pointer-events: none;
     }
