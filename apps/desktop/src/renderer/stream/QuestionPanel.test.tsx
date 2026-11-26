@@ -62,12 +62,15 @@ describe('QuestionPanel', () => {
 
         expect(container.querySelector('form')?.textContent).toContain('Who can export orders?');
         expect(rows().map(candidate => candidate.textContent)).toEqual([
-            expect.stringMatching(/^1Admins onlyRecommendedNobody gains access to personal data$/),
+            expect.stringMatching(/^1Admins onlyNobody gains access to personal data$/),
             '2Everyone who sees orders',
             '',
         ]);
         expect(row('Admins only')?.getAttribute('aria-selected')).toBe('true');
         expect(row('Everyone')?.getAttribute('aria-selected')).toBe('false');
+        // The agent's pick is marked with a check, and only that row.
+        expect(row('Admins only')?.querySelector('[aria-label="Recommended option"]')).not.toBeNull();
+        expect(row('Everyone')?.querySelector('[aria-label="Recommended option"]')).toBeNull();
     });
 
     it('sends the label of the preselected option', async () => {

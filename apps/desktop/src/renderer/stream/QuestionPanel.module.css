@@ -81,21 +81,16 @@
     line-height: var(--ask-option-line);
 }
 
-.labelLine {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--spacing-md);
+.tail {
+    white-space: nowrap;
 }
 
+/* The agent's pick, marked after its label. It is green: the row's own plate shows what is selected. */
 .recommended {
-    @ruleset typography-text-xs;
-
-    padding: var(--spacing-2) var(--spacing-md);
-    border-radius: var(--radius-full);
-    background-color: var(--color-primary-muted-light);
-    color: var(--color-primary-text);
-    font-weight: 500;
+    display: inline-flex;
+    margin-inline-start: var(--spacing-sm);
+    vertical-align: middle;
+    color: var(--color-success-text);
 }
 
 /* The 1px edge is always there, so turning it visible does not move the row. */
