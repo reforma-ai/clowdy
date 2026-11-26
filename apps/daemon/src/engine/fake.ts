@@ -285,7 +285,7 @@ class FakeSession implements EngineSession {
 
     /**
      * A sub-agent inside the session that looks at the callers of the change, started by an `Agent` call the way Claude's is: the call is in the
-     * session's own stream, the sub-agent is known by the call's id, and the call's result is its report.
+     * session's own stream, the sub-agent is known by the call's id and told what it was asked (the call's prompt), and the call's result is its report.
      */
     private async *subagent(path: string): Step {
         const agentId = `fake-call-${this.tag}-${++this.calls}`;
@@ -303,6 +303,7 @@ class FakeSession implements EngineSession {
             parentToolCallId: agentId,
             name: 'Explore',
             description: input.description,
+            prompt: input.prompt,
             state: 'running',
         };
         yield* this.say('Checking the callers in a sub-agent.', agentId);

@@ -199,7 +199,9 @@ export type EngineEvent =
      * `text` and `tool` events with the same `agentId` belong to its stream. `stoppable`, on the event that makes the child run (its first), says the
      * agent lets the client end this sub-agent alone with `EngineSession.stopItem`; the run is told, so the app offers a Stop for it. Absent means it
      * does not. `parentAgentId` names the sub-agent that started this one (a sub-agent of a sub-agent: its run is made below that one's, and is kept
-     * while that one is); absent when the session's own agent did.
+     * while that one is); absent when the session's own agent did. `prompt` is the whole of what its parent asked of it, which the child run shows as the first
+     * item of its stream: an engine says it on the event that makes the child run, or leaves it out when it does not know it. The runtime writes it once,
+     * and only while the child's stream is empty, so a prompt that comes after the child has written anything is not written.
      */
     | {
           type: 'subagent';
@@ -208,6 +210,7 @@ export type EngineEvent =
           parentToolCallId?: string;
           name: string;
           description?: string;
+          prompt?: string;
           state: SubagentState;
           summary?: string;
           stoppable?: boolean;

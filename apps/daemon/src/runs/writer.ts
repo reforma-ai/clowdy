@@ -1,6 +1,7 @@
+import { nextSeq } from '../db/items';
 import { appendItem, updateItem } from '../domain/items';
 
-import type { StreamItemBody } from '@clowdy/protocol';
+import type { MessageSource, StreamItemBody } from '@clowdy/protocol';
 import type { EngineEvent } from '../engine/types';
 import type { Store } from '../store';
 
@@ -43,6 +44,19 @@ export class TurnWriter {
         private runId: string,
         private throttleMs = TEXT_THROTTLE_MS
     ) {}
+
+    /**
+     * What the agent was asked, as the first item of its stream (a native sub-agent's prompt, from the chat that holds its parent): the same `user` item a
+     * thread's first message is. Written only to a stream that is still empty, so it stays the first: with an item in the stream already, or a
+     * text that says nothing, nothing is written. The text is kept whole, as the thread's message is, except the blank space around it.
+     */
+    brief(text: string, from: MessageSource): void {
+        const trimmed = text.trim();
+
+        if (trimmed !== '' && nextSeq(this.store.db, this.runId) === 1) {
+            appendItem(this.store, this.runId, { kind: 'user', text: trimmed, from });
+        }
+    }
 
     /** The agent's session is ready and its prompt goes out: what it thinks about is dated from now, not from the turn's start, which includes starting the agent. */
     heard(): void {

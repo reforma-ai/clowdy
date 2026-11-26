@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { startDaemon } from '../src/daemon';
+import { getChat } from '../src/db/chats';
 import { listItems } from '../src/db/items';
 import { projectSnapshot } from '../src/domain/snapshots';
 import { ToolBridge } from '../src/engine/acp/bridge';
@@ -296,7 +297,15 @@ describe('runs on an ACP agent, through the real runtime', () => {
             status: 'succeeded',
             result: 'Explore found the readme.',
         });
+        const chatId = h.run(runId).chatId as string;
+
+        // What the call asked of it is the first item of its stream, a message from the chat as a thread's first message is; the card of the call keeps the whole input.
         expect(body(child.id)).toEqual([
+            {
+                kind: 'user',
+                text: 'Look around',
+                from: { kind: 'thread', chatId, title: getChat(h.store.db, chatId)?.title as string },
+            },
             { kind: 'assistant', text: 'Looking around.', done: true },
             {
                 kind: 'tool',
@@ -489,6 +498,25 @@ describe('a chat on an ACP v2 agent that works in the background, through the re
         expect(h.run(runId).background).toBeUndefined();
         expect(h.run(runId).result).toBe('the command finished');
         await waitFor(() => pid(runId) === null && !alive(agent as number), 'the agent process to be gone', 15_000);
+    }, 30_000);
+
+    test('a sub-agent told over v2 starts its stream with the prompt its parent sent, as a message from the chat, before its own calls', async () => {
+        const { h, chat, say } = await setupV2();
+        const runId = say('say before\nsubagent 200 Map the docs\nsay after');
+
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the run to settle', 15_000);
+
+        const [child] = projectSnapshot(h.store, h.run(runId).projectId).runs.filter(run => run.origin === 'native');
+        const bodies = listItems(h.store.db, child.id, 0).map(item => item.body);
+
+        expect(child).toMatchObject({ parentRunId: runId, summary: 'Map the docs', status: 'succeeded' });
+        expect(bodies[0]).toEqual({
+            kind: 'user',
+            text: 'Do this: Map the docs',
+            from: { kind: 'thread', chatId: chat.id, title: getChat(h.store.db, chat.id)?.title as string },
+        });
+        // The one message among what it did and said.
+        expect(bodies.map(body => body.kind)).toEqual(['user', 'assistant', 'tool', 'assistant']);
     }, 30_000);
 
     test('a workflow that goes on after the turn is a task of the run until it ends, and its call is finished by it', async () => {
