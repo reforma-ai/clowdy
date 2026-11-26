@@ -6,7 +6,7 @@ import { Show } from '@clowdy/components/Show';
 import { Badge } from '@clowdy/components/Tag';
 import { Text } from '@clowdy/components/Text';
 import { Tooltip } from '@clowdy/components/Tooltip';
-import { Folder, More, NewChat, Plus, Version } from '@clowdy/icons/14';
+import { Folder, Merge, MergeCancel, More, NewChat, Plus, Version } from '@clowdy/icons/14';
 import { useId, useState } from 'react';
 
 import { tildePath } from '../../shared/displayPath';
@@ -71,9 +71,11 @@ function WorktreeChats({ chats, onOpenChat }: { chats: WorktreeChat[]; onOpenCha
 export function WorktreeRowSummary({
     worktree,
     onOpenChat,
+    tidy = false,
 }: {
     worktree: WorktreeInfo;
     onOpenChat?: (chat: WorktreeChat) => void;
+    tidy?: boolean;
 }) {
     const label = worktreeLabel(worktree);
     const mark = worktreeMark(worktree);
@@ -84,11 +86,26 @@ export function WorktreeRowSummary({
         </Text>
     );
 
+    const MarkIcon = worktree.merged ? Merge : MergeCancel;
+    const badge = mark && (
+        <Badge
+            size="xs"
+            color={mark.color}
+            textValue={mark.label}
+            tooltip={mark.tip}
+            icon={tidy ? <MarkIcon aria-hidden="true" /> : undefined}
+        >
+            {mark.label}
+        </Badge>
+    );
+
     return (
         <>
-            <span className={styles.icon}>
-                {worktree.main ? <Folder aria-hidden="true" /> : <Version aria-hidden="true" />}
-            </span>
+            {!tidy && (
+                <span className={styles.icon}>
+                    {worktree.main ? <Folder aria-hidden="true" /> : <Version aria-hidden="true" />}
+                </span>
+            )}
             <span className={styles.text}>
                 <span className={styles.title}>
                     {onOpenChat ? (
@@ -98,11 +115,7 @@ export function WorktreeRowSummary({
                     ) : (
                         title
                     )}
-                    {mark && (
-                        <Badge size="xs" color={mark.color} textValue={mark.label} tooltip={mark.tip}>
-                            {mark.label}
-                        </Badge>
-                    )}
+                    {!tidy && badge}
                 </span>
                 <span className={styles.facts}>
                     {!worktree.missing && (
@@ -121,6 +134,7 @@ export function WorktreeRowSummary({
                     )}
                 </span>
             </span>
+            {tidy && <span className={styles.tidyMark}>{badge}</span>}
         </>
     );
 }

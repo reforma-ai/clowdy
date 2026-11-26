@@ -237,7 +237,7 @@
     }
 }
 
-/* The cleanup choice stays on the right of each settings-style row, separate from the branch option below the list. */
+/* Cleanup choices and status sit at the vertical center of each row. */
 .tidyRows {
     min-width: 0;
     max-height: 280px;
@@ -245,6 +245,11 @@
 }
 
 .tidyCheck {
+    flex-shrink: 0;
+    align-self: center;
+}
+
+.tidyMark {
     flex-shrink: 0;
     align-self: center;
 }
