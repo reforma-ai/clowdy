@@ -112,7 +112,7 @@ describe('Markdown', () => {
 
         it('draws a task of the project as a task chip, and any other key as code', () => {
             const out = html('See `CAR-24`.', links);
-            expect(out).toContain('title="Rebuild the form"');
+            expect(out).not.toContain('title="Rebuild the form"');
             expect(out).toContain('data-tone="accent"');
             expect(out).toContain('aria-description="In progress"');
             expect(html('See `CAR-99`.', links)).toContain('data-streamdown="inline-code"');

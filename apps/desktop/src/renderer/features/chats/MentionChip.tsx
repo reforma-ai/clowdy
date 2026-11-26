@@ -1,4 +1,5 @@
 import { FileIcon } from '@clowdy/components/FileIcon';
+import { Tooltip } from '@clowdy/components/Tooltip';
 import { Message, Page } from '@clowdy/icons/14';
 import { cn } from '@clowdy/lib';
 
@@ -38,14 +39,16 @@ function TaskMentionChip({ mention }: Pick<RichInputMentionRenderProps, 'mention
     const title = task?.title ?? (mention.data as { title?: string } | null)?.title;
 
     return (
-        <span
-            className={cn(taskChipClass, styles.chip)}
-            data-chip
-            data-tone={statusTone(status?.category)}
-            title={title}
-        >
-            <TaskChipContents label={mention.label} status={status} />
-        </span>
+        <Tooltip content={title}>
+            <span
+                className={cn(taskChipClass, styles.chip)}
+                data-chip
+                data-tone={statusTone(status?.category)}
+                tabIndex={-1}
+            >
+                <TaskChipContents label={mention.label} status={status} />
+            </span>
+        </Tooltip>
     );
 }
 

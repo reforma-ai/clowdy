@@ -1,3 +1,4 @@
+import { Tooltip } from '@clowdy/components/Tooltip';
 import { cn } from '@clowdy/lib';
 
 import { StatusIcon, statusTone } from '../features/tasks/status';
@@ -32,16 +33,17 @@ export function TaskChipButton({ task, onPress, className }: TaskChipProps) {
     const status = project.statuses.find(candidate => candidate.id === statusId);
 
     return (
-        <button
-            type="button"
-            className={cn(taskChipClass, className)}
-            data-tone={statusTone(status?.category)}
-            title={task.title}
-            aria-description={status?.name}
-            onClick={onPress}
-        >
-            <TaskChipContents label={task.key} status={status} />
-        </button>
+        <Tooltip content={task.title}>
+            <button
+                type="button"
+                className={cn(taskChipClass, className)}
+                data-tone={statusTone(status?.category)}
+                aria-description={status?.name}
+                onClick={onPress}
+            >
+                <TaskChipContents label={task.key} status={status} />
+            </button>
+        </Tooltip>
     );
 }
 
