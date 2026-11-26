@@ -54,16 +54,22 @@ describe('QuestionCard', () => {
         expect(container.textContent).toBe('Answer in the box below');
     });
 
-    it('shows the question and its answer once answered, without the facts, docked or not', async () => {
+    it('shows the question, what it was about and the answer once answered, docked or not', async () => {
         await draw({ answer: 'Admins only' }, { docked: true });
 
         expect(container.querySelector('form')).toBeNull();
         expect(container.textContent).toContain('Answer');
         expect(container.textContent).toContain('Who can export orders?');
+        expect(container.textContent).toContain('The orders page is visible to every signed-in user.');
+        expect(container.textContent).toContain('My pick: Admins only.');
         expect(container.textContent).toContain('Admins only');
-        expect(container.textContent).not.toContain('The orders page is visible');
-        expect(container.textContent).not.toContain('My pick');
         expect(container.textContent).not.toContain('Answer in the box below');
+    });
+
+    it('has no line of facts for a question that is only a title', async () => {
+        await draw({ text: 'Is this fine?', answer: 'Yes' });
+
+        expect(container.textContent).toBe('AnswerIs this fine?Yes');
     });
 
     it('keeps the lines of an answer the person wrote', async () => {

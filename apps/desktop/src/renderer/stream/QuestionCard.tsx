@@ -1,3 +1,4 @@
+import { Show } from '@clowdy/components/Show';
 import { Text } from '@clowdy/components/Text';
 import { Message } from '@clowdy/icons/14';
 
@@ -19,10 +20,13 @@ export interface QuestionCardProps {
 }
 
 /**
- * A question that is over (Reforma's answer card): a message mark and a header, then under a rule the question in a line or two, and what came of
- * it. The facts and the agent's pick are not repeated: they were for choosing.
+ * A question that is over (Reforma's answer card): a message mark and a header, then under a rule the question at two lines, what it was about
+ * at three (the facts and the agent's pick, run together), and what came of it. It is a reminder, so none of it opens: the question was
+ * read in full when it was asked.
  */
-function SettledCard({ header, asked, children }: { header: string; asked: string; children: ReactNode }) {
+function SettledCard({ header, text, children }: { header: string; text: string; children: ReactNode }) {
+    const { title, paragraphs } = splitQuestion(text);
+
     return (
         <div className={styles.settled}>
             <div className={styles.settledHeader}>
@@ -33,8 +37,13 @@ function SettledCard({ header, asked, children }: { header: string; asked: strin
             </div>
             <div className={styles.settledBody}>
                 <Text variant="label" color="secondary" className={styles.asked}>
-                    {asked}
+                    {title}
                 </Text>
+                <Show when={paragraphs.length > 0}>
+                    <Text variant="sm" color="secondary" whitespace="pre-line" className={styles.described}>
+                        {paragraphs.join('\n')}
+                    </Text>
+                </Show>
                 {children}
             </div>
         </div>
@@ -48,11 +57,9 @@ function SettledCard({ header, asked, children }: { header: string; asked: strin
  */
 export function QuestionCard({ question, onAnswer, docked }: QuestionCardProps) {
     const { text, answer, state } = question;
-    const { title } = splitQuestion(text);
-
     if (answer !== undefined) {
         return (
-            <SettledCard header="Answer" asked={title}>
+            <SettledCard header="Answer" text={text}>
                 <Text variant="sm" wrap="anywhere" whitespace="pre-line">
                     {answer}
                 </Text>
@@ -62,7 +69,7 @@ export function QuestionCard({ question, onAnswer, docked }: QuestionCardProps) 
 
     if (state) {
         return (
-            <SettledCard header="Question" asked={title}>
+            <SettledCard header="Question" text={text}>
                 <Text variant="sm" color="secondary">
                     {state === 'preparing'
                         ? 'Stopping the agent…'

@@ -58,12 +58,21 @@
     background-color: var(--color-secondary-muted-border);
 }
 
-/* The question is a reminder of what was answered, so a long one stops at two lines. */
-.asked {
+/* The question is a reminder of what was answered, so a long one stops at two lines and its facts at three. */
+.asked,
+.described {
     display: -webkit-box;
     overflow: hidden;
+    overflow-wrap: anywhere;
     -webkit-box-orient: vertical;
+}
+
+.asked {
     -webkit-line-clamp: 2;
+}
+
+.described {
+    -webkit-line-clamp: 3;
 }
 
 /* Not a card: the question is in the box under the chat, so the stream only says where. */
