@@ -53,7 +53,7 @@ export class SkillsService {
             config.systemSkillsSource ?? defaultSystemSkillsSource(),
             config.dataDir
         ).dir;
-        config.systemSkillsDir = this.systemDir;
+        this.rebuildSystem();
         this.syncUser();
     }
 
@@ -89,21 +89,34 @@ export class SkillsService {
             this.watchProject(project);
         }
 
-        const { disabled, warning } = this.settings.read();
+        const { disabled, systemDisabled, warning } = this.settings.read();
 
         return buildCatalog({
             system: this.scanner.scan(join(this.systemDir, 'skills')),
             user: mergeUserSkills(this.userScans()),
             project: project ? this.projectScans(project) : [],
             disabled,
+            systemDisabled,
             warnings: warning ? [warning] : [],
         });
     }
 
-    /** Switches a user skill on or off for every run; `name` is the entry's name (`user:deploy`). */
+    /** Changes a user or system selection, or the global system switch (`clowdy:*`). */
     setEnabled(name: string, enabled: boolean): void {
         if (name.startsWith(`${SYSTEM_PLUGIN_NAME}:`)) {
-            throw invalid('System skills cannot be switched off');
+            const folder = name.slice(SYSTEM_PLUGIN_NAME.length + 1);
+
+            if (
+                folder !== '*' &&
+                !this.scanner.scan(join(this.systemDir, 'skills')).skills.some(skill => skill.folder === folder)
+            ) {
+                throw notFound('Skill', name);
+            }
+            if (this.settings.setEnabled(folder, enabled, true)) {
+                this.rebuildSystem();
+                this.announce(listProjects(this.store.db));
+            }
+            return;
         }
 
         if (!name.startsWith(`${USER_PLUGIN_NAME}:`)) {
@@ -120,6 +133,17 @@ export class SkillsService {
             this.rebuildMirror();
             this.announce(listProjects(this.store.db));
         }
+    }
+
+    private rebuildSystem(): void {
+        const { systemDisabled } = this.settings.read();
+        const disabled = systemDisabled.has('*')
+            ? new Set(this.scanner.scan(join(this.systemDir, 'skills')).skills.map(skill => skill.folder))
+            : systemDisabled;
+
+        this.config.systemSkillsDir = disabled.size
+            ? materializeSystemSkills(this.systemDir, this.config.dataDir, disabled).dir
+            : this.systemDir;
     }
 
     private userScans(): LabeledScan[] {

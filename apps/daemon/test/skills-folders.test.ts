@@ -250,12 +250,16 @@ describe('which user skills are on', () => {
         for (const damaged of ['{ not json', '{"disabled":"deploy"}', '[]']) {
             writeFileSync(join(dir, 'skills.json'), damaged);
 
-            expect(settings.read()).toEqual({ disabled: new Set(), warning: expect.stringContaining('skills.json') });
+            expect(settings.read()).toEqual({
+                disabled: new Set(),
+                systemDisabled: new Set(),
+                warning: expect.stringContaining('skills.json'),
+            });
         }
 
         settings.setEnabled('a', false);
 
-        expect(settings.read()).toEqual({ disabled: new Set(['a']) });
+        expect(settings.read()).toEqual({ disabled: new Set(['a']), systemDisabled: new Set() });
     });
 });
 

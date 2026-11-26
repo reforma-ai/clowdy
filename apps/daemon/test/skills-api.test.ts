@@ -199,6 +199,52 @@ describe('what the engines are given', () => {
 });
 
 describe('skills.setEnabled', () => {
+    test('system choices persist, control delivery and do not change user skills', async () => {
+        const user = tempDir();
+        writeSkill(user, 'docs');
+        const first = await start([user]);
+        const original = first.config.systemSkillsDir as string;
+        first.ok('skills.setEnabled', { name: 'clowdy:docs', enabled: false });
+        const filtered = first.config.systemSkillsDir as string;
+        expect(existsSync(join(filtered, 'skills', 'docs'))).toBe(false);
+        const orchestrate = readFileSync(join(filtered, 'skills', 'orchestrate', 'SKILL.md'), 'utf8');
+        expect(orchestrate).not.toContain('clowdy:docs');
+        expect(orchestrate).toContain('Check their claims against the code');
+        expect(orchestrate).toContain('Notes and findings on a task are left as comments');
+        expect(existsSync(join(original, 'skills', 'docs', 'SKILL.md'))).toBe(true);
+        expect(readdirSync(join((first.config.extraPluginDirs as string[])[0], 'skills'))).toEqual(['docs']);
+        first.ok('skills.setEnabled', { name: 'clowdy:*', enabled: false });
+        expect(readdirSync(join(first.config.systemSkillsDir as string, 'skills'))).toEqual([]);
+        await first.stop();
+        harnesses.length = 0;
+        const second = await restartHarness(first);
+        harnesses.push(second);
+        const catalog = await catalogOf(second);
+        expect(catalog.systemEnabled).toBe(false);
+        expect(catalog.entries.find(entry => entry.name === 'clowdy:docs')?.enabled).toBe(false);
+        expect(readdirSync(join(second.config.systemSkillsDir as string, 'skills'))).toEqual([]);
+        second.ok('skills.setEnabled', { name: 'clowdy:*', enabled: true });
+        expect(existsSync(join(second.config.systemSkillsDir as string, 'skills', 'docs'))).toBe(false);
+        second.ok('skills.setEnabled', { name: 'clowdy:docs', enabled: true });
+        expect(second.config.systemSkillsDir).toBe(original);
+        second.ok('skills.setEnabled', { name: 'clowdy:autopilot', enabled: false });
+        const mode = readFileSync(
+            join(second.config.systemSkillsDir as string, 'skills', 'orchestrate', 'SKILL.md'),
+            'utf8'
+        );
+        expect(mode).not.toContain('clowdy:autopilot');
+        expect(mode).toContain('clowdy:semi-manual for semi-manual mode');
+        expect(mode).toContain('The mode is fixed for the cycle');
+        second.ok('skills.setEnabled', { name: 'clowdy:autopilot', enabled: true });
+        second.ok('skills.setEnabled', { name: 'clowdy:orchestrate', enabled: false });
+        const thread = readFileSync(
+            join(second.config.systemSkillsDir as string, 'skills', 'thread', 'SKILL.md'),
+            'utf8'
+        );
+        expect(thread).toContain('description: Clowdy system skill');
+        expect(thread).not.toContain('clowdy:orchestrate');
+    });
+
     test('switches a user skill off and on, keeps it in skills.json, and rebuilds the plugin', async () => {
         const user = tempDir();
 
@@ -274,7 +320,7 @@ describe('skills.setEnabled', () => {
         ]);
     });
 
-    test('refuses what is not a user skill, with a reason', async () => {
+    test('refuses unknown and project skills, with a reason', async () => {
         const user = tempDir();
         const h = await start([user]);
         const project = h.openRepo();
@@ -282,9 +328,9 @@ describe('skills.setEnabled', () => {
         writeSkill(user, 'deploy');
         writeSkill(join(project.path, '.claude', 'skills'), 'review');
 
-        expect(h.send('skills.setEnabled', { name: 'clowdy:docs', enabled: false })).toMatchObject({
+        expect(h.send('skills.setEnabled', { name: 'clowdy:nope', enabled: false })).toMatchObject({
             ok: false,
-            error: { code: 'invalid', message: 'System skills cannot be switched off' },
+            error: { code: 'not_found' },
         });
         expect(h.send('skills.setEnabled', { name: 'review', enabled: false })).toMatchObject({
             ok: false,

@@ -23,6 +23,7 @@ import {
     backgroundStoppedMessage,
     CONTINUE_MESSAGE,
     lostBackgroundMessage,
+    skillAvailable,
     skillPrompt,
     systemPrompt,
 } from './prompts';
@@ -639,7 +640,14 @@ export class RunDriver {
             cwd,
             additionalDirectories: additionalFolders(project, cwd, ownChat?.workspace, terminalsDir),
             systemPrompt: [
-                systemPrompt(mode, project, cwd, chat && { ...chat, ...(workspace && { workspace }) }, terminalsDir),
+                systemPrompt(
+                    mode,
+                    project,
+                    cwd,
+                    chat && { ...chat, ...(workspace && { workspace }) },
+                    terminalsDir,
+                    config.systemSkillsDir
+                ),
                 skillPrompt(config.systemSkillsDir, chat?.parent !== undefined),
             ]
                 .filter(Boolean)
@@ -991,7 +999,11 @@ export class RunDriver {
             [work.nextPrompt, lostItems && lostBackgroundMessage(lostItems)].filter(Boolean).join('\n\n') ||
             CONTINUE_MESSAGE;
 
-        return { prompt, lost: lostItems !== undefined };
+        const delivered = skillAvailable(this.deps.config.systemSkillsDir, 'orchestrate')
+            ? prompt
+            : prompt.replace(/^Follow clowdy:orchestrate\. /, '');
+
+        return { prompt: delivered, lost: lostItems !== undefined };
     }
 
     /**

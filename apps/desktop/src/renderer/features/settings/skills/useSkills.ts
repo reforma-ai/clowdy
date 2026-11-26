@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { useRootStore } from '../../../stores';
 
-import type { ProjectId, SkillCatalog, SkillEntry } from '@clowdy/protocol';
+import type { ProjectId, SkillCatalog } from '@clowdy/protocol';
 
 export type SkillsState =
     | { status: 'loading' }
@@ -12,7 +12,7 @@ export type SkillsState =
 
 /**
  * The skills the daemon lists for the open project (or none), kept current: it loads again when the daemon
- * announces `skills.changed`, and after every switch. `toggle` switches a user skill and reports a refusal.
+ * announces `skills.changed`, and after every switch.
  */
 export function useSkills(projectId: ProjectId | undefined) {
     const root = useRootStore();
@@ -39,17 +39,17 @@ export function useSkills(projectId: ProjectId | undefined) {
     const reload = useCallback(() => setAttempt(count => count + 1), []);
 
     const toggle = useCallback(
-        async (skill: SkillEntry, enabled: boolean) => {
-            setPending(names => new Set(names).add(skill.name));
+        async (name: string, enabled: boolean) => {
+            setPending(names => new Set(names).add(name));
 
-            const result = await root.command({ type: 'skills.setEnabled', name: skill.name, enabled });
+            const result = await root.command({ type: 'skills.setEnabled', name, enabled });
 
             if (!result.ok) toast.error({ message: result.error.message });
 
             setPending(names => {
                 const rest = new Set(names);
 
-                rest.delete(skill.name);
+                rest.delete(name);
 
                 return rest;
             });
