@@ -50,9 +50,12 @@ export function WorktreeCardHeader({
             data-pending={card.pending || undefined}
             endAffix={
                 <span className={styles.worktreeActions} onClick={stop} onPointerDown={stop} onKeyDown={stop}>
-                    {activity && (
+                    {collapsed && activity && (
                         <span role="img" aria-label={activity === 'asking' ? 'Chats waiting for you' : 'Chats working'}>
-                            <StatusDot tone={activity === 'asking' ? 'accent' : 'success'} />
+                            <StatusDot
+                                className={styles.worktreeStatusDot}
+                                tone={activity === 'asking' ? 'accent' : 'success'}
+                            />
                         </span>
                     )}
                     <PopoverTrigger>
