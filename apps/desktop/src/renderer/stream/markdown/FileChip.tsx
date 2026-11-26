@@ -1,4 +1,5 @@
 import { FileIcon } from '@clowdy/components/FileIcon';
+import { For } from '@clowdy/components/For';
 import { Menu, MenuHeader, MenuItem, MenuSection } from '@clowdy/components/List';
 import { Popover, PopoverScroll, useContextMenu } from '@clowdy/components/Popover';
 import { Show } from '@clowdy/components/Show';
@@ -8,12 +9,22 @@ import { cn } from '@clowdy/lib';
 
 import { openInFiles } from '../../features/files/openInFiles';
 import { useKindOnDisk } from '../../features/files/useKindOnDisk';
-import { type OpenTarget, OpenWithMenu, openEffects, useFolderGit } from '../../features/openWith';
+import {
+    actionItem,
+    chosenPrograms,
+    OpenInSubmenu,
+    type OpenTarget,
+    OpenWithMenu,
+    openActions,
+    openEffects,
+    useFolderGit,
+    useOpenApps,
+} from '../../features/openWith';
 import { currentPlace, isSamePlace, placeOf } from '../../features/sidePanel/currentPlace';
 import chipStyles from '../../shared/Chip.module.css';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { chipLabelFromPath, isDirectoryPath, normalizeChipPath } from './chipPath';
-import { resolveChipTarget } from './chipTarget';
+import { isAbsolute, resolveChipTarget } from './chipTarget';
 
 import type { MouseEvent } from 'react';
 
@@ -74,21 +85,29 @@ function AbsentMenu({ target, onClose }: { target: OpenTarget; onClose: () => vo
     );
 }
 
-/** The menu of a path that is in no folder of the project: only what does not need a folder, the copy of the path as it was written. */
-function OutsideMenu({ path, onClose }: { path: string; onClose: () => void }) {
+/**
+ * The menu of a path that is in no folder of the project: what does not need a folder. The copy of the path as it was written, and for a full path (a drive letter or a leading
+ * slash) what leaves the app, as `Open in…` has it everywhere: the editor, the file manager (it shows a file), the terminal program (a folder only). The desktop app opens a path
+ * that is on the disk wherever it is, and says so with a toast when it is not. A path written from the project's folder that climbs out of it (`../a`) is not a place on the disk
+ * to open, so it has the copy only.
+ */
+function OutsideMenu({ path, kind, onClose }: { path: string; kind: OpenTarget['kind']; onClose: () => void }) {
+    const apps = useOpenApps();
+    const actions = openActions({
+        target: { path, relative: '', kind },
+        programs: isAbsolute(path) ? chosenPrograms(apps) : {},
+        effects: openEffects,
+    });
+    const run = (key: string) => {
+        onClose();
+        actions.find(action => action.id === key)?.run();
+    };
+
     return (
         <PopoverScroll>
-            <Menu
-                aria-label="File actions"
-                size="sm"
-                onAction={() => {
-                    onClose();
-                    openEffects.copy(path);
-                }}
-            >
-                <MenuItem id="copyPath" icon={<Copy aria-hidden="true" />} textValue="Copy path">
-                    Copy path
-                </MenuItem>
+            <Menu aria-label="File actions" size="sm" onAction={key => run(String(key))}>
+                <For each={actions.filter(action => action.group === 'copy')}>{actionItem}</For>
+                <OpenInSubmenu actions={actions.filter(action => action.group === 'outside')} onAction={run} />
             </Menu>
         </PopoverScroll>
     );
@@ -98,7 +117,8 @@ function OutsideMenu({ path, onClose }: { path: string; onClose: () => void }) {
  * A file or folder named in a message: its icon and name, the whole path on hover. A press opens it in the Files tab of the side panel; a right-click, a click with
  * ⌘ or Ctrl held, and a long touch (`installLongPressContextMenu`) open the menu of the path (`OpenWithMenu`: Open in Files, the editor, the file manager, GitHub, the copies of the path). A press
  * that has nothing to open (the file is not on the disk, the path is in a folder the window is not on, or in none of the project's) opens the same menu where the
- * pointer is, so there is always something to do with it; for a path that is not on the disk the menu says so and has only the copies of the path.
+ * pointer is, so there is always something to do with it; for a path that is not on the disk the menu says so and has only the copies of the path, and for one in no folder
+ * of the project it has the copy and `Open in…` (`OutsideMenu`), since the file is still there to show in the file manager.
  */
 export function FileChip({ path, lines, className }: FileChipProps) {
     const root = useRootStore();
@@ -159,7 +179,11 @@ export function FileChip({ path, lines, className }: FileChipProps) {
                     {target ? (
                         <TargetMenu target={target} onClose={contextMenu.close} />
                     ) : (
-                        <OutsideMenu path={clean} onClose={contextMenu.close} />
+                        <OutsideMenu
+                            path={clean}
+                            kind={isDirectoryPath(path) ? 'directory' : 'file'}
+                            onClose={contextMenu.close}
+                        />
                     )}
                 </Popover>
             </Show>

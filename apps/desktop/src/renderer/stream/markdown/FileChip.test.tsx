@@ -95,6 +95,7 @@ afterEach(() => {
     act(() => root.unmount());
     container.remove();
     store.dispose();
+    window.desktop = undefined;
 });
 
 describe('FileChip', () => {
@@ -324,5 +325,60 @@ describe('FileChip', () => {
         await act(async () => item('Copy path').click());
 
         expect(writeText).toHaveBeenCalledExactlyOnceWith('/Users/me/elsewhere/a.ts');
+    });
+
+    describe('in no folder of the project, in the desktop app', () => {
+        const openPath = vi.fn(async () => undefined);
+        const drawWithApps = async (path: string) => {
+            window.desktop = {
+                getOpenApps: async () => ({
+                    editors: [{ id: 'cursor', name: 'Cursor' }],
+                    terminals: [{ id: 'ghostty', name: 'Ghostty' }],
+                    fileManagers: [{ id: 'finder', name: 'Finder' }],
+                }),
+                openPath,
+            } as unknown as typeof window.desktop;
+            await draw(path);
+            await press();
+            await settle();
+        };
+        const submenu = () =>
+            [...document.body.querySelectorAll<HTMLElement>('[aria-label="Open in"] [role="menuitem"]')].map(
+                row => row.textContent
+            );
+
+        beforeEach(() => openPath.mockClear());
+
+        it('shows a file in the file manager, which is what the chip of a file outside the project is for', async () => {
+            await drawWithApps('/tmp/qc-shots/inset-panel.png');
+
+            expect(items()).toEqual(['Copy path', 'Open in…']);
+
+            await pressRow(item('Open in…'));
+
+            expect(submenu()).toEqual(['Open in Cursor', 'Show in Finder']);
+
+            await pressRow(item('Show in Finder'));
+
+            expect(openPath).toHaveBeenCalledExactlyOnceWith('/tmp/qc-shots/inset-panel.png', {
+                kind: 'fileManager',
+                id: 'finder',
+            });
+            expect(openInFiles).not.toHaveBeenCalled();
+        });
+
+        it('opens a folder in the file manager and the terminal program, and has no relative copy or GitHub', async () => {
+            await drawWithApps('/tmp/qc-shots/');
+            await pressRow(item('Open in…'));
+
+            expect(items().filter(text => text?.startsWith('Copy'))).toEqual(['Copy path']);
+            expect(submenu()).toEqual(['Open in Cursor', 'Open in Finder', 'Open in Ghostty']);
+        });
+
+        it('has only the copy for a path written from the folder that climbs out of it', async () => {
+            await drawWithApps('../elsewhere/a.png');
+
+            expect(items()).toEqual(['Copy path']);
+        });
     });
 });
