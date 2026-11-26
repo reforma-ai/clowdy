@@ -10,8 +10,10 @@ import { cn } from '@clowdy/lib';
 import { openInFiles } from '../../features/files/openInFiles';
 import { useKindOnDisk } from '../../features/files/useKindOnDisk';
 import {
+    absolutePath,
     actionItem,
     chosenPrograms,
+    type FolderGit,
     OpenInSubmenu,
     type OpenTarget,
     OpenWithMenu,
@@ -20,13 +22,17 @@ import {
     useFolderGit,
     useOpenApps,
 } from '../../features/openWith';
-import { currentPlace, isSamePlace, placeOf } from '../../features/sidePanel/currentPlace';
+import { currentPlace, isSamePlace, placeOf, placePath } from '../../features/sidePanel/currentPlace';
 import chipStyles from '../../shared/Chip.module.css';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
+import { findChipFiles, useFoundFiles } from './chipFind';
 import { chipLabelFromPath, isDirectoryPath, normalizeChipPath } from './chipPath';
 import { isAbsolute, resolveChipTarget } from './chipTarget';
 
 import type { MouseEvent } from 'react';
+
+/** How many of the files a written path could mean are listed to choose from. */
+const MATCHES_SHOWN = 10;
 
 export interface FileChipProps {
     /** A path inside the project, as an agent or a person wrote it. */
@@ -39,13 +45,13 @@ export interface FileChipProps {
 /**
  * The menu of a path that is in a folder of the project: the same as everywhere (`OpenWithMenu`), with the git facts of its folder read when it opens. A path
  * written with no trailing slash is taken for a file until the disk says it is a folder (the terminal, `Open in Finder` and the `/tree/` page of GitHub follow).
- * When the disk says the path is not there, nothing in that menu could work on it, so it gives way to `AbsentMenu`.
+ * When the disk says the path is not there, nothing in that menu could work on it, so it gives way to `MissingMenu`.
  */
 function TargetMenu({ target, onClose }: { target: OpenTarget; onClose: () => void }) {
     const git = useFolderGit(target.projectId, target.folder.id, target.workspace);
     const kind = useKindOnDisk(target.projectId, target, target.relative);
 
-    if (kind === null) return <AbsentMenu target={target} onClose={onClose} />;
+    if (kind === null) return <MissingMenu target={target} git={git} onClose={onClose} />;
 
     return (
         <OpenWithMenu
@@ -57,8 +63,87 @@ function TargetMenu({ target, onClose }: { target: OpenTarget; onClose: () => vo
     );
 }
 
-/** The menu of a path that is not on the disk (an agent named a file it has not made, or one that was moved): it says so, and keeps the copies of the path, the one thing that still works. */
-function AbsentMenu({ target, onClose }: { target: OpenTarget; onClose: () => void }) {
+/**
+ * The menu of a path that is not on the disk. A message often names a file by its name alone (`FileChip.tsx`), which is not in the folder's root though the file is in the
+ * project, so the files that end with the written path are looked for (`useFoundFiles`): one of them is the file, and it gets the menu of any file (`OpenWithMenu`); several are
+ * listed to choose from (`MatchesMenu`); none, or a place the window is not on, leaves `AbsentMenu`.
+ */
+function MissingMenu({
+    target,
+    git,
+    onClose,
+}: {
+    target: OpenTarget;
+    git: FolderGit | undefined;
+    onClose: () => void;
+}) {
+    const project = useProjectState();
+    const ui = useProjectUi();
+    const isHere = isSamePlace(currentPlace(project, ui), placeOf(target));
+    const found = useFoundFiles(target, isHere);
+
+    if (found?.length === 1) {
+        const relative = found[0]!;
+
+        return (
+            <OpenWithMenu
+                target={{ ...target, path: absolutePath(placePath(target), relative), relative, kind: 'file' }}
+                git={git}
+                onClose={onClose}
+                aria-label="File actions"
+            />
+        );
+    }
+
+    if (found && found.length > 1) return <MatchesMenu target={target} found={found} onClose={onClose} />;
+
+    return <AbsentMenu target={target} isLooking={found === undefined} onClose={onClose} />;
+}
+
+/** The files that a written path could mean, one row each, the first few of them; pressing a row opens that file in the Files tab. */
+function MatchesMenu({ target, found, onClose }: { target: OpenTarget; found: string[]; onClose: () => void }) {
+    const root = useRootStore();
+
+    return (
+        <PopoverScroll>
+            <Menu
+                aria-label="File actions"
+                size="sm"
+                onAction={key => {
+                    onClose();
+                    void openInFiles(root, target.projectId, placeOf(target), String(key)).then(
+                        opened => !opened && toast.error({ message: 'Couldn’t open this path' })
+                    );
+                }}
+            >
+                <MenuSection aria-label="Files">
+                    <MenuHeader>Several files match</MenuHeader>
+                    <For each={found.slice(0, MATCHES_SHOWN)}>
+                        {path => (
+                            <MenuItem key={path} id={path} icon={<FileIcon path={path} kind="file" />} textValue={path}>
+                                {path}
+                            </MenuItem>
+                        )}
+                    </For>
+                </MenuSection>
+            </Menu>
+        </PopoverScroll>
+    );
+}
+
+/**
+ * The menu of a path that is not on the disk and that no file of the project ends with (an agent named a file it has not made, or one that was moved): it says so, and keeps the
+ * copies of the path, the one thing that still works. While the project is searched for it, it says that instead.
+ */
+function AbsentMenu({
+    target,
+    isLooking = false,
+    onClose,
+}: {
+    target: OpenTarget;
+    isLooking?: boolean;
+    onClose: () => void;
+}) {
     return (
         <PopoverScroll>
             <Menu
@@ -70,7 +155,11 @@ function AbsentMenu({ target, onClose }: { target: OpenTarget; onClose: () => vo
                 }}
             >
                 <MenuSection aria-label="Path">
-                    <MenuHeader>{`This ${target.kind === 'directory' ? 'folder' : 'file'} doesn't exist`}</MenuHeader>
+                    <MenuHeader>
+                        {isLooking
+                            ? 'Looking for this file'
+                            : `This ${target.kind === 'directory' ? 'folder' : 'file'} doesn't exist`}
+                    </MenuHeader>
                     <MenuItem id="copyPath" icon={<Copy aria-hidden="true" />} textValue="Copy path">
                         Copy path
                     </MenuItem>
@@ -117,8 +206,9 @@ function OutsideMenu({ path, kind, onClose }: { path: string; kind: OpenTarget['
  * A file or folder named in a message: its icon and name, the whole path on hover. A press opens it in the Files tab of the side panel; a right-click, a click with
  * ⌘ or Ctrl held, and a long touch (`installLongPressContextMenu`) open the menu of the path (`OpenWithMenu`: Open in Files, the editor, the file manager, GitHub, the copies of the path). A press
  * that has nothing to open (the file is not on the disk, the path is in a folder the window is not on, or in none of the project's) opens the same menu where the
- * pointer is, so there is always something to do with it; for a path that is not on the disk the menu says so and has only the copies of the path, and for one in no folder
- * of the project it has the copy and `Open in…` (`OutsideMenu`), since the file is still there to show in the file manager.
+ * pointer is, so there is always something to do with it. A file that is not at the written path is looked for in the folder (`findChipFiles`): when one file ends with the path
+ * (a bare `FileChip.tsx`) the press opens it, when several do the menu lists them (`MatchesMenu`), when none does the menu says so and has only the copies of the path. A path
+ * in no folder of the project has the copy and `Open in…` (`OutsideMenu`), since the file is still there to show in the file manager.
  */
 export function FileChip({ path, lines, className }: FileChipProps) {
     const root = useRootStore();
@@ -150,11 +240,19 @@ export function FileChip({ path, lines, className }: FileChipProps) {
 
         // The tab shows the place the window works in (the folder, or the open chat's worktree): a path in another folder of the project, or in the folder's own checkout
         // while the chat works in a worktree, is not there to open.
-        const opened =
-            target && isSamePlace(target, current) && (await openInFiles(root, project.id, current, target.relative));
+        const isHere = target !== undefined && isSamePlace(target, current);
+        const opened = isHere && (await openInFiles(root, project.id, current, target.relative));
 
         if (!opened) {
-            if (target && isSamePlace(target, current)) toast.error({ message: 'Couldn’t open this path' });
+            // A file that is not where the message wrote it may be deeper in the folder (a bare name): one such file is the one meant and is opened, several are the menu's to list.
+            const found =
+                isHere && target.kind === 'file'
+                    ? await findChipFiles(root, project.id, current, target.relative).catch(() => [])
+                    : [];
+
+            if (found.length === 1 && (await openInFiles(root, project.id, current, found[0]!))) return;
+
+            if (isHere && found.length < 2) toast.error({ message: 'Couldn’t open this path' });
             contextMenu.openAt(x, y);
         }
     };
