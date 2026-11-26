@@ -182,13 +182,12 @@ export class ProjectUi {
     chatOrder: readonly ChatId[] = [];
     /**
      * Agents: the list has a group for each folder of the project, each with a new-chat button that starts a chat in that folder. On until the person turns
-     * it off (a project that kept no choice groups); off, the list is flat and a new chat starts in the main folder. Only a project with several folders
-     * groups, whatever is kept here.
+     * it off (a project that kept no choice groups); off, the list is flat and a new chat starts in the main folder.
      */
     groupByFolder = true;
     /** Agents: the folders whose group is folded in the list. A folder that is not here is open, which is how every group starts. */
     collapsedFolders: readonly FolderId[] = [];
-    groupByWorktree = false;
+    groupByWorktree = true;
     worktreeOrder: readonly string[] = [];
     collapsedWorktrees: readonly string[] = [];
     /** The side panel at the right of the window is open for this project. Closed until the person opens it, and kept for the project, whichever chat is on show. */
@@ -272,7 +271,8 @@ export class ProjectUi {
             this.collapsedFolders = Array.isArray(stored.collapsedFolders)
                 ? stored.collapsedFolders.filter(id => typeof id === 'string')
                 : [];
-            this.groupByWorktree = stored.groupByWorktree === true;
+            this.groupByWorktree =
+                typeof stored.groupByWorktree === 'boolean' ? stored.groupByWorktree : stored.groupByFolder !== false;
             const strings = (value: unknown): string[] =>
                 Array.isArray(value) ? [...new Set(value.filter(id => typeof id === 'string'))] : [];
             this.worktreeOrder = strings(stored.worktreeOrder);
@@ -301,6 +301,8 @@ export class ProjectUi {
         }
 
         Object.assign(this, initialView);
+        if (initialView.groupByFolder === false && initialView.groupByWorktree === undefined)
+            this.groupByWorktree = false;
         // The old worktree-only layout becomes the nested layout, which keeps its worktree cards visible.
         if (this.groupByWorktree) this.groupByFolder = true;
         makeAutoObservable(this, {
