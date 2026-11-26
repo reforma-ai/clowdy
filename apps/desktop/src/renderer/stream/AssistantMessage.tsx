@@ -7,6 +7,8 @@ import { SwipeHint } from './SwipeHint';
 import { useSwipeReply } from './useSwipeReply';
 
 export interface AssistantMessageProps {
+    /** The stream item, for restoring the reading position across chat switches. */
+    itemId?: string;
     text: string;
     /** The text is still arriving. */
     streaming?: boolean;
@@ -20,13 +22,13 @@ export interface AssistantMessageProps {
  * What an agent wrote: its text, which is Markdown, across the width, with a row of actions under it when it is given one. The root is marked
  * `data-message`: a selection is quoted by `SelectionReply` only when it lies inside one such element.
  */
-export function AssistantMessage({ text, streaming, at, actions }: AssistantMessageProps) {
+export function AssistantMessage({ itemId, text, streaming, at, actions }: AssistantMessageProps) {
     // A swipe is the Reply button's other way in: it needs the same handler and words.
     const swipes = Boolean(actions?.onReply && actions.swipeToReply && text.trim() !== '');
     const message = useSwipeReply<HTMLDivElement>({ enabled: swipes, onReply: () => actions?.onReply?.(text) });
 
     return (
-        <div ref={message} className={styles.message} data-message="">
+        <div ref={message} className={styles.message} data-message="" data-scroll-anchor={itemId}>
             {/* Before the row of actions, which stays the last child of the message (see `MessageActions`). */}
             <Show when={swipes}>
                 <SwipeHint />

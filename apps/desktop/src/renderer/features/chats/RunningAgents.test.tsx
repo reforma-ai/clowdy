@@ -297,18 +297,21 @@ describe('RunningAgents, folding the rows', () => {
         await act(async () => title.click());
         await draw();
 
-        expect(ui().agentsFolded).toBe(true);
+        expect(ui().agentsFolded('c-1')).toBe(true);
         expect(lines()).toEqual([header()]);
         expect(header()!.textContent).toBe('Agents2 running');
         expect(toggle().getAttribute('aria-expanded')).toBe('false');
         expect(toggle().textContent).toBe('Agents2 running');
     });
 
-    it('shows the rows again from the chevron, and keeps the fold for every chat of the project', async () => {
+    it('shows the rows again from the chevron, and keeps the fold for that chat alone', async () => {
         await draw();
         await act(async () => toggle().click());
         await draw('c-6');
 
+        expect(toggle().getAttribute('aria-expanded')).toBe('true');
+        await act(async () => toggle().click());
+        await draw('c-6');
         expect(lines()).toEqual([header()]);
         expect(header()!.textContent).toBe('Agents2 running');
 
@@ -319,7 +322,7 @@ describe('RunningAgents, folding the rows', () => {
         );
         await draw('c-6');
 
-        expect(ui().agentsFolded).toBe(false);
+        expect(ui().agentsFolded('c-6')).toBe(false);
         expect(
             rows().map(
                 row =>
@@ -330,6 +333,32 @@ describe('RunningAgents, folding the rows', () => {
                         .split('.')[0] ?? row.textContent?.split(', ')[0]
             )
         ).toEqual(['Fix the price rounding', 'Load test the checkout']);
+
+        await draw('c-1');
+        expect(toggle().getAttribute('aria-expanded')).toBe('false');
+        expect(lines()).toEqual([header()]);
+    });
+
+    it('starts another chat folded, and restores an expanded chat when returning to it', async () => {
+        store.dispose();
+        store = new RootStore(new FixtureTransport({ data }), { storage: memoryStorage() });
+        await store.load();
+        await draw('c-1');
+        expect(toggle().getAttribute('aria-expanded')).toBe('false');
+        expect(rows()).toEqual([]);
+
+        await act(async () => toggle().click());
+        await draw('c-1');
+        expect(toggle().getAttribute('aria-expanded')).toBe('true');
+        expect(rows()).toHaveLength(2);
+
+        await draw('c-6');
+        expect(toggle().getAttribute('aria-expanded')).toBe('false');
+        expect(rows()).toEqual([]);
+
+        await draw('c-1');
+        expect(toggle().getAttribute('aria-expanded')).toBe('true');
+        expect(rows()).toHaveLength(2);
     });
 
     it('keeps the commands section independent of the agents fold', async () => {
@@ -337,7 +366,7 @@ describe('RunningAgents, folding the rows', () => {
             ...runs().get('r-orch-1')!,
             background: [{ id: 'bg-1', kind: 'command', title: 'command 1', canStopAlone: true }],
         });
-        ui().toggleAgentsFolded();
+        ui().toggleAgentsFolded('c-1');
         await draw();
         expect(rows().map(row => row.textContent)).toEqual(['Command: command 1Stop']);
 
@@ -634,7 +663,7 @@ describe('RunningAgents, threads', () => {
 
     it('keeps a thread that waits for the person on the folded line, and folds the thread that works away', async () => {
         put({ ...runs().get('r-orch-6e')!, awaitingUser: true });
-        ui().toggleAgentsFolded();
+        ui().toggleAgentsFolded('c-6');
         await draw('c-6');
 
         expect(rows().map(row => buttons(row))).toEqual([

@@ -18,6 +18,7 @@ import styles from './ChatView.module.css';
 import { Composer, type ComposerHandle } from './Composer';
 import { canCompactChat, chatProvider, chatWritability, handoffAgents } from './chatProvider';
 import { isRunActive, liveLine, overflowed } from './chatRun';
+import { chatScrollMemory } from './chatScrollMemory';
 import { perform } from './commands';
 import { composerBannerPreferences } from './composerBannerPreferences';
 import { LastRunPlate } from './LastRunPlate';
@@ -46,6 +47,7 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
     const root = useRootStore();
     const project = useProjectState();
     const ui = useProjectUi();
+    const scrollMemory = useMemo(() => chatScrollMemory(ui, chat.id), [ui, chat.id]);
     const skillOfName = useSkillLookup();
     // A task key in a message is a chip that opens the task, an archived one the window knows too (`ProjectState.taskOfKey`); a skill it asks for is a chip too; a thread's card opens that thread.
     const links = useMemo(
@@ -74,7 +76,7 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
     const overlayContent = useRef<HTMLDivElement>(null);
     const banners = useRef<HTMLDivElement>(null);
     const overlayAtBottom = useRef(true);
-    const [composerInset, setComposerInset] = useState(0);
+    const [composerInset, setComposerInset] = useState<number>();
     const [composerSurfaceInset, setComposerSurfaceInset] = useState(0);
     const measureOverlay = useCallback(() => {
         const element = overlay.current;
@@ -163,9 +165,10 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
                 </div>
             )}
 
-            {(!stream || stream.status === 'ready') && (
+            {composerInset !== undefined && (!stream || stream.status === 'ready') && (
                 <StreamView
                     ref={streamView}
+                    scrollMemory={scrollMemory}
                     composerInset={composerInset}
                     composerSurfaceInset={composerSurfaceInset}
                     items={items}

@@ -2,6 +2,8 @@
 
 ## Decisions
 
+- [Remember each chat's reading state](decisions/2026-11-25-chat-reading-state.md) records separate running-agent folds and session-only reading positions. Status: accepted.
+
 - [Chat mentions](decisions/2026-11-25-chat-mentions.md) records the project-wide chat picker, stable references, and on-demand read-only history. Status: accepted.
 
 - [Changes tab icon and dot in the rail](decisions/2026-11-25-changes-tab-rail-indicator.md) records that the tab's icon shows the stage of the work and a yellow dot marks uncommitted files. Status: accepted.
@@ -34,6 +36,8 @@
 - [CI: red runs and run time](decisions/2026-11-25-ci-red-runs-and-speed.md) records that CI stays a report for now, how the red tests are sorted and fixed, and how the gate and the Windows release tests get faster. Status: accepted.
 
 ## Checks
+
+- [Chat reading state](checks/2026-11-25-chat-reading-state.md) covers independent agent folds, scroll restoration, message growth and latest-message following. Status: passed.
 
 - [Chat mentions](checks/2026-11-25-chat-mentions.md) covers searching, sending and opening chat references in Electron and the read-only history command. Status: passed with limits.
 

@@ -25,7 +25,7 @@ import {
     threadsAtWork,
 } from './runningAgentRows';
 
-import type { BackgroundItem, Chat, Run, RunId } from '@clowdy/protocol';
+import type { BackgroundItem, Chat, ChatId, Run, RunId } from '@clowdy/protocol';
 
 function elapsedSince(startedAt: number | undefined, now: number): string | undefined {
     if (startedAt === undefined || !Number.isFinite(startedAt) || startedAt > now) return undefined;
@@ -112,13 +112,13 @@ function ThreadRow({ chat, run, now }: ThreadAtWork & { now: number }) {
     );
 }
 
-function AgentsHeader({ count }: { count: number }) {
+function AgentsHeader({ chatId, count }: { chatId: ChatId; count: number }) {
     const ui = useProjectUi();
 
     return (
         <ComposerBannerHeader
-            expanded={!ui.agentsFolded}
-            onPress={() => ui.toggleAgentsFolded()}
+            expanded={!ui.agentsFolded(chatId)}
+            onPress={() => ui.toggleAgentsFolded(chatId)}
             summary={
                 <Text variant="xs" color="secondary">
                     {count} running
@@ -203,7 +203,7 @@ export function RunningAgents({ chat }: { chat: Chat }) {
     const orchestrator = chat.orchestratorRunId === undefined ? undefined : project.runs.get(chat.orchestratorRunId);
     // A sub-agent with a child run is one of the rows above, and is not counted again here; a command that can be stopped alone has a row of its own.
     const { own, counted: background } = backgroundRows(openBackground(orchestrator), agents);
-    const folded = ui.agentsFolded && rows.length > 0;
+    const folded = ui.agentsFolded(chat.id) && rows.length > 0;
     // A fold hides what goes on, not what waits for the person.
     const drawn = drawnRows(rows, folded);
 
@@ -211,7 +211,7 @@ export function RunningAgents({ chat }: { chat: Chat }) {
 
     return (
         <ComposerBanner role="group" aria-label="Work in progress">
-            {rows.length > 0 && <AgentsHeader count={rows.length} />}
+            {rows.length > 0 && <AgentsHeader chatId={chat.id} count={rows.length} />}
             {drawn.length > 0 && (
                 <div className={styles.agentRows}>
                     {drawn.map(row => (

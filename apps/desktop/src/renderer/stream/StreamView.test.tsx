@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StreamView, type StreamViewProps } from './StreamView';
+import styles from './StreamView.module.css';
 import { SWIPE } from './swipeReply';
 
 import type { StreamItem, StreamItemBody } from '@clowdy/protocol';
@@ -141,6 +142,113 @@ describe('composer overlay', () => {
             resize();
             expect(top).toBe(300);
         } finally {
+            globalThis.ResizeObserver = original;
+        }
+    });
+});
+
+describe('chat reading position', () => {
+    it('saves an older position on unmount and restores it on the next mount', async () => {
+        let saved: ReturnType<NonNullable<StreamViewProps['scrollMemory']>['read']>;
+        const memory: NonNullable<StreamViewProps['scrollMemory']> = {
+            read: () => saved,
+            write: position => {
+                saved = position;
+            },
+        };
+        const draw = () => act(async () => root.render(<StreamView items={items} scrollMemory={memory} />));
+
+        await draw();
+        const scroll = container.querySelector<HTMLElement>('[data-stick-at-bottom]')!;
+        Object.defineProperties(scroll, {
+            clientHeight: { value: 400 },
+            scrollHeight: { value: 1200 },
+        });
+        scroll.scrollTop = 240;
+        await act(async () => root.render(null));
+        expect(saved).toEqual({ top: 240 });
+
+        await draw();
+        const returned = container.querySelector<HTMLElement>('[data-stick-at-bottom]')!;
+        expect(returned.scrollTop).toBe(240);
+    });
+
+    it('follows growth after returning to the latest messages, but not after returning to an older position', async () => {
+        const observers: ResizeObserverCallback[] = [];
+        const original = globalThis.ResizeObserver;
+        globalThis.ResizeObserver = class {
+            constructor(callback: ResizeObserverCallback) {
+                observers.push(callback);
+            }
+            observe() {}
+            unobserve() {}
+            disconnect() {}
+        };
+        let height = 1200;
+        const viewportHeight = 400;
+        const positions = new WeakMap<HTMLElement, number>();
+        const scrollHeight = vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function (
+            this: HTMLElement
+        ) {
+            return this.classList.contains(styles.scroll) ? height : 0;
+        });
+        const clientHeight = vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function (
+            this: HTMLElement
+        ) {
+            return this.classList.contains(styles.scroll) ? viewportHeight : 0;
+        });
+        const scrollTop = vi.spyOn(HTMLElement.prototype, 'scrollTop', 'get').mockImplementation(function (
+            this: HTMLElement
+        ) {
+            return positions.get(this) ?? 0;
+        });
+        const setScrollTop = vi.spyOn(HTMLElement.prototype, 'scrollTop', 'set').mockImplementation(function (
+            this: HTMLElement,
+            top: number
+        ) {
+            positions.set(this, Math.max(0, Math.min(top, height - viewportHeight)));
+        });
+        try {
+            let saved: ReturnType<NonNullable<StreamViewProps['scrollMemory']>['read']>;
+            const memory: NonNullable<StreamViewProps['scrollMemory']> = {
+                read: () => saved,
+                write: position => {
+                    saved = position;
+                },
+            };
+            const draw = () => act(async () => root.render(<StreamView items={items} scrollMemory={memory} />));
+            const scroll = () => container.querySelector<HTMLElement>(`.${styles.scroll}`)!;
+            const close = () => act(async () => root.render(null));
+            const resize = () => act(() => observers.at(-1)?.([], {} as ResizeObserver));
+
+            await draw();
+            expect(scroll().scrollTop).toBe(800);
+            scroll().scrollTop = 780;
+            await close();
+            expect(saved).toBeUndefined();
+
+            height = 1400;
+            await draw();
+            expect(scroll().scrollTop).toBe(1000);
+            height = 1600;
+            resize();
+            expect(scroll().scrollTop).toBe(1200);
+
+            scroll().scrollTop = 350;
+            await close();
+            expect(saved).toEqual({ top: 350 });
+            height = 1800;
+            await draw();
+            expect(scroll().scrollTop).toBe(350);
+            height = 2000;
+            resize();
+            expect(scroll().scrollTop).toBe(350);
+            await close();
+        } finally {
+            scrollHeight.mockRestore();
+            clientHeight.mockRestore();
+            setScrollTop.mockRestore();
+            scrollTop.mockRestore();
             globalThis.ResizeObserver = original;
         }
     });
