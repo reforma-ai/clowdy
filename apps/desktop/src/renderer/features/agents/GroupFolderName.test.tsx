@@ -122,6 +122,7 @@ describe("the menu of a folder group's title", () => {
             root: store,
             projectId: FIXTURE_PROJECT_ID,
             folderId: API.id,
+            initialTab: 'settings',
         });
     });
 
@@ -133,6 +134,7 @@ describe("the menu of a folder group's title", () => {
             root: store,
             projectId: FIXTURE_PROJECT_ID,
             folderId: CAR_RENTAL.id,
+            initialTab: 'settings',
         });
     });
 

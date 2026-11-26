@@ -124,6 +124,7 @@ export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
                                                 root,
                                                 projectId: project.id,
                                                 folderId: target.folder.id,
+                                                initialTab: 'settings',
                                             })
                                         }
                                     />

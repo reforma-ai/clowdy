@@ -7,7 +7,8 @@ import { Text } from '@clowdy/components/Text';
 import { Textarea } from '@clowdy/components/Textarea';
 import { AttentionCircle } from '@clowdy/icons/14';
 import { folderNames } from '@clowdy/protocol';
-import { type FormEvent, useEffect, useId, useState } from 'react';
+import { reaction } from 'mobx';
+import { type FormEvent, useEffect, useId, useState, useSyncExternalStore } from 'react';
 
 import { RootStoreProvider } from '../../../stores';
 import { FolderWorktreesList } from '../../worktrees/FolderWorktreesList';
@@ -24,16 +25,46 @@ export interface FolderWorkspaceDialogProps {
     folderId: FolderId;
     /** The folder's short name among the project's folders, for the heading. */
     name: string;
+    initialTab?: 'settings' | 'worktrees';
 }
 
-/**
- * "Workspace" of one folder of a project: what the worktrees made from it start from and need. A base branch (empty: the repository's default
- * branch), the files copied from the folder into a new worktree, one path per line (`.env`), and a command that runs in it afterwards (`bun install`).
- * They belong to this folder of this project, whose folders are different repositories. The form reads the folder by its id each time it is
- * drawn, so a folder that left the project meanwhile is said so and cannot be saved. No `title` option: the heading is drawn in the form,
- * and the window's own close button floats at the corner.
- */
+interface FolderDraftState {
+    folderName: string;
+    fields: WorkspaceFields;
+    saving: boolean;
+}
+
+/** One draft and pending-save state for the lifetime of the modal, across native tab remounts. */
+function createFolderDraft(initial: FolderDraftState) {
+    let state = initial;
+    const listeners = new Set<() => void>();
+
+    return {
+        getSnapshot: () => state,
+        subscribe: (listener: () => void) => {
+            listeners.add(listener);
+            return () => listeners.delete(listener);
+        },
+        update: (patch: Partial<FolderDraftState>) => {
+            state = { ...state, ...patch };
+            for (const listener of listeners) listener();
+        },
+    };
+}
+
+type FolderDraft = ReturnType<typeof createFolderDraft>;
+
+/** Opens folder settings and worktrees in one window with native modal tabs. */
 export function openFolderWorkspace(props: FolderWorkspaceDialogProps): void {
+    const folder = props.root.projects
+        .find(project => project.id === props.projectId)
+        ?.folders.find(folder => folder.id === props.folderId);
+    const draft = createFolderDraft({
+        folderName: folder?.settings?.name ?? '',
+        fields: workspaceFields(folder?.settings),
+        saving: false,
+    });
+
     Modal.create({
         width: 540,
         shadow: true,
@@ -41,15 +72,50 @@ export function openFolderWorkspace(props: FolderWorkspaceDialogProps): void {
         closeOnEscape: true,
         closeButton: true,
         handle: false,
-        component: (
-            <RootStoreProvider value={props.root}>
-                <FolderWorkspaceForm {...props} />
-            </RootStoreProvider>
-        ),
+        activeTab: props.initialTab ?? 'settings',
+        tabs: [
+            {
+                id: 'settings',
+                title: 'Settings',
+                component: (
+                    <RootStoreProvider value={props.root}>
+                        <FolderWorkspaceForm {...props} draft={draft} />
+                    </RootStoreProvider>
+                ),
+            },
+            {
+                id: 'worktrees',
+                title: 'Worktrees',
+                component: (
+                    <RootStoreProvider value={props.root}>
+                        <FolderWorktreesTab {...props} draft={draft} />
+                    </RootStoreProvider>
+                ),
+            },
+        ],
     });
 }
 
-function FolderWorkspaceForm({ root, projectId, folderId, name }: FolderWorkspaceDialogProps) {
+type FolderTabProps = FolderWorkspaceDialogProps & { draft: FolderDraft };
+
+function FolderWorktreesTab({ root, projectId, folderId, draft }: FolderTabProps) {
+    const project = root.projects.find(candidate => candidate.id === projectId);
+    const saved = project?.folders.find(candidate => candidate.id === folderId)?.settings;
+    const { fields, folderName, saving } = useSyncExternalStore(draft.subscribe, draft.getSnapshot);
+    const pendingChanges = !isWorkspaceSaved(fields, saved) || folderName.trim() !== (saved?.name ?? '');
+
+    return (
+        <div className={styles.form}>
+            <FolderWorktreesList
+                projectId={projectId}
+                folderId={folderId}
+                pendingChanges={!project?.personal && (pendingChanges || saving)}
+            />
+        </div>
+    );
+}
+
+function FolderWorkspaceForm({ root, projectId, folderId, name, draft }: FolderTabProps) {
     const { modal } = useModalContext();
     const filesId = useId();
     const filesHintId = useId();
@@ -66,11 +132,22 @@ function FolderWorkspaceForm({ root, projectId, folderId, name }: FolderWorkspac
                     : candidate
             )
         )[project.folders.findIndex(candidate => candidate.id === folderId)];
-    const [folderName, setFolderName] = useState(() => folder?.settings?.name ?? '');
-    const [fields, setFields] = useState<WorkspaceFields>(() => workspaceFields(folder?.settings));
+    const { folderName, fields, saving: isPending } = useSyncExternalStore(draft.subscribe, draft.getSnapshot);
     const [git, setGit] = useState<FolderGit>();
-    const [isPending, setIsPending] = useState(false);
-    const change = (patch: Partial<WorkspaceFields>) => setFields(current => ({ ...current, ...patch }));
+    const change = (patch: Partial<WorkspaceFields>) =>
+        draft.update({ fields: { ...draft.getSnapshot().fields, ...patch } });
+
+    useEffect(
+        () =>
+            reaction(
+                () => root.projects.some(candidate => candidate.id === projectId),
+                present => {
+                    if (!present) modal.cancel();
+                },
+                { fireImmediately: true }
+            ),
+        [root, projectId, modal]
+    );
 
     // What the repository has, for the placeholder and the note about a branch it lacks. A folder git cannot be asked about shows neither.
     useEffect(() => {
@@ -103,9 +180,9 @@ function FolderWorkspaceForm({ root, projectId, folderId, name }: FolderWorkspac
     const submit = async (event: FormEvent) => {
         event.preventDefault();
 
-        if (!canSubmit || isPending) return;
+        if (!canSubmit || draft.getSnapshot().saving) return;
 
-        setIsPending(true);
+        draft.update({ saving: true });
 
         const done = await setFolderSettings(
             root,
@@ -117,7 +194,7 @@ function FolderWorkspaceForm({ root, projectId, folderId, name }: FolderWorkspac
             }
         );
 
-        setIsPending(false);
+        draft.update({ saving: false });
 
         if (done) modal.cancel();
     };
@@ -127,7 +204,7 @@ function FolderWorkspaceForm({ root, projectId, folderId, name }: FolderWorkspac
             <form className={styles.fields} onSubmit={event => void submit(event)}>
                 <div className={styles.heading}>
                     <Text variant="heading-3" truncate>{`Settings of ${name}`}</Text>
-                    <Text color="secondary">Name, worktree setup and worktrees of this folder</Text>
+                    <Text color="secondary">Name and worktree setup of this folder</Text>
                 </div>
 
                 {project?.personal ? (
@@ -141,7 +218,7 @@ function FolderWorkspaceForm({ root, projectId, folderId, name }: FolderWorkspac
                                 type="text"
                                 aria-label="Folder name"
                                 value={folderName}
-                                onChange={setFolderName}
+                                onChange={folderName => draft.update({ folderName })}
                                 placeholder={defaultName ?? name}
                                 maxLength={100}
                                 autoFocus
@@ -240,11 +317,6 @@ function FolderWorkspaceForm({ root, projectId, folderId, name }: FolderWorkspac
                     </>
                 )}
             </form>
-            <FolderWorktreesList
-                projectId={projectId}
-                folderId={folderId}
-                pendingChanges={!project?.personal && pendingChanges}
-            />
         </div>
     );
 }

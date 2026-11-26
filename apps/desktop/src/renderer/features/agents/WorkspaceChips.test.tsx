@@ -763,6 +763,7 @@ describe('Folder settings…', () => {
             root: store,
             projectId: FIXTURE_PROJECT_ID,
             folderId: 'fld_car_rental',
+            initialTab: 'settings',
         });
         expect(menuItems()).toEqual([]);
     });
@@ -801,6 +802,7 @@ describe('Folder settings…', () => {
             root: store,
             projectId: FIXTURE_PROJECT_ID,
             folderId: API.id,
+            initialTab: 'settings',
         });
     });
 
@@ -848,12 +850,12 @@ describe('Folder settings…', () => {
             await new Promise(resolve => setTimeout(resolve, 400));
         });
 
-        expect(document.body.textContent).toContain('Name, worktree setup and worktrees of this folder');
+        expect(document.body.textContent).toContain('Name and worktree setup of this folder');
         expect(document.activeElement).not.toBe(chip());
 
         await key(document.activeElement as HTMLElement, 'Escape', 'Escape');
         await vi.waitFor(() => expect(document.activeElement).toBe(chip()));
-        expect(document.body.textContent).not.toContain('Name, worktree setup and worktrees of this folder');
+        expect(document.body.textContent).not.toContain('Name and worktree setup of this folder');
     });
 
     it('is in the menu of a repository with no commit too, where a new worktree is off', async () => {
