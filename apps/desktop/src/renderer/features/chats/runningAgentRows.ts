@@ -51,18 +51,15 @@ export function unlistedBackground(
 }
 
 /**
- * Splits the background items no agent row shows into the ones that get a row of their own and the ones the single background row counts. An item gets its
- * own row for each command and each task that the agent lets the person stop alone. Items that cannot be stopped alone are also counted;
- * the Stop of the counting row ends the run, preserving a way to stop that work.
+ * Lists background items not shown as agents and identifies work without an individual Stop.
+ * Stop run remains available for that work.
  */
 export function backgroundRows(
     items: readonly BackgroundItem[],
     agents: readonly Pick<Run, 'parentToolCallId'>[]
 ): { own: BackgroundItem[]; counted: BackgroundItem[] } {
     const unlisted = unlistedBackground(items, agents);
-    const own = unlisted.filter(
-        item => item.kind === 'command' || (item.kind === 'task' && item.canStopAlone === true)
-    );
+    const own = unlisted;
 
     return { own, counted: unlisted.filter(item => item.canStopAlone !== true || item.kind === 'subagent') };
 }
@@ -83,11 +80,6 @@ export function backgroundItemText(item: Pick<BackgroundItem, 'kind' | 'title'>)
  */
 export function canStopAlone(run: Pick<Run, 'canStopAlone'>): boolean {
     return run.canStopAlone === true;
-}
-
-/** The words of the background row: `Background task running`, `2 background tasks running`. Items of every kind are tasks to the person. */
-export function backgroundRowText(count: number): string {
-    return count === 1 ? 'Background task running' : `${count} background tasks running`;
 }
 
 /**

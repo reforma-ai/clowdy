@@ -19,15 +19,17 @@ export function overflowed(run: Run | undefined): boolean {
 
 /**
  * The live line that ends a chat's stream while the orchestrator works. A run that waits for the person shows its
- * question instead, and a blocked or finished one says so in the header. A run that waits for background work shows
+ * question instead, and a finished one says so in the header. A run that waits for background work shows
  * no line: the work's row above the message box and the composer's loader say it.
  */
-export function liveLine(status: RunStatus): boolean | string {
+export function liveLine(status: RunStatus, reason?: string): boolean | string {
     switch (status) {
         case 'running':
             return true;
         case 'queued':
-            return 'Waiting for a free slot…';
+            return reason || 'Waiting for a free slot…';
+        case 'blocked':
+            return reason || false;
         default:
             return false;
     }
