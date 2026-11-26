@@ -90,9 +90,9 @@ export function WorktreeRowSummary({
     const badge = mark && (
         <Badge
             size="xs"
-            color={mark.color}
+            color={tidy && mark.label === 'Merged' ? 'accent' : mark.color}
             textValue={mark.label}
-            tooltip={mark.tip}
+            tooltip={tidy ? undefined : mark.tip}
             icon={tidy ? <MarkIcon aria-hidden="true" /> : undefined}
         >
             {mark.label}
@@ -117,22 +117,24 @@ export function WorktreeRowSummary({
                     )}
                     {!tidy && badge}
                 </span>
-                <span className={styles.facts}>
-                    {!worktree.missing && (
-                        <Text variant="sm" color="secondary">
-                            {changesLabel(worktree.changes)}
-                        </Text>
-                    )}
-                    {worktree.chats.length > 0 && (
-                        <Text as="span" variant="sm" color="secondary" className={styles.chatFact}>
-                            {onOpenChat ? (
-                                <WorktreeChats chats={worktree.chats} onOpenChat={onOpenChat} />
-                            ) : (
-                                `${worktree.chats.length} ${worktree.chats.length === 1 ? 'chat' : 'chats'}`
-                            )}
-                        </Text>
-                    )}
-                </span>
+                {(!tidy || worktree.changes > 0 || worktree.chats.length > 0) && (
+                    <span className={styles.facts}>
+                        {!worktree.missing && (!tidy || worktree.changes > 0) && (
+                            <Text variant="sm" color="secondary">
+                                {changesLabel(worktree.changes)}
+                            </Text>
+                        )}
+                        {worktree.chats.length > 0 && (
+                            <Text as="span" variant="sm" color="secondary" className={styles.chatFact}>
+                                {onOpenChat ? (
+                                    <WorktreeChats chats={worktree.chats} onOpenChat={onOpenChat} />
+                                ) : (
+                                    `${worktree.chats.length} ${worktree.chats.length === 1 ? 'chat' : 'chats'}`
+                                )}
+                            </Text>
+                        )}
+                    </span>
+                )}
             </span>
             {tidy && <span className={styles.tidyMark}>{badge}</span>}
         </>
