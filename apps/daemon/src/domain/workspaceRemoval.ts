@@ -69,6 +69,7 @@ interface Removable {
     branch?: { name: string; commit: string };
     /** Base checked at the start of a tidy operation. */
     tidyBase?: string;
+    expectedBranch?: { name: string; commit: string };
 }
 
 /** The worktree may not be removed, and why in the words the person reads (the reason of the `conflict` that refuses a removal). */
@@ -481,6 +482,34 @@ async function removeWorktreeAndBranch(
             }
         }
         try {
+            if (verdict.expectedBranch) {
+                // External Git processes do not take our lock. Check occupancy immediately before the
+                // atomic ref deletion; a concurrent checkout can still race the occupancy read.
+                const listed = await gitRead(verdict.folder, ['worktree', 'list', '--porcelain', '-z']);
+                if (!listed.ok || parseWorktrees(listed.stdout).some(row => row.branch === verdict.branch!.name)) {
+                    throw conflict('The worktree was removed, but the branch may be checked out. The branch was kept');
+                }
+                const symbolic = await gitRead(verdict.folder, [
+                    'symbolic-ref',
+                    '-q',
+                    `refs/heads/${verdict.branch.name}`,
+                ]);
+                if (symbolic.ok || symbolic.reason === 'unavailable') {
+                    throw conflict(
+                        'The worktree was removed, but the branch could not be verified. The branch was kept'
+                    );
+                }
+                const deleted = await gitRead(verdict.folder, [
+                    'update-ref',
+                    '--no-deref',
+                    '-d',
+                    `refs/heads/${verdict.branch.name}`,
+                    verdict.expectedBranch.commit,
+                ]);
+                if (!deleted.ok)
+                    throw conflict('The worktree was removed, but the branch changed. The branch was kept');
+                return;
+            }
             await mustGit(
                 verdict.folder,
                 ['branch', '-D', '--', verdict.branch.name],
@@ -644,6 +673,8 @@ export interface WorktreeRemoval {
     discard?: boolean;
     /** Delete the branch the worktree has checked out (`branch -D`, merged or not) once the worktree is gone; without this the branch stays and no commit is lost. */
     deleteBranch?: boolean;
+    /** Optional confirmation pinned to the checkout and branch tip; legacy callers may omit it. */
+    expectedBranch?: { name: string; commit: string };
     chatDisposition?: 'archive' | 'delete';
     expectedChatIds?: readonly string[];
     tidy?: boolean;
@@ -668,6 +699,8 @@ export interface RemovedWorktree {
  * The removal waits on the same `exclusive` line as workspace preparation. Once validated, the path and affected chats are reserved until Git finishes. New chats, turns,
  * forks, edits, archive/restore and deletes cannot change the disposition while the tree is being removed. A late attachment before reservation refuses explicit disposition.
  * Tidy additionally checks the current base and merge state, rejects missing trees, and never forces a removal. External Git operations and files are not locked by the daemon.
+ * A pinned branch is checked immediately before removal and deleted with compare-and-delete after an occupancy check. External checkouts or ref-type changes can still race
+ * those checks. The ref deletion leaves branch configuration intact; cleaning it could race a newly created branch of the same name.
  */
 export async function removeWorktree(
     store: Store,
@@ -686,6 +719,9 @@ export async function removeWorktree(
         throw invalid('The path of a worktree must be absolute');
     }
 
+    if (request.expectedBranch && (!request.deleteBranch || request.tidy)) {
+        throw invalid('Expected branch requires an individual branch deletion');
+    }
     if (request.expectedChatIds !== undefined && !request.chatDisposition) {
         throw invalid('Expected chats require a chat disposition');
     }
@@ -798,10 +834,33 @@ export async function removeWorktree(
                 request.chatDisposition ? affected.ids : new Set()
             );
             try {
+                if (request.expectedBranch) {
+                    const listed = await gitRead(folder.path, ['worktree', 'list', '--porcelain', '-z']);
+                    const entry =
+                        listed.ok && parseWorktrees(listed.stdout).find(row => samePlace(row.path, request.path));
+                    const tip = await commitOf(folder.path, `refs/heads/${request.expectedBranch.name}`);
+                    const symbolic = await gitRead(folder.path, [
+                        'symbolic-ref',
+                        '-q',
+                        `refs/heads/${request.expectedBranch.name}`,
+                    ]);
+                    if (symbolic.ok || symbolic.reason === 'unavailable')
+                        throw conflict('The branch cannot be verified. Try again');
+                    if (
+                        verdict.branch?.name !== request.expectedBranch.name ||
+                        verdict.branch?.commit !== request.expectedBranch.commit ||
+                        !entry ||
+                        entry.branch !== request.expectedBranch.name ||
+                        entry.head !== request.expectedBranch.commit ||
+                        tip !== request.expectedBranch.commit
+                    ) {
+                        throw conflict('The branch or worktree changed. Close and reopen the dialog');
+                    }
+                }
                 await removeWorktreeAndBranch(
                     store,
                     config,
-                    { ...verdict, ...(record && { record }), tidyBase },
+                    { ...verdict, ...(record && { record }), tidyBase, expectedBranch: request.expectedBranch },
                     () => {
                         // Git succeeded. Release briefly inside this synchronous callback so ordinary lifecycle
                         // operations can perform the requested disposition without another caller interleaving.

@@ -858,6 +858,7 @@ export function fixtureProjectWorktrees(
                 path: worktree.path,
                 ...(worktree.branch !== undefined && { branch: worktree.branch }),
                 head: worktree.head,
+                headOid: worktree.head.padEnd(40, '0'),
                 main: false,
                 missing: worktree.missing ?? false,
                 ...(locked !== undefined && { locked }),
