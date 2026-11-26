@@ -47,6 +47,15 @@ function TaskMentionChip({ mention }: Pick<RichInputMentionRenderProps, 'mention
     );
 }
 
+/** A skill asked for in a message that was sent: the plate it had in the box, with its description as the hover title. */
+export function SkillChip({ name, description }: { name: string; description?: string }) {
+    return (
+        <span className={cn(chipStyles.chip, styles.chip)} data-chip title={description}>
+            <span className={chipStyles.label}>{`/${name}`}</span>
+        </span>
+    );
+}
+
 /** A mention inside the text: the same plate as a task chip in the chat, with what it points at as its hover title. */
 export function MentionChip({ mention }: RichInputMentionRenderProps) {
     if (mention.kind === 'task') return <TaskMentionChip mention={mention} />;

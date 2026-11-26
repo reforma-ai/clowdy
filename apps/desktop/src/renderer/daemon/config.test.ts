@@ -56,7 +56,7 @@ describe('resolveDaemonConfig', () => {
     });
 
     it('says how a discard ends in the fixtures, for the words it knows', () => {
-        for (const discard of ['slow', 'refused', 'copyfail', 'hook']) {
+        for (const discard of ['slow', 'refused', 'hook']) {
             expect(resolveDaemonConfig(`?fixtures=static&worktree&discard=${discard}`)).toEqual({
                 kind: 'fixtures',
                 timeline: false,

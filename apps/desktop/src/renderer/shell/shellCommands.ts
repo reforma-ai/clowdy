@@ -1,5 +1,6 @@
 import { openNewChat } from '../features/agents/openNewChat';
 import { SETTINGS_COMMAND, SETTINGS_KEYS } from '../features/settings/commands';
+import { openProject } from '../features/settings/projects/projectActions';
 import {
     SIDE_PANEL_COMMAND,
     SIDE_PANEL_EXPAND_COMMAND,
@@ -12,6 +13,14 @@ import {
     TERMINAL_KEYS,
 } from '../features/sidePanel';
 import { SIDE_PANEL_TABS } from '../stores';
+import {
+    PROJECT_SLOTS,
+    projectAtSlot,
+    projectKeysMayRun,
+    projectSwitchCommand,
+    projectSwitchKeys,
+    projectSwitchTitle,
+} from './projectSwitch';
 
 import type { ScopedCommand } from '../hotkeys';
 import type { NavHistory, RootStore } from '../stores';
@@ -27,17 +36,26 @@ const FORWARD_KEYS = '$mod+BracketRight';
 export interface ShellCommandsRoot
     extends Pick<
         RootStore,
-        'phase' | 'selectedProject' | 'selectedProjectId' | 'selectedProjectUi' | 'showsProjectScreen' | 'ui'
+        | 'phase'
+        | 'projects'
+        | 'selectedProject'
+        | 'selectedProjectId'
+        | 'selectedProjectUi'
+        | 'selectProject'
+        | 'showsProjectScreen'
+        | 'ui'
     > {
     history: Pick<NavHistory, 'back' | 'forward' | 'canGoBack' | 'canGoForward'>;
 }
 
 /**
  * The commands that work in the whole window, for `useCommands('app', …)`: the shortcuts page of Settings, `Cmd+,` for the Settings window, `Cmd+N` for a new chat, `Cmd+Esc` (`Ctrl+Shift+B` off a Mac) for
- * the side panel, `Cmd+Shift+Enter` (`Ctrl+Shift+Enter`) for its expanded view, `Ctrl+`` for its terminal, `Cmd+1` to `Cmd+5` for its tabs in their current order, and back and forward.
+ * the side panel, `Cmd+Shift+Enter` (`Ctrl+Shift+Enter`) for its expanded view, `Ctrl+`` for its terminal, `Cmd+1` to `Cmd+5` for its tabs in their current order, `Cmd+Option+0` for the
+ * personal space and `Cmd+Option+1` to `Cmd+Option+9` for the projects in the order of the project menu (`projectSwitch`), and back and forward.
  * `?` opens Settings on its Shortcuts page, once the window shows anything to open it over: while the app loads or cannot reach its daemon, the key reaches the page.
  * A new chat needs a selected project, and also leaves Settings.
  * `Cmd+N` shows the new-chat page, and works from a text field too: the message box is the place it is most wanted.
+ * A project key is off while no project is on it, runs over Settings (and leaves it, as opening a project from the list there does) but not over another window or a popover (`projectKeysMayRun`).
  * Back and forward are off while there is nowhere to go, so the key reaches the page and the hint is not shown. Text fields keep `Cmd+[` for outdenting.
  */
 export function shellCommands(root: ShellCommandsRoot): ScopedCommand[] {
@@ -122,6 +140,22 @@ export function shellCommands(root: ShellCommandsRoot): ScopedCommand[] {
             when: () => root.showsProjectScreen,
             handler: () => {
                 if (root.selectedProjectId) root.ui.forProject(root.selectedProjectId).toggleSidePanelTab(tab);
+            },
+        })),
+        // The projects by their place in the menu, from a text field too: the message box is where a hand is. Over Settings too, where the list of projects shows the keys.
+        ...Array.from({ length: PROJECT_SLOTS }, (_, slot) => ({
+            id: projectSwitchCommand(slot),
+            title: projectSwitchTitle(slot),
+            group: 'Navigation',
+            keys: projectSwitchKeys(slot),
+            inInputs: true,
+            inOverlays: true,
+            focus: () => projectKeysMayRun(root.ui.settingsOpen),
+            when: () => root.phase === 'ready' && projectAtSlot(root.projects, slot) !== undefined,
+            handler: () => {
+                const project = projectAtSlot(root.projects, slot);
+
+                if (project) openProject(root, project);
             },
         })),
         {

@@ -15,6 +15,8 @@ import {
 } from '../../../daemon/fixtureData';
 import { FixtureTransport } from '../../../daemon/fixtureTransport';
 import { overrideTransport } from '../../../daemon/testing';
+import { hotkeys } from '../../../hotkeys';
+import { shellCommands } from '../../../shell/shellCommands';
 import { RootStore, RootStoreProvider } from '../../../stores';
 import { SettingsWindow } from '../SettingsWindow';
 
@@ -41,6 +43,12 @@ vi.mock('../../../shared/ProjectIcon', async importOriginal => {
     const mobx = await import('mobx-react-lite');
 
     return { ProjectIcon: mobx.observer(ProjectIcon) };
+});
+vi.mock('../../../hotkeys/CommandHotkey', async importOriginal => {
+    const { CommandHotkey } = await importOriginal<typeof import('../../../hotkeys/CommandHotkey')>();
+    const mobx = await import('mobx-react-lite');
+
+    return { CommandHotkey: mobx.observer(CommandHotkey) };
 });
 
 /**
@@ -231,6 +239,28 @@ describe('ProjectsPage list', () => {
         expect(rows[1]).toContain('Car Rental11 chats21 tasks');
         expect(rows[2]).not.toContain('folder');
         expect(rows[2]).not.toContain('chat');
+    });
+
+    it('shows the keys that open each project before its menu, the personal space on 0 and the others in the order of the list', async () => {
+        await open();
+
+        let disposers: (() => void)[] = [];
+
+        act(() => {
+            disposers = shellCommands(store).map(command => hotkeys.defineCommand({ ...command, scope: 'app' }));
+        });
+
+        try {
+            const keys = (projectId: string) =>
+                [...row(projectId)!.parentElement!.querySelectorAll('kbd')].map(item => item.textContent).join('');
+
+            // The modifiers depend on the platform the test runs on (`Ctrl Alt`, `⌘ ⌥` on a Mac): the digit is the slot.
+            expect(keys(FIXTURE_PERSONAL_PROJECT_ID)).toMatch(/0$/);
+            expect(keys(FIXTURE_PROJECT_ID)).toMatch(/1$/);
+            expect(keys(FIXTURE_EMPTY_PROJECT_ID)).toMatch(/2$/);
+        } finally {
+            for (const dispose of disposers) dispose();
+        }
     });
 
     it('opens the page of a project from its row and goes back to the list', async () => {
@@ -478,6 +508,47 @@ describe('ProjectsPage project', () => {
         expect(marked()).toEqual(['/Users/dev/clowdy']);
         // The page reads the folders again when the project changes: the new folder's remote shows.
         expect(rows()[1]!.querySelector('a[href="https://github.com/acme/car-rental-api"]')).not.toBeNull();
+    });
+
+    it('clones a repository into the project at once: the folder it made is added like a picked one', async () => {
+        // The one answer of the folder dialog is for Choose folder… in the clone dialog, which has the folder `code` with files in it.
+        (window as { desktop?: unknown }).desktop = { chooseDirectories: async () => ['/Users/dev/code'] };
+        // A window opened over another is anchored to it and closes when its anchor is not on the page: happy-dom lays nothing out, so every element would be gone.
+        const box = { x: 0, y: 0, top: 0, left: 0, right: 400, bottom: 400, width: 400, height: 400 };
+
+        vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ ...box, toJSON: () => box });
+        vi.spyOn(HTMLElement.prototype, 'getClientRects').mockReturnValue([box] as unknown as DOMRectList);
+
+        const cloneGit = vi.fn(async (request: { path: string }) => request.path);
+        const inDialog = (text: string) =>
+            [...document.body.querySelectorAll<HTMLButtonElement>('button')].find(
+                candidate => candidate.textContent?.trim() === text && !container.contains(candidate)
+            )!;
+
+        await open(FIXTURE_EMPTY_PROJECT_ID, { cloneGit: cloneGit as Transport['cloneGit'] });
+        expect(named('Add folders…')).not.toBeUndefined();
+
+        await click(named('Clone repository…'));
+        await flush();
+        type(
+            document.body.querySelector<HTMLInputElement>('input[aria-label="Repository address"]')!,
+            'https://github.com/acme/booking-api.git'
+        );
+        await click(inDialog('Choose folder…'));
+        await act(async () => void (await new Promise(resolve => setTimeout(resolve, 450))));
+        await click(inDialog('Clone'));
+        await flush();
+
+        expect(cloneGit).toHaveBeenCalledOnce();
+        expect(cloneGit.mock.calls[0][0]).toEqual({
+            url: 'https://github.com/acme/booking-api.git',
+            path: '/Users/dev/code/booking-api',
+        });
+        // At once: the project has the folder, after its main one, with no further question.
+        expect(folderPaths(FIXTURE_EMPTY_PROJECT_ID)).toEqual(['/Users/dev/clowdy', '/Users/dev/code/booking-api']);
+        expect(rowPaths()).toEqual(['/Users/dev/clowdy', '/Users/dev/code/booking-api']);
+        expect(confirm).not.toHaveBeenCalled();
+        expect(document.body.querySelector('input[aria-label="Repository address"]')).toBeNull();
     });
 
     it('adds nothing when the folder dialog is closed without a choice', async () => {

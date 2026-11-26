@@ -1,0 +1,43 @@
+name: Publish install scripts
+# The install scripts, scripts/install.sh and scripts/install.ps1, are served from GitHub Pages, so the line people paste
+# is short: https://reforma-ai.github.io/clowdy/install.sh. A push to main that changes them publishes them again.
+# Rules: apps/desktop/RELEASING.md (step 7).
+
+on:
+    push:
+        branches:
+            - main
+        paths:
+            - 'scripts/install.sh'
+            - 'scripts/install.ps1'
+            - '.github/workflows/pages.yml'
+    workflow_dispatch: {}
+
+permissions:
+    contents: read
+    pages: write
+    id-token: write
+
+# One publish at a time. A newer run never cancels a running one.
+concurrency:
+    group: pages
+    cancel-in-progress: false
+
+jobs:
+    publish:
+        if: github.ref == 'refs/heads/main'
+        runs-on: ubuntu-latest
+        environment:
+            name: github-pages
+            url: ${{ steps.deployment.outputs.page_url }}
+        steps:
+            - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+            - name: Collect the scripts
+              run: |
+                  mkdir site
+                  cp scripts/install.sh scripts/install.ps1 site/
+            - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+              with:
+                  path: site
+            - id: deployment
+              uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

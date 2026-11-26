@@ -21,7 +21,7 @@ import {
 } from 'electron';
 import { autoUpdater } from 'electron-updater';
 
-import { IPC_CHANNELS } from '../shared/bridge';
+import { IPC_CHANNELS, type UpdateStatus } from '../shared/bridge';
 import { DEV_BUILD_MARKER } from '../shared/dev';
 import { createAppIcon } from './appIcon';
 import { type BootWindow, showBootWindow } from './bootWindow';
@@ -46,7 +46,7 @@ import {
     environmentRuntime,
     findRunning,
 } from './daemon';
-import { askToReplaceDaemon, showDaemonError } from './daemonDialog';
+import { showDaemonError } from './daemonDialog';
 import { daemonHoldsLock } from './daemonFiles';
 import {
     type DaemonKeeper,
@@ -105,8 +105,15 @@ const openWith = createOpenWith(
 /** The files and folders on the system clipboard: copied in the app they paste into Finder or Explorer, and copied there they paste into the file tree. */
 const clipboardFiles = createClipboardFiles(systemClipboardFilesDeps(clipboard, ClipboardItem));
 
-/** The OTA bundle installed during this run, which every page that loads is told about. */
-let updateReady: number | undefined;
+/** What the app knows about its updates, which Settings > About reads; every window is told when it changes. */
+const updateStatus: UpdateStatus = { shell: app.getVersion(), bundle: 0, ready: null, daemonWaiting: false };
+
+function changeUpdateStatus(change: Partial<UpdateStatus>): void {
+    Object.assign(updateStatus, change);
+    BrowserWindow.getAllWindows().forEach(window =>
+        window.webContents.send(IPC_CHANNELS.updateStatus, { ...updateStatus })
+    );
+}
 
 if (app.isPackaged && hasLaunchSwitches(process.argv.slice(1))) {
     console.error('Clowdy does not start with command-line switches.');
@@ -197,12 +204,7 @@ function start(): void {
                 app.relaunch();
                 app.exit(0);
             },
-            onInstalled: version => {
-                updateReady = version;
-                BrowserWindow.getAllWindows().forEach(window =>
-                    window.webContents.send(IPC_CHANNELS.updateReady, version)
-                );
-            },
+            onInstalled: version => changeUpdateStatus({ ready: version }),
             log: message => console.info(message),
         });
         // Fixed for the life of the process, so the renderer's lazy chunks never mix bundles.
@@ -216,6 +218,8 @@ function start(): void {
         // macOS shows it after the shell version: "Version 0.2.0 (Bundle 1234)".
         if (bundle.version) app.setAboutPanelOptions({ version: `Bundle ${bundle.version}` });
 
+        changeUpdateStatus({ bundle: bundle.version });
+
         protocol.handle(APP_SCHEME, createProtocolHandler(bundle.rendererRoot, bundle.rendererFiles));
 
         if (!app.isPackaged && !bundle.dir) reloadAfterRendererBuilds(bundle.rendererRoot);
@@ -227,6 +231,8 @@ function start(): void {
             return undefined;
         });
         const context = currentContext(runtime);
+        // Set when the keeper starts, below; a page cannot ask for a replacement before it has loaded.
+        let keeper: DaemonKeeper | undefined;
 
         registerIpc(ipcMain, trustedOrigin, {
             setThemeSource: theme => {
@@ -240,6 +246,8 @@ function start(): void {
             },
             ready: () => ota.ready(),
             restartToUpdate: () => ota.restart(),
+            getUpdateStatus: () => ({ ...updateStatus }),
+            replaceDaemon: async () => void (await keeper?.replaceNow()),
             listOpenApps: openWith.listApps,
             openPath: openWith.openPath,
             readClipboardFiles: clipboardFiles.read,
@@ -274,7 +282,7 @@ function start(): void {
             }
         };
         const firstWindow = Promise.withResolvers<BrowserWindow>();
-        const keeper = startKeeper(context, bundle, firstWindow.promise, {
+        keeper = startKeeper(context, bundle, {
             onReplaced: () =>
                 void daemonUp(true).catch((error: unknown) => console.warn('After the daemon was replaced:', error)),
             onFailed: () => void daemonDown(),
@@ -357,7 +365,7 @@ function startUpdates(release: ReleaseConfig, ota: Ota, bundle: RunningBundle): 
                 console.warn('OTA update check failed:', error instanceof Error ? error.message : error)
             );
 
-    /** A newer shell wins; otherwise a newly installed or waiting bundle gets the page's restart offer. */
+    /** A newer shell wins; otherwise a newly installed or waiting bundle gets a restart offer, as this was asked for. */
     // electron-updater's messages go on with a stack and the response headers; it logs them whole.
     const reason = (error: unknown) => (error instanceof Error ? error.message : String(error)).split('\n')[0]!.trim();
 
@@ -390,9 +398,20 @@ function startUpdates(release: ReleaseConfig, ota: Ota, bundle: RunningBundle): 
 
         const pending = ota.pending();
 
-        if (pending !== null)
-            BrowserWindow.getAllWindows().forEach(window => window.webContents.send(IPC_CHANNELS.updateReady, pending));
-        else if (shellProblem) await tell("Couldn't update Clowdy", shellProblem);
+        if (pending !== null) {
+            changeUpdateStatus({ ready: pending });
+
+            const restart = await showSheet({
+                type: 'question',
+                message: 'Clowdy is ready to update',
+                detail: 'Restart to use the new version',
+                buttons: ['Restart', 'Later'],
+                defaultId: 0,
+                cancelId: 1,
+            });
+
+            if (restart === 0) ota.restart();
+        } else if (shellProblem) await tell("Couldn't update Clowdy", shellProblem);
         else
             await tell(
                 'Clowdy is up to date',
@@ -482,19 +501,16 @@ async function connectDaemon(
  * where the new one is, and their event feed resumes from its cursor.
  *
  * - An app that runs a bundle (a packaged app, or a development run on the test feed) wants that bundle's daemon: one
- *   from an older bundle (left by the previous version) is replaced, and when it is busy a sheet asks whether to
- *   interrupt its runs or wait for them.
+ *   from an older bundle (left by the previous version) is replaced, and when it is busy it waits for its runs quietly,
+ *   with Settings > About saying so and offering to interrupt them (`replaceDaemon`).
  * - A development run on its checkout (`CLOWDY_DAEMON_WATCH` names the daemon's source folders, `scripts/dev.ts` sets
  *   it) replaces the daemon when its sources change, or when it runs a bundle.
  */
 function startKeeper(
     context: DaemonContext,
     bundle: RunningBundle,
-    firstWindow: Promise<BrowserWindow>,
     { onReplaced, onFailed }: { onReplaced: () => void; onFailed: () => void }
 ): DaemonKeeper | undefined {
-    // The sheet about a busy daemon; it closes when that daemon is replaced without an answer (its runs finished first).
-    let question: AbortController | undefined;
     const common: Pick<KeeperOptions, 'context' | 'log' | 'onRestarted' | 'onFailed'> = {
         context,
         onFailed,
@@ -502,7 +518,7 @@ function startKeeper(
         onRestarted: info => {
             const address = daemonAddress(info);
 
-            question?.abort();
+            changeUpdateStatus({ daemonWaiting: false });
             BrowserWindow.getAllWindows().forEach(window =>
                 window.webContents.send(IPC_CHANNELS.daemonChanged, address)
             );
@@ -512,23 +528,11 @@ function startKeeper(
 
     // A bundle: a packaged app's, or one a development run took from the test feed.
     if (bundle.version > 0) {
-        const keeper: DaemonKeeper = keepDaemonFresh({
+        return keepDaemonFresh({
             ...common,
             isStale: fromOlderBundle(bundle.version),
-            // A sheet on the visible window: an unparented dialog would block the main process's event loop on macOS.
-            onBusy: ({ activeRuns }) => {
-                question = new AbortController();
-                const { signal } = question;
-
-                void firstWindow
-                    .then(window => askToReplaceDaemon(window, activeRuns, signal))
-                    .then(async replace => {
-                        if (replace) await keeper.replaceNow();
-                    });
-            },
+            onBusy: () => changeUpdateStatus({ daemonWaiting: true }),
         });
-
-        return keeper;
     }
 
     // A packaged app whose own bundle is unreadable cannot tell which daemon it wants.
@@ -572,10 +576,6 @@ function openWindow(): BrowserWindow {
     );
 
     window.once('ready-to-show', () => window.show());
-    // A page that loads after an OTA bundle was installed still offers the restart.
-    window.webContents.on('did-finish-load', () => {
-        if (updateReady !== undefined) window.webContents.send(IPC_CHANNELS.updateReady, updateReady);
-    });
     window.loadURL(`${APP_ORIGIN}/`).catch((error: unknown) => console.error('The window did not load:', error));
 
     if (process.platform === 'win32') {

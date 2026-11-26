@@ -72,6 +72,16 @@
     mask-composite: exclude;
 }
 
+/* The message part of the card: the queue, the field and the row. Hidden while a question takes the card, without being taken apart. */
+.message {
+    display: flex;
+    flex-direction: column;
+}
+
+.message[hidden] {
+    display: none;
+}
+
 /* Takes the press that is meant for the field. No padding of its own: the plates in it stand at the card's inset, and the field and the row keep their own distance. */
 .main {
     position: relative;

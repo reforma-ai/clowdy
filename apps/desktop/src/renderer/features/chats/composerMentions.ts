@@ -15,12 +15,20 @@ function pathMention(path: string): string {
     return /\s/.test(path) ? `@"${path}"` : `@${path}`;
 }
 
+/** The agent that reads `$name` for a skill; every other agent takes the command as it is typed, `/name`. */
+const DOLLAR_SKILL_ENGINE = 'codex';
+
+/** A skill as the agent that will read the message calls it. */
+export function skillCall(name: string, engine?: string): string {
+    return engine === DOLLAR_SKILL_ENGINE ? `$${name}` : `/${name}`;
+}
+
 /**
- * What a mention says to the agent. Over ACP a message is plain text and only an agent knows how to call its own skills
- * (`/name` for one, `$name` for another, none for a third), so a skill is asked for in words every agent follows.
- * A task goes by its key, which the orchestrator resolves with `clowdy task get`; documents and files by their path.
+ * What a mention says to the agent, over ACP, where a message is plain text. A skill is called the way the `engine` that reads it
+ * calls its skills (`skillCall`). A task goes by its key, which the orchestrator resolves with `clowdy task get`; documents and
+ * files by their path.
  */
-export function serializeMention({ kind, data }: ComposerMentionAttrs): string {
+export function serializeMention({ kind, data }: ComposerMentionAttrs, engine?: string): string {
     switch (kind) {
         case 'task':
             return field(data, 'key');
@@ -28,7 +36,7 @@ export function serializeMention({ kind, data }: ComposerMentionAttrs): string {
         case 'file':
             return pathMention(field(data, 'path'));
         case 'command':
-            return `Use the skill "${field(data, 'name')}"`;
+            return skillCall(field(data, 'name'), engine);
         default:
             return '';
     }

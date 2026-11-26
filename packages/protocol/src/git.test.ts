@@ -2,7 +2,6 @@ import { describe, expect, test } from 'vitest';
 
 import {
     commitScope,
-    GIT_DISCARD_KEEP_DAYS,
     type GitStatus,
     MAX_GIT_COMMIT_PATHS,
     MAX_GIT_DISCARD_PATHS,
@@ -134,9 +133,8 @@ describe('GitStatus.lastFetchedAt', () => {
 });
 
 describe('the limits of a discard', () => {
-    test('take a handful of files, fewer than a commit, and keep the copy for a week', () => {
+    test('takes a handful of files, fewer than a commit', () => {
         expect(MAX_GIT_DISCARD_PATHS).toBe(50);
         expect(MAX_GIT_DISCARD_PATHS).toBeLessThan(MAX_GIT_COMMIT_PATHS);
-        expect(GIT_DISCARD_KEEP_DAYS).toBe(7);
     });
 });

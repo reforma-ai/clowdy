@@ -7,17 +7,8 @@ import { PULL_REQUEST_STATE_LABEL } from './gitSummary';
 import styles from './PullRequestChip.module.css';
 
 import type { GitChecks, GitPullRequestSummary } from '@clowdy/protocol';
-import type { ReactNode } from 'react';
 
-export function PullRequestChip({
-    pr,
-    stale,
-    action,
-}: {
-    pr: GitPullRequestSummary & { checks?: GitChecks };
-    stale: boolean;
-    action?: ReactNode;
-}) {
+export function PullRequestChip({ pr, stale }: { pr: GitPullRequestSummary & { checks?: GitChecks }; stale: boolean }) {
     const state = PULL_REQUEST_STATE_LABEL[pr.state];
     const Mark = pr.state === 'closed' ? MergeCancel : Merge;
     const { failing, passing } = pr.checks ?? { failing: 0, passing: 0 };
@@ -32,31 +23,30 @@ export function PullRequestChip({
             aria-label={`Open pull request ${pr.number} on GitHub: ${state}, ${pr.title}${counts ? `, ${counts}` : ''}`}
             icon={<Mark className={styles.prMark} data-state={pr.state} aria-hidden="true" />}
             onAction={() => openEffects.openUrl(pr.url)}
-            endAffix={action}
+            endAffix={
+                (failing > 0 || passing > 0) && (
+                    <span className={styles.checkCounts} aria-hidden="true">
+                        {failing > 0 && (
+                            <span className={styles.checkCount} data-check="failed">
+                                <CircleWarning className={styles.failed} />
+                                {failing}
+                            </span>
+                        )}
+                        {passing > 0 && (
+                            <span className={styles.checkCount} data-check="passed">
+                                <CircleCheck className={styles.passed} />
+                                {passing}
+                            </span>
+                        )}
+                    </span>
+                )
+            }
         >
             <Text slot="label" className={styles.copy}>
                 <Text variant="sm" weight="medium" truncate title={pr.title}>
                     {pr.title || `PR #${pr.number}`}
                 </Text>
-                <span className={styles.metadata}>
-                    <Text variant="xs" color="secondary">{`PR #${pr.number}`}</Text>
-                    {(failing > 0 || passing > 0) && (
-                        <span className={styles.checkCounts} aria-hidden="true">
-                            {failing > 0 && (
-                                <span className={styles.checkCount} data-check="failed">
-                                    <CircleWarning className={styles.failed} />
-                                    {failing}
-                                </span>
-                            )}
-                            {passing > 0 && (
-                                <span className={styles.checkCount} data-check="passed">
-                                    <CircleCheck className={styles.passed} />
-                                    {passing}
-                                </span>
-                            )}
-                        </span>
-                    )}
-                </span>
+                <Text variant="xs" color="secondary">{`PR #${pr.number}`}</Text>
             </Text>
         </GridListItem>
     );

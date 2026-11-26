@@ -98,6 +98,8 @@ export interface StreamViewProps {
     working?: boolean | string;
     /** The person answered a `question` item. */
     onAnswer?: (questionId: string, answer: string) => void | Promise<void>;
+    /** The question whose form the box under the stream draws: its card is a line saying so, and the form is not drawn twice. */
+    dockedQuestionId?: string;
     /** The person decided an `approval` item that is `open`. A card is read-only without it, and so is one that is not open. */
     onDecide?: (approvalId: string, decision: ApprovalDecision) => void | Promise<void>;
     /** Shown while there are no items. */
@@ -134,6 +136,7 @@ export function StreamView({
     active = false,
     working,
     onAnswer,
+    dockedQuestionId,
     onDecide,
     emptyState,
     decorate,
@@ -289,6 +292,7 @@ export function StreamView({
                     <QuestionCard
                         question={body}
                         onAnswer={onAnswer && (answer => onAnswer(body.questionId, answer))}
+                        docked={body.questionId === dockedQuestionId}
                     />
                 );
             case 'approval':

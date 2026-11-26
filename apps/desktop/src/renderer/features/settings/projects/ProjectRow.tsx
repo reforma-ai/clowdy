@@ -6,9 +6,11 @@ import { Text } from '@clowdy/components/Text';
 import { Folder, More, Sliders, Trash } from '@clowdy/icons/14';
 import { mainFolder } from '@clowdy/protocol';
 
+import { CommandHotkey } from '../../../hotkeys/CommandHotkey';
 import { CardRow } from '../../../shared/CardRow';
 import { PathText } from '../../../shared/PathText';
 import { ProjectIcon } from '../../../shared/ProjectIcon';
+import { projectSwitchCommand } from '../../../shell/projectSwitch';
 import styles from './ProjectRow.module.css';
 import { holdingMarks, plural } from './projectView';
 
@@ -25,15 +27,17 @@ export interface ProjectRowProps {
     onManage: () => void;
     /** Leaves Settings for the project itself. */
     onOpen: () => void;
+    /** The place of the project in the keys that switch to it (`projectSwitch`): its hint shows before the actions. Absent for a project past the last key. */
+    slot?: number;
     /** Absent for the personal space: it cannot be removed. */
     onRemove?: () => void;
 }
 
 /**
  * One project of the list: what it holds as marks after its name, and where it is (its main folder, and how many it has besides). A click
- * opens its page in Settings, and its menu configures the project, opens it or removes it.
+ * opens its page in Settings, and its menu configures the project, opens it or removes it. The keys that open the project show before the menu's button.
  */
-export function ProjectRow({ project, info, onManage, onOpen, onRemove }: ProjectRowProps) {
+export function ProjectRow({ project, info, slot, onManage, onOpen, onRemove }: ProjectRowProps) {
     const holdings = holdingMarks(info);
     const missing = info?.folders[0]?.exists === false;
     const path = mainFolder(project).path;
@@ -64,41 +68,44 @@ export function ProjectRow({ project, info, onManage, onOpen, onRemove }: Projec
                 </>
             }
             actions={
-                <MenuTrigger>
-                    <Button
-                        variant="filling"
-                        color="secondary"
-                        size="sm"
-                        iconOnly
-                        aria-label={`${project.name} actions`}
-                    >
-                        <More />
-                    </Button>
-                    <Popover placement="bottom end" width={200}>
-                        <Menu
+                <>
+                    {slot !== undefined && <CommandHotkey id={projectSwitchCommand(slot)} />}
+                    <MenuTrigger>
+                        <Button
+                            variant="filling"
+                            color="secondary"
+                            size="sm"
+                            iconOnly
                             aria-label={`${project.name} actions`}
-                            size="md"
-                            onAction={key => {
-                                if (key === CONFIGURE) onManage();
-                                else if (key === OPEN) onOpen();
-                                else if (key === REMOVE) onRemove?.();
-                            }}
                         >
-                            <MenuItem id={CONFIGURE} text="Configure" icon={<Sliders />} />
-                            <MenuItem id={OPEN} text="Open project" icon={<Folder />} />
-                            {onRemove && <MenuSeparator />}
-                            {onRemove && (
-                                <MenuItem
-                                    id={REMOVE}
-                                    text="Remove…"
-                                    icon={<Trash />}
-                                    isDanger
-                                    isDisabled={(info?.activeRuns ?? 0) > 0}
-                                />
-                            )}
-                        </Menu>
-                    </Popover>
-                </MenuTrigger>
+                            <More />
+                        </Button>
+                        <Popover placement="bottom end" width={200}>
+                            <Menu
+                                aria-label={`${project.name} actions`}
+                                size="md"
+                                onAction={key => {
+                                    if (key === CONFIGURE) onManage();
+                                    else if (key === OPEN) onOpen();
+                                    else if (key === REMOVE) onRemove?.();
+                                }}
+                            >
+                                <MenuItem id={CONFIGURE} text="Configure" icon={<Sliders />} />
+                                <MenuItem id={OPEN} text="Open project" icon={<Folder />} />
+                                {onRemove && <MenuSeparator />}
+                                {onRemove && (
+                                    <MenuItem
+                                        id={REMOVE}
+                                        text="Remove…"
+                                        icon={<Trash />}
+                                        isDanger
+                                        isDisabled={(info?.activeRuns ?? 0) > 0}
+                                    />
+                                )}
+                            </Menu>
+                        </Popover>
+                    </MenuTrigger>
+                </>
             }
         >
             <span

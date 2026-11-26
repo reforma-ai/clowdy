@@ -42,6 +42,7 @@ import {
 import { fixtureFileContents } from './fixtureFiles';
 import { applyFolderSettings } from './fixtureFolderSettings';
 import { type FixtureBranchPlace, type FixtureBranchScript, FixtureGitBranches } from './fixtureGitBranches';
+import { type FixtureCloneScript, FixtureGitClone } from './fixtureGitClone';
 import { FixtureGitRemote, type FixtureRemotePlace } from './fixtureGitRemote';
 import { FixtureGitWrites, type FixtureGitWritesOptions } from './fixtureGitWrites';
 import { fail, type Outcome, ok } from './fixtureOutcome';
@@ -50,6 +51,7 @@ import { FixtureTerminals } from './fixtureTerminals';
 import {
     type CommandInput,
     type FeedStatus,
+    type GitCloneProgress,
     type PageQuery,
     type PlaceRef,
     type ProjectFileSystem,
@@ -84,6 +86,8 @@ import type {
     GitBranchPullRequests,
     GitChangedFile,
     GitChanges,
+    GitCloneRequest,
+    GitCloneTarget,
     GitCommitResult,
     GitDiscardResult,
     GitFileSides,
@@ -139,6 +143,8 @@ export interface FixtureTransportOptions {
     gitWrites?: FixtureGitWritesOptions;
     /** What the folder's branches and a switch are like (`fixtureGitBranches.ts`): a plain list and a switch that goes through unless a script says otherwise. */
     branches?: readonly FixtureBranchScript[];
+    /** How a clone of a repository ends (`fixtureGitClone.ts`): it goes through unless a script says otherwise. */
+    clone?: FixtureCloneScript;
 }
 
 /** What the fixture keeps of a file: its bytes, and whether a message carries it already. */
@@ -291,16 +297,25 @@ export class FixtureTransport implements Transport {
     /** Where each place's branch stands against its upstream, which a fetch, a pull, a push and a commit move. */
     readonly #gitRemote: FixtureGitRemote;
     readonly #branches: FixtureGitBranches;
+    /** Where a clone goes and how it ends, over a few folders of a fake disk. */
+    readonly #gitClone: FixtureGitClone;
     readonly #branchMerges = new Map<string, { sourceCommit: string; commit: string }>();
     readonly #mergeConflicts = new Map<string, Extract<GitBranchMergeResult, { state: 'conflicts' }>>();
     readonly #archivedPullRequests = new Map<string, boolean>();
 
-    constructor({ data = createFixtureData(), timeline = false, gitWrites, branches }: FixtureTransportOptions = {}) {
+    constructor({
+        data = createFixtureData(),
+        timeline = false,
+        gitWrites,
+        branches,
+        clone,
+    }: FixtureTransportOptions = {}) {
         this.#data = data;
         this.#timeline = timeline;
         this.#gitWrites = new FixtureGitWrites(gitWrites);
         this.#gitRemote = new FixtureGitRemote(gitWrites?.remote);
         this.#branches = new FixtureGitBranches(branches);
+        this.#gitClone = new FixtureGitClone(clone);
 
         // `&branches=idle`: no run is working, so nothing but the tree stands in the way of a switch.
         if (this.#branches.idle) {
@@ -497,6 +512,20 @@ export class FixtureTransport implements Transport {
             throw new TransportError(`Switch to ${branch} to sync it`, 409);
 
         return this.#gitRemote.sync(remotePlace, branch, commit ?? 'a'.repeat(40), onProgress);
+    }
+
+    async getGitCloneTarget(url: string, folder?: string, signal?: AbortSignal): Promise<GitCloneTarget> {
+        signal?.throwIfAborted();
+
+        return structuredClone(this.#gitClone.target(url, folder));
+    }
+
+    cloneGit(
+        request: GitCloneRequest,
+        onProgress?: (progress: GitCloneProgress) => void,
+        signal?: AbortSignal
+    ): Promise<string> {
+        return this.#gitClone.clone(request, onProgress, signal);
     }
 
     pullGit(projectId: ProjectId, place: PlaceRef): Promise<GitRemoteResult> {
@@ -925,12 +954,7 @@ export class FixtureTransport implements Transport {
         if (!head?.branch) throw new TransportError('The folder is not the root of a git repository', 400);
 
         return structuredClone(
-            await this.#gitWrites.discard(
-                place.workspaceId ?? '',
-                projectId,
-                this.#uncommittedFiles(projectId, place),
-                paths
-            )
+            await this.#gitWrites.discard(place.workspaceId ?? '', this.#uncommittedFiles(projectId, place), paths)
         );
     }
 

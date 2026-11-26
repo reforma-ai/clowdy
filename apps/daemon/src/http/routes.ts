@@ -32,7 +32,7 @@ import { placeStatus } from '../git/status';
 import { checkRevision, checkViewedPath, viewedScopeKey } from '../git/viewed';
 import { BodyTooLarge, declaredLength, JSON_BODY_LIMIT, readJson, readText } from './body';
 import { commandResponse, failure, json } from './responses';
-import { eventStream, gitSyncStream } from './sse';
+import { eventStream, gitCloneStream, gitSyncStream } from './sse';
 
 import type {
     GitPullRequestArchiveRequest,
@@ -114,6 +114,9 @@ const gitDiscardBody = z.object({
     workspaceId: z.string().optional(),
     paths: z.array(z.string()),
 });
+
+/** The body of `POST /v1/git/clone` (`GitCloneRequest`): what is wrong with the address or the folder is the clone's to say, as an event of the stream. */
+const gitCloneBody = z.object({ url: z.string().max(4096), path: z.string().max(4096) });
 
 /** The place of a remote action, with an optional expected head for push. */
 const gitRemoteBody = z.object({ folderId: z.string(), workspaceId: z.string().optional() });
@@ -612,11 +615,46 @@ export function createRoutes(context: RouteContext): Route[] {
                 const project = requireProject(store, id);
                 const place = resolvePlace(store, project, body.folderId, body.workspaceId);
 
-                // The copy of a few files and a restore are quick, but a filter that has to fetch (Git LFS) may take longer than the connection's idle timeout.
+                // A restore is usually quick, but a filter that has to fetch (Git LFS) may take longer than the connection's idle timeout.
                 context.keepOpen(request);
 
-                return gitOperation(async () =>
-                    json(await services.gitDiscard.discard(place, { projectId: project.id, paths: body.paths }))
+                return gitOperation(async () => json(await services.gitDiscard.discard(place, body.paths)));
+            },
+        },
+        {
+            method: 'GET',
+            pattern: /^\/v1\/git\/clone-target$/,
+            handle: (_request, url) =>
+                json(
+                    services.gitClone.target(
+                        url.searchParams.get('url') ?? '',
+                        url.searchParams.get('folder') ?? undefined
+                    )
+                ),
+        },
+        {
+            method: 'POST',
+            pattern: /^\/v1\/git\/clone$/,
+            handle: async request => {
+                const body = await readJson(request, gitCloneBody);
+
+                if (shuttingDown) throw unavailable('Clowdy is restarting. Try again');
+
+                // A clone may run for many minutes. It is not a git write that must finish (`gitOperation`): closing the request ends it, and a restart ends it too, with what it made taken away.
+                context.keepOpen(request);
+
+                return new Response(
+                    gitCloneStream(
+                        (progress, signal) => services.gitClone.clone(body, progress, signal),
+                        request.signal
+                    ),
+                    {
+                        headers: {
+                            'content-type': 'text/event-stream; charset=utf-8',
+                            'cache-control': 'no-cache, no-transform',
+                            'x-accel-buffering': 'no',
+                        },
+                    }
                 );
             },
         },

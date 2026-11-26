@@ -124,8 +124,8 @@ Research: `research/index.md` (read it for file maps and constraints).
 
 - [ ] Complete
   - [ ] `createAppMenu` has a Help menu with `Star Clowdy on GitHub` that opens the repository in the system browser, on macOS only
-  - [ ] The preload bridge gives the shell version and the bundle number
-  - [ ] About shows the `Clowdy app` row when the bridge has them
+  - [x] The preload bridge gives the shell version and the bundle number (as `getUpdateStatus` and `onUpdateStatus`, `UpdateStatus`: also what waits to be applied)
+  - [x] About shows the `Clowdy app` row when the bridge has them (and the `Update ready` and `Daemon update` rows)
 
 **Files**
 

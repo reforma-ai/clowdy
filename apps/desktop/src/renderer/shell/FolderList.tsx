@@ -2,11 +2,14 @@ import { Button } from '@clowdy/components/Button';
 import { Input } from '@clowdy/components/Input';
 import { SortableList, type SortableListDropContext } from '@clowdy/components/SortableList';
 import { Text } from '@clowdy/components/Text';
-import { Plus } from '@clowdy/icons/14';
+import { Plus, Version } from '@clowdy/icons/14';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 
+import { openCloneRepository } from './CloneRepositoryForm';
 import styles from './FolderList.module.css';
 import { FolderRow } from './FolderRow';
+
+import type { Transport } from '../daemon/transport';
 
 export interface FolderListProps<T> {
     /** The folders in order: the first is the main one, marked Main where the list can hold more than one. */
@@ -30,6 +33,11 @@ export interface FolderListProps<T> {
     canDrop?: (context: SortableListDropContext<T>) => boolean;
     /** The paths the person picked or typed. Absent: nothing can be added here. */
     onAdd?: (paths: string[]) => void;
+    /**
+     * The daemon the list clones a repository with, so that Clone repository… sits beside Add folders…: the folder it makes goes to `onAdd` like one the person picked.
+     * Absent: the list does not clone.
+     */
+    transport?: Transport;
     /** What the card says while there are no folders. */
     empty?: ReactNode;
 }
@@ -37,7 +45,7 @@ export interface FolderListProps<T> {
 /**
  * The folders of a project in one card, in the Add project form and on the project's page in Settings: a row for each, a hairline between
  * them, dragged into another order by the whole row (a grip outside its edge would stick out of the card) and removed one by one, and Add
- * folders… as the last row.
+ * folders… as the last row, with Clone repository… under it when the list has a daemon to clone with.
  */
 export function FolderList<T>({
     items,
@@ -51,6 +59,7 @@ export function FolderList<T>({
     onReorder,
     canDrop,
     onAdd,
+    transport,
     empty,
 }: FolderListProps<T>) {
     const card = useRef<HTMLDivElement>(null);
@@ -127,7 +136,7 @@ export function FolderList<T>({
                           {empty}
                       </Text>
                   )}
-            {onAdd && <FolderAdder onAdd={onAdd} />}
+            {onAdd && <FolderAdder onAdd={onAdd} transport={transport} />}
         </div>
     );
 }
@@ -141,19 +150,27 @@ function typedPath(text: string): string {
 
 /**
  * Adds folders: the system dialog in the desktop app, where several can be chosen at once and which can be opened again for more; a path
- * field in a plain browser, which has no dialog that answers a path.
+ * field in a plain browser, which has no dialog that answers a path. Beside it Clone repository…, when the list has a daemon to clone
+ * with: a repository from an address becomes a folder the list adds like a picked one.
  */
-function FolderAdder({ onAdd }: { onAdd: (paths: string[]) => void }) {
+function FolderAdder({ onAdd, transport }: { onAdd: (paths: string[]) => void; transport?: Transport }) {
     const [path, setPath] = useState('');
     const choose = window.desktop?.chooseDirectories;
+    const clone = transport && (
+        <button type="button" className={styles.add} onClick={() => openCloneRepository({ transport, onAdd })}>
+            <Version />
+            Clone repository…
+        </button>
+    );
 
     if (choose) {
         return (
-            <div data-folder-adder>
+            <div className={styles.adders} data-folder-adder>
                 <button type="button" className={styles.add} onClick={() => void choose().then(onAdd)}>
                     <Plus />
                     Add folders…
                 </button>
+                {clone}
             </div>
         );
     }
@@ -166,24 +183,27 @@ function FolderAdder({ onAdd }: { onAdd: (paths: string[]) => void }) {
     };
 
     return (
-        <div className={styles.path} data-folder-adder>
-            <Input
-                type="text"
-                aria-label="Folder path"
-                value={path}
-                onChange={setPath}
-                placeholder="/Users/you/code/my-app"
-                onKeyDown={event => {
-                    // Enter adds what is typed instead of sending a form around it; with the field empty a form is sent as usual.
-                    if (event.key === 'Enter' && typedPath(path)) {
-                        event.preventDefault();
-                        add();
-                    }
-                }}
-            />
-            <Button variant="bordered" isDisabled={!typedPath(path)} onPress={add}>
-                Add folder
-            </Button>
+        <div data-folder-adder>
+            <div className={styles.path}>
+                <Input
+                    type="text"
+                    aria-label="Folder path"
+                    value={path}
+                    onChange={setPath}
+                    placeholder="/Users/you/code/my-app"
+                    onKeyDown={event => {
+                        // Enter adds what is typed instead of sending a form around it; with the field empty a form is sent as usual.
+                        if (event.key === 'Enter' && typedPath(path)) {
+                            event.preventDefault();
+                            add();
+                        }
+                    }}
+                />
+                <Button variant="bordered" isDisabled={!typedPath(path)} onPress={add}>
+                    Add folder
+                </Button>
+            </div>
+            {clone}
         </div>
     );
 }

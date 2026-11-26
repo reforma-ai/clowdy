@@ -60,15 +60,12 @@
  *                                         `Couldn't write the message` when no agent is on and signed in, or every one that is fails or does not end in time
  *                                         (`unavailable`, or `invalid` for none on; `details.reason`: `off`, `signed_out`, `failed`, `timed_out`); the paths are judged as
  *                                         the commit judges them.
- * POST /v1/projects/:id/git/discard   -> GitDiscardResult. Body `GitDiscardRequest`: the `paths` of at most `MAX_GIT_DISCARD_PATHS` files, never a whole tree. The only route that
- *                                         deletes work, so it is slow on purpose: the paths are judged against what `GET .../git/changes?scope=uncommitted` lists right now (a renamed file
- *                                         brings its old path along), a copy of what each file holds now is made in the daemon's own data folder and checked before anything is touched (`copy`,
- *                                         kept `GIT_DISCARD_KEEP_DAYS` days, never in the repository), and then a file git has in its last commit goes back to it (`git restore --source=HEAD --staged
- *                                         --worktree`: the staged and the edited versions are both replaced) and a file it has not (new, staged or not) is deleted, only that file. The person's own `post-checkout` hook runs
- *                                         as git runs it for a restore; a hook that fails after the files are back is told as `warning` of the answer, as a switch tells it.
- *                                         A path that is not a changed file or that escapes the place (`..`, an absolute path, a symbolic link in the way), a submodule, a file over the copy's size limit and
- *                                         a request whose copies would not fit are `invalid`; a file with merge conflicts is `conflict` (`Resolve the conflict first`); a copy that could not be made is
- *                                         `unavailable` with nothing discarded; git's own refusal is `conflict` with its first `fatal:` or `error:` line. One request at a time per place, on the line of writes.
+ * POST /v1/projects/:id/git/discard   -> GitDiscardResult. Body `GitDiscardRequest`: names at most `MAX_GIT_DISCARD_PATHS` changed files, never a whole tree. The paths are judged against
+ *                                         what `GET .../git/changes?scope=uncommitted` lists right now (a renamed file brings its old path along) and inspected again before writing. A file git has in
+ *                                         its last commit goes back to it (`git restore --source=HEAD --staged --worktree`); a file it has not (new, staged or not) is removed, only that file. No copy is kept.
+ *                                         The person's own `post-checkout` hook runs as git runs it for a restore; a hook that fails after the files are back is told as `warning` of the answer.
+ *                                         A path that is not a changed file or that escapes the place (`..`, an absolute path, a symbolic link in the way) or a submodule is `invalid`; a file with merge
+ *                                         conflicts is `conflict` (`Resolve the conflict first`); git's own refusal is `conflict` with its first `fatal:` or `error:` line. One request at a time per place.
  *
  * POST /v1/projects/:id/git/fetch    -> GitRemoteResult. Body `GitRemoteRequest` (`folderId`, `workspaceId?`). `git fetch --no-recurse-submodules origin` and nothing else: no `--prune` of its own, no other
  *                                         remote, no submodule's. The answer carries the branch's upstream as it stands after the fetch (`upstream`, with `ahead` and `behind`), when it has one.
@@ -523,6 +520,32 @@ export type GitSyncEvent =
     | { type: 'error'; status: number; message: string; hint?: string };
 
 /**
+ * What `GET /v1/git/clone-target?url=&folder=` says of where a clone would go, so the window can show the whole path before anything is cloned. `folder` is the one the
+ * person chose (absent: the daemon's projects folder, where a folderless project goes). The target is `folder` itself when that is missing or an empty folder, which is
+ * what the person means by "clone into this folder", and `folder/<repository>` when it holds anything: the name is the last part of `url` without `.git`.
+ */
+export interface GitCloneTarget {
+    /** The folder the person chose, or the projects folder when none was: where the clone goes, in the person's words. */
+    folder: string;
+    /** The folder the repository would be cloned into, absolute. Absent while `url` names no repository (empty, or not an address git takes). */
+    path?: string;
+    /** Why a clone cannot go to `path` (it exists and is not an empty folder, it is a file); absent when it can. */
+    blocked?: string;
+}
+
+/** The body of `POST /v1/git/clone`: the address and the absolute folder to clone into (what `GitCloneTarget.path` said). */
+export interface GitCloneRequest {
+    url: string;
+    path: string;
+}
+
+/** SSE messages from `POST /v1/git/clone`. `progress` is git's own line (`Receiving objects`) with its percent when it gave one. Closing the request cancels the clone and removes what it made. */
+export type GitCloneEvent =
+    | { type: 'progress'; label: string; percent?: number }
+    | { type: 'result'; path: string }
+    | { type: 'error'; status: number; message: string; hint?: string };
+
+/**
  * What a remote action did, so the client reads what it changed again. `upstream` is the branch's upstream as the action left it, with how far apart the two are (a push leaves 0
  * and 0); absent when the branch has none (a fetch on a branch that tracks nothing, a detached HEAD).
  */
@@ -769,9 +792,6 @@ export interface GitCommitResult {
  */
 export const MAX_GIT_DISCARD_PATHS = 50;
 
-/** How many days the daemon keeps the copy it makes of what a discard removes. The dialog says it, and the daemon's own limit is this many days in milliseconds. */
-export const GIT_DISCARD_KEEP_DAYS = 7;
-
 /** The body of `POST /v1/projects/:id/git/discard`. */
 export interface GitDiscardRequest {
     folderId: string;
@@ -788,21 +808,10 @@ export interface GitDiscardedFile {
     action: 'restored' | 'removed';
 }
 
-/** Where what a discard removed is kept, for `GIT_DISCARD_KEEP_DAYS` days. */
-export interface GitDiscardCopy {
-    /** The folder on the machine the daemon runs on: a `manifest.json` that says what was discarded, from which place and when, and the files themselves under `files/`. */
-    folder: string;
-    /** When the daemon is free to remove it, in milliseconds since the epoch. */
-    keptUntil: number;
-    /** How many files the copy holds, which is fewer than the files discarded when some had nothing on the disk (a deleted file). */
-    files: number;
-}
-
 /** What `POST /v1/projects/:id/git/discard` answers once the files are discarded. */
 export interface GitDiscardResult {
     /** In the order they were sent; a renamed file is its new path, and its old one is not listed (it is back too). */
     discarded: GitDiscardedFile[];
-    copy: GitDiscardCopy;
     /** What the person is told besides: the line of their `post-checkout` hook, which failed (or did not end in time) after the files were put back. Every file is discarded all the same. */
     warning?: string;
 }

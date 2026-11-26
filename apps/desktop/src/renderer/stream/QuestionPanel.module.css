@@ -1,0 +1,115 @@
+@reference '@clowdy/styles/rulesets';
+
+.panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    min-width: 0;
+    width: 100%;
+}
+
+/* The question is a title in a band, as in Reforma's question panel. */
+.header {
+    display: flex;
+    align-items: center;
+    min-height: var(--spacing-36);
+    padding: var(--spacing-md) var(--spacing-lg);
+    border-radius: calc(var(--radius-sm) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    background-color: var(--color-secondary-light);
+}
+
+.facts {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    padding-inline: var(--spacing-lg);
+}
+
+.options {
+    --ask-option-line: var(--leading-lg);
+
+    width: 100%;
+    min-width: 0;
+}
+
+.option {
+    --clowdy-listbox-item-padding: var(--spacing-xs) var(--spacing-sm);
+}
+
+.number {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: var(--ask-option-line);
+    height: var(--ask-option-line);
+    border-radius: calc(var(--radius-sm) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    background-color: var(--color-secondary-muted-light);
+    color: var(--color-secondary-muted-content);
+    font-size: var(--text-xs);
+    font-weight: 400;
+}
+
+[data-selected='true'] .number {
+    background-color: var(--color-primary-muted);
+    color: var(--color-primary-muted-content);
+}
+
+/* A row's label is one line in a list. Here it wraps, with the consequence under it. */
+.options .option .body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--spacing-xxs);
+    min-width: 0;
+    width: 100%;
+    overflow: visible;
+    white-space: normal;
+    text-overflow: clip;
+    line-height: var(--ask-option-line);
+}
+
+.labelLine {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+.recommended {
+    @ruleset typography-text-xs;
+
+    padding: var(--spacing-2) var(--spacing-md);
+    border-radius: var(--radius-full);
+    background-color: var(--color-primary-muted-light);
+    color: var(--color-primary-text);
+    font-weight: 500;
+}
+
+/* The 1px edge is always there, so turning it visible does not move the row. */
+.option[data-field] {
+    align-items: center;
+    border: 1px solid transparent;
+}
+
+.option[data-field]:is([data-selected], :focus-within) {
+    border-color: var(--color-secondary-muted-border);
+}
+
+.option[data-field][data-selected]::before {
+    background-color: transparent;
+}
+
+.field {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-xxs) var(--spacing-xs) var(--spacing-xxs) var(--spacing-lg);
+}

@@ -411,11 +411,11 @@ describe('the confirmation', () => {
 
         expect(dialogText()).toContain('Discard changes to price.ts?');
         expect(dialogText()).toContain('src/booking/price.ts');
-        expect(dialogText()).toContain(
-            'The file goes back to the last commit. A copy of what it holds now is kept for 7 days.'
-        );
+        expect(dialogText()).toContain('The file goes back to the last commit');
+        expect(dialogText()).not.toContain('A copy');
         expect(dialogText()).not.toContain('An agent is working here');
         expect(dialogButton('Discard changes').dataset.color).toBe('danger');
+        expect(dialogButton('Cancel').dataset.variant).toBe('filled');
         expect(document.activeElement).toBe(dialogButton('Cancel'));
         expect(discard).not.toHaveBeenCalled();
 
@@ -435,7 +435,7 @@ describe('the confirmation', () => {
         await settleDialog();
 
         expect(dialogText()).toContain('Delete notes.md?');
-        expect(dialogText()).toContain('The file is not in git. A copy of it is kept for 7 days.');
+        expect(dialogText()).toContain('The file is not in git and will be deleted');
         // The path is shown only when the file has a folder to tell.
         expect(dialog()?.querySelector('[title="notes.md"]')).toBeNull();
         expect(dialogButton('Discard changes')).toBeDefined();
@@ -457,7 +457,7 @@ describe('the confirmation', () => {
         expect(discard).not.toHaveBeenCalled();
     });
 
-    it("warns that an agent is working in the place, as a note and no more, and the discard is still the person's", async () => {
+    it('does not add an agent activity warning when discarding a file', async () => {
         await start({
             tweak: data => {
                 data.runs.find(run => run.id === FIXTURE_WORKSPACE_RUN_ID)!.status = 'running';
@@ -466,7 +466,8 @@ describe('the confirmation', () => {
         await press(cardButton('notes.md'));
         await settleDialog();
 
-        expect(dialog()?.querySelector('[role="note"]')?.textContent).toBe('An agent is working here');
+        expect(dialog()?.querySelector('[role="note"]')).toBeNull();
+        expect(dialogText()).not.toContain('An agent is working here');
         expect(dialogButton('Discard changes').disabled).toBe(false);
     });
 
@@ -558,7 +559,7 @@ describe('the confirmation', () => {
         expect(cardPaths()).toContain('src/limits.ts');
     });
 
-    it('says a copy that could not be kept as the daemon says it, and goes through on the next press when the daemon does', async () => {
+    it('shows a Git error in the dialog and retries only on the next press', async () => {
         let failures = 1;
 
         await start({
@@ -566,10 +567,7 @@ describe('the confirmation', () => {
                 overrideTransport(base, {
                     discardGit: async (project, place, paths): Promise<GitDiscardResult> => {
                         if (failures-- > 0) {
-                            throw new TransportError(
-                                "Couldn't keep a copy of the files, so nothing was discarded: ENOSPC: no space left on device",
-                                503
-                            );
+                            throw new TransportError('No space left on device', 503);
                         }
 
                         return base.discardGit(project, place, paths);
@@ -581,7 +579,7 @@ describe('the confirmation', () => {
         await press(dialogButton('Discard changes'));
         await settleDialog();
 
-        expect(dialogAlert()).toContain('nothing was discarded');
+        expect(dialogAlert()).toBe('No space left on device');
         expect(cardPaths()).toContain('src/limits.ts');
 
         await press(dialogButton('Discard changes'));
@@ -595,24 +593,23 @@ describe('the confirmation', () => {
         expect(cardPaths()).not.toContain('src/limits.ts');
     });
 
-    it('closes and says in a toast where the copy of what it discarded is kept', async () => {
+    it.each([
+        ['src/limits.ts', 'limits.ts'],
+        ['notes.md', 'notes.md'],
+    ])('shows a one-line filename toast after discarding %s', async (path, name) => {
         await start();
 
         const success = vi.spyOn(toast, 'success').mockImplementation(() => 'toast');
 
         try {
-            await press(cardButton('src/limits.ts'));
+            await press(cardButton(path));
             await settleDialog();
             await press(dialogButton('Discard changes'));
             await settleDialog();
             await settle();
             await untilClosed();
 
-            expect(success).toHaveBeenCalledExactlyOnceWith({
-                title: 'Changes discarded',
-                message: expect.stringMatching(/^A copy is in \//),
-                timeout: 8000,
-            });
+            expect(success).toHaveBeenCalledExactlyOnceWith({ message: `${name} discarded` });
         } finally {
             success.mockRestore();
         }
@@ -635,7 +632,7 @@ describe('the confirmation', () => {
             expect(dialog()).toBeNull();
             expect(cardPaths()).not.toContain('src/limits.ts');
             expect(warning).toHaveBeenCalledExactlyOnceWith({
-                title: 'Changes discarded',
+                title: 'limits.ts discarded',
                 message: FIXTURE_DISCARD_HOOK_LINE,
                 timeout: 8000,
             });

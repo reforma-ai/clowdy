@@ -5,6 +5,7 @@ import { Plus } from '@clowdy/icons/14';
 import { useMemo } from 'react';
 
 import { openAddProject } from '../../../shell/projectDialogs';
+import { slotOfProject } from '../../../shell/projectSwitch';
 import { useRootStore } from '../../../stores';
 import { SettingsEmpty } from '../ui/SettingsEmpty';
 import { SettingsPage } from '../ui/SettingsPage';
@@ -47,6 +48,7 @@ export function ProjectsPage() {
                         <ProjectRow
                             project={personal}
                             info={info.get(personal.id)}
+                            slot={slotOfProject(root.projects, personal)}
                             onManage={() => root.ui.openProjectSettings(personal.id)}
                             onOpen={() => openProject(root, personal)}
                         />
@@ -69,6 +71,7 @@ export function ProjectsPage() {
                                 <ProjectRow
                                     project={project}
                                     info={info.get(project.id)}
+                                    slot={slotOfProject(root.projects, project)}
                                     onManage={() => root.ui.openProjectSettings(project.id)}
                                     onOpen={() => openProject(root, project)}
                                     onRemove={() => removeProject(root, project, info.get(project.id))}

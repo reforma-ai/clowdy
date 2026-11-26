@@ -200,6 +200,7 @@ export function DiffCard({
                             </span>
                         </Button>
                         <CopyButton
+                            className={styles.copy}
                             value={file.path}
                             size="xs"
                             variant="filling"

@@ -18,7 +18,7 @@ The manager may not read code and may answer briefly in business terms. Translat
 | --- | --- |
 | "ok", "yes", "go" to a card | They picked the recommended option, or the only affirmative one. Record it as chosen by the user |
 | "the first one", "a" | Map it to the option by position as shown on the card. Read the label back |
-| "whatever you think", "you decide", "I don't know" | Take your recommended option. Record `Decided by: user (delegated)`. Say in one line which one you took and why, and that they can change it before work starts |
+| `Skipped` (the card's Skip button), "whatever you think", "you decide", "I don't know" | Take your recommended option. Record `Decided by: user (delegated)`. Say in one line which one you took and why, and that they can change it before work starts |
 | "cheaper", "faster", "simpler" | Pick the option that fits that word best, read it back by name. If two options tie, take the one you recommended |
 | "both" | Check the two are compatible. If yes, decide the combination precisely and read it back. If no, say which part must give, with the consequence, and ask one card |
 | "later", "not now" | Treat the point as out of scope for this cycle. Say what that leaves out, and add it to the report as a follow-up task |

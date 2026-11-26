@@ -15,6 +15,13 @@
     min-width: 0;
 }
 
+@media (hover: hover) {
+    .branchControls:not(:hover, :has(:focus-visible)) .copy {
+        opacity: 0;
+        pointer-events: none;
+    }
+}
+
 .branch {
     display: flex;
     flex: 1;

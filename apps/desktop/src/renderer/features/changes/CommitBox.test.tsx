@@ -491,12 +491,11 @@ describe('the commit box', () => {
         await settle();
         await draw();
 
-        expect(box()?.textContent).toContain('0 changed files');
+        expect(box()?.querySelector('h3')?.textContent).toBe('No changed files');
         expect(box()?.textContent).not.toContain('Committed c0ffee0');
         expect(message().value).toBe('');
         expect(message().readOnly).toBe(false);
-        expect(checkboxes()).toEqual([everyTick()]);
-        expect(everyTick().disabled).toBe(true);
+        expect(checkboxes()).toHaveLength(0);
         expect(commitButton()?.textContent).toBe('Commit 0 files');
         expect(commitButton()?.disabled).toBe(true);
     });
@@ -505,7 +504,8 @@ describe('the commit box', () => {
         await start({ key: { projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental' } });
         const commit = vi.spyOn(transport, 'commitGit');
 
-        expect(box()?.textContent).toContain('0 changed files');
+        expect(box()?.querySelector('h3')?.textContent).toBe('No changed files');
+        expect(checkboxes()).toHaveLength(0);
         await type('Draft for the next change');
         expect(message().value).toBe('Draft for the next change');
         expect(commitButton()?.textContent).toBe('Commit 0 files');
@@ -547,6 +547,7 @@ describe('the commit box', () => {
         const read = FixtureTransport.prototype.getGitStatus;
         let resolved = false;
         let truncated = false;
+        let hasStaged = true;
         const status = vi.spyOn(FixtureTransport.prototype, 'getGitStatus').mockImplementation(async function (
             this: FixtureTransport,
             ...args: Parameters<typeof read>
@@ -569,7 +570,7 @@ describe('the commit box', () => {
                 merging: { conflicts: resolved ? 0 : 1, subject: 'Merge main' },
                 entries: [
                     { path: 'notes.md', untracked: true },
-                    { path: 'src/booking/price.ts', staged: 'modified' },
+                    ...(hasStaged ? [{ path: 'src/booking/price.ts', staged: 'modified' as const }] : []),
                     resolved
                         ? { path: 'src/limits.ts', staged: 'modified' }
                         : { path: 'src/limits.ts', unstaged: 'conflicted' },
@@ -581,11 +582,14 @@ describe('the commit box', () => {
             await start();
             const commit = vi.spyOn(transport, 'commitGit');
             const list = (label: string) => box()?.querySelector(`[role="grid"][aria-label="${label}"]`);
+            const headings = () =>
+                [...box()!.querySelectorAll('h3')].map(heading => heading.parentElement?.textContent);
             const conflictRow = list('Conflicting files')!.querySelector('[role="row"][data-key="src/limits.ts"]')!;
             const stagedRow = list('Files to commit')!.querySelector('[role="row"][data-key="src/booking/price.ts"]')!;
 
             expect(list('Files to commit')?.textContent).not.toMatch(/limits\.ts|notes\.md/);
             expect(conflictRow.textContent).toContain('limits.ts');
+            expect(headings()).toEqual(['Conflicts1', 'Files to commit1']);
             expect(box()?.querySelector('details')).toBeNull();
             expect(buttonOf('Abort merge')).toBeDefined();
             expect(checkboxes()).toHaveLength(0);
@@ -601,6 +605,12 @@ describe('the commit box', () => {
             });
             expect(commit).not.toHaveBeenCalled();
 
+            hasStaged = false;
+            act(() => gitFactsOf(transport).refresh(KEY));
+            await settle();
+            expect(headings()).toEqual(['Conflicts1', 'No staged files']);
+            expect(list('Files to commit')).toBeNull();
+
             truncated = true;
             act(() => gitFactsOf(transport).refresh(KEY));
             await settle();
@@ -611,10 +621,12 @@ describe('the commit box', () => {
 
             truncated = false;
             resolved = true;
+            hasStaged = true;
             act(() => gitFactsOf(transport).refresh(KEY));
             await settle();
             expect(list('Conflicting files')).toBeNull();
             expect(list('Files to commit')?.textContent).toContain('limits.ts');
+            expect(headings()).toEqual(['Files to commit2']);
             expect(checkboxes()).toHaveLength(0);
             expect(box()?.textContent).not.toContain('Conflicts resolved');
             expect(buttonOf('Abort merge')).toBeUndefined();

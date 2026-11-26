@@ -10,11 +10,12 @@ const AT_WORD_START = '(?<![^\\s(\\[{"\'])';
 
 /**
  * What changes in a line, or what is left as written, in the order the pattern tries them:
- * an inline code span (left alone), a quoted file mention (`@"my notes.md"`), a file mention (`@src/a.ts`) and
- * something shaped like a task key (`CAR-24`, not the start of `CAR-24-form`).
+ * an inline code span (left alone), a quoted file mention (`@"my notes.md"`), a file mention (`@src/a.ts`),
+ * something shaped like a task key (`CAR-24`, not the start of `CAR-24-form`) and a skill as an agent is asked for it (`/review`, or
+ * `$review` for Codex; not the start of `/review.md` or `/review/a`, and the dot that ends a sentence is not its own).
  */
 const TOKEN = new RegExp(
-    `(?<!\`)(\`+)(?!\`).+?(?<!\`)\\1(?!\`)|${AT_WORD_START}@"([^"\\n]+)"|${AT_WORD_START}@(\\S+)|${AT_WORD_START}([A-Z][A-Z0-9]*-\\d+)(?![\\w-])`,
+    `(?<!\`)(\`+)(?!\`).+?(?<!\`)\\1(?!\`)|${AT_WORD_START}@"([^"\\n]+)"|${AT_WORD_START}@(\\S+)|${AT_WORD_START}([A-Z][A-Z0-9]*-\\d+)(?![\\w-])|${AT_WORD_START}[/$]([A-Za-z][\\w-]*(?::[\\w-]+)?)(?![\\w/:-]|\\.\\w)`,
     'g'
 );
 
@@ -24,19 +25,25 @@ const FENCE = /^\s*(`{3,}|~{3,})(.*)$/;
 /** What can follow a path in a sentence without being part of it. */
 const TRAILING_PUNCTUATION = /[.,;:!?)\]]+$/;
 
+type Lookups = Pick<StreamLinks, 'taskOfKey' | 'skillOfName'>;
+
 function chipText(
     match: string,
     span: string | undefined,
     quoted: string | undefined,
     bare: string | undefined,
     key: string | undefined,
-    taskOfKey: StreamLinks['taskOfKey']
+    skill: string | undefined,
+    { taskOfKey, skillOfName }: Lookups
 ): string {
     if (span !== undefined) return match;
 
     if (key !== undefined) {
         return taskOfKey?.(key) ? `\`${key}\`` : match;
     }
+
+    // Both spellings are shown as the person picked the skill: `/review`.
+    if (skill !== undefined) return skillOfName?.(skill) ? `\`/${skill}\`` : match;
 
     const path = quoted ?? bare ?? '';
 
@@ -52,10 +59,10 @@ function chipText(
 }
 
 /**
- * What a person wrote, ready for Markdown: files they mentioned and tasks of the project they named become inline
- * code, which the stream shows as chips. Everything else, code spans and fenced blocks included, is left as written.
+ * What a person wrote, ready for Markdown: files they mentioned, tasks of the project they named and skills they have become
+ * inline code, which the stream shows as chips. Everything else, code spans and fenced blocks included, is left as written.
  */
-export function personMarkdown(text: string, taskOfKey?: StreamLinks['taskOfKey']): string {
+export function personMarkdown(text: string, lookups: Lookups = {}): string {
     // The fence that is open: only the same character, at least as long, closes it.
     let fence: string | undefined;
 
@@ -79,8 +86,8 @@ export function personMarkdown(text: string, taskOfKey?: StreamLinks['taskOfKey'
                 return line;
             }
 
-            return line.replace(TOKEN, (match, span, quoted, bare, key) =>
-                chipText(match, span, quoted, bare, key, taskOfKey)
+            return line.replace(TOKEN, (match, span, quoted, bare, key, skill) =>
+                chipText(match, span, quoted, bare, key, skill, lookups)
             );
         })
         .join('\n');

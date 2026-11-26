@@ -2184,3 +2184,70 @@ describe('requests for permission', () => {
         expect(cardButton('Run this command', 'Deny')?.disabled).toBe(false);
     });
 });
+
+describe('a chat whose orchestrator waits for an answer', () => {
+    // c-3 is a Hands-on chat whose orchestrator waits at the question "Where should bookings be stored?".
+    const form = () => container.querySelector('form');
+    const send = () => form()?.querySelector<HTMLButtonElement>('button[aria-label="Next"]');
+    const skip = () =>
+        [...(form()?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find(b => b.textContent === 'Skip');
+    const message = () =>
+        container.querySelector<HTMLElement>('[contenteditable="true"]')?.closest<HTMLElement>('[hidden]');
+
+    it('draws the question in the box in place of the message, and only a line in the stream', async () => {
+        await start();
+        await draw('c-3');
+
+        expect(container.querySelectorAll('form')).toHaveLength(1);
+        expect(form()?.textContent).toContain('Where should bookings be stored?');
+        expect(form()?.closest(`.${styles.composer}`)).not.toBeNull();
+        expect(container.textContent).toContain('Answer in the box below');
+        // The message is hidden, not taken apart.
+        expect(message()).not.toBeNull();
+    });
+
+    it('answers the run with the option that was picked, and gives the box back to the message', async () => {
+        await start();
+        await draw('c-3');
+
+        const command = vi.spyOn(store, 'command');
+
+        await act(async () => send()!.click());
+
+        expect(command).toHaveBeenCalledWith({
+            type: 'run.answer',
+            runId: 'r-orch-3',
+            questionId: 'q-store',
+            answer: 'SQLite',
+        });
+
+        await draw('c-3');
+
+        expect(form()).toBeNull();
+        expect(message()).toBeNull();
+        expect(container.textContent).toContain('SQLite');
+    });
+
+    it('answers Skipped from Skip', async () => {
+        await start();
+        await draw('c-3');
+
+        const command = vi.spyOn(store, 'command');
+
+        await act(async () => skip()!.click());
+
+        expect(command).toHaveBeenCalledWith(expect.objectContaining({ type: 'run.answer', answer: 'Skipped' }));
+    });
+
+    it('keeps the words of the draft while the question is open', async () => {
+        await start();
+        saveDraft('c-3', {
+            ...emptyComposerDoc(),
+            content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Half a thought' }] }],
+        });
+        await draw('c-3');
+
+        expect(form()).not.toBeNull();
+        expect(message()?.textContent).toContain('Half a thought');
+    });
+});

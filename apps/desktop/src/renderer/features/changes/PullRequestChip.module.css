@@ -5,6 +5,8 @@
 }
 
 .row {
+    /* A consistent height for the two-line rows. */
+    --clowdy-listbox-item-height: var(--spacing-40);
     min-width: 0;
     padding-block: var(--spacing-xs);
 }
@@ -30,13 +32,6 @@
 .copy {
     display: flex;
     flex-direction: column;
-    min-width: 0;
-}
-
-.metadata {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-xs);
     min-width: 0;
 }
 

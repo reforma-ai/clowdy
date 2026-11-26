@@ -66,8 +66,8 @@
 
     .dragHandle[data-variant='surface'] {
         left: 0;
-        background: var(--color-surface);
-        box-shadow: 0 0 0 var(--spacing-xxs) var(--color-surface);
+        background: var(--modal-background, var(--color-surface));
+        box-shadow: 0 0 0 var(--spacing-xxs) var(--modal-background, var(--color-surface));
         transform: translate(-50%, -50%);
     }
 

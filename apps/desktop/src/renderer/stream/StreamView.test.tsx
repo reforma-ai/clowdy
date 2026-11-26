@@ -472,9 +472,30 @@ describe('runs of tool calls', () => {
         });
         await act(async () => root.render(<StreamView items={[asked, question, next]} active onAnswer={vi.fn()} />));
         expect(container.textContent).toContain('Question withdrawn');
-        expect([...container.querySelectorAll('button')].filter(button => button.textContent === 'Next')).toHaveLength(
-            1
+        expect(container.querySelectorAll('button[aria-label="Next"]')).toHaveLength(1);
+    });
+
+    it('draws the question the box below holds as a line, and the others as they are', async () => {
+        const open = item(3, {
+            kind: 'question',
+            questionId: 'open',
+            text: 'Which one?\n\nA fact about it.',
+            options: [{ id: 'a', label: 'A' }],
+        });
+        const done = item(4, {
+            kind: 'question',
+            questionId: 'done',
+            text: 'Earlier?\n\nAn earlier fact.',
+            options: [],
+            answer: 'Yes',
+        });
+        await act(async () =>
+            root.render(<StreamView items={[asked, done, open]} active onAnswer={vi.fn()} dockedQuestionId="open" />)
         );
+        expect(container.textContent).toContain('Answer in the box below');
+        expect(container.textContent).not.toContain('A fact about it.');
+        expect(container.textContent).toContain('An earlier fact.');
+        expect(container.querySelector('button[aria-label="Next"]')).toBeNull();
     });
 
     it('does not offer an answer while the agent is being stopped', async () => {
@@ -488,7 +509,7 @@ describe('runs of tool calls', () => {
         });
         await act(async () => root.render(<StreamView items={[asked, question]} active onAnswer={vi.fn()} />));
         expect(container.textContent).toContain('Stopping the agent…');
-        expect([...container.querySelectorAll('button')].some(button => button.textContent === 'Next')).toBe(false);
+        expect(container.querySelector('button[aria-label="Next"]')).toBeNull();
     });
 
     it('replaces the tool preview with the wait status when the agent stops working', async () => {

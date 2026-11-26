@@ -17,18 +17,21 @@ export interface ContextRingProps {
     run: Run | undefined;
 }
 
-/** The context reading appears on hover or focus. Pressing the ring requests compaction when the agent supports it. */
+/** The context reading appears on hover or focus, below the ring when it fits and above it when it does not. Pressing the ring requests compaction when the agent supports it, and the reading says so. */
 export function ContextRing({ chat, run }: ContextRingProps) {
     const { agents } = useAgents();
 
     if (!chat || !run?.context) return null;
 
     const fill = contextFill(run.context);
+    const compacts = canCompactChat(chat, run, agents);
+    const queued = chat.queue?.some(item => item.command === 'compact') === true;
+    const hint = compacts ? (queued ? 'Summary queued' : 'Click to summarize') : undefined;
 
     return (
-        <Tooltip content={<ContextReadout fill={fill} />} placement="bottom" shouldCloseOnPress>
-            {canCompactChat(chat, run, agents) ? (
-                <CompactRing chat={chat} fill={fill} />
+        <Tooltip content={<ContextReadout fill={fill} hint={hint} />} placement="bottom" shouldCloseOnPress>
+            {compacts ? (
+                <CompactRing chat={chat} fill={fill} queued={queued} />
             ) : (
                 <span
                     className={styles.readOnly}
@@ -45,14 +48,13 @@ export function ContextRing({ chat, run }: ContextRingProps) {
     );
 }
 
-function CompactRing({ chat, fill }: { chat: Chat; fill: ContextFill }) {
+function CompactRing({ chat, fill, queued }: { chat: Chat; fill: ContextFill; queued: boolean }) {
     const { compact, isPending } = useCompact(chat.id);
-    const queued = chat.queue?.some(item => item.command === 'compact') === true;
 
     return (
         <Button
             variant="filling"
-            size="xs"
+            size="sm"
             rounded
             iconOnly
             data-context-ring=""
@@ -66,6 +68,9 @@ function CompactRing({ chat, fill }: { chat: Chat; fill: ContextFill }) {
     );
 }
 
+/** The ring's side in px: it sits in a button of the model picker's size, so it can be a little larger than a glyph. */
+const RING_SIZE = 14;
+
 /** The percent full as an arc from the top, clockwise, over a track. The path is 100 long, so the dash is the percent. */
 function Ring({ fill }: { fill: ContextFill }) {
     return (
@@ -73,8 +78,8 @@ function Ring({ fill }: { fill: ContextFill }) {
             className={styles.ring}
             data-tone={fill.tone}
             viewBox="0 0 18 18"
-            width={12}
-            height={12}
+            width={RING_SIZE}
+            height={RING_SIZE}
             aria-hidden="true"
         >
             <circle className={styles.track} cx="9" cy="9" r="8" />
@@ -93,7 +98,7 @@ function Ring({ fill }: { fill: ContextFill }) {
     );
 }
 
-function ContextReadout({ fill }: { fill: ContextFill }) {
+function ContextReadout({ fill, hint }: { fill: ContextFill; hint?: string }) {
     return (
         <div className={styles.figures}>
             <div className={styles.readout}>
@@ -112,6 +117,7 @@ function ContextReadout({ fill }: { fill: ContextFill }) {
             >
                 <div className={styles.fill} style={{ width: `${fill.percent}%` }} />
             </div>
+            <Show when={hint}>{text => <div className={styles.hint}>{text}</div>}</Show>
         </div>
     );
 }

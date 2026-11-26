@@ -1,4 +1,4 @@
-import { GIT_DISCARD_KEEP_DAYS, MAX_GIT_DISCARD_PATHS } from '@clowdy/protocol';
+import { MAX_GIT_DISCARD_PATHS } from '@clowdy/protocol';
 
 import { FIXTURE_UNCOMMITTED_PATHS } from './fixtureData';
 import { TransportError } from './transport';
@@ -13,10 +13,9 @@ export type FixtureCommitScript = 'ok' | 'signing' | 'hook' | 'slow';
 export type FixtureMessageScript = 'ok' | 'failed' | 'slow';
 
 /**
- * How the next discard of the fixture ends: it goes through (`ok`), it takes a while (`slow`), git refuses the file (`refused`: it has merge conflicts), the copy cannot be kept and nothing is
- * discarded (`copyfail`), or the file is discarded and a `post-checkout` hook of the person's failed after it (`hook`).
+ * How the next discard of the fixture ends: it goes through (`ok`), it takes a while (`slow`), git refuses the file (`refused`), or a `post-checkout` hook fails after discard (`hook`).
  */
-export type FixtureDiscardScript = 'ok' | 'slow' | 'refused' | 'copyfail' | 'hook';
+export type FixtureDiscardScript = 'ok' | 'slow' | 'refused' | 'hook';
 
 export interface FixtureGitWritesOptions {
     commit?: FixtureCommitScript;
@@ -40,14 +39,10 @@ export const FIXTURE_SIGNING_LINE =
     'error: No private key found for public key "/Users/dev/Library/Containers/SecretAgent/PublicKeys/6e1d.pub"?';
 export const FIXTURE_SIGNING_HINT = "The signing agent couldn't be reached";
 export const FIXTURE_HOOK_LINE = 'pre-commit: 2 problems in src/limits.ts';
-/** What the daemon says when a file has merge conflicts, and when the copy it keeps of a discard cannot be made. */
+/** What the daemon says when a file has merge conflicts. */
 export const FIXTURE_CONFLICT_LINE = 'Resolve the conflict first';
-export const FIXTURE_COPY_LINE =
-    "Couldn't keep a copy of the files, so nothing was discarded: ENOSPC: no space left on device";
 /** What a `post-checkout` hook that fails after a discard says. */
 export const FIXTURE_DISCARD_HOOK_LINE = 'post-checkout: git-lfs was not found on your path';
-/** Where the fixture's daemon keeps the copies of what a discard removes. */
-const FIXTURE_COPIES = '/Users/dev/Library/Application Support/Clowdy/daemon/discarded';
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -104,7 +99,6 @@ export class FixtureGitWrites {
      */
     async discard(
         place: string,
-        projectId: string,
         uncommitted: readonly GitChangedFile[],
         paths: readonly string[]
     ): Promise<GitDiscardResult> {
@@ -126,19 +120,13 @@ export class FixtureGitWrites {
 
         if (this.#script.discard === 'refused') throw new TransportError(FIXTURE_CONFLICT_LINE, 409);
 
-        if (this.#script.discard === 'copyfail') throw new TransportError(FIXTURE_COPY_LINE, 503);
-
         this.#discarded.set(place, new Set([...this.discardedOf(place), ...paths]));
 
-        const now = Date.now();
-
         return {
-            discarded: files.map(file => ({ path: file.path, action: file.untracked ? 'removed' : 'restored' })),
-            copy: {
-                folder: `${FIXTURE_COPIES}/${projectId}/${new Date(now).toISOString().replace(/[-:]/g, '').replace('.', '')}-4f2a9c`,
-                keptUntil: now + GIT_DISCARD_KEEP_DAYS * 24 * 60 * 60 * 1000,
-                files: files.filter(file => file.kind !== 'deleted').length,
-            },
+            discarded: files.map(file => ({
+                path: file.path,
+                action: file.untracked || file.kind === 'added' ? 'removed' : 'restored',
+            })),
             ...(this.#script.discard === 'hook' && { warning: FIXTURE_DISCARD_HOOK_LINE }),
         };
     }

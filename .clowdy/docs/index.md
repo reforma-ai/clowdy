@@ -2,6 +2,10 @@
 
 ## Decisions
 
+- [Project switch keys](decisions/2026-11-25-project-switch-keys.md) records Cmd+Option+0 to 9 for the personal space and the first nine projects, where they run, and why Actual size moved to Cmd+0. Status: accepted.
+
+- [Clone a repository into a project](decisions/2026-11-25-clone-repository-into-projects.md) records that folders can be cloned from a git address, from the shared folder list, with no fork on GitHub. Status: accepted.
+
 - [Interface copy and automatic sync](decisions/2026-11-25-interface-copy-and-automatic-sync.md) records the merge and commit labels, preview layout and copy conventions. Status: accepted.
 
 - [Pull request history by branch](decisions/2026-11-25-branch-pull-request-history.md) records shared branch history, archive and chat list indicators. Status: accepted.
@@ -24,6 +28,10 @@
 - [CI: red runs and run time](decisions/2026-11-25-ci-red-runs-and-speed.md) records that CI stays a report for now, how the red tests are sorted and fixed, and how the gate and the Windows release tests get faster. Status: accepted.
 
 ## Checks
+
+- [Project switch keys](checks/2026-11-25-project-switch-keys.md) covers the keys in each window state, the hints in Settings > Projects and the drag handle background. Status: passed with limits.
+
+- [Clone a repository into a project](checks/2026-11-25-clone-repository.md) covers the clone dialog from a new and an existing project, the three target cases, a taken target, a bad address, cancel and Escape against a real daemon. Status: passed with limits.
 
 - [Interface copy and automatic sync](checks/2026-11-25-interface-copy.md) covers the action labels, merge preview, decorative separators and legacy scheduled titles. Status: passed with limits.
 

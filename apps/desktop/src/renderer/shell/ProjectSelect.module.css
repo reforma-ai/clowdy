@@ -27,3 +27,33 @@
 .trigger > span {
     min-width: 0;
 }
+
+/* The card of a project's row, drawn in a tooltip (light text on its dark plate). */
+.tip {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+    min-width: 0;
+}
+
+.tipHead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-lg);
+}
+
+.tipName {
+    font-weight: 500;
+}
+
+/* One line for each folder, written out whole and broken where it must (the tooltip's width is set); the main one is the first. */
+.tipFolders {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xxs);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    opacity: 0.7;
+}

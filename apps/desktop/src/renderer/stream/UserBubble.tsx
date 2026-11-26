@@ -33,13 +33,13 @@ export interface UserBubbleProps {
 }
 
 /**
- * What the person wrote: a tinted bubble on the right, with a row of actions and the time under it when it is given one. The text is Markdown, as the message box writes it; files and tasks it mentions are chips.
+ * What the person wrote: a tinted bubble on the right, with a row of actions and the time under it when it is given one. The text is Markdown, as the message box writes it; files, tasks and skills it mentions are chips.
  * The root is marked `data-message`: a selection is quoted by `SelectionReply` only when it lies inside one such element.
  */
 export function UserBubble({ text, attachments, at, actions, turn }: UserBubbleProps) {
-    const { taskOfKey } = use(StreamLinksContext);
+    const { taskOfKey, skillOfName } = use(StreamLinksContext);
     const previews = useAttachmentPreviews(attachments);
-    const body = <Markdown text={personMarkdown(text, taskOfKey)} fromPerson />;
+    const body = <Markdown text={personMarkdown(text, { taskOfKey, skillOfName })} fromPerson />;
     // A swipe is the Reply button's other way in: it needs the same handler and words.
     const swipes = Boolean(actions?.onReply && actions.swipeToReply && text.trim() !== '');
     const row = useSwipeReply<HTMLDivElement>({ enabled: swipes, onReply: () => actions?.onReply?.(text) });

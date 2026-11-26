@@ -4,6 +4,7 @@ import { createTransport, resolveDaemonConfig } from './daemon/config';
 import { HttpTransport } from './daemon/httpTransport';
 import { type Notice, RootStore } from './stores/RootStore';
 import { initialUiFromSearch } from './stores/UiStore';
+import { watchUpdates } from './updateOffer';
 
 const TOAST_KIND = { info: 'info', warn: 'warning', error: 'error' } as const;
 
@@ -22,18 +23,8 @@ const stopFollowing = window.desktop?.onDaemonChange(address => {
     else if (config.kind === 'none') location.reload();
 });
 
-// An OTA update runs from the next launch; the toast stays until it is answered or closed, and a new offer replaces it.
-let updateToast: string | undefined;
-const stopUpdates = window.desktop?.onUpdateReady(() => {
-    if (updateToast) toast.queue.close(updateToast);
-
-    updateToast = toast.info({
-        title: 'Update ready',
-        message: 'Restart Clowdy to use the new version',
-        timeout: 0,
-        action: { label: 'Restart', onPress: () => void window.desktop?.restartToUpdate() },
-    });
-});
+// An OTA update starts at the next launch, and the app may stay open for weeks: a toast offers the restart once nothing runs.
+const stopUpdates = window.desktop && watchUpdates(window.desktop, transport);
 
 /** The app's one store. It starts loading when the module is first imported. */
 export const root = new RootStore(transport, {

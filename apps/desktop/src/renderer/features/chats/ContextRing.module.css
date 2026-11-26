@@ -50,8 +50,8 @@
     display: grid;
     flex-shrink: 0;
     place-items: center;
-    width: var(--spacing-24);
-    height: var(--spacing-24);
+    width: var(--spacing-30);
+    height: var(--spacing-30);
     border-radius: var(--radius-full);
 }
 
@@ -68,6 +68,12 @@
     align-items: baseline;
     justify-content: space-between;
     gap: var(--spacing-md);
+    white-space: nowrap;
+}
+
+/* What pressing the ring does, under the bar, in the tooltip's own muted ink. */
+.hint {
+    opacity: 0.64;
     white-space: nowrap;
 }
 

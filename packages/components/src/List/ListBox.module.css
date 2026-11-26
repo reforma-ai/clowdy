@@ -411,6 +411,15 @@
         cursor: default;
     }
 
+    /* Compact pickers already inset their rows vertically. Keep headings close to the group they label. */
+    .list[data-size='sm'] .section + .section {
+        margin-top: var(--spacing-xs);
+    }
+
+    .list[data-size='sm'] .sectionHeader {
+        padding-block: var(--spacing-2) 0;
+    }
+
     .sectionHeader[data-sticky] {
         position: sticky;
         top: 0;

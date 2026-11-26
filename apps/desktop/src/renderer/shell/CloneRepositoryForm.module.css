@@ -1,0 +1,145 @@
+@reference '@clowdy/styles/rulesets';
+
+.form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xxl);
+    padding: var(--spacing-20);
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+}
+
+/* The two plates of the form, the folder the person gives and the folder it comes to, are one surface, the card the folder list uses. */
+.folder,
+.target {
+    display: flex;
+    min-width: 0;
+    border: 1px solid var(--color-secondary-muted-border);
+    border-radius: calc(var(--radius-xl) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    background-color: var(--color-surface-float);
+}
+
+.folder {
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-md) var(--spacing-lg);
+    padding: var(--spacing-lg) var(--spacing-xl);
+}
+
+.where {
+    display: flex;
+    flex: 1 1 12rem;
+    flex-direction: column;
+    gap: var(--spacing-xxs);
+    min-width: 0;
+}
+
+/* The folder in full, wrapped where a name ends: it is not cut with an ellipsis, as it is what the person decides by. */
+.value {
+    overflow-wrap: anywhere;
+}
+
+.buttons {
+    display: flex;
+    flex: none;
+    margin-inline-start: auto;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--spacing-sm);
+}
+
+.target {
+    flex-direction: column;
+    gap: var(--spacing-md);
+    padding: var(--spacing-lg) var(--spacing-xl);
+}
+
+/* The answer is for the address and the folder before the last change: it stays, dimmed, until the daemon answers for these. */
+.target[data-stale] > :not(:first-child) {
+    opacity: 0.55;
+}
+
+/* The path is written in full in the code face, broken where it must be, never cut. The part the person already had is quiet; a folder the clone makes is the strong end of it. */
+.path {
+    @ruleset typography-text-code-sm;
+    overflow-wrap: anywhere;
+    color: var(--color-text);
+    user-select: text;
+}
+
+.head {
+    color: var(--color-secondary-muted-text);
+}
+
+.name {
+    font-weight: 600;
+}
+
+.name[data-inside] {
+    color: var(--color-accent-text);
+}
+
+.failure {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xxs);
+    overflow-wrap: anywhere;
+}
+
+.progress {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+}
+
+/* The line git is on at the left, how far it is at the right. */
+.details {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    min-width: 0;
+}
+
+.label {
+    flex: 0 1 auto;
+    min-width: 0;
+}
+
+.figure {
+    flex-shrink: 0;
+    margin-inline-start: auto;
+    white-space: nowrap;
+}
+
+.track {
+    height: var(--spacing-6);
+    border-radius: var(--radius-full);
+    background-color: var(--color-secondary-muted);
+    overflow: hidden;
+}
+
+.fill {
+    min-width: var(--spacing-6);
+    height: 100%;
+    border-radius: inherit;
+    background-color: var(--color-primary);
+    transition: width 300ms ease-out;
+}
+
+.actions {
+    display: flex;
+    gap: var(--spacing-md);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .fill {
+        transition: none;
+    }
+}

@@ -204,11 +204,7 @@
         margin: 0;
     }
 
-    /* Keep the button clear of the first line, including when a long snippet scrolls sideways. */
-    [data-streamdown='code-block-body']:first-child {
-        margin-inline-end: var(--code-copy-space);
-    }
-
+    /* The button floats over the corner: it must not narrow the scroll area or move its scrollbars. */
     [data-streamdown='code-block'] > [data-code-copy] {
         position: absolute;
         inset-block-start: var(--spacing-xs);

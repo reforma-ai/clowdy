@@ -98,6 +98,7 @@ export function AddProjectForm({ root }: { root: RootStore }) {
                     onRemove={entry => changeFolders(current => current.filter(path => path !== entry.path))}
                     onReorder={next => changeFolders(() => next.map(entry => entry.path))}
                     onAdd={added => changeFolders(current => withFolders(current, added))}
+                    transport={root.transport}
                     empty="Without folders, Clowdy creates one named after the project"
                 />
             </div>

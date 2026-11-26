@@ -8,7 +8,7 @@ import { shownRunStatus } from '@clowdy/protocol';
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { useAgents, useChatStream, useProjectState, useProjectUi, useRootStore } from '../../stores';
-import { type ForkAgent, StreamView, type StreamViewHandle } from '../../stream';
+import { type ForkAgent, openQuestion, QuestionPanel, StreamView, type StreamViewHandle } from '../../stream';
 import { useRefreshGitFactsAtRunEnd } from '../changes/useRefreshGitFactsAtRunEnd';
 import { ProviderIcon } from '../settings/providers/ProviderIcon';
 import { openChat } from './archiveChat';
@@ -30,6 +30,7 @@ import { useCompact } from './useCompact';
 import { useEditMessage } from './useEditMessage';
 import { useFork } from './useFork';
 import { useHandoff } from './useHandoff';
+import { useSkillLookup } from './useSkillLookup';
 
 import type { Attachment, Chat } from '@clowdy/protocol';
 import type { ReactNode } from 'react';
@@ -45,16 +46,18 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
     const root = useRootStore();
     const project = useProjectState();
     const ui = useProjectUi();
-    // A task key in a message is a chip that opens the task, an archived one the window knows too (`ProjectState.taskOfKey`); a thread's card opens that thread.
+    const skillOfName = useSkillLookup();
+    // A task key in a message is a chip that opens the task, an archived one the window knows too (`ProjectState.taskOfKey`); a skill it asks for is a chip too; a thread's card opens that thread.
     const links = useMemo(
         () => ({
             taskOfKey: (key: string) => project.taskOfKey(key),
+            skillOfName,
             onOpenTask: (taskId: string) => ui.openTask(taskId),
             attachmentBlob: (attachment: Attachment) => root.transport.getAttachment(project.id, attachment.id),
             hasChat: (chatId: string) => project.chats.has(chatId),
             onOpenChat: (chatId: string) => void openChat(root, project, ui, chatId),
         }),
-        [project, ui, root]
+        [project, ui, root, skillOfName]
     );
     const parent = chat.parentChatId === undefined ? undefined : project.chats.get(chat.parentChatId);
     // A fork says where it came from. The source opens from there while it is listed: one in the archive is named only, since opening it would bring it back.
@@ -100,6 +103,8 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
     const writability = chatWritability(chat, run, agents, agentsStatus);
     const progress = chatProgress(project.tasksOfChat(chat.id), project.statuses);
     const items = stream?.items ?? [];
+    // The question the orchestrator waits on is answered in the box under the chat, in place of the message field. A chat that is read only has no box, so its question stays in the stream.
+    const asked = run?.status === 'waiting_user' && writability.writable ? openQuestion(items) : undefined;
     const edit = useEditMessage({
         chat,
         items,
@@ -193,6 +198,7 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
                     forkedFrom={origin}
                     emptyState={<EmptyChat />}
                     errorAction={item => (item.id === overflowAt ? <CompactAction chatId={chat.id} /> : null)}
+                    dockedQuestionId={asked?.questionId}
                     // A question the orchestrator no longer waits on (stopped, interrupted) is shown but cannot be answered.
                     onAnswer={
                         run?.status === 'waiting_user'
@@ -237,6 +243,22 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
                             run={run}
                             controls={controls}
                             onSendMessage={() => streamView.current?.followLatest()}
+                            question={
+                                asked && run ? (
+                                    <QuestionPanel
+                                        key={asked.questionId}
+                                        question={asked}
+                                        onAnswer={async answer => {
+                                            await perform(root, {
+                                                type: 'run.answer',
+                                                runId: run.id,
+                                                questionId: asked.questionId,
+                                                answer,
+                                            });
+                                        }}
+                                    />
+                                ) : undefined
+                            }
                         />
                     ) : (
                         <>
