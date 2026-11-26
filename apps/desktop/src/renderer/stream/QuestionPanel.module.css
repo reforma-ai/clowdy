@@ -8,6 +8,20 @@
     width: 100%;
 }
 
+/* The question and what can be picked. In the box under the chat it stops at half of the window and scrolls, so the rest of the chat stays in view and the buttons under it are always there. */
+.scroll {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    min-height: 0;
+}
+
+.scroll[data-bounded] {
+    max-height: 50vh;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+}
+
 /* The question: a title with no plate of its own. It may run to a few lines when the agent writes the facts into it, so it is plain text at the size of the field. */
 .header {
     padding: var(--spacing-md);

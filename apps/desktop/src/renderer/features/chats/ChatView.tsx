@@ -55,6 +55,7 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
             onOpenTask: (taskId: string) => ui.openTask(taskId),
             attachmentBlob: (attachment: Attachment) => root.transport.getAttachment(project.id, attachment.id),
             hasChat: (chatId: string) => project.chats.has(chatId),
+            chatOfId: (chatId: string) => project.chats.get(chatId),
             onOpenChat: (chatId: string) => void openChat(root, project, ui, chatId),
         }),
         [project, ui, root, skillOfName]
@@ -267,6 +268,7 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
                             question={
                                 asked && run ? (
                                     <QuestionPanel
+                                        bounded
                                         key={asked.questionId}
                                         question={asked}
                                         onAnswer={async answer => {

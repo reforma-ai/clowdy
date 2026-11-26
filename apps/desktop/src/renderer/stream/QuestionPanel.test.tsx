@@ -36,8 +36,8 @@ const question = (fields: Partial<Question> = {}): Question => ({
     recommended: 'admins',
     ...fields,
 });
-const draw = (fields?: Partial<Question>, onAnswer?: (answer: string) => void | Promise<void>) =>
-    act(async () => root.render(<QuestionPanel question={question(fields)} onAnswer={onAnswer} />));
+const draw = (fields?: Partial<Question>, onAnswer?: (answer: string) => void | Promise<void>, bounded?: boolean) =>
+    act(async () => root.render(<QuestionPanel question={question(fields)} onAnswer={onAnswer} bounded={bounded} />));
 const rows = () => [...container.querySelectorAll<HTMLElement>('[role="row"]')];
 const row = (label: string) => rows().find(candidate => candidate.textContent?.includes(label));
 const send = () => container.querySelector<HTMLButtonElement>('button[aria-label="Next"]');
@@ -172,5 +172,25 @@ describe('QuestionPanel', () => {
 
         expect(onAnswer).toHaveBeenCalledOnce();
         expect(skip()?.disabled).toBe(true);
+    });
+
+    describe('when it stands in the box under the chat', () => {
+        it('scrolls the question and the options inside it, and keeps Skip and send outside the scroll', async () => {
+            await draw(undefined, vi.fn(), true);
+
+            const scroll = container.querySelector('[data-bounded]');
+
+            expect(scroll).not.toBeNull();
+            expect(scroll?.textContent).toContain('Who can export orders?');
+            expect(scroll?.querySelector('textarea')).not.toBeNull();
+            expect(scroll?.contains(send() ?? null)).toBe(false);
+            expect(scroll?.contains(skip() ?? null)).toBe(false);
+        });
+
+        it('has no scroll of its own in the stream', async () => {
+            await draw(undefined, vi.fn());
+
+            expect(container.querySelector('[data-bounded]')).toBeNull();
+        });
     });
 });
