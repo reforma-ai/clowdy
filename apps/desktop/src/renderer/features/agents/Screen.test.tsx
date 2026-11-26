@@ -990,7 +990,7 @@ describe('grouped by folder', () => {
             await restart();
             await draw(() => ui().openChat('c-2'));
 
-            expect(folderLine()?.textContent).toBe('car-rental-api, feature/payments');
+            expect(folderLine()?.textContent).toBe('feature/payments');
             expect(folderLine()?.getAttribute('title')).toBe('~/car-rental-api');
             // Read only: nothing in it opens a list or takes a press.
             expect(folderSelect()).toBeNull();
@@ -999,7 +999,7 @@ describe('grouped by folder', () => {
             // A chat with no folder works in the main one.
             await draw(() => ui().openChat('c-1'));
 
-            expect(folderLine()?.textContent).toBe('car-rental, main');
+            expect(folderLine()?.textContent).toBe('main');
         });
 
         it('is under the message box of the chat the page made, in the folder picked there', async () => {
@@ -1019,7 +1019,7 @@ describe('grouped by folder', () => {
 
             expect([...project().chats.keys()].some(id => !before.has(id))).toBe(true);
             expect(folderSelect()).toBeNull();
-            expect(folderLine()?.textContent).toBe('car-rental-api, feature/payments');
+            expect(folderLine()?.textContent).toBe('feature/payments');
         });
 
         it('says when the folder is gone from the disk', async () => {
@@ -1047,15 +1047,17 @@ describe('grouped by folder', () => {
             expect(folderLine()?.hasAttribute('data-missing')).toBe(false);
         });
 
-        it('shows a chat folder only in a project with multiple folders, grouped or flat', async () => {
+        it('shows the folder in a flat list and hides it when grouped by folder or worktree', async () => {
             await restart({ grouping: false });
             await draw(() => ui().openChat('c-2'));
 
             expect(folderLine()?.textContent).toBe('car-rental-api, feature/payments');
 
-            await draw(() => ui().setGroupByFolder(true));
+            await draw(() => ui().setChatListLayout('folder'));
+            expect(folderLine()?.textContent).toBe('feature/payments');
 
-            expect(folderLine()?.textContent).toBe('car-rental-api, feature/payments');
+            await draw(() => ui().setChatListLayout('worktree'));
+            expect(folderLine()?.textContent).toBe('feature/payments');
 
             // The fixture project has one folder.
             act(() => reactRoot.unmount());
@@ -1069,6 +1071,10 @@ describe('grouped by folder', () => {
             });
 
             expect(folderLine()?.textContent).toBe('main');
+
+            await draw(() => ui().setGroupByFolder(false));
+
+            expect(folderLine()?.textContent).toBe('car-rental, main');
         });
     });
 
@@ -1773,6 +1779,16 @@ describe('a chat that works in a worktree', () => {
                 container.querySelector('[aria-label="Current place: Worktree, branch clowdy/ab12cd34"]')?.textContent
             ).toBe('Worktree clowdy/ab12cd34')
         );
+
+        await draw(() => ui().setChatListLayout('simple'));
+        expect(
+            container.querySelector('[aria-label="Current place: car-rental, Worktree, branch clowdy/ab12cd34"]')
+                ?.textContent
+        ).toBe('car-rental, Worktree clowdy/ab12cd34');
+        await draw(() => ui().setChatListLayout('worktree'));
+        expect(
+            container.querySelector('[aria-label="Current place: Worktree, branch clowdy/ab12cd34"]')?.textContent
+        ).toBe('Worktree clowdy/ab12cd34');
 
         await draw(() => ui().openChat('c-1'));
 
