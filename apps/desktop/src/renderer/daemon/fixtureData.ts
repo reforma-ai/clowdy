@@ -731,7 +731,7 @@ const FIXTURE_CHANGES = 3;
 /**
  * What `GET /v1/projects/:id/worktrees` answers for a fixture project, from the data the other reads use: a group per folder in the project's order, a folder that is no repository
  * (no `git` entry) with no worktrees, else its own checkout first, then what `fixtureFolderGit` lists (the Clowdy-made worktree, changed and not merged) and `data.worktrees` adds
- * (found, locked, missing). The chats are the project's whose worktree is at the path, archived ones too; `blocked` is the daemon's order (the folder's own checkout, a lock, chats).
+ * (found, locked, missing). The chats are the project's whose worktree is at the path, archived ones too; `blocked` is the daemon's order (the folder's own checkout, a lock, unarchived chats).
  */
 export function fixtureProjectWorktrees(
     project: Pick<Project, 'id' | 'folders'>,
@@ -795,7 +795,7 @@ export function fixtureProjectWorktrees(
                 chats: chats.map(chat => ({ id: chat.id, title: chat.title, archived: chat.archivedAt !== undefined })),
                 ...(locked !== undefined
                     ? { blocked: 'locked' as const }
-                    : chats.length > 0 && { blocked: 'chats' as const }),
+                    : chats.some(chat => chat.archivedAt === undefined) && { blocked: 'chats' as const }),
             };
         });
 

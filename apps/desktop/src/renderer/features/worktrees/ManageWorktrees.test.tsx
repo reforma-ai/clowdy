@@ -368,7 +368,7 @@ describe('Manage worktrees', () => {
         expect(buttonIn(row(FOUND_WORKTREE), 'New chat in this worktree: search-filters')!.disabled).toBe(false);
     });
 
-    it('shows a chat count beside the changes and previews the chat names on keyboard focus', async () => {
+    it('shows a chat count beside the changes without a preview tooltip', async () => {
         await open();
 
         const worktree = row(CLOWDY_WORKTREE);
@@ -382,10 +382,8 @@ describe('Manage worktrees', () => {
 
         await focusByKeyboard(count);
 
-        const tooltip = await openTooltip();
-
-        expect(tooltip.textContent).toContain('Weekend surcharge in a worktree');
-        expect(tooltip.textContent).toContain('Show the weekend surcharge in the form (archived)');
+        await settle();
+        expect(document.querySelector('[role="tooltip"]')).toBeNull();
     });
 
     it('opens the chat that works in a worktree when it is pressed, and closes the dialog', async () => {
@@ -503,6 +501,15 @@ describe('Manage worktrees', () => {
 
         expect(removeOf(await moreMenu(MISSING_WORKTREE))?.text).toBe('Remove record…');
         expect(removeOf(await moreMenu(FOUND_WORKTREE))?.text).toBe('Remove…');
+    });
+
+    it('offers Remove for a worktree with only archived chats', async () => {
+        const data = withFixtureWorktrees(createFixtureData());
+        data.chats.find(chat => chat.id === FIXTURE_WORKSPACE_CHAT_ID)!.archivedAt = Date.now();
+        await open({ data });
+
+        expect(row(CLOWDY_WORKTREE).textContent).toContain('2 chats');
+        expect(removeOf(await moreMenu(CLOWDY_WORKTREE))?.text).toBe('Remove…');
     });
 
     it('names, under a Remove that is off, the reason the daemon gave, and under no other', async () => {

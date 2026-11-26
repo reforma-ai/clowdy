@@ -489,7 +489,7 @@ describe('workspace.remove', () => {
             expect(existsSync(path)).toBe(false);
         });
 
-        test('a worktree a chat works in, an archived chat included, until the chats are deleted', async () => {
+        test('a worktree is blocked by unarchived chats but can be removed with archived chats still linked', async () => {
             const { h, store, found, make, remove, refusal, rows } = await setup();
             const path = found('in-use');
             const chat = make({ mode: 'existing', path });
@@ -500,16 +500,20 @@ describe('workspace.remove', () => {
             expect(refusal(await remove(path, { discard: true }))).toEqual(works);
 
             h.ok('chat.setArchived', { chatId: chat.id, archived: true });
-            h.ok('chat.delete', { chatId: second.id });
-            expect(refusal(await remove(path))).toEqual(works);
+            expect(refusal(await remove(path))).toEqual({
+                code: 'conflict',
+                message: `The chat "${second.title}" works in this worktree`,
+            });
             expect(existsSync(path)).toBe(true);
-            expect(chatsOfWorkspace(store.db, chat.workspace!.id)).toEqual([chat.id]);
-            expect(isBeingRemoved(store, chat.workspace!.id)).toBe(false);
 
-            h.ok('chat.delete', { chatId: chat.id });
-            expect(rows()).toEqual([]);
+            h.ok('chat.setArchived', { chatId: second.id, archived: true });
             expect((await remove(path)).ok).toBe(true);
             expect(existsSync(path)).toBe(false);
+            expect(chatsOfWorkspace(store.db, chat.workspace!.id)).toEqual([chat.id, second.id]);
+            expect(isBeingRemoved(store, chat.workspace!.id)).toBe(false);
+            h.ok('chat.delete', { chatId: chat.id });
+            h.ok('chat.delete', { chatId: second.id });
+            expect(rows()).toEqual([]);
         });
 
         test('a path git does not list for the folder, and what that path holds is left alone', async () => {
@@ -768,6 +772,23 @@ describe('workspace.remove', () => {
             expect(existsSync(slug)).toBe(false);
             expect(existsSync(h.config.workspacesDir)).toBe(true);
             expect(mainState(repo)).toEqual({ ...before, branches: git(repo, 'branch', '--format=%(refname:short)') });
+        });
+
+        test('removes an archived chat’s managed worktree and branch without deleting the chat', async () => {
+            const { h, start, remove, hasBranch, chatOf, worktrees } = await setup();
+            const chat = await start();
+            const { path, branch } = chat.workspace!;
+
+            h.ok('chat.setArchived', { chatId: chat.id, archived: true });
+            const [group] = await worktrees();
+            expect(group.worktrees.find(row => row.workspaceId === chat.workspace!.id)?.blocked).toBeUndefined();
+            expect(await remove(path, { deleteBranch: true })).toMatchObject({
+                ok: true,
+                data: { branchDeleted: true },
+            });
+            expect(existsSync(path)).toBe(false);
+            expect(hasBranch(branch!)).toBe(false);
+            expect(chatOf(chat.id).archivedAt).toBeDefined();
         });
 
         test('is removed by the real path the list shows when the workspaces folder is written through a link, and the folders it leaves empty go all the same', async () => {

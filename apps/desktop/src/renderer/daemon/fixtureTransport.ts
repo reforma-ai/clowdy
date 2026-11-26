@@ -1111,7 +1111,9 @@ export class FixtureTransport implements Transport {
         if (!workspace) return { removable: false };
 
         const below = new Set([chat.id, ...this.#threadsBelow(chat).map(thread => thread.id)]);
-        const shared = this.#data.chats.some(other => other.workspace?.id === workspace.id && !below.has(other.id));
+        const shared = this.#data.chats.some(
+            other => other.workspace?.id === workspace.id && other.archivedAt === undefined && !below.has(other.id)
+        );
 
         return {
             removable: workspace.managed && workspace.ready && !shared && !this.#isStandaloneWorktree(workspace.path),
@@ -1195,8 +1197,9 @@ export class FixtureTransport implements Transport {
 
         if (!worktree) return fail('conflict', 'Git does not list it as a worktree of the folder');
 
-        if (worktree.chats.length > 0)
-            return fail('conflict', `The chat "${worktree.chats[0].title}" works in this worktree`);
+        const busy = worktree.chats.find(chat => !chat.archived);
+
+        if (busy) return fail('conflict', `The chat "${busy.title}" works in this worktree`);
 
         if (worktree.main) return fail('conflict', "That is the folder's own checkout");
 

@@ -88,7 +88,7 @@ interface Target {
     /** Where the worktree is: its row's path, or the one the person named. */
     path: string;
     record?: WorkspaceRecord;
-    /** The chats that may work in it because they go with the removal (the chat being deleted and the threads below it). Any other chat, an archived one included, refuses it. */
+    /** The chats that may work in it because they go with the removal (the chat being deleted and the threads below it). Any other unarchived chat refuses it. */
     allowed: ReadonlySet<string>;
 }
 
@@ -102,13 +102,18 @@ interface Choices {
     branch?: (listed: ListedWorktree) => string | undefined;
 }
 
-/** The chat outside the ones that go with the removal that works in the worktree, in the words that refuse it; nothing when there is none. Reads the database only. */
+/** The unarchived chat outside the ones that go with the removal that works in the worktree, in the words that refuse it; nothing when there is none. Reads the database only. */
 function busyChat(store: Store, target: Pick<Target, 'record' | 'allowed'>): string | undefined {
-    const other = target.record && chatsOfWorkspace(store.db, target.record.id).find(id => !target.allowed.has(id));
+    const other =
+        target.record &&
+        chatsOfWorkspace(store.db, target.record.id)
+            .filter(id => !target.allowed.has(id))
+            .map(id => getChat(store.db, id))
+            .find(chat => chat && chat.archivedAt === undefined);
 
     return other === undefined
         ? undefined
-        : `The chat "${getChat(store.db, other)?.title ?? other}" works in this worktree${target.allowed.size > 0 ? ' too' : ''}`;
+        : `The chat "${other.title}" works in this worktree${target.allowed.size > 0 ? ' too' : ''}`;
 }
 
 /**
@@ -139,7 +144,7 @@ async function unsaved(path: string): Promise<string | undefined> {
 
 /**
  * Whether a worktree may be removed, and what in it says no. The rules both removals share, each checked against what is on the disk and in git now, never against what a row
- * remembers: no chat outside `target.allowed` works in it (an archived one included); the folder is on the disk, and git lists the worktree (with `allowMissing`, a prunable one
+ * remembers: no unarchived chat outside `target.allowed` works in it; the folder is on the disk, and git lists the worktree (with `allowMissing`, a prunable one
  * too, whose folder is gone) and it is not the folder's own checkout, another folder of the project, the repository's primary working tree (git never removes it) or locked, and no
  * other worktree or folder of the project is inside it (it would go with it, unasked); the branch that goes with it is not checked out in another worktree (`branch -D` would fail
  * after the tree was gone); and nothing in the tree is changed, a new file and an initialised submodule included, unless `discard` says it may be thrown away (`force` in the
@@ -246,7 +251,7 @@ async function checkWorkspaceRemoval(store: Store, target: Target, choices: Choi
  * a change, a submodule are refusals), and on top of them:
  *
  * - the chat has a worktree and Clowdy made it (`managed`): one that was found is never removed by a delete;
- * - the chat and the threads below it, which go with it, are the only ones that work in it;
+ * - no other unarchived chat outside the chat and the threads below it works in it;
  * - what it has checked out and the row's branch are ancestors of the base it was made from, as that base was last fetched (`refs/heads/<base>`, then `refs/remotes/<base>`, no
  *   network): the work is merged, or there is none. A base that was merged on the remote and not fetched yet, or a squash merge, is not recognised.
  */
@@ -534,7 +539,7 @@ export interface RemovedWorktree {
 
 /**
  * Removes a worktree git lists for a folder of the project, whoever made it (`workspace.remove`). Refused with a `conflict` that says why for: the folder's own checkout, another
- * folder of the project and the repository's primary working tree; a locked worktree; one a chat works in (an archived chat counts); a changed tree (a new file, an initialised
+ * folder of the project and the repository's primary working tree; a locked worktree; one an unarchived chat works in; a changed tree (a new file, an initialised
  * submodule) unless `discard` is true, which runs `git worktree remove --force`; a path git does not list for the folder; and, with `deleteBranch`, a branch that is checked out in
  * another worktree. `invalid` for a path that is not absolute, a folder the project does not have, gone from the disk or not the root of a repository. The branch is deleted only with
  * `deleteBranch`, merged or not, and whatever its name; a worktree removed with its branch kept loses no commit.

@@ -12,6 +12,7 @@ import {
     FIXTURE_RUN_FILES,
     FIXTURE_RUN_SCOPE,
     FIXTURE_RUN_TREES,
+    FIXTURE_WORKSPACE_CHAT_ID,
     FIXTURE_WORKTREE_PATH,
     withFixtureLastRun,
     withFixtureWorkspace,
@@ -579,6 +580,24 @@ describe('FixtureTransport workspace.remove', () => {
         ).toMatchObject({ ok: true, data: { branchDeleted: true } });
         expect(await paths(transport)).not.toContain(FIXTURE_WORKTREE_PATH);
         expect(await branches(transport)).not.toContain('clowdy/ab12cd34');
+    });
+
+    it('removes a worktree with archived chats only and keeps their history', async () => {
+        const transport = new FixtureTransport({ data: withFixtureWorktrees(createFixtureData()) });
+
+        expect(
+            await transport.command({ type: 'chat.setArchived', chatId: FIXTURE_WORKSPACE_CHAT_ID, archived: true })
+        ).toMatchObject({ ok: true });
+        const [group] = await transport.getProjectWorktrees(FIXTURE_PROJECT_ID);
+        const worktree = group.worktrees.find(row => row.path === FIXTURE_WORKTREE_PATH)!;
+
+        expect(worktree.chats).toHaveLength(2);
+        expect(worktree.chats.every(chat => chat.archived)).toBe(true);
+        expect(worktree.blocked).toBeUndefined();
+        expect(await remove(transport, { path: FIXTURE_WORKTREE_PATH, discard: true })).toMatchObject({ ok: true });
+        expect(await paths(transport)).not.toContain(FIXTURE_WORKTREE_PATH);
+        const snapshot = await transport.getProjectSnapshot(FIXTURE_PROJECT_ID);
+        expect(snapshot.chats.find(chat => chat.id === FIXTURE_WORKSPACE_CHAT_ID)?.archivedAt).toBeDefined();
     });
 
     it('refuses what the daemon refuses, and removes nothing', async () => {

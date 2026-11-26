@@ -35,33 +35,14 @@ interface WorktreeRowProps extends WorktreeRowActions {
     worktree: WorktreeInfo;
 }
 
-const CHAT_PREVIEW_LIMIT = 6;
-
 function WorktreeChats({ chats, onOpenChat }: { chats: WorktreeChat[]; onOpenChat: (chat: WorktreeChat) => void }) {
-    const [open, setOpen] = useState(false);
     const count = chats.length;
-    const remaining = count - CHAT_PREVIEW_LIMIT;
 
     return (
-        <MenuTrigger isOpen={open} onOpenChange={setOpen}>
-            <Tooltip
-                placement="top start"
-                className={styles.chatPreview}
-                isDisabled={open}
-                shouldCloseOnPress
-                content={
-                    <>
-                        {chats.slice(0, CHAT_PREVIEW_LIMIT).map(chat => (
-                            <div key={chat.id}>{chat.archived ? `${chat.title} (archived)` : chat.title}</div>
-                        ))}
-                        {remaining > 0 && <div>{`+${remaining} more`}</div>}
-                    </>
-                }
-            >
-                <Button variant="inline" className={styles.chatCount}>
-                    {`${count} ${count === 1 ? 'chat' : 'chats'}`}
-                </Button>
-            </Tooltip>
+        <MenuTrigger>
+            <Button variant="inline" className={styles.chatCount}>
+                {`${count} ${count === 1 ? 'chat' : 'chats'}`}
+            </Button>
             <Popover placement="bottom start" spacing="xs" width={280}>
                 <PopoverScroll maxHeight={280}>
                     <Menu aria-label="Chats in this worktree" size="sm">
@@ -88,7 +69,7 @@ function WorktreeChats({ chats, onOpenChat }: { chats: WorktreeChat[]; onOpenCha
 
 /**
  * One worktree of a folder, as git lists it: its branch (or the commit it is on), the one badge that matters most (`worktreeMark`: the folder's own checkout, gone from the disk, locked, or whether its work is in the base), how
- * many files are changed, and a count of chats with a preview on hover and a menu for opening them. At the end: a new
+ * many files are changed, and a count of chats with a menu for opening them. At the end: a new
  * chat in it, and More (`WorktreeMenu`: the same new chat, the copy of the path, the programs that open it, and Remove, which the folder's own checkout does not have). A
  * worktree whose folder is gone has no chat to start in it.
  *

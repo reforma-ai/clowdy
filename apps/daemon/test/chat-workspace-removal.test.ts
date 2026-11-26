@@ -267,7 +267,7 @@ describe('what GET /v1/chats/:id/workspace says', () => {
         expect((await removal(chat)).removable).toBe(false);
     });
 
-    test('says no while another chat works in the worktree, an archived one too, and not for the threads below the chat', async () => {
+    test('says no for another unarchived chat, but not for archived chats or threads below the chat', async () => {
         const { h, store, project, make, start, removal } = await setup();
         const chat = await start();
         const { path } = chat.workspace!;
@@ -294,9 +294,9 @@ describe('what GET /v1/chats/:id/workspace says', () => {
         expect((await removal(chat)).removable).toBe(false);
         expect((await removal(other)).removable).toBe(false);
 
-        // The other one set aside is still somebody's, and a thread of the other one counts as the other's.
+        // An archived chat no longer blocks removal.
         h.ok('chat.setArchived', { chatId: other.id, archived: true });
-        expect((await removal(chat)).removable).toBe(false);
+        expect((await removal(chat)).removable).toBe(true);
     });
 
     test('says no while the branch is checked out in another worktree, and for a tree that was moved to a commit the base lacks', async () => {
