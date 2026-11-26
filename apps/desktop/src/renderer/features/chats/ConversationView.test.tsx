@@ -191,9 +191,12 @@ describe('ConversationView, the live line', () => {
             stream: await streamOf('r-na-02'),
         });
 
-        expect(text()).toContain(reason);
+        const message = "I've hit the Claude usage limit. I'll continue after 14:00.";
+
+        expect(text()).toContain(message);
         expect(text()).not.toContain('Waiting for a free slot');
-        expect(container.querySelector('[role="status"][data-color="warning"]')?.textContent).toContain(reason);
+        expect(container.querySelector('[role="status"][data-color="warning"]')?.textContent).toContain(message);
+        expect(container.querySelector('[role="status"][data-color="warning"] svg')).toBeNull();
     });
 
     it('shows when a paused run will continue', async () => {
@@ -204,8 +207,10 @@ describe('ConversationView, the live line', () => {
             stream: await streamOf('r-na-02'),
         });
 
-        expect(text()).toContain(reason);
-        expect(container.querySelector('[role="status"][data-color="warning"]')?.textContent).toContain(reason);
+        const message = "I've hit the Claude usage limit. I'll continue after 14:00.";
+
+        expect(text()).toContain(message);
+        expect(container.querySelector('[role="status"][data-color="warning"]')?.textContent).toContain(message);
 
         await draw({ run: { ...runOf('r-na-02'), status: 'running' }, stream: await streamOf('r-na-02') });
 

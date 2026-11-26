@@ -1,9 +1,8 @@
-import { Alert, AlertDescription, AlertIcon } from '@clowdy/components/Alert';
+import { Alert, AlertDescription } from '@clowdy/components/Alert';
 import { Button } from '@clowdy/components/Button';
 import { ContentColumn } from '@clowdy/components/ContentColumn';
 import { useStickToBottom } from '@clowdy/components/hooks';
 import { Show } from '@clowdy/components/Show';
-import { Spinner } from '@clowdy/components/Spinner';
 import { ArrowDown } from '@clowdy/icons/14';
 import { Fragment, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 
@@ -403,9 +402,6 @@ export function StreamView({
                         {showWorking && <WorkingLine text={typeof working === 'string' ? working : undefined} />}
                         {waitingNotice && (
                             <Alert color="warning" role="status">
-                                <AlertIcon>
-                                    <Spinner size="xs" />
-                                </AlertIcon>
                                 <AlertDescription>{waitingNotice}</AlertDescription>
                             </Alert>
                         )}
