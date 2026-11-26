@@ -12,6 +12,7 @@ import { ConversationView } from './ConversationView';
 import type { Run } from '@clowdy/protocol';
 import type { RunStream } from '../../stores';
 import type { KeyValueStorage } from '../../stores/storage';
+import type { ConversationLinks } from './useStreamLinks';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -45,6 +46,7 @@ const draw = (props: { run?: Run; stream?: RunStream; backgroundLine?: string; e
                 <ConversationView
                     run={props.run}
                     stream={props.stream}
+                    links={links}
                     backgroundLine={props.backgroundLine}
                     emptyState={props.emptyState}
                     top={<div data-testid="top">Over the stream</div>}
@@ -55,6 +57,7 @@ const draw = (props: { run?: Run; stream?: RunStream; backgroundLine?: string; e
         )
     );
 const text = () => container.textContent ?? '';
+const links: ConversationLinks = { attachmentBlob: async () => new Blob(), onOpenChat: () => {} };
 
 beforeEach(async () => {
     store = new RootStore(new FixtureTransport({ data: createFixtureData() }), { storage: memoryStorage() });
@@ -102,9 +105,25 @@ describe('ConversationView, the states of the stream', () => {
         });
         await draw({ run: runOf('r-orch-1'), stream });
 
+        runInAction(() => stream.byId.clear());
+        await draw({ run: runOf('r-orch-1'), stream });
+
         expect(text()).toContain('Loading messages…');
-        expect(text()).not.toContain('Over the stream Simplify');
+        expect(container.querySelector('[data-turn]')).toBeNull();
         expect(container.querySelector('[data-testid="bottom"]')).not.toBeNull();
+    });
+
+    it('keeps the stream on the page while it is read again, so the reading place is not lost', async () => {
+        const stream = await streamOf('r-orch-1');
+
+        runInAction(() => {
+            stream.status = 'loading';
+        });
+        await draw({ run: runOf('r-orch-1'), stream });
+        await draw({ run: runOf('r-orch-1'), stream });
+
+        expect(text()).not.toContain('Loading messages…');
+        expect(container.querySelector('[data-turn]')).not.toBeNull();
     });
 
     it('says why the messages could not be loaded and loads them again from Retry', async () => {

@@ -12,11 +12,11 @@ import { StreamView, type StreamViewHandle, type StreamViewProps } from '../../s
 import styles from './ConversationView.module.css';
 import { isRunActive, liveLine } from './chatRun';
 import { perform } from './commands';
-import { useStreamLinks } from './useStreamLinks';
 
 import type { Run } from '@clowdy/protocol';
 import type { ReactNode, Ref } from 'react';
 import type { RunStream } from '../../stores';
+import type { ConversationLinks } from './useStreamLinks';
 
 export interface ConversationViewProps
     extends Pick<
@@ -27,6 +27,8 @@ export interface ConversationViewProps
     run: Run | undefined;
     /** The run's stream, read by the page that holds this one (it needs the items too). None until the first message starts the run. */
     stream: RunStream | undefined;
+    /** What the text may point at (`useStreamLinks`), read by the page that holds this one, which opens chats and reads files with it too. */
+    links: ConversationLinks;
     /** Over the stream: a line that says whose conversation it is (a thread's, a sub-agent's). */
     top?: ReactNode;
     /** Over the stream's bottom, above the box: the plates that tell what the chat is doing (its agents, its last run, its tasks). */
@@ -49,6 +51,7 @@ export interface ConversationViewProps
 export function ConversationView({
     run,
     stream,
+    links,
     top,
     banners,
     bottom,
@@ -57,7 +60,6 @@ export function ConversationView({
     ...streamProps
 }: ConversationViewProps) {
     const root = useRootStore();
-    const links = useStreamLinks();
     const overlay = useRef<HTMLDivElement>(null);
     const overlayContent = useRef<HTMLDivElement>(null);
     const bannerStack = useRef<HTMLDivElement>(null);
@@ -92,6 +94,9 @@ export function ConversationView({
         return () => observer.disconnect();
     }, [measureOverlay]);
 
+    // A stream that is read again (the app resyncs) keeps what it shows until the new items replace them, so the page keeps its place; only one with nothing to show says it is loading.
+    const items = stream?.items ?? [];
+    const hasItems = items.length > 0;
     const shown = run && shownRunStatus(run);
     // The live line follows what the person reads of the run: none while a card waits for them.
     const working =
@@ -119,41 +124,42 @@ export function ConversationView({
                 </div>
             )}
 
-            {stream && (stream.status === 'idle' || stream.status === 'loading') && (
+            {stream && (stream.status === 'idle' || stream.status === 'loading') && !hasItems && (
                 <div className={styles.center}>
                     <Loader size="xs" />
                     <Text color="secondary">Loading messages…</Text>
                 </div>
             )}
 
-            {composerInset !== undefined && (!stream || stream.status === 'ready') && (
-                <StreamView
-                    {...streamProps}
-                    ref={ref}
-                    composerInset={composerInset}
-                    composerSurfaceInset={composerSurfaceInset}
-                    items={stream?.items ?? []}
-                    active={isRunActive(run)}
-                    working={working}
-                    links={links}
-                    // A question the run no longer waits on (stopped, interrupted) is shown but cannot be answered.
-                    onAnswer={
-                        run?.status === 'waiting_user'
-                            ? async (questionId, answer) => {
-                                  await perform(root, { type: 'run.answer', runId: run.id, questionId, answer });
-                              }
-                            : undefined
-                    }
-                    // A request for permission is decided while its own item is open, whatever the run is doing, so the card gates itself and the handler only needs a run to name.
-                    onDecide={
-                        run
-                            ? async (approvalId, decision) => {
-                                  await perform(root, { type: 'run.decide', runId: run.id, approvalId, decision });
-                              }
-                            : undefined
-                    }
-                />
-            )}
+            {composerInset !== undefined &&
+                (!stream || stream.status === 'ready' || (stream.status === 'loading' && hasItems)) && (
+                    <StreamView
+                        {...streamProps}
+                        ref={ref}
+                        composerInset={composerInset}
+                        composerSurfaceInset={composerSurfaceInset}
+                        items={items}
+                        active={isRunActive(run)}
+                        working={working}
+                        links={links}
+                        // A question the run no longer waits on (stopped, interrupted) is shown but cannot be answered.
+                        onAnswer={
+                            run?.status === 'waiting_user'
+                                ? async (questionId, answer) => {
+                                      await perform(root, { type: 'run.answer', runId: run.id, questionId, answer });
+                                  }
+                                : undefined
+                        }
+                        // A request for permission is decided while its own item is open, whatever the run is doing, so the card gates itself and the handler only needs a run to name.
+                        onDecide={
+                            run
+                                ? async (approvalId, decision) => {
+                                      await perform(root, { type: 'run.decide', runId: run.id, approvalId, decision });
+                                  }
+                                : undefined
+                        }
+                    />
+                )}
 
             <ContentColumn
                 ref={overlay}

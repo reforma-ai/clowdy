@@ -8,6 +8,7 @@ import { useProjectState, useRootStore } from '../../stores';
 import composer from './Composer.module.css';
 import { ComposerSend } from './ComposerSend';
 import { isRunActive } from './chatRun';
+import { canStopAlone } from './runningAgentRows';
 import styles from './SubagentBox.module.css';
 
 import type { Run } from '@clowdy/protocol';
@@ -29,7 +30,7 @@ export function SubagentBox({ run }: { run: Run }) {
     const [isStopping, setIsStopping] = useState(false);
     const parent = run.parentRunId ? project.runs.get(run.parentRunId) : undefined;
     const working = isRunActive(run);
-    const stoppable = working && run.canStopAlone === true;
+    const stoppable = working && canStopAlone(run);
     // A sub-agent lives inside its parent's session: when that session cannot end it alone, the daemon refuses to stop it.
     const hint = working && !stoppable ? `Runs inside ${parent ? label(parent) : 'its parent'}` : ONLY_PARENT;
 
