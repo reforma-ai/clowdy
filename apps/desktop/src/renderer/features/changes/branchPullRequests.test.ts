@@ -72,6 +72,21 @@ it('automatically groups open and draft PRs, then falls back to the newest merge
     expect(partitionPullRequests([])).toEqual({ visible: [], archived: [] });
 });
 
+it('shows no merged PR once the branch has moved past the newest one, and does not fall back to an older one', () => {
+    const newest = { number: 46, state: 'merged' as const, movedPast: true as const };
+    const older = { number: 42, state: 'merged' as const };
+    const open = { number: 47, state: 'open' as const };
+
+    expect(partitionPullRequests([older, newest])).toEqual({ visible: [], archived: [newest, older] });
+    // A pull request that is live is shown as before, and the merged one is history.
+    expect(partitionPullRequests([newest, open])).toEqual({ visible: [open], archived: [newest] });
+    // The mark only means something on the newest merged pull request.
+    expect(partitionPullRequests([{ number: 46, state: 'merged' as const }])).toEqual({
+        visible: [{ number: 46, state: 'merged' }],
+        archived: [],
+    });
+});
+
 it('remembers the most recent worktree branch across store instances without reviving a detached head', () => {
     const transport = { getGitBranchPullRequests: vi.fn() };
     const values = new Map<string, string>();

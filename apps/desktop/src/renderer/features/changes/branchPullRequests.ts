@@ -27,13 +27,18 @@ const keyText = ({ projectId, folderId, branch }: BranchPullRequestKey) =>
 const repoKey = ({ host, owner, name }: GitHubRepo) => `${host}/${owner}/${name}`.toLowerCase();
 const hidden = () => typeof document !== 'undefined' && document.hidden;
 
-/** Keep live PRs, or the newest merged PR when none are live. Legacy manual archive marks do not affect the grouping. */
-export function partitionPullRequests<T extends Pick<GitPullRequestSummary, 'number' | 'state'>>(rows: readonly T[]) {
+/**
+ * Keep live PRs, or the newest merged PR when none are live and the branch has not moved past it (`movedPast`): once it has commits of its own since, that PR is history and
+ * the branch is not shown as merged. Legacy manual archive marks do not affect the grouping.
+ */
+export function partitionPullRequests<T extends Pick<GitPullRequestSummary, 'number' | 'state' | 'movedPast'>>(
+    rows: readonly T[]
+) {
     const sorted = [...rows].sort((a, b) => b.number - a.number);
     const visible = sorted.filter(pr => pr.state === 'open' || pr.state === 'draft');
     if (!visible.length) {
         const latest = sorted.find(pr => pr.state === 'merged');
-        if (latest) visible.push(latest);
+        if (latest && !latest.movedPast) visible.push(latest);
     }
     const active = new Set(visible);
     return { visible, archived: sorted.filter(pr => !active.has(pr)) };

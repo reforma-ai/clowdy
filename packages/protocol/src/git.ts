@@ -458,11 +458,17 @@ export type GitPullRequestInfo =
           pullRequest?: GitPullRequest;
       };
 
-/** A pull request opened from the branch, independent of the current checkout tip. Archive is local to Clowdy. */
+/**
+ * A pull request opened from the branch, independent of the current checkout tip. Archive is local to Clowdy. `headCommit` is the commit its branch was at on GitHub, as the
+ * history read saw it (a row kept from before the field existed has none). `movedPast` is set on the newest merged pull request, and only while no pull request is open or a draft, when the
+ * branch has commits of its own since: work that is neither in that pull request's branch nor in its base, merges left out, so a squash merge, a base that moved, or a merge of the
+ * base into the branch does not count. It is judged by the daemon on every answer from the branch as the repository has it, and says that this pull request is no longer the
+ * state of the branch. Absent when it cannot be told (no `headCommit`, a commit the repository does not have, no local branch).
+ */
 export type GitPullRequestSummary = Pick<
     GitPullRequest,
     'number' | 'title' | 'url' | 'state' | 'base' | 'head' | 'updatedAt'
-> & { archived?: true };
+> & { archived?: true; headCommit?: string; movedPast?: true };
 
 /** All pull requests from a repository's branch, newest first. A stale answer is kept when GitHub cannot be reached. */
 export interface GitBranchPullRequests {

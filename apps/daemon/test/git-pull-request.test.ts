@@ -358,7 +358,7 @@ const historyPage = (nodes: unknown[], endCursor?: string) => ({
     },
 });
 
-/** GitHub's lightweight history node. History does not ask for head commit, checks or mergeability. */
+/** GitHub's lightweight history node. History asks for the head commit, and not for checks or mergeability. */
 const historyNode = (number: number, state = 'OPEN', extra: Record<string, unknown> = {}) => ({
     number,
     title: `Pull request ${number}`,
@@ -1546,6 +1546,121 @@ withStandIn('Branch pull request history', () => {
         await pullRequests.forget(first.place);
         expect((await read(second.place)).pullRequests.map(pr => pr.number)).toEqual([11, 10]);
         expect(gh.reads()).toEqual(['feature', 'feature']);
+    });
+
+    test('marks the newest merged pull request once the branch has commits of its own since, also from the cache and after an archive', async () => {
+        const { path, place, head } = repoOn();
+        gh.reply('feature', { body: historyPage([historyNode(10, 'MERGED', { headRefOid: head })]) });
+
+        // The branch is where the pull request left it, and its commits are in no base (a squash merge leaves them out): still the state of the branch.
+        const merged = await read(place);
+        expect(merged.pullRequests[0]).toMatchObject({ number: 10, state: 'merged', headCommit: head });
+        expect(merged.pullRequests[0]?.movedPast).toBeUndefined();
+
+        commitMore(path);
+
+        const moved = await read(place);
+        expect(moved.pullRequests[0]?.movedPast).toBe(true);
+        expect(gh.reads()).toEqual(['feature']);
+
+        // A linked worktree of the repository sees the branch as it is in the checkout that has it.
+        const tree = join(tempDir('git-pull-request'), 'linked-tree');
+        git(path, 'worktree', 'add', '-q', '-b', 'other', tree, 'main');
+        expect((await read(placeAt(tree))).pullRequests[0]?.movedPast).toBe(true);
+        expect((await archive(place, 10, true)).pullRequests[0]).toMatchObject({ archived: true, movedPast: true });
+    });
+
+    test('does not count a merge of the base into the branch, or a base that moved on, as work of its own', async () => {
+        const { path, place, head } = repoOn();
+        gh.reply('feature', { body: historyPage([historyNode(10, 'MERGED', { headRefOid: head })]) });
+
+        git(path, 'checkout', '-q', 'main');
+        commitMore(path, 'base.txt');
+        git(path, 'checkout', '-q', 'feature');
+
+        expect((await read(place)).pullRequests[0]?.movedPast).toBeUndefined();
+
+        // What Update from main does: the branch has a commit that is not on the pull request's branch, but it is a merge, and what it brings is in the base.
+        git(path, 'merge', '-q', '--no-edit', 'main');
+
+        expect((await read(place)).pullRequests[0]?.movedPast).toBeUndefined();
+
+        commitMore(path, 'own.txt');
+
+        expect((await read(place)).pullRequests[0]?.movedPast).toBe(true);
+    });
+
+    test('judges only the newest merged pull request, and only while none is open and the repository can say', async () => {
+        const { path, place, head, main } = repoOn();
+        const absent = 'a'.repeat(40);
+        const read10 = async (nodes: unknown[]) => {
+            await pullRequests.forget(place);
+            gh.reply('feature', { body: historyPage(nodes) });
+
+            return (await read(place)).pullRequests;
+        };
+
+        commitMore(path);
+
+        // The older pull request is passed by too, but it is the newest that stands for the branch.
+        const both = await read10([
+            historyNode(10, 'MERGED', { headRefOid: head }),
+            historyNode(9, 'MERGED', { headRefOid: main }),
+        ]);
+        expect(both.map(pr => [pr.number, pr.movedPast])).toEqual([
+            [10, true],
+            [9, undefined],
+        ]);
+        // A live pull request, a draft as well, is shown as it is, and the merged one is history either way.
+        expect(
+            (await read10([historyNode(11), historyNode(10, 'MERGED', { headRefOid: head })])).map(pr => pr.movedPast)
+        ).toEqual([undefined, undefined]);
+        expect(
+            (
+                await read10([
+                    historyNode(11, 'OPEN', { isDraft: true }),
+                    historyNode(10, 'MERGED', { headRefOid: head }),
+                ])
+            ).map(pr => pr.movedPast)
+        ).toEqual([undefined, undefined]);
+        // No head commit in the row, a commit the repository does not have, and a closed pull request: nothing to judge by.
+        expect((await read10([historyNode(10, 'MERGED')]))[0]?.movedPast).toBeUndefined();
+        expect((await read10([historyNode(10, 'MERGED', { headRefOid: absent })]))[0]?.movedPast).toBeUndefined();
+        expect((await read10([historyNode(10, 'CLOSED', { headRefOid: head })]))[0]?.movedPast).toBeUndefined();
+        // A branch that is not local has no commits to speak of.
+        git(path, 'checkout', '-q', 'main');
+        git(path, 'branch', '-D', 'feature');
+        expect((await read10([historyNode(10, 'MERGED', { headRefOid: head })]))[0]?.movedPast).toBeUndefined();
+    });
+
+    test('takes the base as origin has it when the local base is behind', async () => {
+        const { path, place, head } = repoOn();
+        gh.reply('feature', { body: historyPage([historyNode(10, 'MERGED', { headRefOid: head })]) });
+
+        // What the branch merged from the base is on `origin/main` only, the local `main` has not caught up with it.
+        git(path, 'checkout', '-q', 'main');
+        git(path, 'update-ref', 'refs/remotes/origin/main', commitMore(path, 'base.txt'));
+        git(path, 'reset', '-q', '--hard', 'HEAD~1');
+        git(path, 'checkout', '-q', 'feature');
+        git(path, 'merge', '-q', '--no-edit', 'origin/main');
+
+        expect((await read(place)).pullRequests[0]?.movedPast).toBeUndefined();
+
+        commitMore(path, 'own.txt');
+
+        expect((await read(place)).pullRequests[0]?.movedPast).toBe(true);
+    });
+
+    test('does not mark a branch that git cannot count the commits of', async () => {
+        const { path, place, head } = repoOn();
+        gh.reply('feature', { body: historyPage([historyNode(10, 'MERGED', { headRefOid: head })]) });
+        const middle = commitMore(path, 'one.txt');
+        commitMore(path, 'two.txt');
+
+        // Both ends are in the repository and the commit between them is not: that is an error of git, and an error is not "moved past".
+        rmSync(join(path, '.git', 'objects', middle.slice(0, 2), middle.slice(2)));
+
+        expect((await read(place)).pullRequests[0]?.movedPast).toBeUndefined();
     });
 
     test('keeps the complete stored history and archive across restarts, partial failures, offline reads and restores', async () => {

@@ -1018,19 +1018,32 @@ export class FixtureTransport implements Transport {
         const pullRequests =
             repo && access === 'ready'
                 ? history
-                      .map(({ number, title, url, state, base, head, updatedAt, archived }: GitPullRequestSummary) => ({
-                          number,
-                          title,
-                          url,
-                          state,
-                          base,
-                          head,
-                          updatedAt,
-                          ...((state === 'merged' || state === 'closed') &&
-                              (this.#archivedPullRequests.get(this.#pullRequestKey(repo, number)) ?? archived) && {
-                                  archived: true as const,
-                              }),
-                      }))
+                      .map(
+                          ({
+                              number,
+                              title,
+                              url,
+                              state,
+                              base,
+                              head,
+                              updatedAt,
+                              archived,
+                              movedPast,
+                          }: GitPullRequestSummary) => ({
+                              number,
+                              title,
+                              url,
+                              state,
+                              base,
+                              head,
+                              updatedAt,
+                              ...(state === 'merged' && movedPast && { movedPast: true as const }),
+                              ...((state === 'merged' || state === 'closed') &&
+                                  (this.#archivedPullRequests.get(this.#pullRequestKey(repo, number)) ?? archived) && {
+                                      archived: true as const,
+                                  }),
+                          })
+                      )
                       .sort((a, b) => b.number - a.number)
                 : [];
 

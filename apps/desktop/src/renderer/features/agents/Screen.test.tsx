@@ -1761,6 +1761,16 @@ describe('a chat that works in a worktree', () => {
         expect(badge(second.id)?.getAttribute('aria-label')).toBe('1 pull request: 1 merged');
         expect(badge(second.id)?.textContent).toBe('');
 
+        // The branch has commits of its own since that merge: the pull request is history, and no chat on it looks merged.
+        await act(async () => {
+            fact.accept({
+                ...fact.value!,
+                pullRequests: [{ ...pr(9, 'merged'), movedPast: true as const }, pr(11, 'closed'), pr(13, 'closed')],
+            });
+        });
+        expect(badge(first.id)).toBeNull();
+        expect(badge(second.id)).toBeNull();
+
         // The recorded ChatWorkspace branch remains the original name after an external checkout.
         // ProjectInfo says what the worktree is actually on now.
         const info = await transport.getProjectsInfo();

@@ -64,7 +64,7 @@ const HISTORY_TTL_MS = 30_000;
 const HISTORY_QUERY = [
     'query($owner: String!, $name: String!, $head: String!, $cursor: String) { repository(owner: $owner, name: $name) {',
     'pullRequests(headRefName: $head, first: 100, after: $cursor, orderBy: { field: CREATED_AT, direction: DESC }) {',
-    'nodes { number title state url isDraft baseRefName headRefName updatedAt isCrossRepository headRepositoryOwner { login } }',
+    'nodes { number title state url isDraft baseRefName headRefName headRefOid updatedAt isCrossRepository headRepositoryOwner { login } }',
     'pageInfo { hasNextPage endCursor } } } }',
 ].join(' ');
 
@@ -267,6 +267,9 @@ async function checkHistoryBranch(branch: string): Promise<void> {
     }
 }
 
+/** A full commit hash: 40 hexadecimal digits, or 64 in a repository that uses SHA-256. */
+const COMMIT_HASH = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/i;
+
 /** The summary does not carry any of the current tip's expensive CI or mergeability detail. */
 function summaryOf(node: unknown, repo: GitHubRepo, branch: string): GitPullRequestSummary | undefined {
     const raw = readPullRequest(node, repo.owner);
@@ -280,7 +283,44 @@ function summaryOf(node: unknown, repo: GitHubRepo, branch: string): GitPullRequ
 
     const { number, title, url, state, base, head, updatedAt } = assemblePullRequest(raw);
 
-    return { number, title, url, state, base, head, updatedAt };
+    return {
+        number,
+        title,
+        url,
+        state,
+        base,
+        head,
+        updatedAt,
+        ...(COMMIT_HASH.test(raw.headCommit) && { headCommit: raw.headCommit }),
+    };
+}
+
+/**
+ * Whether the local branch has commits of its own since a pull request's branch was at `headCommit`: commits that are on neither that branch nor the pull request's base (as
+ * `origin` has it, or as the local branch of that name has it), merges left out. So a squash or rebase merge (the branch's own commits are still on the branch's side), a base that
+ * moved on, and a merge of the base into the branch, which is what Update from main does, are no new work. A commit the repository does not have (never fetched), a branch it does
+ * not have and a git that cannot say count as "no", so the pull request stays.
+ */
+async function branchMovedPast(cwd: string, branch: string, headCommit: string, base: string): Promise<boolean> {
+    if (!COMMIT_HASH.test(headCommit)) return false;
+
+    // Only a base the repository has is left out of the count, since git refuses a revision it does not know. For the commit and the branch git's refusal is the answer: no count is "no".
+    const bases = await Promise.all(
+        [`refs/remotes/origin/${base}`, `refs/heads/${base}`].map(async ref =>
+            (await commitAt(cwd, ref)) ? [ref] : []
+        )
+    );
+    const count = await gitLine(cwd, [
+        'rev-list',
+        '--count',
+        '--no-merges',
+        `refs/heads/${branch}`,
+        '--not',
+        headCommit,
+        ...bases.flat(),
+    ]);
+
+    return count !== undefined && Number(count) > 0;
 }
 
 /**
@@ -288,7 +328,7 @@ function summaryOf(node: unknown, repo: GitHubRepo, branch: string): GitPullRequ
  * not have (the person has not fetched it), a git that cannot say, and a hash that is not one count as "not moved past", so the pull request stays.
  */
 async function movedPast(cwd: string, headCommit: string): Promise<boolean> {
-    if (!/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/i.test(headCommit) || !(await commitAt(cwd, headCommit))) return false;
+    if (!COMMIT_HASH.test(headCommit) || !(await commitAt(cwd, headCommit))) return false;
 
     const read = await gitRead(cwd, ['merge-base', '--is-ancestor', 'HEAD', headCommit]);
 
@@ -416,7 +456,29 @@ export class PullRequests {
 
         if (this.#stopper.signal.aborted) throw unavailable('The daemon is stopping');
 
-        return { ...history, pullRequests: withPullRequestArchives(store.db, repository, history.pullRequests) };
+        const pullRequests = withPullRequestArchives(store.db, repository, history.pullRequests);
+
+        return { ...history, pullRequests: await this.#withMovedPast(place.path, branch, pullRequests) };
+    }
+
+    /**
+     * The newest merged pull request, when none is open or a draft, marked `movedPast` if the branch has commits of its own since (`GitPullRequestSummary.movedPast`). Judged on every
+     * answer, also one from the cache, since a commit made in a checkout changes it and not GitHub's list. Only the newest is judged: an older merged pull request is behind it
+     * anyway, and the app does not show one in its place.
+     */
+    async #withMovedPast(
+        cwd: string,
+        branch: string,
+        pullRequests: GitPullRequestSummary[]
+    ): Promise<GitPullRequestSummary[]> {
+        if (pullRequests.some(pr => pr.state === 'open' || pr.state === 'draft')) return pullRequests;
+
+        const latest = pullRequests.filter(pr => pr.state === 'merged').sort((a, b) => b.number - a.number)[0];
+
+        if (!latest?.headCommit || !(await branchMovedPast(cwd, branch, latest.headCommit, latest.base)))
+            return pullRequests;
+
+        return pullRequests.map(pr => (pr === latest ? { ...pr, movedPast: true as const } : pr));
     }
 
     /** A local, reversible archive. The last complete history judges membership and whether the PR has ended. */
@@ -438,7 +500,7 @@ export class PullRequests {
         if (repository !== repositoryKey(expectedRepo)) throw conflict("The folder's origin has changed");
         const cached = this.#historyAnswers.peek(historyKey(repo, branch));
 
-        return store.tx(() => {
+        const answer = store.tx(() => {
             const pullRequests = readPullRequestHistory(store.db, repository, branch) ?? [];
             const pr = pullRequests.find(entry => entry.number === number);
 
@@ -456,6 +518,8 @@ export class PullRequests {
                 ...((cached === undefined || cached.stale) && { stale: true as const }),
             };
         });
+
+        return { ...answer, pullRequests: await this.#withMovedPast(place.path, branch, answer.pullRequests) };
     }
 
     /** Keep the number of simultaneous complete history reads bounded, including their page reads. */
