@@ -351,12 +351,15 @@ describe('the card family', () => {
             'interrupted',
             null,
         ]);
-        // One frame: an icon, then the body that begins with the title, in a thread's card and a sub-agent's alike.
-        const shape = (found: HTMLElement) =>
-            `${[...found.children].map(child => child.tagName).join()} ${found.querySelector('div > span[class*="title"]') ? 'title' : ''}`;
+        // One frame: a title line that holds the icon, in a thread's card and a sub-agent's alike; the rest of the card is under it, not beside it.
+        const head = (found: HTMLElement) => found.firstElementChild as HTMLElement;
 
-        expect(cards().every(found => found.querySelector('svg'))).toBe(true);
-        expect(new Set(cards().map(shape))).toEqual(new Set(['SPAN,DIV title']));
+        expect(
+            cards().every(found => head(found).querySelector('svg') && head(found).querySelector('[class*="title"]'))
+        ).toBe(true);
+        expect(
+            cards().every(found => [...found.querySelectorAll('svg')].every(icon => head(found).contains(icon)))
+        ).toBe(true);
     });
 
     it('opens the page of a sub-agent and the chat of a thread from a press on the title', async () => {

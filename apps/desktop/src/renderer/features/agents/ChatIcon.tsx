@@ -1,10 +1,8 @@
 import { BoltBordered, Edit } from '@clowdy/icons/12';
-import { Message } from '@clowdy/icons/14';
 import { shownRunStatus } from '@clowdy/protocol';
 
 import { RUN_STATUS_VIEW, StatusDot } from '../../shared';
-import { ProviderIcon } from '../settings/providers/ProviderIcon';
-import { PROVIDER_IDS } from '../settings/providers/providerView';
+import { AgentMark } from './AgentMark';
 import { chatDotTone, type ThreadsActivity } from './agentTree';
 import styles from './ChatIcon.module.css';
 
@@ -26,13 +24,7 @@ export function ChatIcon({
     showStatus?: boolean;
     unread?: boolean;
 }) {
-    const engine = chat.engine ?? run?.engine;
-    const icon =
-        chat.orchestratorRunId && engine && (PROVIDER_IDS as readonly string[]).includes(engine) ? (
-            <ProviderIcon agentId={engine} size={14} data-provider={engine} />
-        ) : (
-            <Message />
-        );
+    const icon = <AgentMark engine={chat.orchestratorRunId ? (chat.engine ?? run?.engine) : undefined} />;
     if (!showStatus || !chatDotTone(run, threads, false, unread)) return icon;
 
     return (
