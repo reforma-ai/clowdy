@@ -49,7 +49,36 @@ describe('the Agents list preferences', () => {
         const preferences = new ChatListPreferences(undefined);
 
         preferences.setShowFinishedThreads(false);
+        preferences.setExpandRunningAgents(false);
 
         expect(preferences.showFinishedThreads).toBe(false);
+        expect(preferences.expandRunningAgents).toBe(false);
+    });
+
+    it('lists the agents that work under a folded chat by default', () => {
+        expect(new ChatListPreferences(memory()).expandRunningAgents).toBe(true);
+    });
+
+    it('remembers whether working agents are listed, apart from the finished ones', () => {
+        const storage = memory();
+
+        new ChatListPreferences(storage).setExpandRunningAgents(false);
+
+        const later = new ChatListPreferences(storage);
+
+        expect(later.expandRunningAgents).toBe(false);
+        expect(later.showFinishedThreads).toBe(true);
+
+        later.setExpandRunningAgents(true);
+
+        expect(new ChatListPreferences(storage).expandRunningAgents).toBe(true);
+    });
+
+    it('reads anything it did not write for the working agents as the default too', () => {
+        const storage = memory();
+
+        storage.setItem('clowdy:expand-running-agents', '"no"');
+
+        expect(new ChatListPreferences(storage).expandRunningAgents).toBe(true);
     });
 });

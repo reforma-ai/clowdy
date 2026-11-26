@@ -110,6 +110,8 @@ const menuItem = (name: string) =>
 
 beforeEach(async () => {
     chatListPreferences.setShowFinishedThreads(true);
+    // These tests read the list as it was before working agents opened their chats by themselves; `AgentListWorking.test.tsx` has the setting on.
+    chatListPreferences.setExpandRunningAgents(false);
     container = document.createElement('div');
     document.body.append(container);
     reactRoot = createRoot(container);
@@ -123,6 +125,7 @@ afterEach(() => {
     container.remove();
     store.dispose();
     chatListPreferences.setShowFinishedThreads(true);
+    chatListPreferences.setExpandRunningAgents(true);
 });
 
 describe('the list', () => {
@@ -412,13 +415,21 @@ describe('grouped by folder', () => {
 
     it('offers the switch to a project of one folder as well, on until it is turned off', async () => {
         // A project that kept no choice groups, whatever number of folders it has.
-        expect(await filtersMenu()).toEqual(['Show finished sub-threads', 'Group chats by folder']);
+        expect(await filtersMenu()).toEqual([
+            'Show finished sub-threads',
+            'Expand running agents',
+            'Group chats by folder',
+        ]);
         expect(menuItem('Group chats by folder').getAttribute('aria-checked')).toBe('true');
         expect(rowKeys()).toContain(MAIN_GROUP);
 
         await restart({ grouping: null });
 
-        expect(await filtersMenu()).toEqual(['Show finished sub-threads', 'Group chats by folder']);
+        expect(await filtersMenu()).toEqual([
+            'Show finished sub-threads',
+            'Expand running agents',
+            'Group chats by folder',
+        ]);
         expect(menuItem('Group chats by folder').getAttribute('aria-checked')).toBe('true');
         expect(rowKeys()).toContain(head(MAIN));
 
@@ -1415,7 +1426,8 @@ describe('threads', () => {
         expect(rowKeys()).not.toContain('c-6a');
         expect(foldOf('c-6')?.getAttribute('aria-label')).toBe('Expand Ship the checkout threads');
         expect(foldOf('c-6')?.getAttribute('aria-expanded')).toBe('false');
-        expect(foldOf('c-1')).toBeNull();
+        // A chat with no threads and no sub-agents has none.
+        expect(foldOf('c-4')).toBeNull();
     });
 
     it('lists the threads below their chat, one level in and in the order they were made, once the fold is opened, and at every depth', async () => {
@@ -1484,6 +1496,7 @@ describe('threads', () => {
         expect(menuItem('Show finished sub-threads').getAttribute('aria-checked')).toBe('true');
         expect([...document.body.querySelectorAll('[role^="menuitem"]')].map(row => row.textContent)).toEqual([
             'Show finished sub-threads',
+            'Expand running agents',
             'Group chats by folder',
         ]);
         expect(document.body.querySelector('[role="menu"] header')).toBeNull();

@@ -2197,6 +2197,16 @@ export function createFixtureData(now = Date.now()): FixtureData {
             createdAt: ago(2),
             startedAt: ago(2),
         }),
+        // A sub-agent of a sub-agent, resting for its own background work (the strip above the message box counts only those that run, so it stays as it was):
+        // the Agents list nests its row below r-na-02's.
+        run('r-na-05', 'Explore', 'executor', 'waiting_background', {
+            parentRunId: 'r-na-02',
+            origin: 'native',
+            parentToolCallId: 'tc-agent-5',
+            summary: 'List the callers of the price helper',
+            createdAt: ago(1),
+            startedAt: ago(1),
+        }),
         // The one the timeline plays: it types the form while the app is open (its stream is the long one).
         run('r-na-03', 'general-purpose', 'executor', 'running', {
             parentRunId: 'r-orch-1',
@@ -2509,6 +2519,8 @@ export function createFixtureData(now = Date.now()): FixtureData {
             },
         ],
     ]);
+
+    stream('r-na-05', [[1, { kind: 'assistant', done: true, text: 'Listing the callers of useBookingPrice.' }]]);
 
     stream('r-na-03', [
         [21, { kind: 'assistant', done: true, text: 'I will start by reading the current form and the price helper.' }],

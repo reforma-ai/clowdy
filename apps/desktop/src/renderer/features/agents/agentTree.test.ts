@@ -11,10 +11,12 @@ import {
     chatFolder,
     chatOfRun,
     draftTarget,
+    finishedGroupId,
     folderById,
     groupFolderOf,
     isActiveThread,
     isFinishedThread,
+    nativeAgentsByRoot,
     resolveSelection,
     visibleChats,
 } from './agentTree';
@@ -543,6 +545,287 @@ describe('agentRows', () => {
         ];
 
         expect(shape({ expanded: new Set(['a', 'b', 'c', 'd']) }, cycle)).toEqual(['a -', '  d']);
+    });
+});
+
+describe('agentRows, with working agents', () => {
+    const thread = (id: string, parentChatId: string, createdAt: number): Chat => ({
+        ...chat(id, `run-${id}`),
+        parentChatId,
+        createdAt,
+    });
+    const native = (id: string, parent: string, status: RunStatus, rootRunId: string, createdAt: number) =>
+        run(id, status, { parentRunId: parent, rootRunId, origin: 'native', createdAt });
+    // root: its own sub-agents a (running, with a1 running below it), b (done, with d running below it, so d stands by itself), c (waiting for the person) and
+    // e (failed). Its threads: t1 (running, with its own sub-agent s1 running) and t2 (done). root2 rests.
+    const list = [
+        { ...chat('root', 'run-root'), createdAt: 1 },
+        { ...chat('root2', 'run-root2'), createdAt: 2 },
+        thread('t1', 'root', 3),
+        thread('t2', 'root', 4),
+    ];
+    const baseRuns = [
+        run('run-root', 'running', { createdAt: 1 }),
+        run('run-root2', 'succeeded', { createdAt: 2 }),
+        run('run-t1', 'running', { createdAt: 3 }),
+        run('run-t2', 'succeeded', { createdAt: 4 }),
+        native('a', 'run-root', 'running', 'run-root', 5),
+        native('a1', 'a', 'running', 'run-root', 6),
+        native('b', 'run-root', 'succeeded', 'run-root', 7),
+        native('c', 'run-root', 'waiting_user', 'run-root', 8),
+        native('d', 'b', 'running', 'run-root', 9),
+        native('e', 'run-root', 'failed', 'run-root', 10),
+        native('s1', 'run-t1', 'running', 'run-t1', 11),
+    ];
+    const rowsWith = (input: Partial<AgentRowsInput> = {}, runList: readonly Run[] = baseRuns, chats = list) => {
+        const byRoot = nativeAgentsByRoot(runList);
+
+        return agentRows({
+            roots: chats.filter(candidate => !candidate.parentChatId),
+            threadsOf: chatId =>
+                chats.filter(candidate => candidate.parentChatId === chatId).sort((a, b) => a.createdAt - b.createdAt),
+            runs: new Map(runList.map(candidate => [candidate.id, candidate])),
+            agentsOf: candidate => (candidate.orchestratorRunId && byRoot.get(candidate.orchestratorRunId)) || [],
+            expanded: new Set(),
+            showFinished: true,
+            expandRunning: true,
+            ...input,
+        });
+    };
+    const shape = (input: Partial<AgentRowsInput> = {}, runList?: readonly Run[], chats?: readonly Chat[]) =>
+        rowsWith(input, runList, chats as Chat[]).map(
+            row => `${'  '.repeat(row.depth)}${row.id}${row.childCount > 0 ? (row.isExpanded ? ' -' : ' +') : ''}`
+        );
+    const GROUP = finishedGroupId('root');
+    const asking = (id: string, runList: readonly Run[] = baseRuns) =>
+        runList.map(candidate => (candidate.id === id ? { ...candidate, status: 'waiting_user' as const } : candidate));
+
+    describe('nativeAgentsByRoot', () => {
+        it('groups the native sub-agents by the orchestrator they live in, oldest first, and leaves every other run out', () => {
+            const byRoot = nativeAgentsByRoot([...baseRuns].reverse());
+
+            expect([...byRoot.keys()].sort()).toEqual(['run-root', 'run-t1']);
+            expect(byRoot.get('run-root')?.map(candidate => candidate.id)).toEqual(['a', 'a1', 'b', 'c', 'd', 'e']);
+        });
+    });
+
+    describe('a folded chat', () => {
+        it('lists its working threads and its working sub-agents with the setting on, nested below the one that started them', () => {
+            expect(shape()).toEqual(['root +', '  a', '    a1', '  c', '  d', '  t1 +', '    s1', 'root2']);
+        });
+
+        it('lists a sub-agent whose parent is over right below its chat, so it is not lost, and a thread that is over not at all', () => {
+            const lines = shape();
+
+            expect(lines).toContain('  d');
+            expect(lines.some(line => line.trim() === 't2')).toBe(false);
+        });
+
+        it('lists only what waits for the person with the setting off, which is how the list was', () => {
+            expect(shape({ expandRunning: false })).toEqual(['root +', '  c', 'root2']);
+            expect(shape({ expandRunning: false }, asking('run-t1'))).toEqual(['root +', '  c', '  t1 +', 'root2']);
+        });
+
+        it('lists a sub-agent that waits with the sub-agents it sits below, and not its siblings, with the setting off', () => {
+            expect(shape({ expandRunning: false }, asking('a1'))).toEqual(['root +', '  a', '    a1', '  c', 'root2']);
+        });
+
+        it('lists a thread whose sub-agent waits for the person, with the setting off', () => {
+            expect(shape({ expandRunning: false }, asking('s1'))).toEqual([
+                'root +',
+                '  c',
+                '  t1 +',
+                '    s1',
+                'root2',
+            ]);
+        });
+
+        it('lists what works in a chat that rests, and nothing for a chat with nothing at work', () => {
+            const resting = baseRuns.map(candidate =>
+                candidate.id.startsWith('run-') || candidate.rootRunId === 'run-root'
+                    ? { ...candidate, status: 'succeeded' as const }
+                    : candidate
+            );
+
+            // t1's own sub-agent s1 works, so the thread stands under root, its session being over notwithstanding.
+            expect(shape({}, resting)).toEqual(['root +', '  t1 +', '    s1', 'root2']);
+        });
+
+        it('leaves the fold as it was: the chat counts what it holds, shown or not, and reads folded', () => {
+            expect(rowsWith()[0]).toMatchObject({
+                kind: 'chat',
+                id: 'root',
+                // a, a1, c, d (working sub-agents), the group of b and e, and the threads t1 and t2.
+                childCount: 7,
+                isExpanded: false,
+            });
+        });
+    });
+
+    describe('an expanded chat', () => {
+        const open = { expanded: new Set(['root']) };
+
+        it('lists the working sub-agents, then the group of the finished ones, folded, and then the threads', () => {
+            expect(shape(open)).toEqual([
+                'root -',
+                '  a',
+                '    a1',
+                '  c',
+                '  d',
+                `  ${GROUP} +`,
+                '  t1 +',
+                '    s1',
+                '  t2',
+                'root2',
+            ]);
+            expect(rowsWith(open).find(row => row.id === GROUP)).toMatchObject({
+                kind: 'finished',
+                childCount: 2,
+                isExpanded: false,
+            });
+        });
+
+        it('opens the group on its own fold: the finished sub-agents, the newest first, one level in', () => {
+            expect(shape({ expanded: new Set(['root', GROUP]) })).toEqual([
+                'root -',
+                '  a',
+                '    a1',
+                '  c',
+                '  d',
+                `  ${GROUP} -`,
+                '    e',
+                '    b',
+                '  t1 +',
+                '    s1',
+                '  t2',
+                'root2',
+            ]);
+        });
+
+        it('keeps the group folded when its chat is folded and opened again, since its fold is its own', () => {
+            expect(shape({ expanded: new Set([GROUP]) })).toEqual(shape());
+        });
+
+        it('has no group without the finished listed, whatever its fold says, and a finished thread goes the same way', () => {
+            expect(shape({ expanded: new Set(['root', GROUP]), showFinished: false })).toEqual([
+                'root -',
+                '  a',
+                '    a1',
+                '  c',
+                '  d',
+                '  t1 +',
+                '    s1',
+                'root2',
+            ]);
+        });
+
+        it('keeps the open sub-agent listed when it is over and the finished are not: its own row, right below its chat', () => {
+            expect(shape({ ...open, showFinished: false, openRunId: 'b', openChatId: 'root' })).toEqual([
+                'root -',
+                '  a',
+                '    a1',
+                '  c',
+                '  d',
+                '  b',
+                '  t1 +',
+                '    s1',
+                'root2',
+            ]);
+        });
+
+        it('keeps the open sub-agent that is over in the group, which is as open as its fold says', () => {
+            expect(shape({ ...open, openRunId: 'b', openChatId: 'root' })).toContain(`  ${GROUP} +`);
+            expect(shape({ expanded: new Set(['root', GROUP]), openRunId: 'b' })).toContain('    b');
+        });
+
+        it('lists the sub-agents of a thread below that thread, when both are open', () => {
+            expect(shape({ expanded: new Set(['root', 't1']) })).toEqual([
+                'root -',
+                '  a',
+                '    a1',
+                '  c',
+                '  d',
+                `  ${GROUP} +`,
+                '  t1 -',
+                '    s1',
+                '  t2',
+                'root2',
+            ]);
+        });
+
+        it('lists every working sub-agent when the setting is off too: the person opened the chat', () => {
+            expect(shape({ ...open, expandRunning: false }).slice(0, 6)).toEqual([
+                'root -',
+                '  a',
+                '    a1',
+                '  c',
+                '  d',
+                `  ${GROUP} +`,
+            ]);
+        });
+    });
+
+    describe('a chat with a great many finished sub-agents', () => {
+        const many = (count: number) =>
+            Array.from({ length: count }, (_, index) =>
+                native(`f${index}`, 'run-root', 'succeeded', 'run-root', 20 + index)
+            );
+        const crowd = [...baseRuns, ...many(300)];
+
+        it('has one row for them while the group is folded, and none while the chat is', () => {
+            expect(
+                shape({ expanded: new Set(['root']) }, crowd).filter(line => line.startsWith('  @finished'))
+            ).toEqual([`  ${GROUP} +`]);
+            expect(shape({}, crowd)).toEqual(shape());
+            expect(rowsWith({ expanded: new Set(['root']) }, crowd).length).toBe(
+                rowsWith({ expanded: new Set(['root']) }).length
+            );
+            expect(rowsWith({ expanded: new Set(['root']) }, crowd).find(row => row.id === GROUP)).toMatchObject({
+                childCount: 302,
+            });
+        });
+
+        it('lists them all, the newest first, once the group is open', () => {
+            const rows = rowsWith({ expanded: new Set(['root', GROUP]) }, crowd);
+            const start = rows.findIndex(row => row.id === GROUP) + 1;
+            const finished = rows.slice(start, start + 302).map(row => row.id);
+
+            expect(finished.slice(0, 3)).toEqual(['f299', 'f298', 'f297']);
+            expect(finished.slice(-2)).toEqual(['b', 'e'].reverse());
+            expect(rows[start + 302]).toMatchObject({ id: 't1' });
+            expect(rows.slice(start, start + 302).every(row => row.kind === 'subagent' && row.depth === 2)).toBe(true);
+        });
+    });
+
+    describe('an archived chat, a chat without an orchestrator, and corrupt data', () => {
+        it('has no sub-agents for a chat whose first message was never sent', () => {
+            expect(shape({ expanded: new Set(['root2']) })).toContain('root2');
+            expect(shape({ expanded: new Set(['root2']) }).filter(line => line.startsWith('  '))).not.toContain('  s1');
+        });
+
+        it('survives sub-agents that name each other as their parent', () => {
+            const loop = [
+                ...baseRuns.filter(candidate => candidate.origin !== 'native'),
+                native('x', 'y', 'running', 'run-root', 30),
+                native('y', 'x', 'running', 'run-root', 31),
+                native('z', 'run-root', 'running', 'run-root', 32),
+            ];
+
+            expect(shape({ expanded: new Set(['root']) }, loop)).toEqual(['root -', '  z', '  t1', '  t2', 'root2']);
+        });
+
+        it('is today’s list for a caller that knows no sub-agents', () => {
+            const rows = agentRows({
+                roots: [list[0], list[1]],
+                threadsOf: chatId => list.filter(candidate => candidate.parentChatId === chatId),
+                runs: new Map(baseRuns.map(candidate => [candidate.id, candidate])),
+                expanded: new Set(['root']),
+                showFinished: true,
+            });
+
+            expect(rows.map(row => row.id)).toEqual(['root', 't1', 't2', 'root2']);
+            expect(rows.every(row => row.kind === 'chat')).toBe(true);
+        });
     });
 });
 
