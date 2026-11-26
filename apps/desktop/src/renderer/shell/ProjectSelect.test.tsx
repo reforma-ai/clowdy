@@ -110,21 +110,18 @@ describe('ProjectSelect', () => {
         expect(document.body.querySelectorAll('[role="separator"]')).toHaveLength(2);
     });
 
-    it('shows where each project is: its main folder, and +N for the folders it has besides', async () => {
+    it('names each project in its row and leaves the folders to the card beside it', async () => {
         const data = createFixtureData();
 
         data.projects
             .find(project => project.id === FIXTURE_PROJECT_ID)!
-            .folders.push(
-                { id: 'fld_api', path: '/Users/dev/car-rental-api' },
-                { id: 'fld_web', path: '/Users/dev/car-rental-web' }
-            );
+            .folders.push({ id: 'fld_api', path: '/Users/dev/car-rental-api' });
         await open(data);
 
-        // The path stands as `~` in the home folder the fixture daemon names, and the count of the other folders beside it.
-        expect(items()[1].textContent).toContain('~/car-rental+2');
-        expect(items()[2].textContent).toContain('~/clowdy');
-        expect(items()[2].textContent).not.toContain('+');
+        // The personal space says what it is; a project has no second line, neither a path nor a count of folders.
+        expect(items()[0].textContent).toContain('Chats without a project');
+        expect(items()[1].textContent).toBe('Car Rental');
+        expect(items()[2].textContent).toBe('Clowdy');
     });
 
     it('marks the open project with a plate and switches to the one chosen', async () => {
@@ -242,13 +239,13 @@ describe('ProjectSelect', () => {
         expect(settingsButton('Clowdy').tabIndex).toBe(-1);
     });
 
-    it('draws an icon before every project and sets it level with the middle of the two lines', async () => {
+    it('draws an icon before every row and sets the personal space, which has two lines, level with their middle', async () => {
         await open();
 
-        for (const item of items().slice(0, 3)) {
-            expect(item.querySelector('svg, img')).not.toBeNull();
-            expect(item.getAttribute('data-align')).toBe('center');
-        }
+        for (const item of items().slice(0, 3)) expect(item.querySelector('svg, img')).not.toBeNull();
+
+        expect(items()[0].getAttribute('data-align')).toBe('center');
+        expect(items()[1].hasAttribute('data-align')).toBe(false);
     });
 
     it("shows a project's picture, uploaded or found in its main folder, on the button and in the menu, and the folder icon without one", async () => {

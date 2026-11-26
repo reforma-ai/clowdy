@@ -3,13 +3,11 @@ import { listBoxItemDataShow, Menu, MenuItem, MenuSection, MenuSeparator, MenuTr
 import { Popover } from '@clowdy/components/Popover';
 import { Text } from '@clowdy/components/Text';
 import { ChevronDown, Folder, Home, Sliders } from '@clowdy/icons/14';
-import { mainFolder } from '@clowdy/protocol';
 import { useRef, useState } from 'react';
 
 import { CommandHotkey } from '../hotkeys/CommandHotkey';
 import { tildePath } from '../shared/displayPath';
 import { homeFolder } from '../shared/homeFolder';
-import { PathText } from '../shared/PathText';
 import { ProjectIcon } from '../shared/ProjectIcon';
 import { SCREEN_TITLE } from '../shared/screenTitle';
 import { useRootStore } from '../stores';
@@ -21,21 +19,9 @@ import type { RefObject } from 'react';
 
 const MANAGE = 'manage-projects';
 
-/** Where a project is: its main folder (the path gives way to the count), and `+N` for the folders it has besides. */
-function Where({ project }: { project: Pick<Project, 'folders'> }) {
-    const more = project.folders.length - 1;
-
-    return (
-        <span className={styles.where}>
-            <PathText path={mainFolder(project).path} />
-            {more > 0 && <span className={styles.more}>{`+${more}`}</span>}
-        </span>
-    );
-}
-
 /**
  * The card beside a project's row while the pointer or the keyboard is on it: the project's name and the keys that open it, and every folder it has in full, the main
- * one first (the row itself has room for the main folder's path, cut short, and the count of the others).
+ * one first (the row itself names the project and nothing else: a path cut short to fit it tells little).
  */
 function ProjectTip({ project, slot }: { project: Project; slot: number | undefined }) {
     return (
@@ -165,10 +151,7 @@ export function ProjectSelect() {
                                 key={project.id}
                                 id={project.id}
                                 text={project.name}
-                                description={<Where project={project} />}
                                 icon={<ProjectIcon project={project} />}
-                                stacked
-                                data-align="center"
                                 shouldCloseOnSelect={false}
                                 endAffix={settings(project)}
                                 tooltip={<ProjectTip project={project} slot={slotOfProject(root.projects, project)} />}

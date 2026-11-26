@@ -12,17 +12,6 @@
     padding-inline-end: calc(var(--spacing-8) - 3px);
 }
 
-/* The main folder's path gives way to the count of the others, which always shows. */
-.where {
-    display: flex;
-    gap: var(--spacing-xs);
-    min-width: 0;
-}
-
-.more {
-    flex-shrink: 0;
-}
-
 /* The button's content is a flex item that would not shrink under its own text. */
 .trigger > span {
     min-width: 0;
