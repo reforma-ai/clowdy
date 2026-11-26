@@ -2138,6 +2138,25 @@ describe('worktree cards', () => {
         expect(rowOf('c-6a1').querySelector('[aria-label="Different worktree"]')).not.toBeNull();
     });
 
+    it('hides a worktree used only by a thread while keeping the thread under its parent', async () => {
+        await restart();
+        const workspace = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
+        const key = workspaceKey();
+        await draw(() => {
+            project().chats.delete(FIXTURE_WORKSPACE_CHAT_ID);
+            project().chats.set('c-6a', { ...project().chats.get('c-6a')!, workspace });
+            ui().setGroupByWorktree(true);
+            ui().openChat('c-6a');
+        });
+        await draw();
+        expect(cardRows()).not.toContain(key);
+        expect(rowOf('c-6a')).not.toBeNull();
+        await arrow('@unused:fld_car_rental', 'ArrowRight');
+        await draw();
+        expect(cardRows()).not.toContain(key);
+        expect(cardRows().length).toBeGreaterThan(0);
+    });
+
     it('opens the card of a restored thread whose parent remains archived', async () => {
         await restart();
         const workspace = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;

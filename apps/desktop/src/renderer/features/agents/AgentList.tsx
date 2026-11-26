@@ -235,7 +235,7 @@ export function AgentList({
             const isCollapsed = ui.collapsedWorktrees.includes(card.key);
             return { kind: 'worktree', card, isCollapsed, rows: isCollapsed ? [] : rowsOf(card.roots) };
         };
-        const used = scoped.filter(card => card.used);
+        const used = scoped.filter(card => card.used && card.roots.length > 0);
         const unused = scoped.filter(card => !card.used);
         const isCollapsed = !ui.expandedUnusedWorktrees.includes(scope);
         return [
