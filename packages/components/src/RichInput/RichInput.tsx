@@ -26,6 +26,7 @@ import {
     useState,
 } from 'react';
 
+import { Hotkey } from '../Hotkey';
 import {
     docsEqual,
     docToPlainText,
@@ -486,9 +487,7 @@ export function RichInput({
                           }),
                       ]
                     : []),
-                Placeholder.configure({
-                    placeholder: () => (bridge.suggestion ? `${bridge.suggestion}  [Tab]` : bridge.placeholder),
-                }),
+                Placeholder.configure({ placeholder: () => bridge.placeholder }),
                 ComposerMention.configure({
                     // Backspace on a chip must not leave a stray `@` / `/` trigger char.
                     deleteTriggerWithBackspace: true,
@@ -741,12 +740,19 @@ export function RichInput({
 
     return (
         <RichInputMentionContext value={mentionRenderer}>
-            <EditorContent
-                editor={editor}
+            <div
                 className={cn(styles.root, className)}
                 data-rich-input-menu={menu?.items.length ? '' : undefined}
                 data-rich-input-suggestion={suggestion && !disabled ? '' : undefined}
-            />
+            >
+                <EditorContent editor={editor} />
+                {suggestion && !disabled && (
+                    <div className={styles.suggestion}>
+                        <span className={styles.suggestionText}>{suggestion}</span>
+                        <Hotkey hotkey="tab" />
+                    </div>
+                )}
+            </div>
             <RichInputTriggerMenu
                 isOpen={Boolean(menu?.items.length)}
                 anchor={menu?.anchor ?? null}

@@ -84,14 +84,34 @@
     /* The prediction is optional UI, not an editable line. Keep long/multiline predictions from
      * spilling over the card or moving the caret; Tab still inserts the entire text. */
     .root[data-rich-input-suggestion] .editor :global(p.is-editor-empty:first-child::before) {
+        content: none;
+    }
+
+    .suggestion {
+        display: none;
         position: absolute;
-        inset-inline: 0;
+        inset-inline-start: 0;
         top: 0;
-        height: auto;
-        float: none;
+        max-width: 100%;
+        align-items: center;
+        gap: var(--spacing-xs);
+        color: var(--color-secondary-muted-text);
+        pointer-events: none;
+    }
+
+    .root:has(.editor :global(p.is-editor-empty:first-child)) .suggestion {
+        display: flex;
+    }
+
+    .suggestionText {
+        min-width: 0;
         overflow: hidden;
         white-space: nowrap;
         text-overflow: ellipsis;
+    }
+
+    .suggestion :global([data-hotkey]) {
+        flex: none;
     }
 }
 

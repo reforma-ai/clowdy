@@ -172,8 +172,13 @@ describe('Composer', () => {
     it('accepts a completed turn prediction with Tab without sending it', async () => {
         await mount(accepted, runWith('running'));
         await mount(accepted, { ...runWith('succeeded'), finishedAt: 123 });
+        expect(container.querySelector('[data-rich-input-suggestion] [data-hotkey]')?.textContent).toBe('Tab');
         await press('Tab');
-        expect({ text: text(), sent }).toEqual({ text: 'Check the result', sent: [] });
+        expect({
+            text: text(),
+            sent,
+            key: container.querySelector('[data-rich-input-suggestion] [data-hotkey]'),
+        }).toEqual({ text: 'Check the result', sent: [], key: null });
     });
 
     it('does not offer a prediction when opening an already finished chat', async () => {
