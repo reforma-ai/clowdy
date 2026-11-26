@@ -1,4 +1,5 @@
 import { Text } from '@clowdy/components/Text';
+import { Folder } from '@clowdy/icons/14';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
@@ -110,8 +111,11 @@ export function ProjectCard({ project, slot, row }: { project: Project; slot: nu
             </div>
             <ul className={styles.folders}>
                 {project.folders.map(folder => (
-                    <li key={folder.id}>
-                        <Text variant="sm" color="secondary">
+                    <li key={folder.id} className={styles.folder}>
+                        <span className={styles.icon}>
+                            <Folder />
+                        </span>
+                        <Text variant="sm" color="secondary" className={styles.path}>
                             {tildePath(folder.path, homeFolder.path)}
                         </Text>
                     </li>

@@ -1,8 +1,10 @@
+/* The capsule of the keys is the tallest thing in the top line, so the card's 10px of top padding would leave it nearer the edge above than the one at its right (12px): 2px more evens them. */
 .head {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: var(--spacing-lg);
+    margin-top: var(--spacing-2);
 }
 
 .name {
@@ -10,12 +12,31 @@
     min-width: 0;
 }
 
-/* One line for each folder, written out whole and broken where it must (the card's width is set); the main one is the first. */
+/* One line for each folder, written out whole and broken where it must (the card's width is set); the main one is the first. The same 2px at the bottom. */
 .folders {
     display: flex;
     flex-direction: column;
     gap: var(--spacing-xxs);
-    margin: 0;
+    margin: 0 0 var(--spacing-2);
     padding: 0;
     list-style: none;
+}
+
+.folder {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--spacing-6);
+}
+
+/* The icon is level with the first line of the path, which may break onto more. */
+.icon {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    height: var(--leading-sm);
+    color: var(--color-secondary-muted-text);
+}
+
+.path {
+    min-width: 0;
 }
