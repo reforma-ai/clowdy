@@ -584,6 +584,11 @@ export interface Run {
      * sub-agent): `run.cancel` of such a run is refused, and only its parent's cancel ends it. Set when the run is made and never changed.
      */
     canStopAlone?: boolean;
+    /**
+     * When the person put this native sub-agent away (`run.setArchived`): the Agents list leaves it out, as it leaves out an archived chat, and nothing is deleted:
+     * its page and stream stay readable, and opening it from the card in its parent's stream brings it back. Only a `native` run that is over has it.
+     */
+    archivedAt?: number;
     /** Short label: the orchestrator's (`Orchestrator 01`), or a sub-agent's type as its engine names it (`Explore`). */
     name: string;
     /** One line on the current work. */
