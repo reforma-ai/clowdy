@@ -9,6 +9,7 @@ import { composerBannerPreferences } from '../chats/composerBannerPreferences';
 import { newChatDefaults } from '../chats/newChatDefaults';
 import { swipeToReply } from '../chats/swipeReplyPreference';
 import { modeOf, NewChatChoices } from './NewChatChoices';
+import { SleepSettings } from './SleepSettings';
 import { SettingsCard } from './ui/SettingsCard';
 import { SettingsPage } from './ui/SettingsPage';
 import { SettingsRow } from './ui/SettingsRow';
@@ -29,7 +30,7 @@ const FINISHED_LABEL = 'Finished threads';
 
 /**
  * Settings > Chat: how the message box sends, whether a swipe over a message replies to it, what a new chat starts with where its project follows the app,
- * and how the Agents list looks, on this computer.
+ * how sleep behaves during agent work, and how the Agents list looks, on this computer.
  */
 export function ChatPage() {
     return (
@@ -75,6 +76,8 @@ export function ChatPage() {
                 onEngineChange={next => newChatDefaults.setEngine(next === LAST_USED ? undefined : next)}
                 onModeChange={next => newChatDefaults.setMode(modeOf(next))}
             />
+
+            <SleepSettings />
 
             <SettingsSection title="Above the composer">
                 <SettingsCard>
