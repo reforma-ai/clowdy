@@ -2055,6 +2055,38 @@ describe('worktree cards', () => {
         ]);
     });
 
+    it('starts a draft in the worktree using its shortcut', async () => {
+        await restart();
+        await draw(() => ui().setGroupByWorktree(true));
+        const workspace = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
+        await press(rowOf(workspaceKey()).querySelector<HTMLElement>('button[aria-label^="New chat in "]')!);
+        expect([ui().draft, ui().draftWorkspace]).toEqual([true, { mode: 'existing', path: workspace.path }]);
+    });
+
+    it('disables the shortcut while a worktree is still being prepared', async () => {
+        await restart();
+        await draw(() => {
+            const chat = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!;
+            project().chats.set(chat.id, { ...chat, workspace: { ...chat.workspace!, ready: false } });
+            ui().setGroupByWorktree(true);
+        });
+        await draw();
+        const shortcut = rowOf(workspaceKey()).querySelector<HTMLButtonElement>('button[aria-label^="New chat in "]')!;
+        expect(shortcut.disabled).toBe(true);
+    });
+
+    it('folds and unfolds a worktree with its icon control', async () => {
+        await restart();
+        await draw(() => ui().setGroupByWorktree(true));
+        const key = workspaceKey();
+        await press(rowOf(key).querySelector<HTMLElement>('button[aria-label^="Collapse "]')!);
+        await draw();
+        expect(rowOf(FIXTURE_WORKSPACE_CHAT_ID)).toBeNull();
+        await press(rowOf(key).querySelector<HTMLElement>('button[aria-label^="Expand "]')!);
+        await draw();
+        expect(rowOf(FIXTURE_WORKSPACE_CHAT_ID)).not.toBeNull();
+    });
+
     it.each(['card', 'chip'] as const)('removes the selected worktree from the %s menu', async entry => {
         await restart();
         const dialog = vi.spyOn(Modal, 'create').mockImplementationOnce(() => undefined as never);

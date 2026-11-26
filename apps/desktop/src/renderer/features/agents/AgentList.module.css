@@ -282,10 +282,40 @@
     cursor: default;
 }
 
+.worktreeHeader:focus-within .restIcon {
+    opacity: 0;
+}
+
+.worktreeHeader:focus-within .fold {
+    opacity: 1;
+    pointer-events: auto;
+}
+
 .worktreeActions {
     display: flex;
     align-items: center;
     gap: var(--spacing-xs);
+}
+
+.worktreeStatus {
+    display: grid;
+    place-items: center;
+    width: var(--spacing-24);
+    height: var(--spacing-24);
+}
+
+.worktreeActionButtons {
+    display: none;
+    align-items: center;
+    gap: var(--spacing-xs);
+}
+
+.worktreeCard:is(:hover, :focus-within, :has(.worktreeHeader[data-open])) .worktreeActionButtons {
+    display: inline-flex;
+}
+
+.worktreeCard:is(:hover, :focus-within, :has(.worktreeHeader[data-open])) .worktreeStatus {
+    display: none;
 }
 
 .worktreeActions .worktreeStatusDot {
