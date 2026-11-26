@@ -6,7 +6,7 @@ import { CommandError, conflict, invalid, unavailable } from '../errors';
 import { LEFTOVER_GRACE_MS, runProgram } from '../providers/exec';
 import { printedLines, shownLine, writeLine } from './commit';
 import { rememberFetch } from './lastFetch';
-import { checkoutOf, workingTreeRoot } from './state';
+import { checkoutOf, defaultBranchOf, workingTreeRoot } from './state';
 import { mergeBaseOf, parseStatus } from './status';
 import { operationUnderWay, switchRepositoryKey } from './switch';
 import { namesSigningKey, SIGNING_HINT, WriteEnvironment } from './writeEnv';
@@ -385,7 +385,11 @@ export class GitRemote {
                 if (destination && (await checkoutOf(source.path, branch)) !== path)
                     throw conflict(`The checkout of ${branch} changed. Try again`);
 
-                return this.#syncBranch(place, repo, target, progress);
+                const result = await this.#syncBranch(place, repo, target, progress);
+
+                if (result.state === 'done') await this.#advanceDefaultBranch(place, branch);
+
+                return result;
             });
         } finally {
             await finished(place);
@@ -473,6 +477,39 @@ export class GitRemote {
         } finally {
             // Best effort even when shutdown stopped the fetch after it installed the ref.
             await gitRead(place.path, ['update-ref', '-d', snapshot]);
+        }
+    }
+
+    /**
+     * Brings the repository's default branch (`main`, as `origin/HEAD` and the branch list name it) up to what origin has, so a branch that was merged there does not leave the local
+     * `main` behind. Only a fast-forward of a branch the person already has: git refuses the rest, and the answer is the same for each, the branch stays as it is. That is a branch
+     * with commits of its own that origin lacks, and one that is checked out in any checkout of the repository (a person's or an agent's files do not move under them). The branch
+     * that was just synced is the default one when it is `main` itself, and has been brought up to date. Best effort, after the sync has done its work: a refusal, a remote that does
+     * not answer or a timeout never fails the sync, and the branch is tried again at the next one.
+     */
+    async #advanceDefaultBranch(place: Place, synced: string): Promise<void> {
+        try {
+            const name = (await defaultBranchOf(place.path))?.replace(/^origin\//, '');
+
+            if (!name || name === synced) return;
+
+            // A branch the person has: Sync makes no branch of its own.
+            if (!(await gitAnswer(place.path, ['rev-parse', '--verify', '--quiet', `${HEADS}${name}`]))) return;
+
+            const ref = `${HEADS}${name}`;
+
+            // No `+` and no `--update-head-ok`: git itself refuses a rewind and a branch that is checked out, and moves nothing then.
+            await this.#git(place, [
+                'fetch',
+                ...NO_SUBMODULES,
+                '--no-tags',
+                '--no-prune',
+                '--no-prune-tags',
+                ORIGIN,
+                `${ref}:${ref}`,
+            ]);
+        } catch {
+            // The sync is done; this is a courtesy that the next sync tries again.
         }
     }
 

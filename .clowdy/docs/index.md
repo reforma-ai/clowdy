@@ -2,6 +2,8 @@
 
 ## Decisions
 
+- [Sync keeps the default branch up to date](decisions/2026-11-25-sync-advances-default-branch.md) records that Sync fast-forwards the local default branch from origin, and when it leaves it alone. Status: accepted.
+
 - [Project switch keys](decisions/2026-11-25-project-switch-keys.md) records Cmd+Option+0 to 9 for the personal space and the first nine projects, where they run, and why Actual size moved to Cmd+0. Status: accepted.
 
 - [Clone a repository into a project](decisions/2026-11-25-clone-repository-into-projects.md) records that folders can be cloned from a git address, from the shared folder list, with no fork on GitHub. Status: accepted.
@@ -28,6 +30,8 @@
 - [CI: red runs and run time](decisions/2026-11-25-ci-red-runs-and-speed.md) records that CI stays a report for now, how the red tests are sorted and fixed, and how the gate and the Windows release tests get faster. Status: accepted.
 
 ## Checks
+
+- [Sync advances the default branch](checks/2026-11-25-sync-default-branch.md) covers the fast-forward, a branch with its own commits, a missing local branch and a checked-out one, with real git. Status: passed with limits.
 
 - [Project switch keys](checks/2026-11-25-project-switch-keys.md) covers the keys in each window state, the hints in Settings > Projects and the drag handle background. Status: passed with limits.
 
