@@ -8,6 +8,7 @@ import { Archive, ArrowUpRight, Box, Close, Layers } from '@clowdy/icons/14';
 import { type Ref, useState } from 'react';
 
 import { commandTooltip } from '../../hotkeys';
+import { useRunLabel } from '../../shared';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { openChat, openRun as openRunInAgents } from '../chats/archiveChat';
 import { archiveTasks } from './archiveActions';
@@ -61,13 +62,14 @@ export function DetailPanel({ task, taskRuns, titleRef, onOpenSubtasks, tree, on
     const root = useRootStore();
     const project = useProjectState();
     const ui = useProjectUi();
+    const labelOf = useRunLabel();
     const nav = taskNav(root, project, ui, { reveal: true });
     const [isStarting, setIsStarting] = useState(false);
     // A dependency that is archived is not on the board: it is read, and shown as one that is done.
     const { readings: dependencies } = useTaskReadings(task.dependsOn);
 
     const status = project.statuses.find(candidate => candidate.id === task.statusId);
-    const blocked = startBlockedReason(taskRuns);
+    const blocked = startBlockedReason(taskRuns, labelOf);
     const link = externalLink(task.external);
     const checklist = checklistOf(task);
 
@@ -207,7 +209,7 @@ export function DetailPanel({ task, taskRuns, titleRef, onOpenSubtasks, tree, on
                     onOpenDoc={path => nav.openDoc(path)}
                 />
 
-                <LatestActivity activity={taskActivity(task, taskRuns, project.runs)} />
+                <LatestActivity activity={taskActivity(task, taskRuns, project.runs, labelOf)} />
 
                 <CommentsSection taskId={task.id} onOpenRun={openRun} onOpenTask={id => nav.openTask(id)} />
             </div>

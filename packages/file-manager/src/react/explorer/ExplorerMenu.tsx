@@ -23,6 +23,8 @@ export interface FileMenuItem {
     id: string;
     label: string;
     icon?: ReactNode;
+    /** Put this item before the explorer's own actions, rather than after them. */
+    placement?: 'first';
     /** A letter pressed with ⌘ (Ctrl off Mac) runs `onAction` on the focused row or selection, or while the menu is open. Shown beside the label. Not for an item with `children`. */
     hotkey?: string;
     onAction: () => void;
@@ -119,6 +121,9 @@ function RowMenuContent({ targets, onClose }: { targets: readonly FileEntry[]; o
     return (
         <PopoverScroll>
             <Menu aria-label="File actions" size="sm" onAction={key => handleAction(String(key))}>
+                <For each={hostItems.filter(item => item.placement === 'first')}>
+                    {item => <HostMenuItem key={item.id} item={item} onAction={handleAction} />}
+                </For>
                 <Show when={!manager.readonly && single?.kind === 'directory'}>
                     <MenuSection>
                         <MenuItem id="new-file" icon={<Page />}>
@@ -161,7 +166,7 @@ function RowMenuContent({ targets, onClose }: { targets: readonly FileEntry[]; o
                             Paste
                         </MenuItem>
                     </Show>
-                    <For each={hostItems}>
+                    <For each={hostItems.filter(item => item.placement !== 'first')}>
                         {item => <HostMenuItem key={item.id} item={item} onAction={handleAction} />}
                     </For>
                 </MenuSection>

@@ -143,7 +143,8 @@ async function mount(refuse: (input: CommandInput) => string | undefined = () =>
         revealCursor: () => undefined,
         tasks: () => project().taskList,
         statuses: () => project().statuses,
-        startBlocked: id => startBlockedReason(runsByTask(project().runTaskLinks.values(), project().runs).get(id)),
+        startBlocked: id =>
+            startBlockedReason(runsByTask(project().runTaskLinks.values(), project().runs).get(id), run => run.name),
         send: inputs => sendWithUndo(root, project(), inputs, stack),
         undo: {
             canUndo: () => stack.canUndo(FIXTURE_PROJECT_ID),

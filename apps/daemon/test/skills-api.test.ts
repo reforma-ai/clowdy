@@ -49,9 +49,7 @@ describe('GET /v1/skills', () => {
         const h = await start();
         const { entries, tokens, warnings } = await catalogOf(h);
 
-        expect(entries.map(entry => entry.name)).toEqual(
-            ['autopilot', 'docs', 'orchestrate', 'scaffold', 'semi-manual', 'thread'].map(name => `clowdy:${name}`)
-        );
+        expect(entries.map(entry => entry.name)).toEqual(['orchestrate', 'thread'].map(name => `clowdy:${name}`));
         expect(
             entries.every(
                 entry => entry.source === 'system' && entry.enabled && entry.tokens > 0 && entry.path === undefined
@@ -205,12 +203,12 @@ describe('skills.setEnabled', () => {
         cpSync(defaultSystemSkillsSource(), source, { recursive: true });
         const h = await startHarness({ userSkillRoots: [], systemSkillsSource: source });
         harnesses.push(h);
-        writeFileSync(join(source, 'skills', 'thread', 'SKILL.md'), 'Unannotated clowdy:docs');
+        writeFileSync(join(source, 'skills', 'thread', 'SKILL.md'), 'Unannotated clowdy:orchestrate');
 
-        h.ok('skills.setEnabled', { name: 'clowdy:docs', enabled: false });
+        h.ok('skills.setEnabled', { name: 'clowdy:orchestrate', enabled: false });
         const thread = readFileSync(join(h.config.systemSkillsDir as string, 'skills', 'thread', 'SKILL.md'), 'utf8');
         expect(thread).toContain('Your parent reads only your reports');
-        expect((await catalogOf(h)).entries.find(entry => entry.name === 'clowdy:docs')?.enabled).toBe(false);
+        expect((await catalogOf(h)).entries.find(entry => entry.name === 'clowdy:orchestrate')?.enabled).toBe(false);
     });
 
     test('a failed system skill rebuild leaves the previous selection in place', async () => {
@@ -221,25 +219,26 @@ describe('skills.setEnabled', () => {
         const previous = h.config.systemSkillsDir;
         rmSync(join(h.config.dataDir, 'system-skills-source'), { recursive: true });
 
-        expect(h.send('skills.setEnabled', { name: 'clowdy:docs', enabled: false })).toMatchObject({ ok: false });
+        expect(h.send('skills.setEnabled', { name: 'clowdy:orchestrate', enabled: false })).toMatchObject({
+            ok: false,
+        });
         expect(h.config.systemSkillsDir).toBe(previous);
-        expect((await catalogOf(h)).entries.find(entry => entry.name === 'clowdy:docs')?.enabled).toBe(true);
+        expect((await catalogOf(h)).entries.find(entry => entry.name === 'clowdy:orchestrate')?.enabled).toBe(true);
     });
 
     test('system choices persist, control delivery and do not change user skills', async () => {
         const user = tempDir();
-        writeSkill(user, 'docs');
+        writeSkill(user, 'orchestrate');
         const first = await start([user]);
         const original = first.config.systemSkillsDir as string;
-        first.ok('skills.setEnabled', { name: 'clowdy:docs', enabled: false });
+        first.ok('skills.setEnabled', { name: 'clowdy:orchestrate', enabled: false });
         const filtered = first.config.systemSkillsDir as string;
-        expect(existsSync(join(filtered, 'skills', 'docs'))).toBe(false);
-        const orchestrate = readFileSync(join(filtered, 'skills', 'orchestrate', 'SKILL.md'), 'utf8');
-        expect(orchestrate).not.toContain('clowdy:docs');
-        expect(orchestrate).toContain('Check their claims against the code');
-        expect(orchestrate).toContain('Notes and findings on a task are left as comments');
-        expect(existsSync(join(original, 'skills', 'docs', 'SKILL.md'))).toBe(true);
-        expect(readdirSync(join((first.config.extraPluginDirs as string[])[0], 'skills'))).toEqual(['docs']);
+        expect(existsSync(join(filtered, 'skills', 'orchestrate'))).toBe(false);
+        const thread = readFileSync(join(filtered, 'skills', 'thread', 'SKILL.md'), 'utf8');
+        expect(thread).not.toContain('clowdy:orchestrate');
+        expect(thread).toContain('Your parent reads only your reports');
+        expect(existsSync(join(original, 'skills', 'orchestrate', 'SKILL.md'))).toBe(true);
+        expect(readdirSync(join((first.config.extraPluginDirs as string[])[0], 'skills'))).toEqual(['orchestrate']);
         first.ok('skills.setEnabled', { name: 'clowdy:*', enabled: false });
         expect(readdirSync(join(first.config.systemSkillsDir as string, 'skills'))).toEqual([]);
         await first.stop();
@@ -248,28 +247,12 @@ describe('skills.setEnabled', () => {
         harnesses.push(second);
         const catalog = await catalogOf(second);
         expect(catalog.systemEnabled).toBe(false);
-        expect(catalog.entries.find(entry => entry.name === 'clowdy:docs')?.enabled).toBe(false);
+        expect(catalog.entries.find(entry => entry.name === 'clowdy:orchestrate')?.enabled).toBe(false);
         expect(readdirSync(join(second.config.systemSkillsDir as string, 'skills'))).toEqual([]);
         second.ok('skills.setEnabled', { name: 'clowdy:*', enabled: true });
-        expect(existsSync(join(second.config.systemSkillsDir as string, 'skills', 'docs'))).toBe(false);
-        second.ok('skills.setEnabled', { name: 'clowdy:docs', enabled: true });
+        expect(existsSync(join(second.config.systemSkillsDir as string, 'skills', 'orchestrate'))).toBe(false);
+        second.ok('skills.setEnabled', { name: 'clowdy:orchestrate', enabled: true });
         expect(second.config.systemSkillsDir).toBe(original);
-        second.ok('skills.setEnabled', { name: 'clowdy:autopilot', enabled: false });
-        const mode = readFileSync(
-            join(second.config.systemSkillsDir as string, 'skills', 'orchestrate', 'SKILL.md'),
-            'utf8'
-        );
-        expect(mode).not.toContain('clowdy:autopilot');
-        expect(mode).toContain('load clowdy:semi-manual and follow it');
-        expect(mode).toContain('The mode is fixed for the cycle');
-        second.ok('skills.setEnabled', { name: 'clowdy:autopilot', enabled: true });
-        second.ok('skills.setEnabled', { name: 'clowdy:orchestrate', enabled: false });
-        const thread = readFileSync(
-            join(second.config.systemSkillsDir as string, 'skills', 'thread', 'SKILL.md'),
-            'utf8'
-        );
-        expect(thread).toContain('description: "How to work as a Clowdy thread');
-        expect(thread).not.toContain('clowdy:orchestrate');
     });
 
     test('switches a user skill off and on, keeps it in skills.json, and rebuilds the plugin', async () => {

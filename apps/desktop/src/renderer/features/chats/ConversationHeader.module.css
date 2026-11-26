@@ -53,6 +53,8 @@
 
 /* A sub-agent's summary: one quiet line under its path. */
 .summary {
+    display: block;
+    max-width: 100%;
     margin-block-start: var(--spacing-xxs);
 }
 

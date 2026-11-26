@@ -3,6 +3,7 @@ import { Loader } from '@clowdy/components/Loader';
 import { Text } from '@clowdy/components/Text';
 import { useLayoutEffect, useRef, useState } from 'react';
 
+import { runSummary, useRunLabel } from '../../shared';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { type StreamLinks, StreamLinksContext } from '../../stream/StreamLinks';
 import { Comment } from './Comment';
@@ -35,6 +36,7 @@ export interface CommentsSectionProps {
 export function CommentsSection({ taskId, onOpenRun, onOpenTask, isReadOnly = false }: CommentsSectionProps) {
     const root = useRootStore();
     const project = useProjectState();
+    const labelOf = useRunLabel();
     const ui = useProjectUi();
     const { state, retry } = useTaskComments(taskId);
     const composer = useRef<HTMLDivElement>(null);
@@ -77,10 +79,10 @@ export function CommentsSection({ taskId, onOpenRun, onOpenTask, isReadOnly = fa
             <button
                 type="button"
                 className={styles.agent}
-                title={run.summary || run.name}
+                title={runSummary(run) ?? labelOf(run)}
                 onClick={() => onOpenRun(run.id)}
             >
-                {run.name}
+                {labelOf(run)}
             </button>
         ) : (
             'Agent'

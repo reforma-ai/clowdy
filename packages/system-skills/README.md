@@ -21,12 +21,8 @@ Design settled in `.briefback/mvp/research/skills-in-engines.md` and built in St
 | --- | --- |
 | `orchestrate` | Entry skill of every orchestrator run: classify (question, small change, larger work), then understand, plan a task graph (stages as tasks inside a larger one, checklists for the steps one owner takes), work (itself, with the engine's own sub-agents for read-only research and disjoint edits, or through threads for coarse pieces, long-running work and independent checks), integrate, verify with commands that ran, record, report. References: threads, sub-agents, verification and probes, plan and sizing, self-hosting. |
 | `thread` | The manual of a chat that is a thread: the first message is the whole brief, the last message of every turn is the report to the parent (verdict, evidence, what is left), when to message the parent, and what a thread leaves to others. Loaded with `orchestrate` into a thread's system prompt. |
-| `autopilot` | Working without asking: sorting forks, deciding significant ones by criteria and recording them, reporting true blockers only. |
-| `semi-manual` | The grill: asking the user about significant forks through `ask_user` cards, settling the list, then building with autopilot discipline. |
-| `scaffold` | Starting an application from nothing: product statement, stack, one verified skeleton, first task graph. |
-| `docs` | The `.clowdy/docs/` contract: layout, facts versus plans, decisions and superseding, safe editing. |
 
-How they plug together: `orchestrate` is the loop. It loads `autopilot` or `semi-manual` for the mode, `docs` to read and write project memory, `scaffold` when there is no app yet, and does the work itself, with the agent's own sub-agents for read-only research and disjoint edits, or through threads: other agents in chats below its own, started with a self-contained brief, whose reports the daemon delivers back each time they stop. A thread runs `orchestrate` too, plus `thread`. The orchestrator of the person's chat talks to the user and keeps `index.md`; sub-agents and threads get what they need in the prompt or brief and hand back an answer or a report.
+How they plug together: `orchestrate` coordinates work with Clowdy tasks and threads. A thread runs `orchestrate` too, plus `thread`. Modes determine whether the agent decides or asks the user. Each thread gets a self-contained brief and reports back to its parent.
 
 ## Tools and commands the skills may name
 
@@ -43,7 +39,7 @@ The fields come from the daemon's tool definitions (`apps/daemon/src/runs/`): `a
 - Voice: imperative, concrete, English, no filler, no emojis. Short numbered steps and small templates over prose. One short worked example per skill.
 - In skill bodies and references, wrap each optional cross-skill reference and only its dependent wording in `<!-- skill:name -->...<!-- /skill -->`. The daemon removes that span when the named skill is off and strips the markers otherwise. Keep the surrounding instructions meaningful without the span. Do not use markers in front matter; descriptions must stand alone. The daemon rejects unmarked references.
 - Write for a manager who may not be a programmer: what changed and why, tasks, risks, decisions. No git jargon in anything the agent tells the user.
-- Say each thing once. Shared material (task template, decision template, report format) lives in one skill; the others refer to it by name (`clowdy:docs`), never by path.
+- Say each thing once. Shared material lives in one skill; the others refer to it by name, never by path.
 - Do not invent tools, daemon features or git machinery. Do not use Claude-only syntax (`$ARGUMENTS`, `${CLAUDE_*}`, `` !`cmd` ``, `context: fork`): Codex leaves it literal.
 - Sub-agents may not have these skills in context, and a thread does not see its parent's conversation: whatever they need must be in the prompt or brief the orchestrator writes.
 

@@ -157,29 +157,10 @@ function fixtureSkills(projectId: ProjectId): FixtureSkill[] {
     return [
         skill(
             'system',
-            'clowdy:autopilot',
-            'How to work without asking the user. Sort every fork, decide significant ones by explicit criteria and record them, and report only true blockers.'
-        ),
-        skill(
-            'system',
-            'clowdy:docs',
-            "The contract for a project's documents: layout, file names, facts versus plans, decisions and how to supersede them, and how to edit them safely."
-        ),
-        skill(
-            'system',
             'clowdy:orchestrate',
             'Entry skill of every chat: classify the message, plan a task graph, do the work yourself or with your own sub-agents, verify the result with commands, and report briefly.'
         ),
-        skill(
-            'system',
-            'clowdy:scaffold',
-            'Start a new application from nothing: product statement, stack, one verified skeleton, then the first task graph.'
-        ),
-        skill(
-            'system',
-            'clowdy:semi-manual',
-            'Involve the user in the decisions that matter through question cards, then build with autopilot discipline.'
-        ),
+        skill('system', 'clowdy:thread', 'Work on an assignment from a parent chat and report the result.'),
         skill(
             'user',
             'user:deploy',
@@ -2195,7 +2176,7 @@ export function createFixtureData(now = Date.now()): FixtureData {
             startedAt: ago(94),
             context: { used: 53000, size: 250000 },
         }),
-        // Sub-agents of the orchestrator's own `Agent` calls (tc-agent-1 to tc-agent-4 in its stream): cards there, never rows of the Agents list.
+        // Sub-agents of the orchestrator's own `Agent` calls (tc-agent-1 to tc-agent-4 in its stream): cards there, and rows below the chat in the Agents list.
         run('r-na-01', 'Explore', 'executor', 'succeeded', {
             parentRunId: 'r-orch-1',
             origin: 'native',
@@ -2215,6 +2196,15 @@ export function createFixtureData(now = Date.now()): FixtureData {
             summary: 'Find where the price is computed',
             createdAt: ago(2),
             startedAt: ago(2),
+        }),
+        // A sub-agent of a sub-agent, resting for its own background work (the strip above the message box counts only those that run, so it stays as it was):
+        // the Agents list nests its row below r-na-02's.
+        run('r-na-05', 'Explore', 'executor', 'waiting_background', {
+            parentRunId: 'r-na-02',
+            origin: 'native',
+            summary: 'List the callers of the price helper',
+            createdAt: ago(1),
+            startedAt: ago(1),
         }),
         // The one the timeline plays: it types the form while the app is open (its stream is the long one).
         run('r-na-03', 'general-purpose', 'executor', 'running', {
@@ -2528,6 +2518,8 @@ export function createFixtureData(now = Date.now()): FixtureData {
             },
         ],
     ]);
+
+    stream('r-na-05', [[1, { kind: 'assistant', done: true, text: 'Listing the callers of useBookingPrice.' }]]);
 
     stream('r-na-03', [
         [21, { kind: 'assistant', done: true, text: 'I will start by reading the current form and the price helper.' }],

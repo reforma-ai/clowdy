@@ -450,8 +450,8 @@ describe('materializing the system skills', () => {
         expect(() => materializeSystemSkills(source('one', 'other'), tempDir())).toThrow('must be named "clowdy"');
     });
 
-    const systemNames = ['autopilot', 'docs', 'orchestrate', 'scaffold', 'semi-manual', 'thread'];
-    const combinations = Array.from({ length: 64 }, (_, mask) =>
+    const systemNames = ['orchestrate', 'thread'];
+    const combinations = Array.from({ length: 4 }, (_, mask) =>
         systemNames.filter((_, index) => (mask & (1 << index)) !== 0)
     );
 
@@ -469,10 +469,6 @@ describe('materializing the system skills', () => {
                 expect(entry).toContain("Run the project's checks once to learn the baseline");
                 expect(entry).toContain('Notes and findings on a task are left as comments on it');
             }
-            if (!disabled.includes('autopilot')) {
-                const entry = readFileSync(join(dir, 'skills', 'autopilot', 'SKILL.md'), 'utf8');
-                expect(entry).toContain('The goal is met and verified by real commands or flows that you ran');
-            }
         }
     );
 
@@ -487,7 +483,7 @@ describe('materializing the system skills', () => {
         const skills = readdirSync(join(dir, 'skills')).sort();
 
         // `orchestrate` is in every run's system prompt, and `thread` in a thread's too (`skillPrompt`).
-        for (const skill of ['autopilot', 'docs', 'orchestrate', 'scaffold', 'semi-manual', 'thread']) {
+        for (const skill of ['orchestrate', 'thread']) {
             expect(skills).toContain(skill);
         }
 

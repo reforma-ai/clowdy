@@ -312,6 +312,25 @@ describe('the menu of a row', () => {
         expect(copy).toHaveBeenCalledOnce();
         expect(menuItems()).toHaveLength(0);
     });
+
+    it('puts a prioritized host item first and leaves the other host items after the explorer actions', async () => {
+        const first = vi.fn();
+        draw({
+            menuItems: () => [
+                { id: 'copy-path', label: 'Copy path', onAction: vi.fn() },
+                { id: 'first', label: 'First action', placement: 'first', onAction: first },
+            ],
+        });
+        await settle();
+        await rightClick(container.querySelector<HTMLElement>('[role="treeitem"] [draggable="true"]')!);
+
+        const labels = menuItems().map(item => item.textContent);
+        expect(labels[0]).toBe('First action');
+        expect(labels[1]).toContain('Rename');
+        expect(labels.indexOf('Copy path')).toBeGreaterThan(1);
+        await press(menuItem('First action')!);
+        expect(first).toHaveBeenCalledOnce();
+    });
 });
 
 describe('the filter in the header of the file tree', () => {

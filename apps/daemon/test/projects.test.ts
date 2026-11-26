@@ -255,7 +255,7 @@ describe('the personal space', () => {
         const regular = systemPrompt('autopilot', projectsOf(h).find(project => project.id === repo.id) as Project);
 
         expect(personal).toContain(
-            `Project: Personal, the person's personal space, a folder at ${pathOf(h.personal)} that belongs to no repository, task keys PER-<number>, project documents in .clowdy/docs/.`
+            `Project: Personal, the person's personal space, a folder at ${pathOf(h.personal)} that belongs to no repository, task keys PER-<number>.`
         );
         expect(regular).toContain(`Project: shop, folder at ${repo.path}, task keys SHO-<number>`);
         expect(regular).not.toContain('repository');
