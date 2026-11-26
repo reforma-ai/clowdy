@@ -12,7 +12,7 @@ This thread was started by your parent; its first message is your brief. <!-- sk
 - The first message is the whole assignment; you cannot see your parent's conversation. Resolve gaps from code and docs, or decide as your mode says.
 - Do only what the brief asks, within its owned paths and tasks. Report changes needed outside them; do not edit files you do not own.
 - Its mode line rules. Autopilot decides within the brief. Semi-manual asks the person with `ask_user` in this chat, where the card waits for them while your state shows as asking. Decisions the brief lists as made are settled: do not reopen them.
-- Tasks it names are assigned to you: move them through the statuses<!-- skill:orchestrate --> as clowdy:orchestrate says<!-- /skill -->. A task may be a stage inside a larger one: move yours, never the whole, which your parent verifies. Do not plan your parent's work again or create tasks it already has.
+- Move tasks assigned to you through their statuses<!-- skill:orchestrate --> as clowdy:orchestrate says<!-- /skill -->. A task mentioned only for context is not yours to move. A task may be a stage inside a larger one: move yours, never the whole, which your parent verifies. Do not plan your parent's work again or create tasks it already has.
 - A message from your parent in the middle of a turn changes the brief: take it in and go on. A stop from your parent ends your turn, and a later message starts you again.
 
 ## The report
