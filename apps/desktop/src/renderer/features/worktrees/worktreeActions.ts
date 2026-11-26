@@ -1,5 +1,3 @@
-import { openConfirmModal } from '@clowdy/components/modals';
-import { toast } from '@clowdy/components/Toast';
 import { isTerminalRunStatus } from '@clowdy/protocol';
 
 import { ancestorChats, chatOfRun } from '../agents/agentTree';
@@ -44,23 +42,14 @@ export function linkedChatIds(worktree: WorktreeInfo, snapshot: ProjectSnapshot,
 }
 
 /** The linked roots and the full cascade, including threads that work in a different place. */
-export function affectedChats(
-    worktree: WorktreeInfo,
-    snapshot: ProjectSnapshot,
-    folderId: FolderId,
-    archiveOnly = false
-) {
+export function affectedChats(worktree: WorktreeInfo, snapshot: ProjectSnapshot, folderId: FolderId) {
     const chats = new Map(snapshot.chats.map(chat => [chat.id, chat]));
     const linked = linkedChatIds(worktree, snapshot, folderId);
     if ([...linked].some(id => !chats.has(id))) throw new Error('The chats linked to this worktree changed. Try again');
     const affected = snapshot.chats.filter(
         chat => linked.has(chat.id) || ancestorChats(chats, chat.id).some(parent => linked.has(parent.id))
     );
-    // An already archived root is a no-op for chat.setArchived. Use the unarchived
-    // descendants as archive roots in that case, without restoring old history.
-    const candidates = archiveOnly
-        ? affected.filter(chat => chat.archivedAt === undefined)
-        : affected.filter(chat => linked.has(chat.id));
+    const candidates = affected.filter(chat => linked.has(chat.id));
     const candidateIds = new Set(candidates.map(chat => chat.id));
     const roots = candidates.filter(chat => !ancestorChats(chats, chat.id).some(parent => candidateIds.has(parent.id)));
     const ids = new Set(affected.map(chat => chat.id));
@@ -108,51 +97,5 @@ export async function refreshWorktreeTarget(target: Omit<WorktreeTarget, 'path'>
         }
     } catch {
         // The event feed also resolves archived/deleted selections.
-    }
-}
-
-function idsEqual(a: Set<string>, b: Set<string>): boolean {
-    return a.size === b.size && [...a].every(id => b.has(id));
-}
-
-export async function openArchiveWorktreeChats(target: WorktreeTarget) {
-    try {
-        const { worktree, snapshot } = await readWorktree(target);
-        const plan = affectedChats(worktree, snapshot, target.folderId, true);
-        const count = plan.affected.filter(chat => chat.archivedAt === undefined).length;
-        if (plan.blocker) throw new Error(plan.blocker);
-        if (!count) throw new Error('There are no unarchived chats in this worktree');
-        openConfirmModal({
-            title: 'Archive all chats?',
-            message: `${affectedSummary(plan.affected.length, plan.outside)}. ${count} will be archived; existing archives and the worktree will stay.`,
-            confirmLabel: 'Archive chats',
-            initialFocus: 'cancel',
-            onConfirm: async () => {
-                const errors: string[] = [];
-                try {
-                    const current = await readWorktree(target);
-                    const latest = affectedChats(current.worktree, current.snapshot, target.folderId, true);
-                    if (latest.blocker || !idsEqual(plan.ids, latest.ids))
-                        throw new Error(latest.blocker ?? 'The chats linked to this worktree changed. Try again');
-                    for (const chat of latest.roots) {
-                        const result = await target.root.command({
-                            type: 'chat.setArchived',
-                            chatId: chat.id,
-                            archived: true,
-                        });
-                        if (!result.ok) errors.push(`${chat.title}: ${result.error.message}`);
-                    }
-                } catch (error) {
-                    errors.push(error instanceof Error ? error.message : String(error));
-                }
-                await refreshWorktreeTarget(target, plan.affected);
-                if (errors.length) toast.error({ title: "Couldn't archive all chats", message: errors.join('\n') });
-            },
-        });
-    } catch (error) {
-        toast.error({
-            title: "Couldn't archive chats",
-            message: error instanceof Error ? error.message : String(error),
-        });
     }
 }

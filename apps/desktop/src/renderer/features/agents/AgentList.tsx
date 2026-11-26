@@ -488,7 +488,6 @@ export function AgentList({
                             showFolder={!grouped && folders.length > 1}
                             onToggle={() => ui.toggleWorktreeCollapsed(entry.card.key)}
                             onDragStart={event => order.startCard(event, entry.card.key)}
-                            move={order.cardActions(entry.card.key)}
                         />
                         {entry.rows.map(renderAgentRow)}
                     </GridListSection>
@@ -626,7 +625,6 @@ export function AgentList({
                             }
                             isOpen={menuOpenId === chat.id}
                             onOpenChange={open => setMenuOpenId(open ? chat.id : null)}
-                            move={menuOpenId === chat.id ? order.actions(chat.id) : undefined}
                             branchKey={chatBranchKey(
                                 projectInfo,
                                 groupFolderOf(project.chats, folders, chat.id),
@@ -717,7 +715,6 @@ export function AgentList({
                             onRename={() => actions.rename(chat)}
                             onArchive={() => actions.archive(chat)}
                             onDelete={() => actions.remove(chat)}
-                            {...order.actions(chat.id)}
                         />
                     </Popover>
                 )}
@@ -808,7 +805,6 @@ function RowEnd({
     status,
     isOpen,
     onOpenChange,
-    move,
     branchKey,
     showPullRequests,
     crossWorktree,
@@ -819,7 +815,6 @@ function RowEnd({
     status: ReactNode;
     isOpen: boolean;
     onOpenChange: (isOpen: boolean) => void;
-    move?: { onMoveUp?: () => void; onMoveDown?: () => void };
     branchKey?: BranchPullRequestKey;
     showPullRequests: boolean;
     crossWorktree: boolean;
@@ -865,7 +860,6 @@ function RowEnd({
                         onRename={() => actions.rename(chat)}
                         onArchive={() => actions.archive(chat)}
                         onDelete={() => actions.remove(chat)}
-                        {...move}
                     />
                 </Popover>
             </PopoverTrigger>

@@ -143,6 +143,25 @@ afterEach(() => {
     chatListPreferences.setExpandRunningAgents(true);
 });
 
+const drag = async (from: string, to: string, before = false) => {
+    const transfer = new DataTransfer();
+    transfer.setDragImage = vi.fn();
+    const source = rowOf(from).querySelector<HTMLElement>('[draggable="true"]')!;
+    const target = rowOf(to);
+    const event = (type: string) => {
+        const drag = new MouseEvent(type, { bubbles: true, cancelable: true, clientY: before ? -1 : 0 });
+        Object.defineProperty(drag, 'dataTransfer', { value: transfer });
+        return drag;
+    };
+    await act(async () => {
+        source.dispatchEvent(event('dragstart'));
+        target.dispatchEvent(event('dragover'));
+        target.dispatchEvent(event('drop'));
+        source.dispatchEvent(event('dragend'));
+    });
+    await draw();
+};
+
 describe('the list', () => {
     it('keeps the chat panel from becoming a scroll container', () => {
         const panel = container.querySelector<HTMLElement>('#main > div');
@@ -179,8 +198,7 @@ describe('the list', () => {
         const chatKeys = () => rowKeys().filter(key => key?.startsWith('c-'));
 
         expect(chatKeys()).toEqual(['c-4', 'c-5', 'c-3', 'c-6', 'c-1', 'c-2']);
-        await press(rowOf('c-5').querySelector<HTMLElement>('button[aria-label="Chat actions"]')!);
-        await press(menuItem('Move up'));
+        await drag('c-5', 'c-4', true);
         await draw();
         expect(chatKeys()).toEqual(['c-5', 'c-4', 'c-3', 'c-6', 'c-1', 'c-2']);
         expect(isSelected('c-4')).toBe(true);
@@ -193,6 +211,15 @@ describe('the list', () => {
             project().chats.set('c-new', { ...chat, id: 'c-new', createdAt: now, updatedAt: now });
         });
         expect(chatKeys()).toEqual(['c-new', 'c-5', 'c-4', 'c-3', 'c-6', 'c-1', 'c-2']);
+    });
+
+    it('omits move actions from a chat menu while keeping its other actions', async () => {
+        await press(rowOf('c-5').querySelector<HTMLElement>('button[aria-label="Chat actions"]')!);
+        expect(menuItem('Move up')).toBeUndefined();
+        expect(menuItem('Move down')).toBeUndefined();
+        expect(menuItem('Rename')).toBeDefined();
+        expect(menuItem('Archive')).toBeDefined();
+        expect(menuItem('Delete')).toBeDefined();
     });
 
     it('keeps the row of an open `⋯` menu as if hovered, since the pointer is in the menu and not on the row', async () => {
@@ -1195,8 +1222,7 @@ describe('the archive', () => {
     it('restores a manually positioned chat to its slot after moving other chats', async () => {
         await draw(() => ui().setChatOrder(['c-4', 'c-5', 'c-2', 'c-3', 'c-6', 'c-1']));
         await archive('c-2', true);
-        await press(rowOf('c-5').querySelector<HTMLElement>('button[aria-label="Chat actions"]')!);
-        await press(menuItem('Move up'));
+        await drag('c-5', 'c-4', true);
         await archive('c-2', false);
 
         expect(rowKeys().filter(key => key?.startsWith('c-'))).toEqual(['c-5', 'c-4', 'c-2', 'c-3', 'c-6', 'c-1']);
@@ -1987,7 +2013,7 @@ describe('worktree cards', () => {
         expect(ui().collapsedWorktrees).not.toContain(key);
     });
 
-    it('lists unused actual worktrees only when their section is opened, and orders groups through their menu', async () => {
+    it('lists unused actual worktrees only when their section is opened', async () => {
         await restart();
         await draw(() => ui().setGroupByWorktree(true));
         expect(cardRows()).toEqual([workspaceKey()]);
@@ -1995,12 +2021,6 @@ describe('worktree cards', () => {
         await draw();
         const cards = cardRows();
         expect(cards.length).toBeGreaterThan(2);
-        const secondUnused = cards[2]!;
-        await press(rowOf(secondUnused).querySelector<HTMLElement>('button[aria-label^="Worktree actions:"]')!);
-        await press(menuItem('Move up'));
-        await draw();
-        expect(cardRows().slice(0, 3)).toEqual([cards[0], cards[2], cards[1]]);
-        expect(ui().worktreeOrder.indexOf(cards[2]!)).toBeLessThan(ui().worktreeOrder.indexOf(cards[1]!));
     });
 
     it('starts a draft in a worktree with no chats from its own menu', async () => {
@@ -2059,50 +2079,14 @@ describe('worktree cards', () => {
         }
     });
 
-    it('archives a card with its linked and outside descendants only once, preserving earlier archive history and the worktree', async () => {
-        const data = withFixtureWorktrees(createFixtureData());
-        const parent = data.chats.find(chat => chat.id === 'c-9')!;
-        const archivedAt = data.chats.find(chat => chat.id === 'c-10')!.archivedAt;
-        data.chats.push(
-            { ...parent, id: 'linked-child', parentChatId: parent.id, orchestratorRunId: undefined },
-            {
-                ...parent,
-                id: 'outside-child',
-                parentChatId: parent.id,
-                workspace: undefined,
-                orchestratorRunId: undefined,
-            }
-        );
-        await restart(data);
-        const command = vi.spyOn(store.transport, 'command');
+    it('omits bulk archive and move actions from worktree menus', async () => {
+        await restart();
         await draw(() => ui().setGroupByWorktree(true));
         await press(rowOf(workspaceKey()).querySelector<HTMLElement>('button[aria-label^="Worktree actions:"]')!);
-        await press(menuItem('Archive all chats…'));
-        await vi.waitFor(() => expect(openConfirmModal).toHaveBeenCalled());
-        await act(async () => {
-            await vi.mocked(openConfirmModal).mock.lastCall![0].onConfirm();
-        });
-        await draw();
-        const snapshot = await store.transport.getProjectSnapshot(FIXTURE_PROJECT_ID);
-        expect({
-            archived: snapshot.chats
-                .filter(chat => ['c-9', 'linked-child', 'outside-child'].includes(chat.id))
-                .map(chat => [chat.id, Boolean(chat.archivedAt)]),
-            previousArchive: snapshot.chats.find(chat => chat.id === 'c-10')?.archivedAt,
-            commands: command.mock.calls.map(([input]) => input).filter(input => input.type === 'chat.setArchived'),
-            tree: (await store.transport.getProjectWorktrees(FIXTURE_PROJECT_ID))
-                .flatMap(group => group.worktrees)
-                .some(row => row.workspaceId === 'wks_ab12cd34'),
-        }).toEqual({
-            archived: [
-                ['c-9', true],
-                ['linked-child', true],
-                ['outside-child', true],
-            ],
-            previousArchive: archivedAt,
-            commands: [{ type: 'chat.setArchived', chatId: 'c-9', archived: true }],
-            tree: true,
-        });
+        expect(menuItem('Archive all chats…')).toBeUndefined();
+        expect(menuItem('Move up')).toBeUndefined();
+        expect(menuItem('Move down')).toBeUndefined();
+        expect(menuItem('Remove worktree…')).toBeDefined();
     });
 
     it('does not read the worktree list when grouping is off, and refreshes it on focus and folder Git changes', async () => {
@@ -2119,24 +2103,6 @@ describe('worktree cards', () => {
         await act(async () => refreshFolderGit(FIXTURE_PROJECT_ID, 'fld_car_rental'));
         expect(read).toHaveBeenCalledWith(FIXTURE_PROJECT_ID);
     });
-
-    const drag = async (from: string, to: string) => {
-        const transfer = new DataTransfer();
-        const source = rowOf(from).querySelector<HTMLElement>('[draggable="true"]')!;
-        const target = rowOf(to);
-        const event = (type: string) => {
-            const drag = new MouseEvent(type, { bubbles: true, cancelable: true });
-            Object.defineProperty(drag, 'dataTransfer', { value: transfer });
-            return drag;
-        };
-        await act(async () => {
-            source.dispatchEvent(event('dragstart'));
-            target.dispatchEvent(event('dragover'));
-            target.dispatchEvent(event('drop'));
-            source.dispatchEvent(event('dragend'));
-        });
-        await draw();
-    };
 
     it('refuses a cross-group drop and a drop onto a card header', async () => {
         await restart();
