@@ -5,6 +5,7 @@ import {
     branchPrefixProblem,
     COMMIT_MESSAGE_SETTING_ID,
     commitMessageAgent,
+    DEFAULT_SLEEP_MODE,
     folderNames,
     isBusyRunStatus,
     isTerminalRunStatus,
@@ -107,6 +108,7 @@ import type {
     GitSyncTarget,
     GitViewedMark,
     Health,
+    PowerSettings,
     Project,
     ProjectFileMatch,
     ProjectId,
@@ -119,6 +121,7 @@ import type {
     Run,
     RunId,
     SkillCatalog,
+    SleepMode,
     StreamItem,
     StreamItemBody,
     Task,
@@ -1499,6 +1502,17 @@ export class FixtureTransport implements Transport {
             .map(({ projectId: _projectId, ...entry }) => entry);
 
         return structuredClone({ entries, tokens: catalogTokens(entries), warnings: this.#data.skillWarnings });
+    }
+
+    #sleepMode: SleepMode = DEFAULT_SLEEP_MODE;
+
+    async getPowerSettings(): Promise<PowerSettings> {
+        return { sleepMode: this.#sleepMode };
+    }
+
+    async setSleepMode(sleepMode: SleepMode): Promise<PowerSettings> {
+        this.#sleepMode = sleepMode;
+        return this.getPowerSettings();
     }
 
     async getHealth(): Promise<Health> {

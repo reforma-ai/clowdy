@@ -159,6 +159,8 @@ const unconfigured: Transport = {
     getProjectIcon: noDaemon,
     getSkills: noDaemon,
     getHealth: noDaemon,
+    getPowerSettings: noDaemon,
+    setSleepMode: noDaemon,
     getAgents: noDaemon,
     getAgentModels: noDaemon,
     listTerminals: noDaemon,

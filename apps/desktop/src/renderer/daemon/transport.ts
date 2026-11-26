@@ -39,6 +39,7 @@ import type {
     GitSyncTarget,
     GitViewedMark,
     Health,
+    PowerSettings,
     ProjectFileMatch,
     ProjectId,
     ProjectInfo,
@@ -46,6 +47,7 @@ import type {
     RootSnapshot,
     RunId,
     SkillCatalog,
+    SleepMode,
     StreamItem,
     TaskArchivePage,
     TaskCommentsPage,
@@ -356,6 +358,8 @@ export interface Transport {
     getSkills: (projectId?: ProjectId) => Promise<SkillCatalog>;
     /** What the daemon says about itself: the bundle version it runs, its protocol and since when it has been running. The request carries no token and no protocol header, so a daemon of another major answers too. */
     getHealth: () => Promise<Health>;
+    getPowerSettings: () => Promise<PowerSettings>;
+    setSleepMode: (sleepMode: SleepMode) => Promise<PowerSettings>;
     /** Every agent the daemon knows, with who is signed in to it, its usage and its settings. */
     getAgents: () => Promise<AgentInfo[]>;
     /** The models an agent offers, with the reasoning levels of each. The daemon reads them from the agent's own program and keeps them for ten minutes. */

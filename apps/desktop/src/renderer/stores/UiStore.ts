@@ -18,6 +18,7 @@ import type {
 /** The pages of the global Settings window, in the order they appear in its sidebar. */
 export const SETTINGS_PAGES = [
     'appearance',
+    'power',
     'chat',
     'files',
     'source-control',

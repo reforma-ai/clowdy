@@ -66,6 +66,7 @@ describe('the Settings window', () => {
         expect(windowEl()).not.toBeNull();
         expect(pages()).toEqual([
             'Appearance',
+            'Power',
             'Chat',
             'Files',
             'Source Control',

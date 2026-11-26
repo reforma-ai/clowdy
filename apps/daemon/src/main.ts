@@ -1,13 +1,14 @@
 import { loadConfig } from './config';
 import { startDaemon } from './daemon';
 import { errorMessage } from './errors';
+import { systemSleepBlocker } from './power';
 
 import type { Daemon } from './daemon';
 
 let daemon: Daemon;
 
 try {
-    daemon = await startDaemon(loadConfig(), { onShutdown: () => process.exit(0) });
+    daemon = await startDaemon(loadConfig(), { onShutdown: () => process.exit(0), sleepBlocker: systemSleepBlocker() });
 } catch (error) {
     console.error(`clowdy-daemon: ${errorMessage(error)}`);
     process.exit(1);

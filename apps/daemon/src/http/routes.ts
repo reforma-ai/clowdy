@@ -5,6 +5,7 @@ import {
     mainFolder,
     PROTOCOL_VERSION,
     parseGitScope,
+    SLEEP_MODES,
 } from '@clowdy/protocol';
 import { z } from 'zod';
 
@@ -264,6 +265,16 @@ export function createRoutes(context: RouteContext): Route[] {
                     startedAt: context.startedAt,
                     activeRuns: services.runs.activeCount(),
                 } satisfies Health),
+        },
+        { method: 'GET', pattern: /^\/v1\/power$/, handle: () => json(services.power.settings) },
+        {
+            method: 'POST',
+            pattern: /^\/v1\/power$/,
+            handle: async request => {
+                const { sleepMode } = await readJson(request, z.object({ sleepMode: z.enum(SLEEP_MODES) }));
+
+                return json(services.power.setMode(sleepMode));
+            },
         },
         {
             method: 'POST',

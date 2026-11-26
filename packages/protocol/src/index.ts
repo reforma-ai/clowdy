@@ -7,5 +7,6 @@ export * from './events';
 export * from './fs';
 export * from './git';
 export * from './paths';
+export * from './power';
 export * from './skills';
 export * from './terminals';

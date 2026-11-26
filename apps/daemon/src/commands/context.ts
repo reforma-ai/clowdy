@@ -12,6 +12,7 @@ import type { CommitMessages } from '../git/message';
 import type { PullRequests } from '../git/pullRequest';
 import type { GitRemote } from '../git/remote';
 import type { GitSwitch } from '../git/switch';
+import type { PowerService } from '../power';
 import type { ModelCatalog } from '../providers/models';
 import type { ProvidersService } from '../providers/service';
 import type { RunDriver } from '../runs/driver';
@@ -27,6 +28,7 @@ export interface Services {
     config: Config;
     store: Store;
     runs: RunService;
+    power: PowerService;
     driver: RunDriver;
     /** What the person writes while a chat's orchestrator works: the queue, its turns and its steers. */
     queue: ChatQueue;

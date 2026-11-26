@@ -24,6 +24,7 @@ import { GitSwitch } from './git/switch';
 import { WriteEnvironment } from './git/writeEnv';
 import { startServer } from './http/server';
 import { acquireLock, writeDaemonInfo } from './instance';
+import { PowerService, type SleepBlocker } from './power';
 import { announceAgentsChanged } from './providers/announce';
 import { TextGeneration } from './providers/generate';
 import { ModelCatalog } from './providers/models';
@@ -73,6 +74,8 @@ export interface DaemonOptions {
     gitEnvironment?: WriteEnvironment;
     /** Replaces the runner of the agents' no-tools runs (commit messages); tests use it to give a run a limit of its own. */
     textGeneration?: TextGeneration;
+    /** The system assertion is supplied by the entry point; test daemons do not change host sleep. */
+    sleepBlocker?: SleepBlocker;
     heartbeatMs?: number;
     /** Called once the daemon has stopped because a client asked (`POST /v1/shutdown`); the entry point exits the process here. */
     onShutdown?: () => void;
@@ -103,6 +106,11 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
         store.forkable = engine => engines.get(engine)?.canFork === true;
 
         const runs = new RunService(store, config, engines);
+        const power = new PowerService(
+            config.dataDir,
+            () => runs.activeCount() > 0,
+            options.sleepBlocker ?? { setAwake() {} }
+        );
         // A turn asks for its tools when it starts, by which time the thread service below exists.
         const driver = new RunDriver({
             store,
@@ -148,6 +156,7 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
             config,
             store,
             runs,
+            power,
             driver,
             queue,
             threads,
@@ -189,6 +198,8 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
             (stopping ??= (async () => {
                 // Notices still in their window are lost: their timers must not write to a store that is closing.
                 notices.stop();
+                unsubscribePower();
+                power.stop();
                 await server.stop(true);
                 // A clone that is stopped takes away what it made before the process may go.
                 await services.gitClone.stop();
@@ -227,6 +238,11 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
             startedAt,
         };
         const removeInfo = writeDaemonInfo(config.dataDir, info);
+        const unsubscribePower = store.subscribe(events => {
+            if (events.some(event => ['run.upserted', 'chat.deleted', 'project.deleted'].includes(event.data.type)))
+                power.refresh();
+        });
+        power.start();
 
         return { info, services, stop };
     } catch (error) {

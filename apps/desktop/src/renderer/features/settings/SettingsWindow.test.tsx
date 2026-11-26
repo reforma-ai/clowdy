@@ -66,6 +66,7 @@ describe('Settings', () => {
 
         expect(sidebarPages()).toEqual([
             'Appearance',
+            'Power',
             'Chat',
             'Files',
             'Source Control',
@@ -142,6 +143,32 @@ describe('Settings', () => {
         } finally {
             act(() => sourceControlPreferences.setAutoSync(true));
         }
+    });
+
+    it('starts in the agent work mode and saves each power choice', async () => {
+        store.ui.openSettings('power');
+        await draw();
+
+        const select = () => container.querySelector('button[aria-label="Sleep mode"]');
+        expect(select()?.textContent).toBe('Keep awake while agents work');
+        const pick = async (name: string) => {
+            await press(select());
+            const item = [...document.body.querySelectorAll('[role="listbox"] [role="option"]')].find(
+                option => option.textContent === name
+            );
+            expect(item).toBeDefined();
+            await press(item);
+            await vi.waitFor(() => expect(select()?.textContent).toBe(name));
+        };
+
+        await pick('Always keep awake');
+        expect(await store.transport.getPowerSettings()).toEqual({ sleepMode: 'always' });
+        await pick('Allow sleep');
+        expect(await store.transport.getPowerSettings()).toEqual({ sleepMode: 'allow' });
+        act(() => store.ui.showSettingsPage('chat'));
+        act(() => store.ui.showSettingsPage('power'));
+        await draw();
+        expect(select()?.textContent).toBe('Allow sleep');
     });
 
     it('sets a single commit message provider from Source Control', async () => {
