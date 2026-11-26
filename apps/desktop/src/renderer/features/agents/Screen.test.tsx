@@ -1389,9 +1389,9 @@ describe('the archive', () => {
         expect(rowOf('c-4').querySelector('button[aria-label="Archive"]')?.hasAttribute('disabled')).toBe(false);
     });
 
-    it('shows a bolt while a chat waits for commands, giving an active agent or a question its usual indicator', async () => {
+    it('shows a bolt while a chat waits for background work, giving an active agent or a question its usual indicator', async () => {
         const run = project().runs.get('r-orch-5')!;
-        expect(rowOf('c-5').querySelector('[aria-label="Background command running"] svg')).not.toBeNull();
+        expect(rowOf('c-5').querySelector('[aria-label="Waiting for background work"] svg')).not.toBeNull();
 
         await draw(() => project().runs.set(run.id, { ...run, status: 'running' }));
         expect(rowOf('c-5').querySelector('[aria-label="Working"] [data-tone="success"]')).not.toBeNull();
@@ -1400,7 +1400,7 @@ describe('the archive', () => {
         expect(rowOf('c-5').querySelector('[aria-label="Waiting"] [data-tone="accent"]')).not.toBeNull();
 
         await draw(() => project().runs.set(run.id, { ...run, background: [] }));
-        expect(rowOf('c-5').querySelector('[aria-label="Background"] [data-tone="success"]')).not.toBeNull();
+        expect(rowOf('c-5').querySelector('[aria-label="Waiting for background work"] svg')).not.toBeNull();
     });
 
     it('cannot be asked of a chat whose agents work, and the list keeps it', async () => {
