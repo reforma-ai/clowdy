@@ -46,9 +46,9 @@ function TidyPreview({
             <div className={styles.tidyRows}>
                 <ul className={styles.card} aria-label="Worktrees to remove">
                     {rows.map(row => (
-                        <li key={row.path} className={styles.row}>
+                        <li key={row.path}>
                             <Checkbox
-                                className={styles.tidyCheck}
+                                className={`${styles.row} ${styles.tidyCheck}`}
                                 size="sm"
                                 isDisabled={pending}
                                 isSelected={selected.has(row.path)}
@@ -60,8 +60,11 @@ function TidyPreview({
                                     choice.selected = next;
                                     setSelected(next);
                                 }}
-                            />
-                            <WorktreeRowSummary worktree={row} tidy />
+                            >
+                                <span className={styles.tidySummary}>
+                                    <WorktreeRowSummary worktree={row} tidy />
+                                </span>
+                            </Checkbox>
                         </li>
                     ))}
                 </ul>

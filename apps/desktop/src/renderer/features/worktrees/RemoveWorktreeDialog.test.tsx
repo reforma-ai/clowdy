@@ -730,9 +730,9 @@ describe('Remove in Manage worktrees', () => {
                 row.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked,
             ])
         ).toEqual([
-            ['feature/doneNo local changesMerged', true],
-            ['secondNo local changesMerged', true],
-            ['keptNo local changesMerged', true],
+            ['feature/doneMerged', true],
+            ['secondMerged', true],
+            ['keptMerged', true],
         ]);
         expect(confirmation().querySelectorAll('input[type="checkbox"]')).toHaveLength(4);
         const choices = [...confirmation().querySelectorAll<HTMLInputElement>('input[type="checkbox"]')];
@@ -741,7 +741,11 @@ describe('Remove in Manage worktrees', () => {
             `Remove second: ${second}`,
             `Remove kept: ${kept}`,
         ]);
-        await click(choices.find(choice => choice.getAttribute('aria-label')?.endsWith(kept))!);
+        await click(
+            [...list.querySelectorAll('li')]
+                .find(item => item.textContent?.startsWith('kept'))!
+                .querySelector<HTMLElement>('[title]')!
+        );
         data.worktrees![CAR_RENTAL]!.find(row => row.path === second)!.changes = 1;
         await confirm('Remove 2 workspaces');
         expect(confirmation().textContent).toContain(second);

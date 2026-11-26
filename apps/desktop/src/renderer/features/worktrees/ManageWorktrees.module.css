@@ -245,8 +245,22 @@
 }
 
 .tidyCheck {
-    flex-shrink: 0;
-    align-self: center;
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
+.tidyCheck > span:last-child {
+    flex: 1;
+    min-width: 0;
+}
+
+.tidySummary {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    width: 100%;
+    min-width: 0;
 }
 
 .tidyMark {
