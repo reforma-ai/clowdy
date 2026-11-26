@@ -8,22 +8,16 @@
     width: 100%;
 }
 
-/* The question is a title in a band, as in Reforma's question panel. */
+/* The question: a title with no plate of its own. It may run to a few lines when the agent writes the facts into it, so it is plain text at the size of the field. */
 .header {
-    display: flex;
-    align-items: center;
-    min-height: var(--spacing-36);
-    padding: var(--spacing-md) var(--spacing-lg);
-    border-radius: calc(var(--radius-sm) * var(--squircle-radius-factor));
-    corner-shape: superellipse(var(--squircle-value));
-    background-color: var(--color-secondary-light);
+    padding: var(--spacing-md);
 }
 
 .facts {
     display: flex;
     flex-direction: column;
     gap: var(--spacing-sm);
-    padding-inline: var(--spacing-lg);
+    padding-inline: var(--spacing-md);
 }
 
 .options {
@@ -107,9 +101,11 @@
     overflow-wrap: anywhere;
 }
 
+/* A rule under the options, as far from the last row as from the buttons: the panel's own gap above it, the same padding below. */
 .footer {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: var(--spacing-xxs) var(--spacing-xs) var(--spacing-xxs) var(--spacing-lg);
+    padding-top: var(--spacing-sm);
+    border-top: 1px solid var(--color-secondary-muted-border);
 }

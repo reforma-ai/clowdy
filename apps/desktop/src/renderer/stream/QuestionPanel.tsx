@@ -28,7 +28,7 @@ export interface QuestionPanelProps {
 }
 
 /**
- * The form of a question the run waits on (semi-manual mode), without a frame of its own: the title in a band, the facts, the options as numbered
+ * The form of a question the run waits on (semi-manual mode), without a frame of its own: the title, the facts, the options as numbered
  * rows with what each one means, the recommended one preselected, a row with a field for another answer, Skip at the start of the line under
  * them and the send button at its end. The box under the chat draws it in place of the message field; `QuestionCard` frames it in the stream
  * where the box cannot.
@@ -85,7 +85,7 @@ export function QuestionPanel({ question, onAnswer }: QuestionPanelProps) {
             }}
         >
             <div className={styles.header}>
-                <Text variant="label" weight="medium" wrap="anywhere">
+                <Text variant="md" weight="medium" wrap="anywhere" whitespace="pre-line">
                     {title}
                 </Text>
             </div>
