@@ -2244,6 +2244,25 @@ describe('worktree cards', () => {
         expect(shortcut.disabled).toBe(true);
     });
 
+    it('explains that a pending worktree is not prepared and does not offer branch switching', async () => {
+        await restart();
+        await draw(() => {
+            const chat = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!;
+            project().chats.set(chat.id, {
+                ...chat,
+                workspace: { ...chat.workspace!, id: 'pending-worktree', path: '/pending-worktree', ready: false },
+            });
+            ui().setGroupByWorktree(true);
+        });
+        await draw();
+        await press(rowOf(workspaceKey()).querySelector<HTMLElement>('button[aria-label^="Worktree actions:"]')!);
+        const menu = document.querySelector<HTMLElement>('[role="menu"][aria-label="Worktree actions"]')!;
+        expect(menu.textContent).toContain('Worktree not prepared yet');
+        expect(menu.textContent).not.toContain('no longer exists');
+        expect(menuItem('Switch branch')).toBeUndefined();
+        expect(menuItem('New chat').getAttribute('aria-disabled')).toBe('true');
+    });
+
     it('folds and unfolds a worktree with its icon control', async () => {
         await restart();
         await draw(() => ui().setGroupByWorktree(true));

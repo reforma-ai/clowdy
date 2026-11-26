@@ -278,7 +278,8 @@ function WorktreeCardMenu({
                 kind: 'directory',
                 workspace,
             }}
-            missing={card.missing || card.pending}
+            missing={card.missing}
+            notReady={card.pending}
             git={git}
             onNewChat={onNewChat}
             onClose={onClose}
