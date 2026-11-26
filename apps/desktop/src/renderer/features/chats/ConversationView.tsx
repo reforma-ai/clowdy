@@ -111,7 +111,7 @@ export function ConversationView({
     const working =
         isRunActive(run) &&
         shown !== undefined &&
-        (shown === 'waiting_background' && backgroundLine ? backgroundLine : liveLine(shown));
+        (shown === 'waiting_background' && backgroundLine ? backgroundLine : liveLine(shown, run.statusReason));
 
     return (
         <div className={styles.page}>
