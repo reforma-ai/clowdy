@@ -18,7 +18,7 @@ import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { SWIPE } from '../../stream/swipeReply';
 import { ChatView } from './ChatView';
-import styles from './ChatView.module.css';
+import styles from './ConversationView.module.css';
 import { draftOf, editDraftKey, messageOf, saveDraft } from './composerDrafts';
 import { filesOf } from './composerFiles';
 import { dropReplyQuote } from './composerQuotes';
@@ -149,7 +149,7 @@ describe('the composer overlay', () => {
         await start();
         await draw('c-1', <span>Controls</span>);
 
-        const overlay = container.querySelector<HTMLElement>(`.${styles.composer}`)!;
+        const overlay = container.querySelector<HTMLElement>(`.${styles.overlay}`)!;
         const banners = overlay.firstElementChild!.firstElementChild as HTMLElement;
         const observer = observers.find(candidate => candidate.targets.includes(overlay))!;
         expect(observer.targets).toContain(overlay.firstElementChild);
@@ -2215,7 +2215,7 @@ describe('a chat whose orchestrator waits for an answer', () => {
 
         expect(container.querySelectorAll('form')).toHaveLength(1);
         expect(form()?.textContent).toContain('Where should bookings be stored?');
-        expect(form()?.closest(`.${styles.composer}`)).not.toBeNull();
+        expect(form()?.closest(`.${styles.overlay}`)).not.toBeNull();
         expect(container.textContent).toContain('Answer in the box below');
         // The message is hidden, not taken apart.
         expect(message()).not.toBeNull();

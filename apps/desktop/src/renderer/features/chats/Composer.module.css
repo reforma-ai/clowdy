@@ -72,6 +72,15 @@
     mask-composite: exclude;
 }
 
+/* The box of a sub-agent, which nobody can write to: the ring stands still and the glow of a focus is not drawn. */
+.surface[data-disabled]::before {
+    animation: none;
+}
+
+.surface[data-disabled]:focus-within {
+    box-shadow: none;
+}
+
 /* The message part of the card: the queue, the field and the row. Hidden while a question takes the card, without being taken apart. */
 .message {
     display: flex;

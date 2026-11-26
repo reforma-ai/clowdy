@@ -1,0 +1,11 @@
+/* The placeholder is the box's message, so the disabled field keeps it readable: the card says what is off, not the field's fade. */
+.field {
+    flex: 1;
+    margin: var(--spacing-sm) var(--spacing-sm) 0;
+    cursor: default;
+    opacity: 1;
+}
+
+.field textarea {
+    resize: none;
+}
