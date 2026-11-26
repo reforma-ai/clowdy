@@ -1,11 +1,12 @@
 import { Shimmer } from '@clowdy/components/Shimmer';
 import { Text } from '@clowdy/components/Text';
-import { BackgroundTask, Robot, Split, Terminal } from '@clowdy/icons/14';
+import { BackgroundTask, Robot, Terminal } from '@clowdy/icons/14';
 import { shownRunStatus } from '@clowdy/protocol';
 import { useEffect, useState } from 'react';
 
 import { formatDuration } from '../../shared';
 import { useProjectState, useProjectUi, useRootStore, useRunStream } from '../../stores';
+import { ChatIcon } from '../agents/ChatIcon';
 import { openChat } from './archiveChat';
 import { ComposerBanner, ComposerBannerHeader, ComposerBannerStatus } from './ComposerBanner';
 import styles from './ComposerBanner.module.css';
@@ -99,7 +100,8 @@ function ThreadRow({ chat, run, now }: ThreadAtWork & { now: number }) {
 
     return (
         <ComposerBannerStatus
-            icon={<Split />}
+            // The thread's own mark, the provider's, as the chat list draws it; the strip says its state in words.
+            icon={<ChatIcon chat={chat} run={run} showStatus={false} />}
             progress={progress}
             detail={detail}
             action="Stop"

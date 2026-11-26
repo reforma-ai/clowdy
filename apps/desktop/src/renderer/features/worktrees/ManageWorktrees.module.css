@@ -236,3 +236,15 @@
         pointer-events: auto;
     }
 }
+
+/* The cleanup choice stays on the right of each settings-style row, separate from the branch option below the list. */
+.tidyRows {
+    min-width: 0;
+    max-height: 280px;
+    overflow-y: auto;
+}
+
+.tidyCheck {
+    flex-shrink: 0;
+    align-self: center;
+}

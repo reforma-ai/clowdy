@@ -123,7 +123,7 @@ export class Children {
 
     /**
      * The parent announces a child, or says more of one. The runtime hears of it once the call that started it is known (the next message to it, or the first
-     * call it makes), so a child run is made once, with the call's id.
+     * call it makes), so a child run is made once, with the call's id and, when the message that asked it has come by then, what it was asked (`prompt`).
      */
     announce(update: SubagentUpdate, parent?: string): EngineEvent[] {
         let child = this.byId.get(update.sessionId);
@@ -332,6 +332,7 @@ export class Children {
                 ...(child.callId !== undefined && { parentToolCallId: child.callId }),
                 name: child.type ?? FALLBACK_NAME,
                 ...(child.title !== undefined && { description: child.title }),
+                ...(child.prompt !== undefined && { prompt: child.prompt }),
                 state: 'running',
                 ...(child.cancellable && { stoppable: true }),
             },

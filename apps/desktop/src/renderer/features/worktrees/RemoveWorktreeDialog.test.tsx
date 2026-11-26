@@ -723,6 +723,18 @@ describe('Remove in Manage worktrees', () => {
         await open({ data });
         await click(textButton(confirmation(), 'Tidy up…')!);
         await settle();
+        const list = confirmation().querySelector('ul[aria-label="Worktrees to remove"]')!;
+        expect(
+            [...list.querySelectorAll('li')].map(row => [
+                row.textContent,
+                row.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked,
+            ])
+        ).toEqual([
+            ['feature/doneMergedNo local changes', true],
+            ['secondMergedNo local changes', true],
+            ['keptMergedNo local changes', true],
+        ]);
+        expect(confirmation().querySelectorAll('input[type="checkbox"]')).toHaveLength(4);
         const choices = [...confirmation().querySelectorAll<HTMLInputElement>('input[type="checkbox"]')];
         expect(choices.map(choice => choice.getAttribute('aria-label')).filter(Boolean)).toEqual([
             `Remove feature/done: ${CLEAN_MERGED}`,

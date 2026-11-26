@@ -88,6 +88,7 @@ const findFiles = async (_projectId: string, query: string) =>
         .filter(path => path.includes(query))
         .map(path => ({ folderId: 'fld_p', path }));
 const transport = {
+    getPromptSuggestion: vi.fn(async () => ({ finishedAt: 123, text: 'Check the result' })),
     getDocsTree: vi.fn(async (): Promise<DocsTree> => docs),
     getProjectFiles: vi.fn(findFiles),
     getSkills: vi.fn(async () => ({ entries: skills, tokens: 0, warnings: [] })),
@@ -97,7 +98,8 @@ async function mount(
     result: CommandResult | Promise<CommandResult>,
     run?: Run,
     folders = FOLDERS,
-    start?: ComposerProps['start']
+    start?: ComposerProps['start'],
+    suppressSuggestions = false
 ) {
     const command = vi.fn(async (input: CommandInput) => {
         sent.push(input);
@@ -121,7 +123,12 @@ async function mount(
     await act(async () => {
         root.render(
             <RootStoreProvider value={store as unknown as RootStore}>
-                <Composer chat={start ? undefined : chat} run={run} start={start} />
+                <Composer
+                    chat={start ? undefined : chat}
+                    run={run}
+                    start={start}
+                    suppressSuggestions={suppressSuggestions}
+                />
             </RootStoreProvider>
         );
     });
@@ -162,6 +169,109 @@ afterEach(() => {
 });
 
 describe('Composer', () => {
+    it('accepts a completed turn prediction with Tab without sending it', async () => {
+        await mount(accepted, runWith('running'));
+        await mount(accepted, { ...runWith('succeeded'), finishedAt: 123 });
+        expect(container.querySelector('[data-rich-input-suggestion] [data-hotkey]')?.textContent).toBe('Tab');
+        await press('Tab');
+        expect({
+            text: text(),
+            sent,
+            key: container.querySelector('[data-rich-input-suggestion] [data-hotkey]'),
+        }).toEqual({ text: 'Check the result', sent: [], key: null });
+    });
+
+    it('does not offer a prediction when opening an already finished chat', async () => {
+        await mount(accepted, { ...runWith('succeeded'), finishedAt: 123 });
+        await press('Tab');
+        expect({ text: text(), sent }).toEqual({ text: '', sent: [] });
+    });
+
+    it('offers a prediction that arrives after the completed composer is already usable', async () => {
+        let answer!: (value: { finishedAt: number; text: string }) => void;
+        transport.getPromptSuggestion.mockImplementationOnce(
+            () =>
+                new Promise(resolve => {
+                    answer = resolve;
+                })
+        );
+        await mount(accepted, runWith('running'));
+        await mount(accepted, { ...runWith('succeeded'), finishedAt: 123 });
+        expect(text()).toBe('');
+        await act(async () => answer({ finishedAt: 123, text: 'Late prediction' }));
+        await press('Tab');
+        expect({ text: text(), sent }).toEqual({ text: 'Late prediction', sent: [] });
+    });
+
+    it('allows a new message while a prediction is pending and ignores its later arrival', async () => {
+        let answer!: (value: { finishedAt: number; text: string }) => void;
+        transport.getPromptSuggestion.mockImplementationOnce(
+            () =>
+                new Promise(resolve => {
+                    answer = resolve;
+                })
+        );
+        await mount(accepted, runWith('running'));
+        await mount(accepted, { ...runWith('succeeded'), finishedAt: 123 });
+
+        type('My message');
+        await press('Enter');
+        await act(async () => answer({ finishedAt: 123, text: 'Too late' }));
+        await press('Tab');
+        expect({ text: text(), sent }).toEqual({
+            text: '',
+            sent: [{ type: 'chat.send', chatId: chat.id, text: 'My message', mode: 'steer' }],
+        });
+    });
+
+    it('ignores a late prediction after leaving the chat', async () => {
+        let answer!: (value: { finishedAt: number; text: string }) => void;
+        transport.getPromptSuggestion.mockImplementationOnce(
+            () =>
+                new Promise(resolve => {
+                    answer = resolve;
+                })
+        );
+        await mount(accepted, runWith('running'));
+        await mount(accepted, { ...runWith('succeeded'), finishedAt: 123 });
+        chat = newChat('different-chat');
+        await mount(accepted, { ...runWith('succeeded'), id: 'different-run', finishedAt: 123 });
+        await act(async () => answer({ finishedAt: 123, text: 'Too late' }));
+        await press('Tab');
+        expect({ text: text(), sent }).toEqual({ text: '', sent: [] });
+    });
+
+    it('lets normal Tab navigation work if no prediction is shown', async () => {
+        await mount(accepted);
+        const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+        await act(async () => {
+            field().dispatchEvent(tab);
+        });
+        expect({ prevented: tab.defaultPrevented, text: text(), sent }).toEqual({
+            prevented: false,
+            text: '',
+            sent: [],
+        });
+    });
+
+    it('dismisses the prediction when the history editor opens', async () => {
+        await mount(accepted, runWith('running'));
+        await mount(accepted, { ...runWith('succeeded'), finishedAt: 123 });
+        await mount(accepted, { ...runWith('succeeded'), finishedAt: 123 }, FOLDERS, undefined, true);
+        await mount(accepted, { ...runWith('succeeded'), finishedAt: 123 });
+        await press('Tab');
+        expect({ text: text(), sent }).toEqual({ text: '', sent: [] });
+    });
+
+    it('never restores a dismissed prediction after typing and deleting text', async () => {
+        await mount(accepted, runWith('running'));
+        await mount(accepted, { ...runWith('succeeded'), finishedAt: 123 });
+        type('Own message');
+        act(() => editor().commands.clearContent());
+        await press('Tab');
+        expect({ text: text(), sent }).toEqual({ text: '', sent: [] });
+    });
+
     it('sends the trimmed text to the chat on Enter and empties the field', async () => {
         await mount(accepted);
         type('  Add a cancel button  ');

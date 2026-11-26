@@ -1467,6 +1467,19 @@ async function turn(session: FakeSession, sessionId: string, text: string, clien
             }
         }
     } finally {
+        const predictionMode = process.env.FAKE_ACP_PREDICTION;
+        const prediction = (clientCapabilities as { session?: { promptSuggestions?: object } })?.session
+            ?.promptSuggestions
+            ? {
+                  sessionUpdate: 'prompt_suggestions_update' as const,
+                  suggestions: [
+                      { prompt: [{ type: 'text' as const, text: '   ' }] },
+                      { prompt: [{ type: 'text' as const, text: 'Check the result' }] },
+                      { prompt: [{ type: 'text' as const, text: 'Another prediction' }] },
+                  ],
+              }
+            : undefined;
+        if (prediction && predictionMode === 'before') await send(prediction);
         if (twice && session.landed && stopReason === 'end_turn') {
             // A prompt that landed in the turn was queued by the agent behind it: the turn ends without a result of its own, and the prompt's turn
             // follows, which gives the answer again as a whole message under a new id, and the usage.
@@ -1489,6 +1502,14 @@ async function turn(session: FakeSession, sessionId: string, text: string, clien
         } else {
             session.prompting = false;
             await send(state(session, { state: 'idle', stopReason, ...(error && { error }), ...(usage && { usage }) }));
+        }
+
+        if (predictionMode === 'exit') {
+            await Bun.sleep(20);
+            process.exit(0);
+        }
+        if (prediction && (predictionMode === '1' || predictionMode === 'slow')) {
+            setTimeout(() => void send(prediction), predictionMode === 'slow' ? 1500 : 20);
         }
 
         // A prompt held for this turn's end (`FAKE_ACP_QUEUE`) runs next; work that ended meanwhile is reported once the agent is free.

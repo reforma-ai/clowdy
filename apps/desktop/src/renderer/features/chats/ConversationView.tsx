@@ -5,7 +5,7 @@ import { Loader } from '@clowdy/components/Loader';
 import { Text } from '@clowdy/components/Text';
 import { AttentionCircle } from '@clowdy/icons/14';
 import { shownRunStatus } from '@clowdy/protocol';
-import { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { useRootStore } from '../../stores';
 import { StreamView, type StreamViewHandle, type StreamViewProps } from '../../stream';
@@ -13,10 +13,12 @@ import styles from './ConversationView.module.css';
 import { isRunActive, liveLine } from './chatRun';
 import { perform } from './commands';
 
-import type { Run } from '@clowdy/protocol';
+import type { Run, StreamItem } from '@clowdy/protocol';
 import type { ReactNode, Ref } from 'react';
 import type { RunStream } from '../../stores';
 import type { ConversationLinks } from './useStreamLinks';
+
+const NO_ITEMS: StreamItem[] = [];
 
 export interface ConversationViewProps
     extends Pick<
@@ -29,6 +31,10 @@ export interface ConversationViewProps
     stream: RunStream | undefined;
     /** What the text may point at (`useStreamLinks`), read by the page that holds this one, which opens chats and reads files with it too. */
     links: ConversationLinks;
+    /** An item drawn before the stream's own: what the page makes of what it knows (a sub-agent's page, the prompt of the call that started it). It is not stored and not part of the stream. */
+    leading?: StreamItem;
+    /** The page waits for what its leading item is made from: the stream is not drawn yet and the page says it is loading, so the item does not appear above what the person has begun to read. */
+    holding?: boolean;
     /** Over the stream: the header that says where the conversation is, `ConversationHeader`. */
     top?: ReactNode;
     /** Over the stream's bottom, above the box: the plates that tell what the chat is doing (its agents, its last run, its tasks). */
@@ -52,6 +58,8 @@ export function ConversationView({
     run,
     stream,
     links,
+    leading,
+    holding = false,
     top,
     banners,
     bottom,
@@ -95,8 +103,9 @@ export function ConversationView({
     }, [measureOverlay]);
 
     // A stream that is read again (the app resyncs) keeps what it shows until the new items replace them, so the page keeps its place; only one with nothing to show says it is loading.
-    const items = stream?.items ?? [];
-    const hasItems = items.length > 0;
+    const streamItems = stream?.items ?? NO_ITEMS;
+    const hasItems = streamItems.length > 0;
+    const items = useMemo(() => (leading ? [leading, ...streamItems] : streamItems), [leading, streamItems]);
     const shown = run && shownRunStatus(run);
     // The live line follows what the person reads of the run: none while a card waits for them.
     const working =
@@ -124,7 +133,7 @@ export function ConversationView({
                 </div>
             )}
 
-            {stream && (stream.status === 'idle' || stream.status === 'loading') && !hasItems && (
+            {((stream && (stream.status === 'idle' || stream.status === 'loading') && !hasItems) || holding) && (
                 <div className={styles.center}>
                     <Loader size="xs" />
                     <Text color="secondary">Loading messages…</Text>
@@ -132,6 +141,7 @@ export function ConversationView({
             )}
 
             {composerInset !== undefined &&
+                !holding &&
                 (!stream || stream.status === 'ready' || (stream.status === 'loading' && hasItems)) && (
                     <StreamView
                         {...streamProps}

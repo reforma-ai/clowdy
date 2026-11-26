@@ -17,6 +17,7 @@ import {
 } from './conversation';
 import { classifyThrown, failureEvent, processEnded } from './failure';
 import { UpdateMapper } from './mapper';
+import { PromptSuggestionWindow } from './promptSuggestions';
 
 import type {
     ClientCapabilities,
@@ -33,7 +34,11 @@ import type { LayerHost, ProtocolLayer } from './layer';
 import type { ResolvedAgent } from './registry';
 
 /** What the client tells an agent it can do in `initialize`. The probe sends the same, so it shows the options a run gets. */
-export const clientCapabilities = (agent: Pick<ResolvedAgent, 'clientMeta' | 'elicitation'>): ClientCapabilities => ({
+export const clientCapabilities = (
+    agent: Pick<ResolvedAgent, 'clientMeta' | 'elicitation'>,
+    suggestions = false
+): ClientCapabilities => ({
+    ...(suggestions && { session: { promptSuggestions: {} } }),
     fs: { readTextFile: false, writeTextFile: false },
     terminal: false,
     ...(agent.elicitation && { elicitation: { form: {} } }),
@@ -97,6 +102,11 @@ export class V1Layer implements ProtocolLayer {
      */
     naming = false;
     answered = false;
+    private prediction = new PromptSuggestionWindow();
+
+    get latePromptSuggestion() {
+        return this.prediction.late;
+    }
 
     constructor(private host: LayerHost) {}
 
@@ -150,6 +160,9 @@ export class V1Layer implements ProtocolLayer {
         const channel = new Channel<Item>();
         let current: string | undefined;
         let replaying = false;
+        const suggestions = Boolean(agent.promptSuggestions && options.promptSuggestions);
+        let prompting = false;
+        let reading = true;
 
         const app = client({ name: 'clowdy' })
             .onNotification(methods.client.session.update, ({ params }) => {
@@ -161,7 +174,11 @@ export class V1Layer implements ProtocolLayer {
                         host.offerTitle(params.update.title);
                     }
 
-                    channel.push({ kind: 'update', update: params.update });
+                    if (params.update.sessionUpdate === 'prompt_suggestions_update') {
+                        if (suggestions && prompting) this.prediction.observe(params.update.suggestions);
+                        return;
+                    }
+                    if (reading) channel.push({ kind: 'update', update: params.update });
                 }
             })
             .onRequest(methods.client.session.requestPermission, async ({ params, signal }) => {
@@ -192,7 +209,7 @@ export class V1Layer implements ProtocolLayer {
                 request(
                     connection.agent.request(methods.agent.initialize, {
                         protocolVersion: PROTOCOL_VERSION,
-                        clientCapabilities: clientCapabilities(agent),
+                        clientCapabilities: clientCapabilities(agent, suggestions),
                         clientInfo: { name: 'clowdy', title: 'Clowdy', version: deps.clientVersion },
                     })
                 ),
@@ -327,6 +344,7 @@ export class V1Layer implements ProtocolLayer {
                 log: deps.log,
             });
 
+            prompting = true;
             void connection.agent
                 .request(methods.agent.session.prompt, {
                     sessionId: id,
@@ -368,6 +386,8 @@ export class V1Layer implements ProtocolLayer {
                     return;
                 }
 
+                if (item.kind !== 'stop') return;
+
                 yield* mapper.stop(item.response);
 
                 if (mapper.cost !== undefined) {
@@ -377,7 +397,11 @@ export class V1Layer implements ProtocolLayer {
                 const failure = stopFailure(item.response.stopReason, agent.name);
 
                 this.answered = !failure;
-                yield failure ?? { type: 'done', result: mapper.result() };
+                const prediction =
+                    !failure && item.response.stopReason === 'end_turn' && suggestions
+                        ? this.prediction.completed()
+                        : {};
+                if (!signal.aborted) yield failure ?? { type: 'done', result: mapper.result(), ...prediction };
 
                 return;
             }
@@ -395,6 +419,8 @@ export class V1Layer implements ProtocolLayer {
             }
 
             yield failureEvent(classifyThrown(error, context, await stderrOf(proc)));
+        } finally {
+            reading = false;
         }
     }
 }

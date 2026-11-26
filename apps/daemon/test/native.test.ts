@@ -1,5 +1,7 @@
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
+import { getChat } from '../src/db/chats';
+import { cutStream } from '../src/domain/items';
 import { projectSnapshot } from '../src/domain/snapshots';
 import { cleanTempDirs, latch, ScriptEngine, scriptEngines, startHarness, waitFor } from './helpers';
 
@@ -382,5 +384,243 @@ describe('native sub-agents as child runs', () => {
 
         gate.release();
         await waitFor(() => h.run(runId).status === 'succeeded', 'the orchestrator to finish');
+    });
+});
+
+describe('what the parent asked of a native sub-agent', () => {
+    const prompt = 'Find the callers of the router.\n\nSay whether the change affects them, and name each one.';
+
+    test("is the first item of the sub-agent's stream, a message from the chat that holds its parent, before anything the sub-agent does", async () => {
+        const { h, chat, runId, natives, items } = await setup(async function* () {
+            yield { type: 'session', sessionId: 's1' };
+            yield {
+                type: 'subagent',
+                agentId: 'a1',
+                parentToolCallId: 't1',
+                name: 'Explore',
+                description: 'Look at the callers',
+                prompt,
+                state: 'running',
+            };
+            yield { type: 'text', delta: 'Found three callers.', done: true, agentId: 'a1' };
+            yield {
+                type: 'tool',
+                toolCallId: 'c1',
+                name: 'grep',
+                input: { pattern: 'x' },
+                state: 'done',
+                output: { matches: 3 },
+                agentId: 'a1',
+            };
+            // Said again (a rename, the agent's later turn): the stream has its first item already, and nothing is written twice.
+            yield {
+                type: 'subagent',
+                agentId: 'a1',
+                name: 'Explore',
+                description: 'Look at the callers of the router',
+                prompt,
+                state: 'running',
+            };
+            yield { type: 'subagent', agentId: 'a1', name: 'Explore', state: 'done', summary: 'Three callers.' };
+            yield { type: 'done', result: 'Looked into it.' };
+        });
+
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the orchestrator to finish');
+
+        const [explore] = natives();
+        const stream = items(explore.id);
+        const title = getChat(h.store.db, chat.id)?.title as string;
+
+        expect(title).toBeTruthy();
+        expect(stream.map(item => [item.seq, item.body.kind])).toEqual([
+            [1, 'user'],
+            [2, 'assistant'],
+            [3, 'tool'],
+        ]);
+        expect(stream[0].body).toEqual({
+            kind: 'user',
+            text: prompt,
+            from: { kind: 'thread', chatId: chat.id, title },
+        });
+        // The parent's own stream has no such item: the message is the sub-agent's.
+        expect(items(runId).filter(item => item.body.kind === 'user' && item.body.from)).toEqual([]);
+        // Nothing of it is in the run's name or summary, which stay what the engine called them.
+        expect(explore).toMatchObject({ name: 'Explore', summary: 'Look at the callers of the router' });
+    });
+
+    test('a sub-agent of a sub-agent has its own prompt, and its message names the root chat, not the sub-agent that started it', async () => {
+        const { h, chat, runId, natives, items } = await setup(async function* () {
+            yield { type: 'session', sessionId: 's1' };
+            yield { type: 'subagent', agentId: 'a1', name: 'Plan', prompt: 'Plan the work.', state: 'running' };
+            yield {
+                type: 'subagent',
+                agentId: 'a2',
+                parentAgentId: 'a1',
+                name: 'Explore',
+                prompt: 'Look at the callers.',
+                state: 'running',
+            };
+            yield {
+                type: 'subagent',
+                agentId: 'a3',
+                parentAgentId: 'a2',
+                name: 'Grep',
+                prompt: 'Find the word router.',
+                state: 'running',
+            };
+            yield { type: 'text', delta: 'Found it.', done: true, agentId: 'a3' };
+            yield { type: 'subagent', agentId: 'a3', name: 'Grep', state: 'done' };
+            yield { type: 'subagent', agentId: 'a2', name: 'Explore', state: 'done' };
+            yield { type: 'subagent', agentId: 'a1', name: 'Plan', state: 'done' };
+            yield { type: 'done', result: 'Planned.' };
+        });
+
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the orchestrator to finish');
+
+        const [plan, explore, grep] = natives();
+        const title = getChat(h.store.db, chat.id)?.title as string;
+
+        // The tree is what it was: each below the sub-agent that started it.
+        expect([plan.parentRunId, explore.parentRunId, grep.parentRunId]).toEqual([runId, plan.id, explore.id]);
+        expect([plan, explore, grep].map(run => run.rootRunId)).toEqual([runId, runId, runId]);
+
+        for (const [run, text] of [
+            [plan, 'Plan the work.'],
+            [explore, 'Look at the callers.'],
+            [grep, 'Find the word router.'],
+        ] as const) {
+            expect(items(run.id)[0]).toMatchObject({
+                seq: 1,
+                body: { kind: 'user', text, from: { kind: 'thread', chatId: chat.id, title } },
+            });
+        }
+    });
+
+    test('a sub-agent that was told no prompt, or only blank space, has no item, and its stream starts with what it did', async () => {
+        const { h, runId, natives, items } = await setup(async function* () {
+            yield { type: 'session', sessionId: 's1' };
+            yield { type: 'subagent', agentId: 'a1', name: 'Explore', state: 'running' };
+            yield { type: 'text', delta: 'Nothing was asked.', done: true, agentId: 'a1' };
+            yield { type: 'subagent', agentId: 'a2', name: 'Review', prompt: ' \n\t ', state: 'running' };
+            yield { type: 'text', delta: 'Blank.', done: true, agentId: 'a2' };
+            // Words that arrive for a sub-agent nobody announced open one with no prompt.
+            yield { type: 'text', delta: 'From nowhere.', done: true, agentId: 'a3' };
+            yield { type: 'subagent', agentId: 'a1', name: 'Explore', state: 'done' };
+            yield { type: 'subagent', agentId: 'a2', name: 'Review', state: 'done' };
+            yield { type: 'subagent', agentId: 'a3', name: 'Sub-agent', state: 'done' };
+            yield { type: 'done', result: 'Done.' };
+        });
+
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the orchestrator to finish');
+
+        const runs = natives();
+
+        expect(runs).toHaveLength(3);
+        expect(runs.map(run => run.status)).toEqual(['succeeded', 'succeeded', 'succeeded']);
+
+        for (const run of runs) {
+            expect(items(run.id).map(item => [item.seq, item.body.kind])).toEqual([[1, 'assistant']]);
+        }
+    });
+
+    test('a prompt that comes after the sub-agent has written something is not written, and is no error: the first item stays its own', async () => {
+        const { h, runId, natives, items } = await setup(async function* () {
+            yield { type: 'session', sessionId: 's1' };
+            yield { type: 'subagent', agentId: 'a1', name: 'Explore', state: 'running' };
+            yield {
+                type: 'tool',
+                toolCallId: 'c1',
+                name: 'grep',
+                input: { pattern: 'x' },
+                state: 'done',
+                output: { matches: 3 },
+                agentId: 'a1',
+            };
+            yield { type: 'subagent', agentId: 'a1', name: 'Explore', description: 'Late', prompt, state: 'running' };
+            yield { type: 'text', delta: 'Found three callers.', done: true, agentId: 'a1' };
+            yield { type: 'subagent', agentId: 'a1', name: 'Explore', prompt, state: 'done', summary: 'Three.' };
+            yield { type: 'done', result: 'Looked into it.' };
+        });
+
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the orchestrator to finish');
+
+        const [explore] = natives();
+
+        expect(explore).toMatchObject({ status: 'succeeded', summary: 'Late', result: 'Three.' });
+        expect(items(explore.id).map(item => [item.seq, item.body.kind])).toEqual([
+            [1, 'tool'],
+            [2, 'assistant'],
+        ]);
+    });
+
+    test('a prompt that comes before the sub-agent has written anything is the first item, though the sub-agent was told to the runtime without it', async () => {
+        const { h, chat, runId, natives, items } = await setup(async function* () {
+            yield { type: 'session', sessionId: 's1' };
+            yield { type: 'subagent', agentId: 'a1', name: 'Explore', state: 'running' };
+            yield { type: 'subagent', agentId: 'a1', name: 'Explore', description: 'Late', prompt, state: 'running' };
+            yield { type: 'text', delta: 'Found three callers.', done: true, agentId: 'a1' };
+            yield { type: 'subagent', agentId: 'a1', name: 'Explore', state: 'done' };
+            yield { type: 'done', result: 'Looked into it.' };
+        });
+
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the orchestrator to finish');
+
+        const [explore] = natives();
+
+        expect(items(explore.id).map(item => [item.seq, item.body.kind])).toEqual([
+            [1, 'user'],
+            [2, 'assistant'],
+        ]);
+        expect(items(explore.id)[0].body).toMatchObject({ text: prompt, from: { chatId: chat.id } });
+    });
+
+    test('a very long prompt is stored whole and only trimmed of the blank space around it; the item keeps its lines', async () => {
+        const long = `${'Look at every file and say what you see.\n'.repeat(20_000)}Done.`;
+        const { h, runId, natives, items } = await setup(async function* () {
+            yield { type: 'session', sessionId: 's1' };
+            yield { type: 'subagent', agentId: 'a1', name: 'Explore', prompt: `\n  ${long}\n\n`, state: 'running' };
+            yield { type: 'text', delta: 'Done.', done: true, agentId: 'a1' };
+            yield { type: 'subagent', agentId: 'a1', name: 'Explore', state: 'done' };
+            yield { type: 'done', result: 'Done.' };
+        });
+
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the orchestrator to finish');
+
+        const [first] = items(natives()[0].id);
+
+        expect(first.seq).toBe(1);
+        expect(first.body.kind === 'user' && first.body.text.length).toBe(long.length);
+        expect(first.body.kind === 'user' && first.body.text).toBe(long);
+    });
+
+    test("an edit that cuts the parent's stream takes the sub-agent run with it, and its stream with the prompt in it", async () => {
+        const { h, runId, natives, items } = await setup(async function* () {
+            yield { type: 'session', sessionId: 's1' };
+            yield { type: 'text', delta: 'Delegating.', done: true };
+            yield { type: 'tool', toolCallId: 't1', name: 'Agent', input: { prompt }, state: 'running' };
+            yield {
+                type: 'subagent',
+                agentId: 'a1',
+                parentToolCallId: 't1',
+                name: 'Explore',
+                prompt,
+                state: 'running',
+            };
+            yield { type: 'text', delta: 'Found three callers.', done: true, agentId: 'a1' };
+            yield { type: 'subagent', agentId: 'a1', name: 'Explore', state: 'done' };
+            yield { type: 'done', result: 'Looked into it.' };
+        });
+
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the orchestrator to finish');
+
+        const [explore] = natives();
+
+        expect(items(explore.id)[0].body.kind).toBe('user');
+        cutStream(h.store, h.run(runId), 1);
+
+        expect(natives()).toEqual([]);
+        expect(h.store.db.query('SELECT COUNT(*) AS n FROM stream_items WHERE run_id = ?').get(explore.id)).toEqual({
+            n: 0,
+        });
     });
 });

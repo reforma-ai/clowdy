@@ -4,7 +4,7 @@ import { Button } from '@clowdy/components/Button';
 import { For } from '@clowdy/components/For';
 import { useModalContext } from '@clowdy/components/Modal';
 import { Text } from '@clowdy/components/Text';
-import { AttentionCircle } from '@clowdy/icons/14';
+import { AttentionCircle, Mop } from '@clowdy/icons/14';
 import { mainFolder } from '@clowdy/protocol';
 import { reaction, runInAction } from 'mobx';
 import { useEffect, useMemo } from 'react';
@@ -103,6 +103,7 @@ export function FolderWorktreesList({
                     variant="bordered"
                     onPress={() => void openTidyWorktrees({ root, projectId, folderId, reload })}
                 >
+                    <Mop />
                     Tidy up…
                 </Button>
             </Box>

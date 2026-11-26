@@ -1,5 +1,5 @@
 import type { AgentProcess } from '../process';
-import type { EngineEvent, EngineFork, EngineStartOptions } from '../types';
+import type { EngineEvent, EngineFork, EngineStartOptions, LatePromptSuggestion } from '../types';
 import type { BridgeAccess } from './bridge';
 import type { AgentProtocol } from './catalog';
 import type { PermissionParams } from './permission';
@@ -85,6 +85,8 @@ export interface ProtocolLayer {
     readonly naming: boolean;
     /** The turn ended with an answer, not a failure. */
     readonly answered: boolean;
+    /** A completed turn may receive one optional late prediction without holding its iterator open. */
+    readonly latePromptSuggestion?: LatePromptSuggestion;
     /** Whether the agent can take a steer at all, once its handshake has told; absent while it has not, and for a protocol whose agents always can (v2). */
     readonly canSteer?: boolean;
     /**

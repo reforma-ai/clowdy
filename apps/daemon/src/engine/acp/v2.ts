@@ -30,6 +30,7 @@ import { classifyThrown, failureEvent, processEnded } from './failure';
 import { BACKGROUND_HANDOFF_MS, BACKGROUND_REPORT_MS } from './layer';
 import { UpdateMapperV2 } from './mapper-v2';
 import { paramsOfV2 } from './permission';
+import { PromptSuggestionWindow } from './promptSuggestions';
 import { Turns } from './turns';
 
 import type {
@@ -51,7 +52,11 @@ import type { ResolvedAgent } from './registry';
  * What the client tells an agent it can do in `initialize`: nothing. Clowdy offers no file access and no terminal (ACP v2 has neither; an agent's tools
  * are its own, and the runtime's reach it through an MCP server).
  */
-const clientCapabilities = (agent: Pick<ResolvedAgent, 'clientMeta' | 'elicitation'>): ClientCapabilities => ({
+const clientCapabilities = (
+    agent: Pick<ResolvedAgent, 'clientMeta' | 'elicitation'>,
+    suggestions = false
+): ClientCapabilities => ({
+    ...(suggestions && { session: { promptSuggestions: {} } }),
     ...(agent.elicitation && { elicitation: { form: {} } }),
     ...(agent.clientMeta && { _meta: agent.clientMeta }),
 });
@@ -100,6 +105,8 @@ type Item =
 
 /** Where the conversation stands, which the loop reads and moves. */
 interface Course {
+    /** A prediction is only safe for the initial, uninterrupted foreground turn. */
+    predictionInvalidated?: boolean;
     /** A turn is in progress: the agent said `running` or `requires_action` since its last `idle`. */
     working: boolean;
     /** A turn ended and its `done` waits: a message that landed in it has a turn of its own to come, or one the agent has not begun queues behind it. */
@@ -208,6 +215,11 @@ export class V2Layer implements ProtocolLayer {
     /** The agent says it names sessions (`session.title`) and this session is new: it takes a title from the client, and may send one. */
     naming = false;
     answered = false;
+    private prediction = new PromptSuggestionWindow();
+
+    get latePromptSuggestion() {
+        return this.prediction.late;
+    }
     restartOn?: AgentProtocol;
     /** What the agent says, the timers and the messages in flight, in the order the loop reads them. */
     private channel = new Channel<Item>();
@@ -507,7 +519,11 @@ export class V2Layer implements ProtocolLayer {
     }
 
     /** The handshake: what the client is and can do, and what the agent offers. Rejects when the agent refuses it, does not answer in time, or the process or the run ends. */
-    private initialize(connection: ClientConnection, request: <T>(call: Promise<T>) => Promise<T>) {
+    private initialize(
+        connection: ClientConnection,
+        request: <T>(call: Promise<T>) => Promise<T>,
+        suggestions = false
+    ) {
         const { host } = this;
 
         return answeredInTime(
@@ -515,7 +531,7 @@ export class V2Layer implements ProtocolLayer {
                 connection.agent.request(methods.agent.initialize, {
                     protocolVersion: PROTOCOL_VERSION,
                     info: { name: 'clowdy', title: 'Clowdy', version: host.deps.clientVersion },
-                    capabilities: clientCapabilities(host.agent),
+                    capabilities: clientCapabilities(host.agent, suggestions),
                 })
             ),
             host
@@ -654,6 +670,9 @@ export class V2Layer implements ProtocolLayer {
         let current: string | undefined;
         // What the session says before the prompt is in (the state it resumed in, a replay of its history) is not news of the turn.
         let listening = false;
+        let predictionWorking = false;
+        let predictionIdle = false;
+        const suggestions = Boolean(agent.promptSuggestions && options.promptSuggestions);
         // The sessions of the sub-agents the session announced, in the order the agent said so: a child's first word comes after its announcement.
         const children = new Set<string>();
 
@@ -675,12 +694,36 @@ export class V2Layer implements ProtocolLayer {
                         host.offerTitle(params.update.title);
                     }
 
+                    if (suggestions) {
+                        const update = params.update;
+                        if (SessionUpdate.isPromptSuggestionsUpdate(update)) {
+                            if (predictionWorking) this.prediction.observe(update.suggestions);
+                            return;
+                        }
+                        if (SessionUpdate.isStateUpdate(update)) {
+                            if (
+                                'background' in update &&
+                                Array.isArray(update.background) &&
+                                update.background.length > 0
+                            ) {
+                                this.prediction.invalidate();
+                            }
+                            if (StateUpdate.isRunning(update) || StateUpdate.isRequiresAction(update)) {
+                                if (predictionIdle) this.prediction.invalidate();
+                                predictionWorking = true;
+                            } else if (StateUpdate.isIdle(update) && predictionWorking) {
+                                predictionIdle = true;
+                            }
+                        }
+                    }
+
+                    if (this.finished) return;
                     if (SessionUpdate.isSubagentUpdate(params.update)) {
                         children.add(params.update.sessionId);
                     }
 
                     channel.push({ kind: 'update', update: params.update });
-                } else if (children.has(params.sessionId)) {
+                } else if (!this.finished && children.has(params.sessionId)) {
                     // A sub-agent of a sub-agent is announced on the session of the one that started it.
                     if (SessionUpdate.isSubagentUpdate(params.update)) {
                         children.add(params.update.sessionId);
@@ -718,7 +761,11 @@ export class V2Layer implements ProtocolLayer {
             let init;
 
             try {
-                init = await this.initialize(connection, request);
+                init = await this.initialize(
+                    connection,
+                    request,
+                    Boolean(agent.promptSuggestions && options.promptSuggestions)
+                );
             } catch (error) {
                 if (signal.aborted || !answeredNo(error)) {
                     throw error;
@@ -966,7 +1013,15 @@ export class V2Layer implements ProtocolLayer {
 
                 return false;
             case 'exited':
+            case 'failed':
                 this.endTurn();
+
+                if (item.kind === 'failed') {
+                    yield* mapper.close();
+                    yield failureEvent(classifyThrown(item.error, context, await stderrOf(proc)));
+
+                    return true;
+                }
 
                 // The agent leaving when nothing was open loses nothing, and the guard would have ended the session about now.
                 if (!this.quiet(course)) {
@@ -974,12 +1029,6 @@ export class V2Layer implements ProtocolLayer {
                         processEnded(context, `exit code ${proc.child.exitCode ?? 'unknown'}`, await stderrOf(proc))
                     );
                 }
-
-                return true;
-            case 'failed':
-                this.endTurn();
-                yield* mapper.close();
-                yield failureEvent(classifyThrown(item.error, context, await stderrOf(proc)));
 
                 return true;
             default:
@@ -1001,6 +1050,8 @@ export class V2Layer implements ProtocolLayer {
 
             return false;
         }
+
+        if (SessionUpdate.isPromptSuggestionsUpdate(update)) return false;
 
         if (!SessionUpdate.isStateUpdate(update)) {
             yield* mapper.update(update);
@@ -1031,6 +1082,11 @@ export class V2Layer implements ProtocolLayer {
         if ('background' in update && Array.isArray(update.background)) {
             course.listed = update.background;
             yield* this.publish(course, mapper);
+
+            if (course.items.length > 0) {
+                course.predictionInvalidated = true;
+                this.prediction.invalidate();
+            }
         }
 
         // `requires_action` pauses the turn: the agent waits on a person, the daemon answers its permission requests as they come, and the turn goes
@@ -1065,6 +1121,10 @@ export class V2Layer implements ProtocolLayer {
             return;
         }
 
+        // An autonomous or queued turn has begun before a prediction could be offered.
+        // The protocol has no turn ID on suggestions; never let a late prediction from the previous turn leak here.
+        course.predictionInvalidated ||= this.turns.count > 0;
+        if (course.predictionInvalidated) this.prediction.invalidate();
         course.working = true;
         // A turn that answers a message sent into the session is not the report that is owed: that one may still come.
         course.owed &&= this.turns.sending;
@@ -1150,6 +1210,8 @@ export class V2Layer implements ProtocolLayer {
         const { blocked, landed } = this.review();
 
         if (blocked) {
+            course.predictionInvalidated = true;
+            this.prediction.invalidate();
             course.held = true;
             yield* mapper.close();
 
@@ -1162,7 +1224,17 @@ export class V2Layer implements ProtocolLayer {
             return false;
         }
 
-        yield* this.deliver(id, course, mapper, false);
+        const eligible =
+            agent.promptSuggestions &&
+            this.host.options.promptSuggestions &&
+            update.stopReason === 'end_turn' &&
+            course.items.length === 0 &&
+            !course.delivered &&
+            !course.predictionInvalidated;
+
+        if (!eligible) this.prediction.invalidate();
+        const prediction = eligible ? this.prediction.completed() : {};
+        yield* this.deliver(id, course, mapper, false, prediction);
 
         return false;
     }
@@ -1175,7 +1247,8 @@ export class V2Layer implements ProtocolLayer {
         id: string,
         course: Course,
         mapper: UpdateMapperV2,
-        fold: boolean
+        fold: boolean,
+        prediction: Pick<Extract<EngineEvent, { type: 'done' }>, 'promptSuggestion' | 'latePromptSuggestion'> = {}
     ): AsyncGenerator<EngineEvent> {
         const sends = this.turns.release(fold);
 
@@ -1192,7 +1265,7 @@ export class V2Layer implements ProtocolLayer {
         this.disarm('release');
 
         for (let owed = Math.max(1, sends); owed > 0; owed--) {
-            yield { type: 'done', result };
+            yield { type: 'done', result, ...(owed === 1 ? prediction : {}) };
         }
     }
 

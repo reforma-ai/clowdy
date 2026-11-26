@@ -1,7 +1,9 @@
 import { Button } from '@clowdy/components/Button';
+import { Shimmer } from '@clowdy/components/Shimmer';
 import { Text } from '@clowdy/components/Text';
 import { Completed, Error as ErrorMark, Split, TaskCanceled } from '@clowdy/icons/14';
-import { type ReactNode, use } from 'react';
+import { ProgressLoader } from '@clowdy/icons/assets';
+import { type ReactNode, use, useId } from 'react';
 
 import { Clamp } from './Clamp';
 import { Markdown } from './Markdown';
@@ -11,10 +13,12 @@ import { OUTCOME_WORDS } from './threadMessages';
 
 import type { ChatId, ThreadNotice, ThreadOutcome } from '@clowdy/protocol';
 
-/** The lines of a stopped thread's words that show until the person opens the rest. */
-const NOTICE_LINES = 4;
+/** The lines of a report that show until the person opens the rest. */
+const REPORT_LINES = 4;
 /** The lines of a thread's message (a whole brief, often) that show until the person opens the rest, as many as of the person's own long messages. */
 const MESSAGE_LINES = 16;
+/** What opens the rest of a long text in a card, as it does on the person's own long messages. */
+const MORE_LABEL = 'Show full message';
 
 const OUTCOME_ICONS: Record<ThreadOutcome, ReactNode> = {
     finished: <Completed />,
@@ -22,21 +26,110 @@ const OUTCOME_ICONS: Record<ThreadOutcome, ReactNode> = {
     interrupted: <TaskCanceled />,
 };
 
-/** A thread's name in a card: a link that opens the thread, or plain words when the project no longer has it (or nothing opens chats here). */
-function ChatName({ chatId, title }: { chatId: ChatId; title: string }) {
+/** What opens a chat from a card that names it: nothing when the project no longer has that chat (or nothing opens chats here). */
+function useOpenChat(chatId: ChatId): (() => void) | undefined {
     const { hasChat, onOpenChat } = use(StreamLinksContext);
 
-    if (!onOpenChat || hasChat?.(chatId) === false) return <span>{title}</span>;
+    if (!onOpenChat || hasChat?.(chatId) === false) return undefined;
+
+    return () => onOpenChat(chatId);
+}
+
+/** A thread's name in a card: a link that opens the thread, or plain words when the project no longer has it (or nothing opens chats here). */
+function ChatName({ chatId, title }: { chatId: ChatId; title: string }) {
+    const open = useOpenChat(chatId);
+
+    if (!open) return <span>{title}</span>;
 
     return (
-        <Button variant="inline" className={styles.link} onPress={() => onOpenChat(chatId)}>
+        <Button variant="inline" className={styles.link} onPress={open}>
             {title}
         </Button>
     );
 }
 
+export interface AgentCardProps {
+    /** What the agent or the thread is called: what a sub-agent was asked to do, or a thread's title. */
+    name: string;
+    /** How it ended, said after its name (`finished`, `failed`, `was interrupted`). None while it works. */
+    outcome?: ThreadOutcome;
+    /** While it works: what it does now, under its name. */
+    activity?: string;
+    /** Its last words, or why it failed: Markdown, clamped when long. */
+    report?: string;
+    /** Titles of what it still has open in the background, when its report is not its final result. */
+    open?: readonly string[];
+    /** Opens its page or its chat: the card is pressable (the title is the button, and the card around it takes the press; the report's words are left to be selected). Without it the card is not pressable. */
+    onOpen?: () => void;
+}
+
+/**
+ * The card of other work in a stream, for a sub-agent and for a thread alike: a loader and the name shimmering while it works, with what it does now; once it has
+ * stopped an icon for how it ended, the name and how it ended (`Fix login finished`), its report clamped under them, and what it still has open in the background.
+ */
+export function AgentCard({ name, outcome, activity, report, open = [], onOpen }: AgentCardProps) {
+    const running = outcome === undefined;
+    const activityId = useId();
+    const text = report?.trim() ?? '';
+    const title = running ? <Shimmer duration={1}>{name}</Shimmer> : `${name} ${OUTCOME_WORDS[outcome]}`;
+
+    return (
+        <div
+            className={styles.card}
+            data-slot="agent-card"
+            data-outcome={outcome}
+            data-pressable={onOpen ? '' : undefined}
+            aria-busy={running || undefined}
+        >
+            <span className={styles.icon} aria-hidden>
+                {running ? <ProgressLoader size={14} /> : OUTCOME_ICONS[outcome]}
+            </span>
+            <div className={styles.body}>
+                <span className={styles.title}>
+                    {onOpen ? (
+                        <button
+                            type="button"
+                            className={styles.press}
+                            aria-describedby={activity ? activityId : undefined}
+                            onClick={onOpen}
+                        >
+                            {title}
+                        </button>
+                    ) : (
+                        title
+                    )}
+                </span>
+                {activity && (
+                    <Text id={activityId} variant="sm" color="secondary" truncate>
+                        {activity}
+                    </Text>
+                )}
+                {text !== '' && (
+                    <div className={styles.report}>
+                        {open.length > 0 && (
+                            <Text variant="xs" color="secondary">
+                                Not the final result
+                            </Text>
+                        )}
+                        <Clamp lines={REPORT_LINES} moreLabel={MORE_LABEL} align="start">
+                            <Markdown text={text} />
+                        </Clamp>
+                    </div>
+                )}
+                {open.length > 0 && (
+                    <Text
+                        variant="sm"
+                        color="secondary"
+                        className={styles.open}
+                    >{`Still running: ${open.join(', ')}`}</Text>
+                )}
+            </div>
+        </div>
+    );
+}
+
 export interface ThreadMessageCardProps {
-    /** The chat that wrote: a thread of the same tree, or the parent that started this thread. */
+    /** The chat that wrote: a thread of the same tree, or the parent that started this thread (or this sub-agent). */
     chatId: ChatId;
     title: string;
     text: string;
@@ -45,7 +138,7 @@ export interface ThreadMessageCardProps {
 }
 
 /**
- * A message another chat of the thread tree wrote (`clowdy thread tell`, or the first message of a thread from its parent): an agent wrote it, not the
+ * A message another chat of the thread tree wrote (`clowdy thread tell`, or the first message of a thread or of a sub-agent from its parent): an agent wrote it, not the
  * person, so it is a card in the family of the agent cards and not a bubble. The sender's name opens it; the words are Markdown as an agent's are,
  * clamped when long.
  */
@@ -60,7 +153,7 @@ export function ThreadMessageCard({ chatId, title, text, turn }: ThreadMessageCa
                     Message from <ChatName chatId={chatId} title={title} />
                 </span>
                 {text.trim() !== '' && (
-                    <Clamp lines={MESSAGE_LINES} moreLabel="Show full message" align="start">
+                    <Clamp lines={MESSAGE_LINES} moreLabel={MORE_LABEL} align="start">
                         <Markdown text={text} />
                     </Clamp>
                 )}
@@ -69,39 +162,18 @@ export function ThreadMessageCard({ chatId, title, text, turn }: ThreadMessageCa
     );
 }
 
-/** One thread that stopped: how it ended, its last words (clamped), and what it still has open when its words are not its final result. */
+/** One thread that stopped, as an agent's card: its name, how it ended, its last words. */
 function NoticeCard({ notice }: { notice: ThreadNotice }) {
-    const open = notice.background ?? [];
-    const text = notice.text?.trim() ?? '';
+    const open = useOpenChat(notice.chatId);
 
     return (
-        <div className={styles.card} data-slot="thread-notice" data-outcome={notice.outcome}>
-            <span className={styles.icon} aria-hidden>
-                {OUTCOME_ICONS[notice.outcome]}
-            </span>
-            <div className={styles.body}>
-                <span className={styles.title}>
-                    <ChatName chatId={notice.chatId} title={notice.title} /> {OUTCOME_WORDS[notice.outcome]}
-                </span>
-                {text !== '' && open.length > 0 && (
-                    <Text variant="xs" color="secondary">
-                        Not the final result
-                    </Text>
-                )}
-                {text !== '' && (
-                    <Clamp lines={NOTICE_LINES} moreLabel="Show more" align="start">
-                        <Markdown text={text} />
-                    </Clamp>
-                )}
-                {open.length > 0 && (
-                    <Text
-                        variant="sm"
-                        color="secondary"
-                        className={styles.open}
-                    >{`Still running: ${open.join(', ')}`}</Text>
-                )}
-            </div>
-        </div>
+        <AgentCard
+            name={notice.title}
+            outcome={notice.outcome}
+            report={notice.text}
+            open={notice.background}
+            onOpen={open}
+        />
     );
 }
 

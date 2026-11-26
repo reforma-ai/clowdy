@@ -117,14 +117,14 @@ describe('the cards', () => {
         expect(card('Cursor').textContent).toMatch(/25d 2\dh|26d/);
     });
 
-    it('lists the settings of an agent that has some, and none for one that has none', async () => {
+    it('lists the provider settings but leaves commit messages to Source Control', async () => {
         await start();
 
         expect(switchOf(card('Claude Code'), 'Memory').checked).toBe(false);
         expect(switchOf(card('Claude Code'), '1M context window').checked).toBe(true);
         expect(card('Claude Code').querySelector('[aria-label="Commit messages"]')).toBeNull();
         expect(card('Codex').querySelector('[aria-label="Commit messages"]')).toBeNull();
-        expect(card('Cursor').querySelectorAll('input[type="checkbox"]')).toHaveLength(1);
+        expect(switchOf(card('Cursor'), 'Suggest next messages').checked).toBe(true);
     });
 
     it('shows a note, and no usage or sign-in, for a program that is not installed', async () => {
@@ -181,6 +181,27 @@ describe('the switch of a provider', () => {
 
         expect(switchOf(card('Claude Code'), 'Memory').checked).toBe(false);
         expect(card('Claude Code').querySelector('[aria-busy="true"]')).toBeNull();
+    });
+
+    it('can turn off prompt suggestions for a provider', async () => {
+        await start();
+        const command = vi.spyOn(store, 'command');
+        await press(switchOf(card('Claude Code'), 'Suggest next messages'));
+        await vi.waitFor(() =>
+            expect(
+                store.agents
+                    .find(agent => agent.id === 'claude')
+                    ?.settings?.find(setting => setting.id === 'promptSuggestions')?.value
+            ).toBe(false)
+        );
+        await draw();
+        expect({
+            command: command.mock.calls.at(-1)?.[0],
+            visible: switchOf(card('Claude Code'), 'Suggest next messages').checked,
+        }).toEqual({
+            command: { type: 'agent.update', id: 'claude', settings: { promptSuggestions: false } },
+            visible: false,
+        });
     });
 
     it('sends a setting by its id and shows the new value', async () => {

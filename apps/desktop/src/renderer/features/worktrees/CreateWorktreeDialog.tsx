@@ -121,20 +121,17 @@ function CreateWorktreeForm({ root, projectId, folderId, reload }: CreateWorktre
                     <AlertDescription className="select-text">{failure}</AlertDescription>
                 </Alert>
             )}
-            <Box direction="row" justify="end" gap="md">
-                <Button variant="filled" color="secondary" onPress={() => modal.cancel()} isDisabled={pending}>
-                    Cancel
-                </Button>
-                <Button
-                    type="submit"
-                    color="primary"
-                    isDisabled={!branchName || !!problem}
-                    isPending={pending}
-                    spinnerPlacement="start"
-                >
-                    {pending ? 'Preparing worktree…' : 'Create worktree'}
-                </Button>
-            </Box>
+            {/* No Cancel: the window's close button, Escape and a click outside already close it. */}
+            <Button
+                type="submit"
+                color="primary"
+                fullWidth
+                isDisabled={!branchName || !!problem}
+                isPending={pending}
+                spinnerPlacement="start"
+            >
+                {pending ? 'Preparing worktree…' : 'Create worktree'}
+            </Button>
         </form>
     );
 }

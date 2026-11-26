@@ -1,9 +1,10 @@
 import { isTerminalRunStatus } from '@clowdy/protocol';
 
+import { getChat } from '../db/chats';
 import { errorMessage } from '../errors';
 import { TurnWriter } from './writer';
 
-import type { BackgroundItem, Run } from '@clowdy/protocol';
+import type { BackgroundItem, MessageSource, Run } from '@clowdy/protocol';
 import type { EngineEvent, SubagentState } from '../engine/types';
 import type { Store } from '../store';
 import type { RunService } from './service';
@@ -23,6 +24,8 @@ interface Agent {
     /** The sub-agent that started it, when it is one of a sub-agent (its run is below that one's, and lives as long as that one is listed). */
     parentAgentId?: string;
     writer: TurnWriter;
+    /** What its parent asked of it has been dealt with: written as the first item of its stream, or left out because the stream had an item already. */
+    briefed?: boolean;
     /** Its item has been in a snapshot: from then on the item leaving the snapshot is the end of the sub-agent. */
     seen?: boolean;
     /** Its item is not in the snapshot any more, and nothing has said it ended otherwise. It ends when `settle` says the item stayed away. */
@@ -201,11 +204,12 @@ export class NativeAgents {
     private open(
         agentId: string,
         name: string,
-        description?: string,
-        parentToolCallId?: string,
-        canStopAlone?: boolean,
-        parentAgentId?: string
+        more: Pick<SubagentEvent, 'description' | 'parentToolCallId' | 'parentAgentId' | 'prompt'> & {
+            canStopAlone?: boolean;
+        } = {}
     ): Agent | undefined {
+        const { description, parentToolCallId, parentAgentId, canStopAlone } = more;
+
         if (this.gone.has(agentId)) {
             return undefined;
         }
@@ -233,8 +237,30 @@ export class NativeAgents {
         // The list may have named it before its first event came.
         agent.seen = this.isListed(agentId, agent);
         this.agents.set(agentId, agent);
+        this.brief(agent, more.prompt);
 
         return agent;
+    }
+
+    /**
+     * Writes what the parent asked of the sub-agent as the first item of its stream, the way a thread's first message is written: a `user` item from the
+     * chat whose orchestrator is the root of the tree (also for a sub-agent of a sub-agent, which names the chat and not its starter). Nothing is written
+     * for a sub-agent that has no prompt, or already has an item: a prompt that comes later is not put in front of what the sub-agent has done.
+     */
+    private brief(agent: Agent, prompt?: string): void {
+        if (agent.briefed || prompt === undefined) {
+            return;
+        }
+
+        const chatId = this.runs.require(this.parent.rootRunId).chatId;
+        const chat = chatId === undefined ? undefined : getChat(this.store.db, chatId);
+
+        if (chat) {
+            const from: MessageSource = { kind: 'thread', chatId: chat.id, title: chat.title };
+
+            agent.writer.brief(prompt, from);
+            agent.briefed = true;
+        }
     }
 
     private applyBackground(items: BackgroundItem[]): void {
@@ -279,14 +305,7 @@ export class NativeAgents {
     private applyState(event: SubagentEvent): void {
         const agent =
             this.agents.get(event.agentId) ??
-            this.open(
-                event.agentId,
-                event.name,
-                event.description,
-                event.parentToolCallId,
-                event.stoppable && this.canStop(),
-                event.parentAgentId
-            );
+            this.open(event.agentId, event.name, { ...event, canStopAlone: event.stoppable && this.canStop() });
 
         if (!agent || !this.isRunning(agent)) {
             return;
@@ -297,6 +316,8 @@ export class NativeAgents {
                 this.runs.describe(agent.run.id, event.description);
                 agent.run = { ...agent.run, summary: event.description };
             }
+
+            this.brief(agent, event.prompt);
 
             return;
         }

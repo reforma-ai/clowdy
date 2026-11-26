@@ -2082,6 +2082,12 @@
                     "name": "paint-bucket",
                     "sourceHash": "b7d4e7ba2f311ffd97a11af848a67c63c6d5e24dd6bd46e133ca755208a0c9b8"
                 },
+                "16707:129124": {
+                    "file": "mop.svg",
+                    "fingerprint": "cd9a6e14bb70ba6696b00f43b8426728f264a461777f66a7272e9f4a08c94284",
+                    "name": "mop",
+                    "sourceHash": "615950d0ffa9589eed7584ecf6acc84a2d162eb9dc94f366cbf0e94051eba0ee"
+                },
                 "4298:58141": {
                     "file": "mail.svg",
                     "fingerprint": "9a450f6623276412fd4c447266ee6dbbcec973e6130b908e7a29f0623b3957c6",

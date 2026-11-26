@@ -47,8 +47,16 @@
     white-space: nowrap;
 }
 
+/* The title of the chat as a field, over the text it replaces: it takes the room of the part. */
+.titleField {
+    width: 100%;
+}
+
 /* The page's own part is the title: the ancestors above it are quiet links. */
 .page {
+    /* It takes what the part has, so the field of a rename fills it. */
+    flex: 1;
+    min-width: 0;
     font-weight: 500;
 }
 

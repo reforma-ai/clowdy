@@ -1,9 +1,13 @@
 @reference '@clowdy/styles/rulesets';
 
-/* A thread's card is drawn as the agent cards are (`SubagentCard`): a bordered plate in the stream, for words an agent wrote and not the person. */
+/*
+ * The cards of other work in a stream, one family: a message another thread wrote, a thread that stopped and a sub-agent, running or over (`AgentCard`). A bordered plate
+ * in the stream for words an agent wrote and not the person, with an icon, a title, and under it what the work says.
+ */
 .card {
     @ruleset typography-text-md;
 
+    position: relative;
     display: flex;
     align-items: flex-start;
     gap: var(--spacing-md);
@@ -15,6 +19,7 @@
     corner-shape: superellipse(var(--squircle-value));
     background-color: var(--color-surface-float);
     overflow: hidden;
+    transition: background-color 0.15s ease;
 }
 
 .group {
@@ -56,6 +61,50 @@
 /* The name of a thread in a title: a link in the title's own words. */
 .link {
     font-weight: 500;
+}
+
+/*
+ * The press of a card that opens something: the title is the button (the one way in for the keyboard and a screen reader), and its box stretches over the card, so a press
+ * anywhere on the plate opens it. What is drawn over the stretch (the report) is left alone: its words can be selected and its toggle pressed.
+ */
+.press {
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+}
+
+.press::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+}
+
+.press:focus-visible {
+    outline: none;
+}
+
+.card[data-pressable]:has(.press:hover) {
+    background-color: var(--color-secondary-muted-light);
+}
+
+.card[data-pressable]:has(.press:focus-visible) {
+    outline: var(--spacing-4) solid var(--color-primary-muted-border);
+    outline-offset: calc(var(--spacing-4) * -1);
+}
+
+.report {
+    position: relative;
+    align-self: flex-start;
+    max-width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+    cursor: auto;
 }
 
 .open {

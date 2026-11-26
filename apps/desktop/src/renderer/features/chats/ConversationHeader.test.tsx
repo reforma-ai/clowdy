@@ -329,3 +329,113 @@ describe('ConversationHeader, a long path', () => {
         expect(path()?.querySelector('[aria-current="page"]')?.textContent).toBe('Find where the price is computed');
     });
 });
+
+describe('ConversationHeader, renaming the chat', () => {
+    const field = () => container.querySelector<HTMLInputElement>('input[aria-label="Chat title"]');
+    const doubleClick = (label: string) =>
+        act(async () => {
+            part(label)!
+                .querySelector('span[title]')!
+                .dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+        });
+    const type = (value: string) =>
+        act(async () => {
+            const input = field()!;
+
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+    const key = (name: string) =>
+        act(async () => {
+            field()!.dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true }));
+        });
+    const leave = () => act(async () => field()!.dispatchEvent(new FocusEvent('focusout', { bubbles: true })));
+    let command: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+        command = vi.spyOn(store, 'command').mockResolvedValue({ ok: true, requestId: 'r', data: {} });
+    });
+
+    it('turns the title into a field on a double click, with the name in it', async () => {
+        await draw(chatOf('c-1'));
+
+        expect(field()).toBeNull();
+
+        await doubleClick('Simplify booking');
+
+        expect(field()?.value).toBe('Simplify booking');
+        expect(command).not.toHaveBeenCalled();
+    });
+
+    it('renames the chat on Enter, with the name trimmed, and the field goes', async () => {
+        await draw(chatOf('c-1'));
+        await doubleClick('Simplify booking');
+        await type('  Simplify the booking  ');
+        await key('Enter');
+
+        expect(command).toHaveBeenCalledExactlyOnceWith({
+            type: 'chat.rename',
+            chatId: 'c-1',
+            title: 'Simplify the booking',
+        });
+        expect(field()).toBeNull();
+    });
+
+    it('renames the chat when the field is left, once', async () => {
+        await draw(chatOf('c-1'));
+        await doubleClick('Simplify booking');
+        await type('Booking');
+        await leave();
+
+        expect(command).toHaveBeenCalledExactlyOnceWith({ type: 'chat.rename', chatId: 'c-1', title: 'Booking' });
+        expect(field()).toBeNull();
+    });
+
+    it('keeps the name on Escape, also when the field is left after it', async () => {
+        await draw(chatOf('c-1'));
+        await doubleClick('Simplify booking');
+        await type('Booking');
+        await key('Escape');
+
+        expect(command).not.toHaveBeenCalled();
+        expect(field()).toBeNull();
+        expect(path()?.textContent).toBe('Simplify booking');
+    });
+
+    it('sends nothing for a name that is empty or has not changed', async () => {
+        await draw(chatOf('c-1'));
+        await doubleClick('Simplify booking');
+        await type('   ');
+        await key('Enter');
+        await doubleClick('Simplify booking');
+        await key('Enter');
+
+        expect(command).not.toHaveBeenCalled();
+    });
+
+    it('renames a thread from its own page, which is the last part of its path', async () => {
+        await draw(chatOf('c-6a1'));
+        await doubleClick('Check the currency table');
+
+        expect(field()?.value).toBe('Check the currency table');
+
+        await type('Currencies');
+        await key('Enter');
+
+        expect(command).toHaveBeenCalledExactlyOnceWith({ type: 'chat.rename', chatId: 'c-6a1', title: 'Currencies' });
+    });
+
+    it('does not rename what is not the chat of the page: a part above it, a sub-agent', async () => {
+        await draw(chatOf('c-6a1'));
+        await act(async () => {
+            part('Ship the checkout')!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+        });
+
+        expect(field()).toBeNull();
+
+        await draw(chatOf('c-1'), runOf('r-na-02'));
+        await doubleClick('Find where the price is computed');
+
+        expect(field()).toBeNull();
+    });
+});

@@ -26,7 +26,15 @@ import {
     useState,
 } from 'react';
 
-import { docsEqual, docToPlainText, emptyComposerDoc, mentionNodes, pastedTextToMentionContent } from './composerDoc';
+import { Hotkey } from '../Hotkey';
+import {
+    docsEqual,
+    docToPlainText,
+    emptyComposerDoc,
+    mentionNodes,
+    pastedTextToMentionContent,
+    plainTextToDoc,
+} from './composerDoc';
 import { handleComposerKeyDown } from './composerKeymap';
 import { ComposerMention } from './composerMention';
 import {
@@ -66,6 +74,8 @@ export type RichInputProps = {
      */
     serializeMention?: RichInputMentionSerializer;
     placeholder?: string;
+    /** A transient next-message prediction, inserted into an empty editor by unmodified Tab. */
+    suggestion?: string;
     className?: string;
     disabled?: boolean;
     /** Markdown input rules: bold/italic/code, lists (`- ` / `1. `) and quotes (`> `). Default true. */
@@ -102,6 +112,7 @@ type Bridge = {
     triggers: readonly RichInputTrigger[];
     submitOnEnter: boolean;
     placeholder: string;
+    suggestion?: string;
     onChange?: (doc: ComposerDoc) => void;
     onPasteFiles?: (files: File[]) => void;
     onPasteText?: (text: string) => boolean;
@@ -383,6 +394,7 @@ export function RichInput({
     renderMention,
     serializeMention,
     placeholder = '',
+    suggestion,
     className,
     disabled,
     markdown = true,
@@ -426,6 +438,7 @@ export function RichInput({
     bridge.triggers = triggers;
     bridge.submitOnEnter = submitOnEnter;
     bridge.placeholder = placeholder;
+    bridge.suggestion = disabled ? undefined : suggestion;
     bridge.onChange = onChange;
     bridge.onPasteFiles = onPasteFiles;
     bridge.onPasteText = onPasteText;
@@ -537,14 +550,40 @@ export function RichInput({
                         .filter(Boolean)
                         .join(';'),
                 },
-                handleKeyDown: (view, event) =>
-                    handleComposerKeyDown(view, event, {
+                handleKeyDown: (view, event) => {
+                    const text = bridge.suggestion;
+                    const empty =
+                        view.state.doc.childCount === 1 &&
+                        view.state.doc.firstChild?.type.name === 'paragraph' &&
+                        view.state.doc.firstChild.content.size === 0;
+                    if (
+                        text &&
+                        empty &&
+                        view.editable &&
+                        !bridge.getMenu() &&
+                        event.key === 'Tab' &&
+                        !event.shiftKey &&
+                        !event.altKey &&
+                        !event.ctrlKey &&
+                        !event.metaKey &&
+                        !event.isComposing &&
+                        !view.composing
+                    ) {
+                        event.preventDefault();
+                        const doc = view.state.schema.nodeFromJSON(plainTextToDoc(text));
+                        const tr = closeHistory(view.state.tr).replaceWith(0, view.state.doc.content.size, doc.content);
+                        tr.setSelection(Selection.near(tr.doc.resolve(tr.doc.content.size), -1));
+                        view.dispatch(tr.scrollIntoView());
+                        return true;
+                    }
+                    return handleComposerKeyDown(view, event, {
                         submitOnEnter: bridge.submitOnEnter,
                         hasMenuItems: Boolean(bridge.getMenu()?.items.length),
                         onSubmit: origin => bridge.onSubmit?.(bridge.getEditorDoc(), origin),
                         onEscape: bridge.onEscape,
                         closeMenu: () => bridge.setMenu(null),
-                    }),
+                    });
+                },
                 handlePaste: (_view, event) => {
                     const files = event.clipboardData?.files;
 
@@ -579,6 +618,8 @@ export function RichInput({
                 },
             },
             onUpdate: ({ editor: tipTapEditor }) => {
+                // A document change dismisses a prediction even before the controlled parent re-renders.
+                bridge.suggestion = undefined;
                 rememberPos(tipTapEditor);
                 bridge.onChange?.(tipTapEditor.getJSON() as ComposerDoc);
             },
@@ -630,7 +671,7 @@ export function RichInput({
         if (editor && !editor.isDestroyed) {
             editor.view.dispatch(editor.state.tr);
         }
-    }, [editor, placeholder]);
+    }, [editor, placeholder, suggestion, disabled]);
 
     useImperativeHandle(
         ref,
@@ -699,11 +740,19 @@ export function RichInput({
 
     return (
         <RichInputMentionContext value={mentionRenderer}>
-            <EditorContent
-                editor={editor}
+            <div
                 className={cn(styles.root, className)}
                 data-rich-input-menu={menu?.items.length ? '' : undefined}
-            />
+                data-rich-input-suggestion={suggestion && !disabled ? '' : undefined}
+            >
+                <EditorContent editor={editor} />
+                {suggestion && !disabled && (
+                    <div className={styles.suggestion}>
+                        <span className={styles.suggestionText}>{suggestion}</span>
+                        <Hotkey hotkey="tab" />
+                    </div>
+                )}
+            </div>
             <RichInputTriggerMenu
                 isOpen={Boolean(menu?.items.length)}
                 anchor={menu?.anchor ?? null}

@@ -583,6 +583,16 @@ describe('RunningAgents, threads', () => {
         expect(buttons(header())).toEqual([toggle().textContent]);
     });
 
+    it('marks each thread with the provider of its own chat, as the chat list does, not with the mark of a worktree', async () => {
+        await draw('c-6');
+
+        // c-6a runs on Claude Code, c-6e on Codex.
+        expect(rows().map(row => row.querySelector('[data-provider]')?.getAttribute('data-provider'))).toEqual([
+            'claude',
+            'codex',
+        ]);
+    });
+
     it('times the current period of work instead of the age of a resumed thread, including hours', async () => {
         vi.useFakeTimers();
 

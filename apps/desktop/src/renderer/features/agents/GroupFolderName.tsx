@@ -1,7 +1,7 @@
 import { Button } from '@clowdy/components/Button';
 import { MenuTrigger } from '@clowdy/components/List';
 import { Popover } from '@clowdy/components/Popover';
-import { Trash } from '@clowdy/icons/14';
+import { Mop } from '@clowdy/icons/14';
 import { cn } from '@clowdy/lib';
 
 import { tildePath } from '../../shared/displayPath';
@@ -45,11 +45,13 @@ function GroupFolderMenu({
                 {
                     id: 'tidy-worktrees',
                     label: 'Tidy up…',
-                    icon: <Trash />,
+                    icon: <Mop />,
                     run: () => void openTidyWorktrees({ root, projectId: project.id, folderId: folder.id }),
                 },
             ]}
-            onManageWorktrees={() => openManageWorktrees({ root, projectId: project.id, folderId: folder.id })}
+            onManageWorktrees={() =>
+                openManageWorktrees({ root, projectId: project.id, folderId: folder.id, initialTab: 'settings' })
+            }
             aria-label="Open folder"
         />
     );

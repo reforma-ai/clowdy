@@ -40,6 +40,7 @@ import { ReplyCard } from './ReplyCard';
 import { useComposerFiles } from './useComposerFiles';
 import { useMentionTriggers } from './useMentionTriggers';
 import { NO_PROVIDER_HINT, useModelChoice } from './useModelChoice';
+import { usePromptSuggestion } from './usePromptSuggestion';
 
 import type {
     Chat,
@@ -124,6 +125,8 @@ export interface ComposerProps {
     minLines?: number;
     /** The box of an edit frame (see `EditMode`) in place of the chat's message box. */
     editMode?: EditMode;
+    /** The history editor takes precedence over suggestions in the bottom composer. */
+    suppressSuggestions?: boolean;
     /** What the line under the box holds at its start (where the chat works); the mode stands at its end. An edit frame has no line. */
     controls?: ReactNode;
     /** Called when a valid new message is sent from this composer. */
@@ -147,6 +150,7 @@ export function Composer({
     start,
     minLines,
     editMode,
+    suppressSuggestions,
     controls,
     onSendMessage,
     question,
@@ -199,6 +203,26 @@ export function Composer({
     const replyTo = useReplyQuote(key);
     const { agents } = useAgents();
     const agentName = agents.find(agent => agent.id === model.choice?.engine)?.name ?? 'Assistant';
+    const provider = agents.find(agent => agent.id === run?.engine);
+    const predictionEnabled = provider?.settings?.find(setting => setting.id === 'promptSuggestions')?.value !== false;
+    const empty = doc.content?.length === 1 && doc.content[0]?.type === 'paragraph' && !doc.content[0].content?.length;
+    const { suggestion, dismiss: dismissSuggestion } = usePromptSuggestion(
+        root.transport,
+        run,
+        Boolean(
+            chat &&
+                !editMode &&
+                !suppressSuggestions &&
+                question === undefined &&
+                predictionEnabled &&
+                empty &&
+                !replyTo &&
+                attach.files.length === 0 &&
+                !chat.queue?.length &&
+                !busy &&
+                !running
+        )
+    );
     const picker = useRef<HTMLInputElement>(null);
     const hasMessage = messageOf(doc) !== '' || attach.files.length > 0;
     // A file still going up, or one that failed, holds the message back until the person has dealt with it.
@@ -218,6 +242,7 @@ export function Composer({
           : (uploadHint ?? (target ? undefined : start?.waiting));
 
     const edit = (next: ComposerDoc) => {
+        dismissSuggestion();
         saveDraft(key, next);
         setShown({ key, doc: next });
     };
@@ -469,6 +494,7 @@ export function Composer({
                             placeholder={
                                 editMode ? 'Edit message' : busy ? 'Queue another message…' : 'Write a message…'
                             }
+                            suggestion={suggestion}
                             submitOnEnter
                             onSubmit={(next, origin) =>
                                 editMode ? submitEdit(next) : void send(next, origin?.mod === true)
