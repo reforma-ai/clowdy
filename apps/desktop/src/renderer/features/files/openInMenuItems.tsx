@@ -1,21 +1,20 @@
 import { Copy, Follow } from '@clowdy/icons/14';
 
 import {
-    absolutePath,
     actionIcon,
     type FolderGit,
     type OpenAction,
     type OpenEffects,
     type OpenPrograms,
-    type OpenTarget,
     openActions,
     openEffects,
+    placeTarget,
 } from '../openWith';
-import { type Place, placePath } from '../sidePanel/currentPlace';
 
 import type { FileEntry } from '@clowdy/file-manager';
 import type { FileMenuItem } from '@clowdy/file-manager/react';
 import type { ProjectId } from '@clowdy/protocol';
+import type { Place } from '../sidePanel/currentPlace';
 
 export interface OpenInMenuInput {
     projectId: ProjectId;
@@ -53,14 +52,7 @@ export function openInMenuItems({
 
         if (targets.length !== 1 || !entry) return [];
 
-        const target: OpenTarget = {
-            projectId,
-            folder: place.folder,
-            ...(place.workspace && { workspace: place.workspace }),
-            path: absolutePath(placePath(place), entry.path),
-            relative: entry.path,
-            kind: entry.kind,
-        };
+        const target = placeTarget(projectId, place, entry.path, entry.kind);
         const items = (group: OpenAction['group']): FileMenuItem[] =>
             openActions({ target, programs, git, effects, inTerminal: inTerminal && (() => inTerminal(entry.path)) })
                 .filter(action => action.group === group)

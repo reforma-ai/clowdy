@@ -47,21 +47,30 @@
 .rows {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-sm);
     padding-inline: var(--spacing-xs);
 }
 
-/* The file list extends beyond the rest of the box so its hover plates have room. */
+/*
+ * The file list extends beyond the rest of the box so its hover plates have room. A heading here follows another list, so it keeps off that list and stays against the one it
+ * heads.
+ */
 .rows .header {
+    margin-top: var(--spacing-sm);
     padding-inline: var(--spacing-lg);
 }
 
+/* Ask agent and Abort merge share the width of the box half and half. */
 .conflictActions {
-    display: flex;
-    align-items: center;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--spacing-xs);
     padding-inline: var(--spacing-xs);
-    flex-wrap: wrap;
+}
+
+@container (max-width: 12rem) {
+    .conflictActions {
+        grid-template-columns: minmax(0, 1fr);
+    }
 }
 
 /* The row's label: the letter, the name, strong, and the folder after it, dimmed; the folder is cut before the name is. */

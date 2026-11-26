@@ -21,6 +21,7 @@ import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { overrideTransport } from '../../daemon/testing';
 import { type Transport, TransportError } from '../../daemon/transport';
 import { RootStore, RootStoreProvider } from '../../stores';
+import { kindOnDisk } from '../files/openInFiles';
 import ChangesTab from './ChangesTab';
 import { DiscardButton } from './DiscardButton';
 import { gitFactsOf } from './gitFacts';
@@ -34,6 +35,11 @@ import type { FixtureGitWritesOptions } from '../../daemon/fixtureGitWrites';
 
 const PLACE = { folderId: 'fld_car_rental', workspaceId: 'wks_ab12cd34' };
 
+// A path is a file on the disk unless a test says the disk has nothing there.
+vi.mock('../files/openInFiles', async importOriginal => ({
+    ...(await importOriginal<typeof import('../files/openInFiles')>()),
+    kindOnDisk: vi.fn(async () => 'file'),
+}));
 // happy-dom has no layout: the view builds its resizable group once its box has a width, which it is told.
 vi.mock('./useBoxWidth', () => ({
     useBoxWidth: () => [() => undefined, 900],
@@ -189,6 +195,8 @@ const chooseScope = async (scope: GitScope) => {
 
 beforeEach(() => {
     discardHarness.enabled = true;
+    vi.mocked(kindOnDisk).mockReset();
+    vi.mocked(kindOnDisk).mockResolvedValue('file');
     localStorage.clear();
     vi.stubGlobal(
         'IntersectionObserver',
@@ -238,6 +246,7 @@ describe('discarding from the commit checklist', () => {
     const tick = (path: string) => container.querySelector<HTMLInputElement>(`input[aria-label="${path}"]`)!;
     const row = (path: string) => tick(path).closest('[role="row"]')!;
     const menuItem = () => document.querySelector<HTMLElement>('[role="menuitem"][data-key="discard"]');
+    const menuItems = () => [...document.querySelectorAll('[role="menuitem"]')].map(item => item.textContent);
 
     it('discards only the right-clicked file, even when unchecked and showing committed changes', async () => {
         discardHarness.enabled = false;
@@ -267,6 +276,66 @@ describe('discarding from the commit checklist', () => {
         expect(tick(path)).toBeNull();
         expect(tick('notes.md').checked).toBe(true);
         expect(tick('src/booking/price.ts').checked).toBe(true);
+    });
+
+    it('opens the menu of the path of any row, with Discard changes… as its last item for a file that can be discarded', async () => {
+        discardHarness.enabled = false;
+        await start();
+        await act(async () => {
+            row('notes.md').dispatchEvent(
+                new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 })
+            );
+        });
+        await settle();
+
+        expect(menuItems()).toEqual([
+            'Open in Files',
+            'Copy path',
+            'Copy relative path',
+            'Open in…',
+            'Discard changes…',
+        ]);
+    });
+
+    it('keeps Discard changes… in the menu of a deleted file, under the copies of its path, and discards it', async () => {
+        discardHarness.enabled = false;
+        vi.mocked(kindOnDisk).mockReturnValue(new Promise(() => undefined));
+        await start({
+            wrap: base =>
+                overrideTransport(base, {
+                    getGitChanges: async (project, place, scope) => {
+                        const answer = await base.getGitChanges(project, place, scope);
+
+                        if (!answer.isRepository) return answer;
+
+                        return {
+                            ...answer,
+                            files: answer.files.map(file =>
+                                file.path === 'src/limits.ts' ? { ...file, kind: 'deleted' as const } : file
+                            ),
+                        };
+                    },
+                }),
+        });
+        const discard = vi.spyOn(transport, 'discardGit');
+
+        await act(async () => {
+            row('src/limits.ts').dispatchEvent(
+                new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 })
+            );
+        });
+
+        // At once, before the disk has answered.
+        expect(menuItems()).toEqual(['Copy path', 'Copy relative path', 'Discard changes…']);
+        expect(document.body.textContent).toContain("This file doesn't exist");
+
+        await press(menuItem()!);
+        await settleDialog();
+        await press(dialogButton('Discard changes'));
+        await settleDialog();
+        await untilClosed();
+
+        expect(discard).toHaveBeenCalledExactlyOnceWith(FIXTURE_PROJECT_ID, PLACE, ['src/limits.ts']);
     });
 
     it('offers the focused row through the keyboard and preserves files when the dialog is cancelled', async () => {
@@ -375,6 +444,10 @@ describe('the retained discard trigger in the test harness', () => {
             await act(async () => {
                 row?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 }));
             });
+            // The menu of the path is there all the same: only the discard is not.
+            expect([...document.querySelectorAll('[role="menuitem"]')].map(item => item.textContent)).toContain(
+                'Copy path'
+            );
             expect(document.querySelector('[role="menuitem"][data-key="discard"]')).toBeNull();
         }
     });

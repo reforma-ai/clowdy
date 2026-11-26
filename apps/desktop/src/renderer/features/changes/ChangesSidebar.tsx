@@ -155,7 +155,7 @@ export function ChangesSidebar({
                     </div>
                 )}
 
-                {!git?.gone && <CommitBox model={model} />}
+                {!git?.gone && <CommitBox model={model} place={place} />}
             </div>
         </Panel>
     );
