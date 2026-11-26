@@ -3,7 +3,7 @@ import { Shimmer } from '@clowdy/components/Shimmer';
 import { Text } from '@clowdy/components/Text';
 import { Completed, Error as ErrorMark, Split, TaskCanceled } from '@clowdy/icons/14';
 import { ProgressLoader } from '@clowdy/icons/assets';
-import { type ReactNode, use } from 'react';
+import { type ReactNode, use, useId } from 'react';
 
 import { Clamp } from './Clamp';
 import { Markdown } from './Markdown';
@@ -69,6 +69,7 @@ export interface AgentCardProps {
  */
 export function AgentCard({ name, outcome, activity, report, open = [], onOpen }: AgentCardProps) {
     const running = outcome === undefined;
+    const activityId = useId();
     const text = report?.trim() ?? '';
     const title = running ? <Shimmer duration={1}>{name}</Shimmer> : `${name} ${OUTCOME_WORDS[outcome]}`;
 
@@ -89,7 +90,7 @@ export function AgentCard({ name, outcome, activity, report, open = [], onOpen }
                         <button
                             type="button"
                             className={styles.press}
-                            aria-label={activity ? `${name}. ${activity}` : undefined}
+                            aria-describedby={activity ? activityId : undefined}
                             onClick={onOpen}
                         >
                             {title}
@@ -99,7 +100,7 @@ export function AgentCard({ name, outcome, activity, report, open = [], onOpen }
                     )}
                 </span>
                 {activity && (
-                    <Text variant="sm" color="secondary" truncate>
+                    <Text id={activityId} variant="sm" color="secondary" truncate>
                         {activity}
                     </Text>
                 )}

@@ -1,5 +1,3 @@
-import { isTerminalRunStatus, type StreamItemBody } from '@clowdy/protocol';
-
 import { useProjectState, useProjectUi } from '../stores';
 import {
     agentActivityLine,
@@ -13,6 +11,8 @@ import {
 } from './subagents';
 import { AgentCard } from './ThreadCards';
 import { useAgentActivity } from './useAgentActivity';
+
+import type { StreamItemBody } from '@clowdy/protocol';
 
 type ToolBody = Extract<StreamItemBody, { kind: 'tool' }>;
 
@@ -33,11 +33,10 @@ export function SubagentCard({ call, active }: SubagentCardProps) {
     const project = useProjectState();
     const ui = useProjectUi();
     const child = childOfCall(project.runs.values(), call.toolCallId);
-    // A call that never ended is over once its run is, or once its child ended with the turn (a stop or a retry), though the run works again.
-    const stalled = call.state === 'running' && (!active || (child !== undefined && isTerminalRunStatus(child.status)));
-    const live = call.state === 'running' && !stalled;
+    // The child run, when there is one, says how it ended; a call that never ended is over once its run is, though the run may work again.
+    const outcome = agentOutcome(call, child, active);
+    const live = outcome === undefined;
     const { activity } = useAgentActivity(live ? child?.id : undefined);
-    const outcome = agentOutcome(call, child, stalled);
     // Only the call names the type: the child's own name is the same, or the daemon's placeholder for a call that names none.
     const label = subagentLabel(subagentName(call.input));
 

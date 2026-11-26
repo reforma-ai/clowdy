@@ -295,6 +295,54 @@ describe('RunDetail, what its parent asked', () => {
         expect(cards()).toHaveLength(0);
     });
 
+    it('does not draw the stream until the parent stream it makes the card from is read, so the card does not come in above what is being read', async () => {
+        const data = createFixtureData();
+
+        data.items['r-na-02'] = data.items['r-na-02']!.slice(1);
+        await open(data);
+
+        const parent = store.streams.of('r-orch-1');
+        let release: () => void = () => undefined;
+        const held = new Promise<void>(resolve => (release = resolve));
+        const load = vi.spyOn(parent, 'load').mockImplementation(() => held);
+
+        await draw(runOf('r-na-02'));
+        await draw(runOf('r-na-02'));
+
+        expect(load).toHaveBeenCalled();
+        expect(container.textContent).toContain('Loading messages…');
+        expect(container.textContent).not.toContain('Looking for the price helper and its callers.');
+
+        load.mockRestore();
+        release();
+        await parent.load();
+        await draw(runOf('r-na-02'));
+        await draw(runOf('r-na-02'));
+
+        expect(container.textContent).not.toContain('Loading messages…');
+        expect(cards()[0].textContent).toContain('Find where the booking price is computed and who calls it.');
+        expect(container.querySelector('[data-turn]')).toBe(cards()[0]);
+    });
+
+    it('does not wait for a parent stream that cannot be read: the page is its stream, without the card', async () => {
+        const data = createFixtureData();
+
+        data.items['r-na-02'] = data.items['r-na-02']!.slice(1);
+        await open(data);
+
+        const getItems = store.transport.getItems.bind(store.transport);
+
+        vi.spyOn(store.transport, 'getItems').mockImplementation(async query => {
+            if ('runId' in query && query.runId === 'r-orch-1') throw new Error('Offline');
+
+            return getItems(query);
+        });
+        await show('r-na-02');
+
+        expect(cards()).toHaveLength(0);
+        expect(container.textContent).toContain('Looking for the price helper and its callers.');
+    });
+
     it('stands alone for a sub-agent that has not written anything yet, without the empty notice', async () => {
         const data = createFixtureData();
 

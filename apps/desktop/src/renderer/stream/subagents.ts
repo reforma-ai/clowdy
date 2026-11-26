@@ -110,24 +110,35 @@ export function agentActivityLine(activity?: string): string {
     return activity ?? 'Starting…';
 }
 
+/** The statuses of a child run that is working, or about to: its card is live while its parent works. */
+const WORKING = new Set<Run['status']>(['queued', 'running', 'waiting_user']);
+
 /**
- * How a sub-agent ended, in the words a thread's notice says it (`finished`, `failed`, `was interrupted`); nothing while it works. A call that never ended is
- * interrupted (`stalled`: its run is over, or its child ended with the turn), as is one the person stopped; the child run's status settles a call that only says it failed.
+ * How a sub-agent ended, in the words a thread's notice says it (`finished`, `failed`, `was interrupted`); nothing while it works. The child run, when there is
+ * one, is the sub-agent's own word: a child that failed, or was stopped, says so whatever its parent's call returned, and one that finished is finished before the call says so.
+ * One that goes on after its call returned (a background sub-agent) works while its parent does. Without a child the call's state is all there is: one that never ended is
+ * interrupted once its parent's run is over (`active` is false), and a call the person stopped is interrupted too.
  */
 export function agentOutcome(
     call: Pick<ToolBody, 'state' | 'error'>,
     child: Pick<Run, 'status'> | undefined,
-    stalled: boolean
+    active: boolean
 ): ThreadOutcome | undefined {
-    if (stalled) return 'interrupted';
+    const status = child?.status;
+    const stopped = status === 'cancelled' || status === 'interrupted';
 
-    if (call.state === 'running') return undefined;
+    if (call.state === 'error') return call.error === STOPPED_TOOL || stopped ? 'interrupted' : 'failed';
 
-    if (call.state === 'done') return 'finished';
+    if (status === 'failed') return 'failed';
 
-    const stopped = call.error === STOPPED_TOOL || child?.status === 'cancelled' || child?.status === 'interrupted';
+    if (stopped) return 'interrupted';
 
-    return stopped ? 'interrupted' : 'failed';
+    if (call.state === 'done') return status !== undefined && WORKING.has(status) && active ? undefined : 'finished';
+
+    // The call never ended.
+    if (status === 'succeeded') return 'finished';
+
+    return active ? undefined : 'interrupted';
 }
 
 /** What a sub-agent that stopped reports: the child's last words when it finished, why it failed when it did; an interrupted one says nothing more than the title does. */
@@ -137,7 +148,11 @@ export function agentReport(
     child: Pick<Run, 'result' | 'error'> | undefined
 ): string | undefined {
     const text =
-        outcome === 'finished' ? child?.result : outcome === 'failed' ? (child?.error ?? call.error) : undefined;
+        outcome === 'finished'
+            ? child?.result
+            : outcome === 'failed'
+              ? [child?.error, call.error].find(reason => reason?.trim())
+              : undefined;
 
     return text?.trim() || undefined;
 }
@@ -166,22 +181,27 @@ export function beginsWithPrompt(items: readonly StreamItem[]): boolean {
     return body?.kind === 'user' && body.from?.kind === 'thread';
 }
 
-/**
- * The first message of a native sub-agent's page when its stream has none (one stored before the daemon wrote it): what its parent asked, from the call that started it in the
- * parent's stream, from the chat that runs it. Nothing when the call is not there, has no prompt, or the chat is unknown. It is drawn, never stored.
- */
-export function promptItemOf(
-    run: Pick<Run, 'id' | 'parentToolCallId' | 'startedAt' | 'createdAt'>,
-    parentItems: readonly StreamItem[],
-    chat: Pick<Chat, 'id' | 'title'> | undefined
-): StreamItem | undefined {
-    if (!run.parentToolCallId || !chat) return undefined;
+/** What a native sub-agent's parent asked of it, from the call that started it in the parent's stream (`Run.parentToolCallId`): nothing when the call is not there or has no prompt. */
+export function parentPrompt(
+    run: Pick<Run, 'parentToolCallId'>,
+    parentItems: readonly StreamItem[]
+): string | undefined {
+    if (!run.parentToolCallId) return undefined;
 
     const call = parentItems.find(item => item.body.kind === 'tool' && item.body.toolCallId === run.parentToolCallId);
-    const text = call?.body.kind === 'tool' ? callPrompt(call.body.input) : undefined;
 
-    if (!text) return undefined;
+    return call?.body.kind === 'tool' ? callPrompt(call.body.input) : undefined;
+}
 
+/**
+ * The first message of a native sub-agent's page when its stream has none (one stored before the daemon wrote it): what its parent asked, from the chat that runs it, in the
+ * shape the daemon writes it. It is drawn, never stored.
+ */
+export function promptItem(
+    run: Pick<Run, 'id' | 'startedAt' | 'createdAt'>,
+    text: string,
+    chat: Pick<Chat, 'id' | 'title'>
+): StreamItem {
     return {
         id: `${run.id}-prompt`,
         runId: run.id,

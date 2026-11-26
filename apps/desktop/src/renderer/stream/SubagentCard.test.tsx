@@ -81,6 +81,9 @@ const ui = () => store.ui.forProject(FIXTURE_PROJECT_ID);
 const cards = () => [...container.querySelectorAll<HTMLElement>('[data-slot="agent-card"]')];
 const card = () => cards()[0]!;
 const opener = (scope: HTMLElement = card()) => scope.querySelector<HTMLButtonElement>('button[class*="press"]');
+/** What the title's button is described by: the live line, which a screen reader reads once, after the name. */
+const described = (scope: HTMLElement = card()) =>
+    document.getElementById(opener(scope)?.getAttribute('aria-describedby') ?? '')?.textContent;
 const toggle = (scope: HTMLElement = card()) =>
     [...scope.querySelectorAll('button')].find(button => button.textContent?.startsWith('Show'));
 
@@ -136,9 +139,7 @@ describe("the card of an agent's own sub-agent", () => {
         expect(text()).toBe('Find where the price is computedSearching useBookingPrice');
         expect(card().getAttribute('data-outcome')).toBeNull();
         expect(card().getAttribute('aria-busy')).toBe('true');
-        expect(opener()!.getAttribute('aria-label')).toBe(
-            'Find where the price is computed. Searching useBookingPrice'
-        );
+        expect(described()).toBe('Searching useBookingPrice');
 
         await act(async () => opener()!.click());
 
@@ -152,7 +153,7 @@ describe("the card of an agent's own sub-agent", () => {
         await draw([fixtureCall('tc-agent-2')]);
 
         expect(text()).toBe('ExploringSearching useBookingPrice');
-        expect(opener()!.getAttribute('aria-label')).toBe('Exploring. Searching useBookingPrice');
+        expect(described()).toBe('Searching useBookingPrice');
 
         runInAction(() => runs.set('r-na-02', { ...runs.get('r-na-02')!, status: 'succeeded', result: 'Found it.' }));
         await draw([{ ...fixtureCall('tc-agent-2'), state: 'done', output: 'Found it.' }]);
@@ -196,6 +197,52 @@ describe("the card of an agent's own sub-agent", () => {
 
         expect(text()).toBe('Find where the price is computed was interrupted');
         expect(card().getAttribute('aria-busy')).toBeNull();
+    });
+
+    it('is finished the moment its child is, though its call has not returned yet, not interrupted in between', async () => {
+        const runs = store.selectedProject!.runs;
+
+        runInAction(() => runs.set('r-na-02', { ...runs.get('r-na-02')!, status: 'succeeded', result: 'Found it.' }));
+        await draw([fixtureCall('tc-agent-2')]);
+
+        expect(text()).toBe('Find where the price is computed finishedFound it.');
+        expect(card().getAttribute('data-outcome')).toBe('finished');
+        expect(card().getAttribute('aria-busy')).toBeNull();
+    });
+
+    it('keeps working while its child does after its call returned, as a background sub-agent does', async () => {
+        await draw([{ ...fixtureCall('tc-agent-2'), state: 'done', output: 'Started in the background' }]);
+
+        expect(text()).toBe('Find where the price is computedSearching useBookingPrice');
+        expect(card().getAttribute('aria-busy')).toBe('true');
+    });
+
+    it('says what its child says when the call returned: stopped alone is interrupted, failed is failed with its reason', async () => {
+        const runs = store.selectedProject!.runs;
+        const done = { ...fixtureCall('tc-agent-2'), state: 'done' as const, output: 'Done' };
+
+        runInAction(() => runs.set('r-na-02', { ...runs.get('r-na-02')!, status: 'cancelled' }));
+        await draw([done]);
+
+        expect(text()).toBe('Find where the price is computed was interrupted');
+
+        runInAction(() =>
+            runs.set('r-na-02', { ...runs.get('r-na-02')!, status: 'failed', error: 'The session ended unexpectedly' })
+        );
+        await draw([done]);
+
+        expect(text()).toBe('Find where the price is computed failedThe session ended unexpectedly');
+    });
+
+    it('keeps the error of the call when its child has none to give', async () => {
+        const runs = store.selectedProject!.runs;
+
+        runInAction(() => runs.set('r-na-04', { ...runs.get('r-na-04')!, error: '' }));
+        await draw([fixtureCall('tc-agent-4')]);
+
+        expect(text()).toBe(
+            'Weekend pricing rules failedTypecheck failed in 3 files and the run could not repair them.'
+        );
     });
 
     it('says the agent was interrupted when it was stopped, not that it failed, and adds no report of its own', async () => {
@@ -304,10 +351,12 @@ describe('the card family', () => {
             'interrupted',
             null,
         ]);
-        // One frame: the same icon slot and title in each, and a mark that is not drawn from the words.
+        // One frame: an icon, then the body that begins with the title, in a thread's card and a sub-agent's alike.
+        const shape = (found: HTMLElement) =>
+            `${[...found.children].map(child => child.tagName).join()} ${found.querySelector('div > span[class*="title"]') ? 'title' : ''}`;
+
         expect(cards().every(found => found.querySelector('svg'))).toBe(true);
-        expect(new Set(cards().map(found => found.className)).size).toBe(1);
-        expect(new Set(cards().map(found => found.querySelector('span[class*="title"]')?.className)).size).toBe(1);
+        expect(new Set(cards().map(shape))).toEqual(new Set(['SPAN,DIV title']));
     });
 
     it('opens the page of a sub-agent and the chat of a thread from a press on the title', async () => {

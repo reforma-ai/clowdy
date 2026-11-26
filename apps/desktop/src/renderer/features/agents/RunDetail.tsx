@@ -1,7 +1,8 @@
 import { Text } from '@clowdy/components/Text';
+import { useMemo } from 'react';
 
 import { useProjectState, useRunStream } from '../../stores';
-import { beginsWithPrompt, promptItemOf } from '../../stream/subagents';
+import { beginsWithPrompt, parentPrompt, promptItem } from '../../stream/subagents';
 import { ConversationHeader } from '../chats/ConversationHeader';
 import { ConversationView } from '../chats/ConversationView';
 import { SubagentBox } from '../chats/SubagentBox';
@@ -21,10 +22,25 @@ export function RunDetail({ run }: { run: Run }) {
     const stream = useRunStream(run.id);
     const chat = chatOfRun(project.chats.values(), run);
     const items = stream?.items ?? [];
-    // A sub-agent stored before its first message was written has none: the page makes the card from the call that started it, in its parent's stream (read only then).
+    // A sub-agent stored before its first message was written has none: the page makes the card from the call that started it, in its parent's stream, which is fetched with
+    // its own so the card does not come in after the page has begun to be read.
+    const parent = useRunStream(run.parentToolCallId ? run.parentRunId : undefined);
+    const parentItems = parent?.items;
     const lacksPrompt = (stream?.status === 'ready' || items.length > 0) && !beginsWithPrompt(items);
-    const parentItems = useRunStream(lacksPrompt ? run.parentRunId : undefined)?.items;
-    const leading = lacksPrompt && parentItems ? promptItemOf(run, parentItems, chat) : undefined;
+    const parentReady =
+        parent !== undefined && ((parent.status !== 'idle' && parent.status !== 'loading') || parentItems!.length > 0);
+    const text = lacksPrompt && parentItems ? parentPrompt(run, parentItems) : undefined;
+    // The parent's stream changes while it works: the item stays the same object while what it is made from does.
+    const leading = useMemo(
+        () =>
+            text !== undefined && chat
+                ? promptItem({ id: run.id, startedAt: run.startedAt, createdAt: run.createdAt }, text, {
+                      id: chat.id,
+                      title: chat.title,
+                  })
+                : undefined,
+        [text, run.id, run.startedAt, run.createdAt, chat?.id, chat?.title]
+    );
 
     return (
         <ConversationView
@@ -32,6 +48,7 @@ export function RunDetail({ run }: { run: Run }) {
             stream={stream}
             links={links}
             leading={leading}
+            holding={lacksPrompt && parent !== undefined && !parentReady}
             top={<ConversationHeader chat={chat} subagent={run} />}
             // Copy and the time stay, as in a chat that is read only; there is no one to reply to, fork or edit.
             messageActions={{}}

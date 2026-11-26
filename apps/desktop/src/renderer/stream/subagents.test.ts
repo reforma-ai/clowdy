@@ -11,7 +11,8 @@ import {
     childOfCall,
     isSubagentTool,
     latestActivity,
-    promptItemOf,
+    parentPrompt,
+    promptItem,
     subagentLabel,
     subagentName,
     subagentTitle,
@@ -69,19 +70,45 @@ describe('what a sub-agent call is called', () => {
 describe('how a sub-agent ended', () => {
     const call = (state: 'running' | 'done' | 'error', error?: string) => ({ state, ...(error && { error }) });
 
-    it('says it with the words of a thread that stopped', () => {
-        expect(agentOutcome(call('running'), undefined, false)).toBeUndefined();
-        expect(agentOutcome(call('done'), undefined, false)).toBe('finished');
-        expect(agentOutcome(call('error', 'Typecheck failed'), undefined, false)).toBe('failed');
+    it('says it with the words of a thread that stopped, and nothing while it works', () => {
+        expect(agentOutcome(call('running'), undefined, true)).toBeUndefined();
+        expect(agentOutcome(call('done'), undefined, true)).toBe('finished');
+        expect(agentOutcome(call('error', 'Typecheck failed'), undefined, true)).toBe('failed');
     });
 
-    it('is interrupted when the call never ended, or the person stopped it, whatever the call says', () => {
-        expect(agentOutcome(call('running'), undefined, true)).toBe('interrupted');
-        expect(agentOutcome(call('error', STOPPED_TOOL), undefined, false)).toBe('interrupted');
-        expect(
-            agentOutcome(call('error', 'The sub-agent was cancelled'), run('c', { status: 'cancelled' }), false)
-        ).toBe('interrupted');
-        expect(agentOutcome(call('error', 'Failed'), run('c', { status: 'failed' }), false)).toBe('failed');
+    it('is interrupted when the call never ended and its parent has stopped, or when the person stopped it', () => {
+        expect(agentOutcome(call('running'), undefined, false)).toBe('interrupted');
+        expect(agentOutcome(call('running'), run('c', { status: 'running' }), false)).toBe('interrupted');
+        expect(agentOutcome(call('error', STOPPED_TOOL), undefined, true)).toBe('interrupted');
+    });
+
+    it('is told by the child run when there is one, whatever the call says', () => {
+        const status = (value: Run['status']) => run('c', { status: value });
+
+        // Finished before the call says so: not interrupted in between.
+        expect(agentOutcome(call('running'), status('succeeded'), true)).toBe('finished');
+        expect(agentOutcome(call('running'), status('succeeded'), false)).toBe('finished');
+        // Stopped alone from its page, or failed, though the call returned.
+        expect(agentOutcome(call('done'), status('cancelled'), true)).toBe('interrupted');
+        expect(agentOutcome(call('done'), status('interrupted'), true)).toBe('interrupted');
+        expect(agentOutcome(call('done'), status('failed'), true)).toBe('failed');
+        expect(agentOutcome(call('running'), status('cancelled'), true)).toBe('interrupted');
+        expect(agentOutcome(call('running'), status('failed'), true)).toBe('failed');
+        expect(agentOutcome(call('error', 'The sub-agent was cancelled'), status('cancelled'), true)).toBe(
+            'interrupted'
+        );
+        expect(agentOutcome(call('error', 'Failed'), status('failed'), true)).toBe('failed');
+        // The call only says it failed and its child finished: the call is the one that failed.
+        expect(agentOutcome(call('error', 'Failed'), status('succeeded'), true)).toBe('failed');
+    });
+
+    it('works while its child does after its call returned, as a background sub-agent does, and is finished once its parent stops', () => {
+        for (const status of ['queued', 'running', 'waiting_user'] as const)
+            expect(agentOutcome(call('done'), run('c', { status }), true)).toBeUndefined();
+
+        expect(agentOutcome(call('done'), run('c', { status: 'running' }), false)).toBe('finished');
+        // One that rests for its own background work is not at work: its call is the word.
+        expect(agentOutcome(call('done'), run('c', { status: 'waiting_background' }), true)).toBe('finished');
     });
 
     it('reports the last words of one that finished and why one that failed did, and nothing more for one that was interrupted', () => {
@@ -89,6 +116,9 @@ describe('how a sub-agent ended', () => {
         expect(agentReport('finished', call('done'), undefined)).toBeUndefined();
         expect(agentReport('failed', call('error', 'Call error'), run('c', { error: 'Run error' }))).toBe('Run error');
         expect(agentReport('failed', call('error', 'Call error'), undefined)).toBe('Call error');
+        // A child whose error is empty leaves the call's.
+        expect(agentReport('failed', call('error', 'Call error'), run('c', { error: '' }))).toBe('Call error');
+        expect(agentReport('failed', call('error', 'Call error'), run('c', { error: '  ' }))).toBe('Call error');
         expect(agentReport('failed', call('error'), run('c', {}))).toBeUndefined();
         expect(agentReport('interrupted', call('error', STOPPED_TOOL), run('c', { result: 'Half' }))).toBeUndefined();
         expect(agentReport(undefined, call('running'), run('c', { result: 'Half' }))).toBeUndefined();
@@ -125,8 +155,24 @@ describe('the first message of a sub-agent page', () => {
         expect(beginsWithPrompt([])).toBe(false);
     });
 
-    it('is made from the prompt of the call that started the sub-agent, as the message of the chat that runs it', () => {
-        expect(promptItemOf(child, [call({ prompt: 'Find the callers.' })], chat)).toEqual({
+    it('takes what the parent asked from the prompt of the call that started the sub-agent', () => {
+        expect(parentPrompt(child, [call({ prompt: 'Find the callers.' })])).toBe('Find the callers.');
+        expect(parentPrompt(child, [call({ message: 'Find them' }), call({ prompt: 'Other' }, 'call-2')])).toBe(
+            'Find them'
+        );
+    });
+
+    it('takes nothing when the call, its prompt or the call id is not there', () => {
+        expect(parentPrompt(child, [call({ prompt: 'Find them' }, 'call-9')])).toBeUndefined();
+        expect(parentPrompt(child, [call({ description: 'No prompt' })])).toBeUndefined();
+        expect(parentPrompt(child, [])).toBeUndefined();
+        expect(parentPrompt({ parentToolCallId: undefined }, [call({ prompt: 'Find them' })])).toBeUndefined();
+        // An item that only has the same id as a call is not one.
+        expect(parentPrompt(child, [item(1, { kind: 'note', text: 'call-1' })])).toBeUndefined();
+    });
+
+    it("makes the page's first item in the shape the daemon writes it: the prompt, from the chat that runs the sub-agent", () => {
+        expect(promptItem(child, 'Find the callers.', chat)).toEqual({
             id: 'r-child-prompt',
             runId: 'r-child',
             seq: 0,
@@ -137,18 +183,7 @@ describe('the first message of a sub-agent page', () => {
                 from: { kind: 'thread', chatId: 'c-1', title: 'Simplify booking' },
             },
         });
-    });
-
-    it('is nothing when the call, its prompt or the chat is not there', () => {
-        expect(promptItemOf(child, [call({ prompt: 'Find them' }, 'call-9')], chat)).toBeUndefined();
-        expect(promptItemOf(child, [call({ description: 'No prompt' })], chat)).toBeUndefined();
-        expect(promptItemOf(child, [], chat)).toBeUndefined();
-        expect(promptItemOf(child, [call({ prompt: 'Find them' })], undefined)).toBeUndefined();
-        expect(
-            promptItemOf({ ...child, parentToolCallId: undefined }, [call({ prompt: 'Find them' })], chat)
-        ).toBeUndefined();
-        // An item that only has the same id as a call is not one.
-        expect(promptItemOf(child, [item(1, { kind: 'note', text: 'call-1' })], chat)).toBeUndefined();
+        expect(promptItem({ ...child, startedAt: undefined, createdAt: 3 }, 'Go', chat).at).toBe(3);
     });
 });
 
