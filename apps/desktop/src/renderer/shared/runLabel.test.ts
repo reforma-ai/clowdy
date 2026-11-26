@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { runLabel } from './runLabel';
+import { runLabel, runSummary } from './runLabel';
 
 import type { Chat } from '@clowdy/protocol';
 
@@ -28,5 +28,16 @@ describe('runLabel', () => {
         expect(
             runLabel({ id: 'r1', name: 'Orchestrator 41' }, new Map(chats.map(item => [item.id, item])).values())
         ).toBe('Clone route in the daemon');
+    });
+});
+
+describe('runSummary', () => {
+    it('is the summary of a native sub-agent', () => {
+        expect(runSummary({ origin: 'native', summary: 'Review clone route diff' })).toBe('Review clone route diff');
+        expect(runSummary({ origin: 'native', summary: '  ' })).toBeUndefined();
+    });
+
+    it('is nothing for a chat orchestrator, whose summary is the chat title as it was at the first message', () => {
+        expect(runSummary({ summary: 'Simplify booking' })).toBeUndefined();
     });
 });

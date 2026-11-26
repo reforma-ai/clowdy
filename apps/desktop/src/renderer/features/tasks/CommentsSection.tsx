@@ -3,7 +3,7 @@ import { Loader } from '@clowdy/components/Loader';
 import { Text } from '@clowdy/components/Text';
 import { useLayoutEffect, useRef, useState } from 'react';
 
-import { useRunLabel } from '../../shared';
+import { runSummary, useRunLabel } from '../../shared';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { type StreamLinks, StreamLinksContext } from '../../stream/StreamLinks';
 import { Comment } from './Comment';
@@ -79,7 +79,7 @@ export function CommentsSection({ taskId, onOpenRun, onOpenTask, isReadOnly = fa
             <button
                 type="button"
                 className={styles.agent}
-                title={run.summary || labelOf(run)}
+                title={runSummary(run) ?? labelOf(run)}
                 onClick={() => onOpenRun(run.id)}
             >
                 {labelOf(run)}

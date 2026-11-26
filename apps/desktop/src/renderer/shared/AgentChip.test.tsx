@@ -50,6 +50,18 @@ describe('AgentChip', () => {
         expect(container.textContent).toBe('General agent');
     });
 
+    it('does not show the old title a chat orchestrator kept as its summary after a rename', async () => {
+        await draw({ id: 'r-orch-1', name: 'Orchestrator 01', summary: 'An old title' });
+
+        expect(container.querySelector('button')!.title).toBe('Simplify booking');
+    });
+
+    it('explains a native sub-agent by its summary', async () => {
+        await draw({ id: 'native-1', name: 'general-purpose', origin: 'native', summary: 'Review clone route diff' });
+
+        expect(container.querySelector('button')!.title).toBe('Review clone route diff');
+    });
+
     it('keeps the run name when no chat answers to the run', async () => {
         await draw({ id: 'r-gone', name: 'Orchestrator 99', summary: '' });
 

@@ -4,7 +4,7 @@ import { Text } from '@clowdy/components/Text';
 import { Box, CodeBraces, Commit, Message, Page, Terminal, Tool, User } from '@clowdy/icons/14';
 import { type ComponentType, type ReactNode, type SVGProps, useEffect, useState } from 'react';
 
-import { RunStatusPill, useRunLabel } from '../../shared';
+import { RunStatusPill, runSummary, useRunLabel } from '../../shared';
 import { AgentAvatar } from '../../stream';
 import styles from './DetailSections.module.css';
 import { Pill, PillLabel } from './Pill';
@@ -54,16 +54,14 @@ export function Executors({ taskRuns, onOpen }: { taskRuns: readonly Run[]; onOp
                             type="button"
                             className={styles.row}
                             onClick={() => onOpen(run.id)}
-                            title={run.summary || labelOf(run)}
+                            title={runSummary(run) ?? labelOf(run)}
                         >
                             <span aria-hidden className={styles.icon}>
                                 <User />
                             </span>
                             <span className={styles.rowText}>
                                 <span className={styles.rowName}>{labelOf(run)}</span>
-                                {run.summary !== labelOf(run) && (
-                                    <span className={styles.rowSummary}>{run.summary}</span>
-                                )}
+                                {runSummary(run) && <span className={styles.rowSummary}>{run.summary}</span>}
                             </span>
                             <RunStatusPill run={run} />
                         </button>
