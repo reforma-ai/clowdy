@@ -45,19 +45,44 @@ const worked = () =>
 
 describe('composer overlay', () => {
     it('applies the measured inset and restores standalone behavior for zero or invalid heights', async () => {
-        const render = (composerInset?: number) =>
-            act(async () => root.render(<StreamView items={items} composerInset={composerInset} />));
+        const render = (composerInset?: number, composerSurfaceInset?: number) =>
+            act(async () =>
+                root.render(
+                    <StreamView
+                        items={items}
+                        composerInset={composerInset}
+                        composerSurfaceInset={composerSurfaceInset}
+                    />
+                )
+            );
 
         await render(248);
         const stream = container.firstElementChild as HTMLElement;
 
         expect(stream.dataset.composerOverlay).toBe('true');
         expect(stream.style.getPropertyValue('--composer-inset')).toBe('248px');
+        expect(stream.style.getPropertyValue('--composer-surface-inset')).toBe('248px');
+
+        for (const height of [148, 248, 420]) {
+            await render(height, 108);
+            expect(stream.style.getPropertyValue('--composer-inset')).toBe(`${height}px`);
+            expect(stream.style.getPropertyValue('--composer-surface-inset')).toBe('108px');
+        }
+
+        for (const [surface, expected] of [
+            [-10, 0],
+            [300, 248],
+            [Number.NaN, 248],
+        ]) {
+            await render(248, surface);
+            expect(stream.style.getPropertyValue('--composer-surface-inset')).toBe(`${expected}px`);
+        }
 
         for (const inset of [0, -10, Number.NaN, undefined]) {
-            await render(inset);
+            await render(inset, 108);
             expect(stream.hasAttribute('data-composer-overlay')).toBe(false);
             expect(stream.style.getPropertyValue('--composer-inset')).toBe('0px');
+            expect(stream.style.getPropertyValue('--composer-surface-inset')).toBe('0px');
         }
     });
 

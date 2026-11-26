@@ -89,6 +89,8 @@ export interface StreamViewProps {
     items: StreamItem[];
     /** Height in pixels occupied by a composer overlaid on the bottom of the stream. */
     composerInset?: number;
+    /** Distance from the stream's bottom to the top of the message box, excluding the banners above it. */
+    composerSurfaceInset?: number;
     /** The run is going, or waits for the person: its latest turn stays open. Once it is over, that turn folds its work too. */
     active?: boolean;
     /**
@@ -133,6 +135,7 @@ export interface StreamViewProps {
 export function StreamView({
     items,
     composerInset = 0,
+    composerSurfaceInset = composerInset,
     active = false,
     working,
     onAnswer,
@@ -149,6 +152,9 @@ export function StreamView({
 }: StreamViewProps) {
     const scroller = useRef<HTMLDivElement>(null);
     const inset = Number.isFinite(composerInset) ? Math.max(0, composerInset) : 0;
+    const surfaceInset = Number.isFinite(composerSurfaceInset)
+        ? Math.min(inset, Math.max(0, composerSurfaceInset))
+        : inset;
     const { scrollRef: stickScrollRef, contentRef, isAtBottom, scrollToBottom } = useStickToBottom();
     useImperativeHandle(ref, () => ({ followLatest: () => scrollToBottom({ animation: 'instant' }) }), [
         scrollToBottom,
@@ -312,7 +318,12 @@ export function StreamView({
             <div
                 className={styles.root}
                 data-composer-overlay={inset > 0 || undefined}
-                style={{ '--composer-inset': `${inset}px` } as CSSProperties}
+                style={
+                    {
+                        '--composer-inset': `${inset}px`,
+                        '--composer-surface-inset': `${surfaceInset}px`,
+                    } as CSSProperties
+                }
             >
                 <div ref={scrollRef} className={styles.scroll}>
                     <ContentColumn ref={contentRef} className={styles.content}>
