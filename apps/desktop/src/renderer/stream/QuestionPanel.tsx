@@ -87,23 +87,22 @@ export function QuestionPanel({ question, onAnswer, bounded }: QuestionPanelProp
             }}
         >
             <div className={styles.scroll} data-bounded={bounded || undefined}>
-                <div className={styles.header}>
+                <div className={styles.head}>
                     <Text variant="md" weight="medium" wrap="anywhere" whitespace="pre-line">
                         {title}
                     </Text>
+                    <Show when={paragraphs.length > 0}>
+                        <div className={styles.facts}>
+                            <For each={paragraphs}>
+                                {paragraph => (
+                                    <Text key={paragraph} variant="sm" color="secondary" whitespace="pre-line">
+                                        {paragraph}
+                                    </Text>
+                                )}
+                            </For>
+                        </div>
+                    </Show>
                 </div>
-
-                <Show when={paragraphs.length > 0}>
-                    <div className={styles.facts}>
-                        <For each={paragraphs}>
-                            {paragraph => (
-                                <Text key={paragraph} variant="sm" color="secondary" whitespace="pre-line">
-                                    {paragraph}
-                                </Text>
-                            )}
-                        </For>
-                    </div>
-                </Show>
 
                 <GridList
                     className={styles.options}
