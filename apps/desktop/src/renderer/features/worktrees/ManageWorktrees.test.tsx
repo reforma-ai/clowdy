@@ -220,7 +220,8 @@ describe('Manage worktrees', () => {
                 input.dispatchEvent(new Event('input', { bubbles: true }));
             });
 
-        expect(textButton(form, 'Cancel')?.dataset.variant).toBe('filled');
+        // No Cancel: the window's close button, Escape and a click outside already close it.
+        expect(textButton(form, 'Cancel')).toBeUndefined();
         expect(form.textContent).not.toContain('Repository:');
         expect(form.textContent).toContain('Settings → Chat → Branch prefix');
         expect(submit.disabled).toBe(true);
