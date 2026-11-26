@@ -49,7 +49,10 @@ export interface AgentRowsInput {
     /** The threads a chat started directly, oldest first; archived ones are left out here. */
     threadsOf: (chatId: ChatId) => readonly Chat[];
     runs: ReadonlyMap<RunId, Run>;
-    /** The native sub-agents of a chat's orchestrator, oldest first (`nativeAgentsByRoot`). Without it no sub-agent is a row. */
+    /**
+     * The native sub-agents of a chat's orchestrator, oldest first (`nativeAgentsByRoot`), the archived ones too: the list leaves an archived one out with what
+     * it started, which it can only do when it knows them. Without it no sub-agent is a row.
+     */
     agentsOf?: (chat: Chat) => readonly Run[];
     /** The chats whose threads and sub-agents are open. Every other one is folded. */
     expanded: ReadonlySet<ChatId>;
@@ -105,6 +108,24 @@ export function isActiveThread(chat: Chat, runs: ReadonlyMap<RunId, Run>): boole
     return isRunActive(orchestratorOf(chat, runs));
 }
 
+/**
+ * The sub-agents the daemon will not archive now: each one that works, and each one that started a sub-agent that does, at any depth. The list offers no Archive on
+ * them, as it offers none on a chat whose agents work.
+ */
+export function busySubagents(runs: ReadonlyMap<RunId, Run>): Set<RunId> {
+    const busy = new Set<RunId>();
+
+    for (const run of runs.values()) {
+        if (run.origin !== 'native' || !isRunActive(run)) continue;
+
+        busy.add(run.id);
+
+        for (const ancestor of ancestorRuns(runs, run)) busy.add(ancestor.id);
+    }
+
+    return busy;
+}
+
 /** A native sub-agent that the list shows, with the sub-agents it started that it shows below it, oldest first. */
 interface AgentNode {
     run: Run;
@@ -127,7 +148,7 @@ const countNodes = (nodes: readonly AgentNode[]): number =>
  *
  * A folded chat still lists what waits for the person (a thread or a sub-agent, and the chats and sub-agents between), so a question is never behind a
  * fold, and with `expandRunning` what works too; the row keeps its fold, closed, and the rest stays out until the chat is expanded. Archived threads are
- * not rows. Without `showFinished`, a thread or a sub-agent that is over is left out unless something listed is below it (it still works, or it is the
+ * not rows, nor are archived sub-agents and what each one started, the open page among them (bringing one back is what opening it does, `openRun`). Without `showFinished`, a thread or a sub-agent that is over is left out unless something listed is below it (it still works, or it is the
  * open page) or it is the open page itself (the open chat, the open sub-agent, which stays below a folded chat too), and a row's fold counts only what is listed.
  */
 export function agentRows({
@@ -204,18 +225,23 @@ export function agentRows({
         }
 
         const seen = new Set<RunId>();
-        const build = (run: Run): AgentNode[] => {
+        // `away`: a sub-agent that an archived one started. The daemon puts those away together, but bringing one back leaves the rest, so what it started may be
+        // in use below one that is not: it is still not a row, and it is marked seen so that the pass over every run does not list it as a root.
+        const build = (run: Run, away: boolean): AgentNode[] => {
             if (seen.has(run.id)) return [];
 
             seen.add(run.id);
 
-            const children = (startedBy.get(run.id) ?? []).flatMap(build);
+            const isAway = away || run.archivedAt !== undefined;
+            const children = (startedBy.get(run.id) ?? []).flatMap(child => build(child, isAway));
 
-            return showFinished || works(run) || run.id === openRunId || children.length > 0 ? [{ run, children }] : [];
+            return !isAway && (showFinished || works(run) || run.id === openRunId || children.length > 0)
+                ? [{ run, children }]
+                : [];
         };
         // The roots come oldest first; a parent cycle, in corrupt data, is met after them, so the whole is put in order again (it is sorted already but for that).
         const all = [...(startedBy.get(undefined) ?? []), ...agents]
-            .flatMap(build)
+            .flatMap(run => build(run, false))
             .sort((a, b) => a.run.createdAt - b.run.createdAt || a.run.id.localeCompare(b.run.id));
 
         known = { all, folded: surfaceAgents(all) };
@@ -450,6 +476,23 @@ export function ancestorChats(chats: ReadonlyMap<ChatId, Chat>, chatId: ChatId):
         if (!chat || ancestors.includes(chat)) break;
 
         ancestors.push(chat);
+    }
+
+    return ancestors;
+}
+
+/**
+ * The sub-agents a run was started inside, nearest first: the one that started it, the one that started that one, up to the first one below the chat's
+ * orchestrator. The orchestrator itself is the chat, so it is not here. Empty for an orchestrator.
+ */
+export function ancestorRuns(runs: ReadonlyMap<RunId, Run>, run: Run): Run[] {
+    const ancestors: Run[] = [];
+    let parent = run.parentRunId === undefined ? undefined : runs.get(run.parentRunId);
+
+    // The orchestrator has no parent run, which ends the walk; so does a cycle, in corrupt data.
+    while (parent?.parentRunId !== undefined && parent.id !== run.id && !ancestors.includes(parent)) {
+        ancestors.push(parent);
+        parent = runs.get(parent.parentRunId);
     }
 
     return ancestors;

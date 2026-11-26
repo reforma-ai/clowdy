@@ -11,7 +11,7 @@ export const MAX_AGENT_ROWS = 5;
 
 /**
  * The agents of a chat that work now, oldest first: the native sub-agents below its orchestrator that are running or wait for the person.
- * Queued and blocked runs are not working yet, and finished ones are in the stream.
+ * Queued and blocked runs are not working yet, and finished ones are in the stream. One in the archive is not listed, whatever it does.
  */
 export function runningAgents(runs: Iterable<Run>, orchestratorRunId: RunId | undefined): Run[] {
     if (orchestratorRunId === undefined) return [];
@@ -21,6 +21,7 @@ export function runningAgents(runs: Iterable<Run>, orchestratorRunId: RunId | un
             run =>
                 run.rootRunId === orchestratorRunId &&
                 run.id !== orchestratorRunId &&
+                run.archivedAt === undefined &&
                 ['running', 'waiting_user'].includes(shownRunStatus(run))
         )
         .sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
