@@ -91,7 +91,9 @@ function SkillsBody({ projectId, projectName }: { projectId?: string; projectNam
                             {group.source === 'system' && (
                                 <SettingsBlock as="li" className={styles.systemControl}>
                                     <div className={styles.systemLabel}>
-                                        <Text weight="medium">Enable system skills</Text>
+                                        <Text variant="sm" weight="medium">
+                                            Enable system skills
+                                        </Text>
                                         <Text variant="sm" color="secondary">
                                             Changes apply to new agent sessions
                                         </Text>
