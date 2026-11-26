@@ -248,10 +248,9 @@
 .worktreeCard {
     position: relative;
     background: var(--color-secondary-muted-light);
-    border: 1px solid var(--color-surface-border);
-    border-radius: var(--radius-lg);
+    border-radius: var(--spacing-16);
     corner-shape: superellipse(var(--squircle-value));
-    padding: var(--spacing-2);
+    padding: var(--spacing-4);
     margin-block: var(--spacing-2);
     gap: 0;
 }
