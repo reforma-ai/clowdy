@@ -3,7 +3,7 @@
  *
  * Per skill folder `skills/<name>/SKILL.md`: front matter with `name` equal to the folder, a one-line `description`, only the
  * allowed keys, a body under the size cap, links that resolve, no orphaned `references/` files, no engine-specific syntax,
- * no tool the agents do not have, and no `clowdy task` or `clowdy thread` command the daemon does not have.
+ * no tool or Clowdy shell command the daemon does not have.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
@@ -14,7 +14,7 @@ const MAX_BODY_BYTES = 24_000;
 const MAX_DESCRIPTION_CHARS = 1_000;
 const ALLOWED_KEYS = new Set(['name', 'description', 'allowed-tools']);
 
-/** The Clowdy tools an agent may be told to call (bare names; the harness adds the MCP prefix). Tasks and threads are shell commands, not tools. */
+/** The Clowdy tools an agent may be told to call (bare names; the harness adds the MCP prefix). Tasks, threads and chat reads are shell commands. */
 const TOOLS = new Set(['ask_user']);
 /**
  * The commands of `clowdy task` an agent may be told to run in its shell. They are the daemon's task tools marked as shell commands, which no skill
@@ -23,9 +23,16 @@ const TOOLS = new Set(['ask_user']);
 const TASK_COMMANDS = new Set(['get', 'list', 'create', 'update', 'comment', 'comments', 'archive', 'unarchive']);
 /** The commands of `clowdy thread`, the daemon's thread tools marked as shell commands; checked against the daemon like `TASK_COMMANDS`. */
 const THREAD_COMMANDS = new Set(['spawn', 'tell', 'stop', 'wait', 'output', 'log', 'list']);
-const COMMANDS: Record<string, ReadonlySet<string>> = { task: TASK_COMMANDS, thread: THREAD_COMMANDS };
+/** The read-only chat commands, checked against the daemon like `TASK_COMMANDS`. */
+const CHAT_COMMANDS = new Set(['read']);
+const COMMANDS: Record<string, ReadonlySet<string>> = {
+    task: TASK_COMMANDS,
+    thread: THREAD_COMMANDS,
+    chat: CHAT_COMMANDS,
+};
 /** A snake_case word that looks like a tool name but is not one of ours. */
-const TOOL_LIKE = /^(task|run|ask|report|thread|spawn|wait|create|update|list|cancel|get|merge|git|worktree)_[a-z_]+$/;
+const TOOL_LIKE =
+    /^(task|run|ask|report|thread|chat|spawn|wait|create|update|list|cancel|get|merge|git|worktree)_[a-z_]+$/;
 const FORBIDDEN: Array<[RegExp, string]> = [
     [/mcp__/, 'name tools by their bare name, not `mcp__...`'],
     [/\$ARGUMENTS|\$\{CLAUDE_|!`/, 'Claude-only substitution syntax (Codex leaves it literal)'],
@@ -83,11 +90,11 @@ function lintText(label: string, text: string) {
     for (const match of text.matchAll(/`([a-z]+(?:_[a-z]+)+)(?:\(|`)/g)) {
         if (TOOL_LIKE.test(match[1]) && !TOOLS.has(match[1]))
             problems.push(
-                `${label}: \`${match[1]}\` is not a Clowdy tool (tasks and threads are shell commands: \`clowdy task get\`, \`clowdy thread spawn\`)`
+                `${label}: \`${match[1]}\` is not a Clowdy tool (use shell commands: \`clowdy task get\`, \`clowdy thread spawn\`, \`clowdy chat read\`)`
             );
     }
 
-    for (const [, group, command] of text.matchAll(/\bclowdy (task|thread) ([a-z][a-z-]*)/g)) {
+    for (const [, group, command] of text.matchAll(/\bclowdy (task|thread|chat) ([a-z][a-z-]*)/g)) {
         if (!COMMANDS[group].has(command))
             problems.push(
                 `${label}: \`clowdy ${group} ${command}\` is not a command (${[...COMMANDS[group]].join(', ')})`

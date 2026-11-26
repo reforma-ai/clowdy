@@ -10,7 +10,7 @@ import type { Chat, Run } from '@clowdy/protocol';
 
 /**
  * Reads the git facts of the chat's place again when the chat's run ends (it is no longer busy), since the agent has most likely changed files, committed or pushed. The facts are
- * read for as long as something shows them (the Info tab, the Changes tab); this only says when to read again, and a place that nothing observes is left alone (`GitFacts.refresh`).
+ * read for as long as something shows them (the rail's summary of the Changes tab, the Changes tab itself); this only says when to read again, and a place that nothing observes is left alone (`GitFacts.refresh`).
  * The chat view calls it, so the answer is fresh whichever tab is open when the turn ends.
  */
 export function useRefreshGitFactsAtRunEnd(chat: Chat, run: Run | undefined): void {

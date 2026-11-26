@@ -670,28 +670,35 @@ describe('UiStore', () => {
         ).toEqual(['c-1']);
     });
 
-    it('folds the running-agents strip by default and remembers manual toggles per project', () => {
+    it('folds each running-agents strip by default and remembers a chat’s manual toggles', () => {
         const storage = memoryStorage();
         const store = new UiStore(storage);
         const ui = store.forProject('p1');
 
-        expect(ui.agentsFolded).toBe(true);
+        expect(ui.agentsFolded('c1')).toBe(true);
+        expect(ui.agentsFolded('c2')).toBe(true);
 
-        ui.toggleAgentsFolded();
-        expect(ui.agentsFolded).toBe(false);
-        expect(store.forProject('p2').agentsFolded).toBe(true);
-        expect(new UiStore(storage).forProject('p1').agentsFolded).toBe(false);
+        ui.toggleAgentsFolded('c1');
+        expect(ui.agentsFolded('c1')).toBe(false);
+        expect(ui.agentsFolded('c2')).toBe(true);
+        expect(store.forProject('p2').agentsFolded('c1')).toBe(true);
+        const restored = new UiStore(storage).forProject('p1');
+        expect(restored.agentsFolded('c1')).toBe(false);
+        expect(restored.agentsFolded('c2')).toBe(true);
 
-        ui.toggleAgentsFolded();
-        expect(new UiStore(storage).forProject('p1').agentsFolded).toBe(true);
+        ui.toggleAgentsFolded('c1');
+        expect(new UiStore(storage).forProject('p1').agentsFolded('c1')).toBe(true);
     });
 
-    it('uses the folded default for projects that saved the old open default', () => {
-        const storage = memoryStorage({ 'clowdy:ui:p1': '{"agentsFolded":false,"sidePanelOpen":true}' });
-        const ui = new UiStore(storage).forProject('p1');
+    it('uses the folded default for projects that saved a legacy project-wide open choice', () => {
+        for (const legacy of ['"agentsFolded":false', '"agentsExpanded":true']) {
+            const storage = memoryStorage({ 'clowdy:ui:p1': `{${legacy},"sidePanelOpen":true}` });
+            const ui = new UiStore(storage).forProject('p1');
 
-        expect(ui.agentsFolded).toBe(true);
-        expect(ui.sidePanelOpen).toBe(true);
+            expect(ui.agentsFolded('c1')).toBe(true);
+            expect(ui.agentsFolded('c2')).toBe(true);
+            expect(ui.sidePanelOpen).toBe(true);
+        }
     });
 
     it('keeps the side panel closed until the person opens it, and remembers it per project', () => {
@@ -1027,11 +1034,27 @@ describe('UiStore', () => {
         ).toBe('files');
     });
 
-    it('reads the fold of the strip from the page URL, and drops what is damaged in storage', () => {
+    it('reads the default fold of the strip from the fixture URL and keeps toggles separate', () => {
         expect(initialUiFromSearch('?agents=folded')).toEqual({ agentsFolded: true });
         expect(initialUiFromSearch('?agents=open')).toEqual({ agentsFolded: false });
+        const storage = memoryStorage({ 'clowdy:ui:p1': '{"agentsFoldedByChat":{"c1":true}}' });
+        const open = new UiStore(storage, initialUiFromSearch('?agents=open')).forProject('p1');
+        expect(open.agentsFolded('c1')).toBe(false);
+        expect(open.agentsFolded('c2')).toBe(false);
+        open.toggleAgentsFolded('c1');
+        expect(open.agentsFolded('c1')).toBe(true);
+        expect(open.agentsFolded('c2')).toBe(false);
+    });
+
+    it('drops damaged running-agents fold preferences from storage', () => {
+        const storage = memoryStorage({ 'clowdy:ui:p1': '{"agentsFoldedByChat":{"c1":false,"c2":"no"}}' });
+        const ui = new UiStore(storage).forProject('p1');
+        expect(ui.agentsFolded('c1')).toBe(false);
+        expect(ui.agentsFolded('c2')).toBe(true);
         expect(
-            new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"agentsExpanded":"yes"}' })).forProject('p1').agentsFolded
+            new UiStore(memoryStorage({ 'clowdy:ui:p1': '{"agentsFoldedByChat":[false]}' }))
+                .forProject('p1')
+                .agentsFolded('0')
         ).toBe(true);
     });
 

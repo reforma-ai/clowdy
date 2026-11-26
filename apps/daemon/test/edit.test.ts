@@ -333,6 +333,21 @@ describe('chat.edit', () => {
         });
     });
 
+    test('updates a legacy link-based title when the first message is edited', async () => {
+        const { h, chat, turn, read } = await setup();
+        const link = 'https://example.com/pull/9';
+
+        await turn(`${link}\nReview this change`);
+        expect(h.store.db.query('SELECT title FROM chats WHERE id = ?').get(chat.id)).toEqual({
+            title: 'Review this change',
+        });
+        h.store.db.query('UPDATE chats SET title = ? WHERE id = ?').run(link, chat.id);
+        expect((await edit(h, chat.id, (await read())[0].id, `${link}\nReview the tests`)).ok).toBe(true);
+        expect(h.store.db.query('SELECT title FROM chats WHERE id = ?').get(chat.id)).toEqual({
+            title: 'Review the tests',
+        });
+    });
+
     test('forgets what the dropped part left on the run, and keeps what was spent', async () => {
         const { h, engine, chat, runId, items } = await threeTurns();
         const usage = { inputTokens: 10, outputTokens: 5, costUsd: 0.5 };

@@ -1,5 +1,6 @@
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
+import { firstWords, titleFrom } from '../src/domain/chats';
 import { CHAT_TITLE_SETTING } from '../src/engine/acp/catalog';
 import { cleanTempDirs, latch, ScriptEngine, startHarness, waitFor } from './helpers';
 
@@ -53,8 +54,64 @@ const titleOf = (h: Harness, chatId: string): string =>
     (h.store.db.query('SELECT title FROM chats WHERE id = ?').get(chatId) as { title: string }).title;
 
 const FIRST = 'Fix the login form so that the button works';
+const LINK = 'https://github.com/reforma-ai/briefback/pull/9';
+
+describe('first-message titles', () => {
+    test.each([
+        [`${LINK}\n\nСделай ревью этого изменения`, 'Сделай ревью этого изменения'],
+        [`${LINK} Review this change`, 'Review this change'],
+        [`${LINK}\nhttps://example.com/issue/12\n\nCompare these changes\nMore details`, 'Compare these changes'],
+        ['<https://example.com> www.example.org Compare these pages', 'Compare these pages'],
+        [`${LINK}\nhttps://example.com`, LINK],
+        [`Review ${LINK}\nMore details`, `Review ${LINK}`],
+    ])('chooses the first meaningful line of %s', (text, expected) => {
+        expect(firstWords({ text })).toBe(expected);
+    });
+
+    test('keeps the existing title length and attachment fallback', () => {
+        expect(firstWords({ text: `${LINK}\n${'a'.repeat(70)}` })).toBe(`${'a'.repeat(59)}…`);
+        expect(firstWords({ text: '', attachments: [{ name: 'screenshot.png' }] })).toBe('screenshot.png');
+    });
+});
 
 describe('the title of a chat', () => {
+    test('uses the request after a pasted URL immediately and lets the agent replace it later', async () => {
+        const text = `${LINK}\n\nPlease review this change`;
+        const script: Script = async function* (turn) {
+            const title = turn.options.title;
+
+            if (title && 'onTitle' in title) {
+                expect(title.onTitle(LINK)).toBe(false);
+                expect(title.onTitle(text.replace(/\s+/g, ' '))).toBe(false);
+            }
+
+            yield* naming('Review pull request')(turn);
+        };
+        const { h, engine, project } = await setup(script);
+        const { chat } = h.ok('chat.create', { projectId: project.id, engine: 'codex' });
+
+        h.ok('chat.send', { chatId: chat.id, text });
+        expect(titleOf(h, chat.id)).toBe('Please review this change');
+        await waitFor(() => engine.closed === 1, 'the turn to end');
+        expect(titleOf(h, chat.id)).toBe('Review pull request');
+    });
+
+    test('still accepts an agent title for a chat with an older URL-based fallback', async () => {
+        const script: Script = async function* (turn) {
+            yield* (turn.number === 1 ? silent : naming('Review pull request'))(turn);
+        };
+        const { h, engine, project } = await setup(script);
+        const { chat } = h.ok('chat.create', { projectId: project.id, engine: 'codex' });
+
+        h.ok('chat.send', { chatId: chat.id, text: `${LINK}\n\nPlease review this change` });
+        await waitFor(() => engine.closed === 1, 'the first turn to end');
+        // The database may already contain a title written by the old fallback.
+        h.store.db.query('UPDATE chats SET title = ? WHERE id = ?').run(titleFrom(LINK), chat.id);
+        h.ok('chat.send', { chatId: chat.id, text: 'What do you think?' });
+        await waitFor(() => engine.closed === 2, 'the second turn to end');
+        expect(titleOf(h, chat.id)).toBe('Review pull request');
+    });
+
     test("is the first words of its first message until the agent names it, and then the agent's name", async () => {
         const { h, engine, project } = await setup(naming('Fix login form button'));
         const { chat } = h.ok('chat.create', { projectId: project.id, engine: 'claude' });

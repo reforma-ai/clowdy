@@ -1,6 +1,6 @@
 import type { ComposerMentionAttrs } from '@clowdy/components/RichInput';
 
-/** Where a mention is typed: `@` for tasks, documents and files, `/` for skills. */
+/** Where a mention is typed: `@` for tasks, chats, documents and files, `/` for skills. */
 export const MENTION_TRIGGER = '@';
 export const SKILL_TRIGGER = '/';
 
@@ -26,12 +26,14 @@ export function skillCall(name: string, engine?: string): string {
 /**
  * What a mention says to the agent, over ACP, where a message is plain text. A skill is called the way the `engine` that reads it
  * calls its skills (`skillCall`). A task goes by its key, which the orchestrator resolves with `clowdy task get`; documents and
- * files by their path.
+ * files by their path, and a chat by its stable ID.
  */
 export function serializeMention({ kind, data }: ComposerMentionAttrs, engine?: string): string {
     switch (kind) {
         case 'task':
             return field(data, 'key');
+        case 'chat':
+            return `\`chat:${field(data, 'chatId')}\``;
         case 'doc':
         case 'file':
             return pathMention(field(data, 'path'));

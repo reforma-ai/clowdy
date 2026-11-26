@@ -2,6 +2,7 @@ import { use } from 'react';
 
 import { SkillChip } from '../../../features/chats/MentionChip';
 import { StreamLinksContext } from '../../StreamLinks';
+import { ChatReferenceChip } from '../ChatReferenceChip';
 import { isFilePathLike, normalizeFileReferencePath } from '../codeCitation';
 import { FileChip } from '../FileChip';
 import { sanitizeStreamdownProps } from '../sanitizeStreamdownProps';
@@ -12,11 +13,21 @@ import type { ExtraProps } from 'streamdown';
 
 type StreamdownInlineCodeProps = ComponentProps<'code'> & ExtraProps;
 
-/** Inline backtick code: a task of the project becomes a task chip, a path in the project a file chip (not the project folder itself), a skill of the person's a skill chip. */
+/** Inline backtick code: a chat, task, project path or skill becomes a chip if it can be resolved. */
 export function StreamdownInlineCode(props: StreamdownInlineCodeProps) {
     const { children, ...rest } = sanitizeStreamdownProps(props);
-    const { taskOfKey, skillOfName } = use(StreamLinksContext);
+    const { taskOfKey, skillOfName, chatOfId } = use(StreamLinksContext);
     const text = children?.toString() ?? '';
+    const chat = text.startsWith('chat:') ? chatOfId?.(text.slice(5)) : undefined;
+
+    if (chat) {
+        return (
+            <span data-streamdown="inline-code-chip">
+                <ChatReferenceChip chat={chat} />
+            </span>
+        );
+    }
+
     const task = taskOfKey?.(text.trim());
 
     if (task) {

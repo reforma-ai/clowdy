@@ -1,8 +1,8 @@
 import { createContext } from 'react';
 
-import type { Attachment, ChatId, SkillEntry, Task, TaskId } from '@clowdy/protocol';
+import type { Attachment, Chat, ChatId, SkillEntry, Task, TaskId } from '@clowdy/protocol';
 
-/** What a message's text may point at inside the app. Without it, task keys stay plain text and a thread's name opens nothing. */
+/** What a message's text may point at inside the app. Without it, task keys and chat references stay plain text and a thread's name opens nothing. */
 export interface StreamLinks {
     /** The task a key like `CAR-24` names, when the project has one. It answers at once, and a key the window does not know yet may be read from the daemon meanwhile (`ProjectState.taskOfKey`): call it while rendering, so the chip appears when the task is known. */
     taskOfKey?: (key: string) => Pick<Task, 'id' | 'key' | 'title'> | undefined;
@@ -13,7 +13,9 @@ export interface StreamLinks {
     attachmentBlob?: (attachment: Attachment) => Promise<Blob>;
     /** Whether the project still has the chat a thread's card names: a deleted one is plain text. */
     hasChat?: (chatId: ChatId) => boolean;
-    /** Opens a chat a thread's card names (the thread that wrote, or the one that stopped). */
+    /** The current title of a chat named by a message reference. */
+    chatOfId?: (chatId: ChatId) => Pick<Chat, 'id' | 'title'> | undefined;
+    /** Opens a referenced chat or a chat a thread's card names (the thread that wrote, or the one that stopped). */
     onOpenChat?: (chatId: ChatId) => void;
 }
 

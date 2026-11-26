@@ -212,6 +212,92 @@ describe('POST /v1/projects/:id/git/sync', () => {
         expect(git(path, 'rev-parse', 'refs/remotes/origin/main')).toBe(oldStandardRef);
     });
 
+    describe('the default branch', () => {
+        /** A repository on `topic`, made from `main`, with `main` moved on origin by somebody else. */
+        function behind() {
+            const { path, origin } = repository();
+            const old = git(path, 'rev-parse', 'main');
+
+            git(path, 'switch', '-q', '-c', 'topic');
+            commitFile(path, 'topic.txt');
+
+            const other = neighbour(origin);
+            const theirs = commitFile(other, 'theirs.txt');
+
+            git(other, 'push', '-q');
+
+            return { path, origin, old, theirs };
+        }
+
+        test('is fast-forwarded to origin while another branch is synced', async () => {
+            const { path, theirs } = behind();
+            const sync = await open(path);
+
+            expect((await sync({ branch: 'topic' })).at(-1)).toEqual({
+                type: 'result',
+                result: { state: 'done', branch: 'topic', pulled: 0, pushed: true },
+            });
+            expect(git(path, 'rev-parse', 'refs/heads/main')).toBe(theirs);
+            expect(git(path, 'rev-parse', 'HEAD')).not.toBe(theirs);
+            // Nothing of the branch that was synced changed: it still has none of main's commits.
+            expect(git(path, 'branch', '--contains', theirs, '--list', 'topic')).toBe('');
+        });
+
+        test('keeps a local main with commits of its own, and the sync still ends well', async () => {
+            const { path, theirs } = behind();
+
+            git(path, 'switch', '-q', 'main');
+            const mine = commitFile(path, 'mine.txt');
+            git(path, 'switch', '-q', 'topic');
+
+            const sync = await open(path);
+
+            expect((await sync({ branch: 'topic' })).at(-1)).toMatchObject({ result: { state: 'done' } });
+            expect(git(path, 'rev-parse', 'refs/heads/main')).toBe(mine);
+            expect(git(path, 'rev-parse', 'refs/heads/main')).not.toBe(theirs);
+        });
+
+        test('is not made when the person has no local main', async () => {
+            const { path } = behind();
+
+            git(path, 'branch', '-q', '-D', 'main');
+
+            const sync = await open(path);
+
+            expect((await sync({ branch: 'topic' })).at(-1)).toMatchObject({ result: { state: 'done' } });
+            expect(git(path, 'branch', '--list', 'main')).toBe('');
+        });
+
+        test('is left where it is while another checkout has it checked out', async () => {
+            const { path, old } = behind();
+            const elsewhere = join(tempDir('git-remote'), 'main-checkout');
+
+            git(path, 'worktree', 'add', '-q', elsewhere, 'main');
+
+            const sync = await open(path);
+
+            expect((await sync({ branch: 'topic' })).at(-1)).toMatchObject({ result: { state: 'done' } });
+            expect(git(path, 'rev-parse', 'refs/heads/main')).toBe(old);
+            expect(git(elsewhere, 'rev-parse', 'HEAD')).toBe(old);
+            expect(left(elsewhere)).toEqual([]);
+        });
+
+        test('is not touched by a sync of the branch itself beyond that branch', async () => {
+            const { path, origin } = repository();
+            const sync = await open(path);
+            const other = neighbour(origin);
+            const theirs = commitFile(other, 'theirs.txt');
+
+            git(other, 'push', '-q');
+
+            expect((await sync()).at(-1)).toEqual({
+                type: 'result',
+                result: { state: 'done', branch: 'main', pulled: 1, pushed: false },
+            });
+            expect(git(path, 'rev-parse', 'refs/heads/main')).toBe(theirs);
+        });
+    });
+
     test('merges diverged commits and then sends the new merge tip', async () => {
         const { path, origin } = repository();
         const sync = await open(path);

@@ -22,14 +22,14 @@
     padding-block-end: var(--spacing-192);
 }
 
-/* Fade below the composer's top edge; keep the scrollbar unmasked in the narrow strip at the right. */
+/* Fade across the banner stack, to the message box's top edge, with at least 48px of fade. Keep the scrollbar unmasked. */
 .root[data-composer-overlay] .scroll {
     mask-image:
         linear-gradient(
             to bottom,
             #000 0,
-            #000 max(0px, calc(100% - var(--composer-inset))),
-            transparent min(100%, max(0px, calc(100% - var(--composer-inset) + 48px)))
+            #000 max(0px, calc(100% - max(var(--composer-inset), var(--composer-surface-inset) + 48px))),
+            transparent max(0px, calc(100% - var(--composer-surface-inset)))
         ),
         linear-gradient(#000, #000);
     mask-size:

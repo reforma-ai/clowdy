@@ -127,7 +127,7 @@ afterEach(() => {
 });
 
 describe('the composer overlay', () => {
-    it('passes the measured border-box height to the stream when it changes, including in read-only mode', async () => {
+    it('measures both the overlay and the message box edge as banners grow, scroll and collapse', async () => {
         const observers: { callback: ResizeObserverCallback; targets: Element[]; disconnected: boolean }[] = [];
         vi.stubGlobal(
             'ResizeObserver',
@@ -150,25 +150,36 @@ describe('the composer overlay', () => {
         await draw('c-1', <span>Controls</span>);
 
         const overlay = container.querySelector<HTMLElement>(`.${styles.composer}`)!;
+        const banners = overlay.firstElementChild!.firstElementChild as HTMLElement;
         const observer = observers.find(candidate => candidate.targets.includes(overlay))!;
         expect(observer.targets).toContain(overlay.firstElementChild);
-        const inset = () =>
-            container
-                .querySelector<HTMLElement>('[style*="--composer-inset"]')!
-                .style.getPropertyValue('--composer-inset');
+        expect(observer.targets).toContain(banners);
+        const inset = (property = '--composer-inset') =>
+            container.querySelector<HTMLElement>('[style*="--composer-inset"]')!.style.getPropertyValue(property);
+        const surfaceInset = () => inset('--composer-surface-inset');
         expect(inset()).toBe('0px');
         expect(overlay.contains(field())).toBe(true);
         expect(overlay.textContent).toContain('Controls');
 
         let height = 143.5;
-        vi.spyOn(overlay, 'getBoundingClientRect').mockImplementation(() => ({ height }) as DOMRect);
+        let bannerBottom = 38;
+        vi.spyOn(overlay, 'getBoundingClientRect').mockImplementation(() => ({ height, bottom: height }) as DOMRect);
+        vi.spyOn(banners, 'getBoundingClientRect').mockImplementation(() => ({ bottom: bannerBottom }) as DOMRect);
         const resize = () => act(async () => observer.callback([], {} as ResizeObserver));
         await resize();
         expect(inset()).toBe('143.5px');
+        expect(surfaceInset()).toBe('105.5px');
 
         height = 381.25;
+        bannerBottom = 275.75;
         await resize();
         expect(inset()).toBe('381.25px');
+        expect(surfaceInset()).toBe('105.5px');
+
+        // A banner can change size even if the overlay is already at its maximum height.
+        bannerBottom = 250;
+        await resize();
+        expect(surfaceInset()).toBe('131.25px');
 
         // A tall overlay follows its bottom as it grows, but does not pull a person away from a panel they scrolled up to.
         Object.defineProperty(overlay, 'scrollHeight', { configurable: true, value: 500 });
@@ -177,8 +188,10 @@ describe('the composer overlay', () => {
         expect(overlay.scrollTop).toBe(500);
         await act(async () => {
             overlay.scrollTop = 50;
+            bannerBottom = 300;
             overlay.dispatchEvent(new Event('scroll', { bubbles: true }));
         });
+        expect(surfaceInset()).toBe('81.25px');
         await resize();
         expect(overlay.scrollTop).toBe(50);
 
@@ -190,8 +203,10 @@ describe('the composer overlay', () => {
         await render('c-1');
         expect(overlay.contains(notice())).toBe(true);
         height = 77.75;
+        bannerBottom = 0;
         await resize();
         expect(inset()).toBe('77.75px');
+        expect(surfaceInset()).toBe('77.75px');
 
         await render('c-2');
         expect(observer.disconnected).toBe(true);

@@ -42,6 +42,7 @@ const refused: CommandResult = {
 const tasks = [
     { id: 't-24', number: 24, key: 'CAR-24', title: 'Rebuild the form as one view', statusId: 'done' },
 ] as Task[];
+const otherChat = { ...newChat('other'), title: 'Review the auth architecture' };
 const FOLDERS: ProjectFolder[] = [{ id: 'fld_p', path: '/work/p' }];
 const docs: DocsTree = [
     {
@@ -110,6 +111,7 @@ async function mount(
         selectedProject: {
             project: { id: 'p', folders },
             taskList: tasks,
+            chatList: [chat, otherChat],
             taskOfKey: (key: string) => tasks.find(task => task.key === key),
             statuses: [{ id: 'done', name: 'Done', category: 'done' }],
         },
@@ -308,12 +310,13 @@ describe('Composer', () => {
             });
         };
 
-        it('lists tasks, documents and files after @, and sends a chosen task as its key', async () => {
+        it('lists tasks, chats, documents and files after @, and sends a chosen task as its key', async () => {
             await mount(accepted);
             await open('Do @');
 
             expect(optionTexts()).toEqual([
                 expect.stringContaining('CAR-24'),
+                expect.stringContaining(otherChat.title),
                 expect.stringContaining('pricing.md'),
                 expect.stringContaining('index.tsx'),
                 expect.stringContaining('price.ts'),
@@ -324,6 +327,20 @@ describe('Composer', () => {
             await press('Enter');
 
             expect(sent).toEqual([{ type: 'chat.send', chatId: chat.id, text: 'Do CAR-24', mode: 'steer' }]);
+        });
+
+        it('finds another chat by title, shows its chip, and sends the stable chat reference', async () => {
+            await mount(accepted);
+            await open('Continue from @auth');
+
+            expect(optionTexts()).toEqual([otherChat.title]);
+            await choose(otherChat.title);
+            expect(container.querySelector('[data-chip]')?.textContent).toBe(otherChat.title);
+            await press('Enter');
+
+            expect(sent).toEqual([
+                { type: 'chat.send', chatId: chat.id, text: 'Continue from `chat:other`', mode: 'steer' },
+            ]);
         });
 
         it('narrows the list as the person types and sends a file as @path', async () => {
@@ -454,7 +471,10 @@ describe('Composer', () => {
                 await mount(accepted);
                 await open('Do @');
 
-                expect(optionTexts()).toEqual([expect.stringContaining('CAR-24')]);
+                expect(optionTexts()).toEqual([
+                    expect.stringContaining('CAR-24'),
+                    expect.stringContaining(otherChat.title),
+                ]);
                 expect(transport.getProjectFiles).not.toHaveBeenCalled();
                 expect(transport.getDocsTree).not.toHaveBeenCalled();
             });
@@ -537,7 +557,11 @@ describe('Composer', () => {
             await mount(accepted);
             await open('Do @');
 
-            expect(optionTexts()).toEqual([expect.stringContaining('CAR-24'), expect.stringContaining('pricing.md')]);
+            expect(optionTexts()).toEqual([
+                expect.stringContaining('CAR-24'),
+                expect.stringContaining(otherChat.title),
+                expect.stringContaining('pricing.md'),
+            ]);
         });
 
         it("lists the person's skills after /, not the system ones, and sends the chosen one as the agent's own command", async () => {

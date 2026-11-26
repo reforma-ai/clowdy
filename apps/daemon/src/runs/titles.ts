@@ -1,6 +1,6 @@
 import { getChat } from '../db/chats';
 import { firstUserItem } from '../db/items';
-import { firstWords, saveChat, titleFrom } from '../domain/chats';
+import { firstWords, isFirstWords, saveChat, titleFrom } from '../domain/chats';
 import { FIRST_MESSAGE_START } from './prompts';
 
 import type { Chat, Run } from '@clowdy/protocol';
@@ -14,11 +14,11 @@ function chatOf(store: Store, run: Run): Chat | undefined {
     return run.role === 'orchestrator' && run.chatId ? getChat(store.db, run.chatId) : undefined;
 }
 
-/** Whether nobody has named the chat, not the person and not the agent: its title is still the first words of its first message. */
-function isUnnamed(store: Store, run: Run, chat: Chat): boolean {
+/** The first message of a chat still named by its fallback, not by the person or the agent. */
+function unnamedMessage(store: Store, run: Run, chat: Chat) {
     const first = firstUserItem(store.db, run.id)?.body;
 
-    return first?.kind === 'user' && chat.title === firstWords(first);
+    return first?.kind === 'user' && isFirstWords(chat.title, first) ? first : undefined;
 }
 
 /**
@@ -42,8 +42,14 @@ function takeTitle(store: Store, run: Run, given: string, prompt: string): boole
 
     return store.tx(() => {
         const chat = chatOf(store, run);
+        const first = chat && unnamedMessage(store, run, chat);
 
-        if (!chat || !isUnnamed(store, run, chat)) {
+        if (!chat || !first) {
+            return false;
+        }
+
+        // Do not let a provider echoing the raw message restore the URL the fallback skipped.
+        if (firstWords(first) !== titleFrom(first.text) && echoesPrompt(title, first.text)) {
             return false;
         }
 
@@ -74,7 +80,7 @@ export function sessionTitle(
         return undefined;
     }
 
-    return enabled && isUnnamed(store, run, chat)
+    return enabled && unnamedMessage(store, run, chat)
         ? { onTitle: title => takeTitle(store, run, title, prompt) }
         : { keep: chat.title };
 }

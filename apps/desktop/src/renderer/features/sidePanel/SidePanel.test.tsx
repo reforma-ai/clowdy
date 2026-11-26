@@ -1,10 +1,17 @@
 // @vitest-environment happy-dom
+import { Commit, Merge, Version, VersionWarn } from '@clowdy/icons/14';
 import { observer } from 'mobx-react-lite';
 import { act, useEffect } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createFixtureData } from '../../daemon/fixtureData';
+import {
+    createFixtureData,
+    FIXTURE_PROJECT_ID,
+    FIXTURE_WORKSPACE_CHAT_ID,
+    type FixtureData,
+    withFixtureWorkspace,
+} from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { defineCommand } from '../../hotkeys';
 import { RootStore, RootStoreProvider } from '../../stores';
@@ -695,5 +702,117 @@ describe('the rail of the side panel', () => {
         expect(settingsItem()).toBeDefined();
         expect([...container.querySelectorAll('button')].map(button => button.textContent)).toEqual(['Settings']);
         expect(settingsItem()!.className).toMatch(/bottom/);
+    });
+});
+
+describe('the Changes item of the rail', () => {
+    /** The markup of an icon as the rail draws it, to tell which icon an item has. */
+    const markupOf = (Icon: typeof Commit) => {
+        const host = document.createElement('div');
+        const iconRoot = createRoot(host);
+
+        act(() => iconRoot.render(<Icon width={14} height={14} aria-hidden />));
+        const markup = host.querySelector('svg')!.innerHTML;
+
+        act(() => iconRoot.unmount());
+
+        return markup;
+    };
+    const iconOf = () => tab('Changes')!.querySelector('svg')!.innerHTML;
+    const dot = () => tab('Changes')!.querySelector('[data-tone]');
+
+    /** A window with the chat that works in a worktree open: three uncommitted files, two commits that the base does not have, and the pull request the script says. */
+    async function inWorktree(script: 'open' | 'none' | 'draft' | 'merged', tweak?: (data: FixtureData) => void) {
+        const data = withFixtureWorkspace(createFixtureData());
+
+        data.pullRequests['/Users/dev/car-rental'] = { checkout: 'none', worktree: script };
+        tweak?.(data);
+        store.dispose();
+        store = new RootStore(new FixtureTransport({ data }), { storage: memory() });
+        await store.load();
+        store.selectProject(FIXTURE_PROJECT_ID);
+        ui().openChat(FIXTURE_WORKSPACE_CHAT_ID);
+        await draw(<Frame />);
+        await settle();
+    }
+
+    it('is the commit icon with no dot while the place has nothing to land and nothing uncommitted', async () => {
+        await draw(<Frame />);
+        await settle();
+
+        expect(iconOf()).toBe(markupOf(Commit));
+        expect(dot()).toBeNull();
+    });
+
+    it('draws a dot that counts the uncommitted files, and the icon of a pull request that is open', async () => {
+        await inWorktree('draft');
+
+        expect(iconOf()).toBe(markupOf(Merge));
+        expect(dot()?.getAttribute('data-tone')).toBe('warning');
+        expect(tab('Changes')!.getAttribute('aria-label')).toBe('Changes, 3 uncommitted files');
+    });
+
+    it('draws the icon of the branch while commits wait for a pull request, and the one with the warning while the pull request fails its checks', async () => {
+        await inWorktree('none');
+
+        expect(iconOf()).toBe(markupOf(Version));
+
+        await inWorktree('open');
+
+        expect(iconOf()).toBe(markupOf(VersionWarn));
+    });
+
+    it('goes back to the commit icon once a pull request has merged', async () => {
+        await inWorktree('merged');
+
+        expect(iconOf()).toBe(markupOf(Commit));
+    });
+
+    it('draws no dot while the Changes tab is on show, and draws it again when another tab is', async () => {
+        await inWorktree('draft');
+
+        await press(tab('Changes')!);
+        await settle();
+
+        expect(tab('Changes')?.getAttribute('aria-current')).toBe('page');
+        expect(dot()).toBeNull();
+        expect(tab('Changes')!.getAttribute('aria-label')).toBeNull();
+        expect(iconOf()).toBe(markupOf(Merge));
+
+        await press(tab('Files')!);
+        await settle();
+
+        expect(dot()).not.toBeNull();
+    });
+
+    it('draws the dot while the panel is shut, though Changes was the tab it showed last', async () => {
+        await inWorktree('draft');
+        await press(tab('Changes')!);
+        await settle();
+        await press(tab('Changes')!);
+        await settle();
+
+        expect(ui().sidePanelOpen).toBe(false);
+        expect(dot()).not.toBeNull();
+    });
+
+    it('says in its tooltip what the icon and the dot say, under its label', async () => {
+        await inWorktree('draft');
+        await act(async () => {
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+            tab('Changes')!.focus();
+        });
+        await settle();
+
+        const tip = document.querySelector('[role="tooltip"]')?.textContent ?? '';
+
+        expect(tip.startsWith('Changes')).toBe(true);
+        expect(tip).toMatch(/Draft pull request #\d+, checks are running3 uncommitted files$/);
+    });
+
+    it('has no dot on the other tabs', async () => {
+        await inWorktree('draft');
+
+        expect([...rail()!.querySelectorAll('[data-tone]')]).toHaveLength(1);
     });
 });

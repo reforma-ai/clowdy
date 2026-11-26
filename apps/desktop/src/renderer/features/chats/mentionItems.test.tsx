@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { docItems, docPaths, fileItems, skillItems, skillName, taskItems } from './mentionItems';
+import { chatItems, docItems, docPaths, fileItems, skillItems, skillName, taskItems } from './mentionItems';
 
-import type { DocNode, DocsSource, ProjectFolder, SkillEntry, Task } from '@clowdy/protocol';
+import type { Chat, DocNode, DocsSource, ProjectFolder, SkillEntry, Task } from '@clowdy/protocol';
 
 const task = (number: number, title: string): Task =>
     ({ id: `t-${number}`, number, key: `CAR-${number}`, title }) as Task;
@@ -40,6 +40,44 @@ describe('taskItems', () => {
             section: 'Tasks',
             displayText: 'CAR-25',
             data: { key: 'CAR-25', title: 'Send a confirmation email' },
+        });
+    });
+});
+
+describe('chatItems', () => {
+    const chat = (id: string, title: string, updatedAt: number, archivedAt?: number): Chat => ({
+        id,
+        title,
+        updatedAt,
+        archivedAt,
+        projectId: 'p',
+        mode: 'autopilot',
+        createdAt: 0,
+    });
+    const chats = [
+        chat('c-1', 'Current chat', 10),
+        chat('c-2', 'Review the architecture', 2),
+        chat('c-3', 'Review the API', 3),
+        chat('c-4', 'Old architecture review', 9, 9),
+    ];
+
+    it('excludes the current chat, lists active chats by recency, then archived chats', () => {
+        expect(chatItems(chats, '', 'c-1').map(item => item.label)).toEqual([
+            'Review the API',
+            'Review the architecture',
+            'Old architecture review',
+        ]);
+    });
+
+    it('matches title words case-insensitively and carries a stable ID', () => {
+        expect(chatItems(chats, 'ARCH Review').map(item => item.value)).toEqual(['chat:c-2', 'chat:c-4']);
+        expect(chatItems(chats, 'c-4')[0]).toMatchObject({
+            value: 'chat:c-4',
+            label: 'Old architecture review',
+            description: 'Archived',
+            section: 'Chats',
+            kind: 'chat',
+            data: { chatId: 'c-4', title: 'Old architecture review' },
         });
     });
 });

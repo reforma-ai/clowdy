@@ -8,22 +8,30 @@
     width: 100%;
 }
 
-/* The question is a title in a band, as in Reforma's question panel. */
-.header {
+/* The question and what can be picked. In the box under the chat it stops at half of the window and scrolls, so the rest of the chat stays in view and the buttons under it are always there. */
+.scroll {
     display: flex;
-    align-items: center;
-    min-height: var(--spacing-36);
-    padding: var(--spacing-md) var(--spacing-lg);
-    border-radius: calc(var(--radius-sm) * var(--squircle-radius-factor));
-    corner-shape: superellipse(var(--squircle-value));
-    background-color: var(--color-secondary-light);
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    min-height: 0;
+}
+
+.scroll[data-bounded] {
+    max-height: 50vh;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+}
+
+/* The question: a title with no plate of its own. It may run to a few lines when the agent writes the facts into it, so it is plain text at the size of the field. */
+.header {
+    padding: var(--spacing-md);
 }
 
 .facts {
     display: flex;
     flex-direction: column;
     gap: var(--spacing-sm);
-    padding-inline: var(--spacing-lg);
+    padding-inline: var(--spacing-md);
 }
 
 .options {
@@ -90,7 +98,6 @@
 
 /* The 1px edge is always there, so turning it visible does not move the row. */
 .option[data-field] {
-    align-items: center;
     border: 1px solid transparent;
 }
 
@@ -102,14 +109,18 @@
     background-color: transparent;
 }
 
+/* The same line as the options' labels, so the first line of the field sits level with its number and a longer answer is set like the rows above it. */
 .field {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+    line-height: var(--ask-option-line);
 }
 
+/* A rule under the options, as far from the last row as from the buttons: the panel's own gap above it, the same padding below. */
 .footer {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: var(--spacing-xxs) var(--spacing-xs) var(--spacing-xxs) var(--spacing-lg);
+    padding-top: var(--spacing-sm);
+    border-top: 1px solid var(--color-secondary-muted-border);
 }

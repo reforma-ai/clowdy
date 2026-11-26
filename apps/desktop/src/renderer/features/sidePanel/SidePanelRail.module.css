@@ -25,3 +25,10 @@
 .bottom {
     margin-top: auto;
 }
+
+/* A line the Changes tab's tooltip adds under the label and the key. */
+.detail {
+    display: block;
+    margin-top: var(--spacing-2);
+    opacity: 0.7;
+}

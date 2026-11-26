@@ -17,6 +17,10 @@ describe('serializeMention', () => {
         expect(serializeMention(mention('task', { key: 'CAR-24', title: 'Rebuild the form' }))).toBe('CAR-24');
     });
 
+    it('writes a chat by stable ID regardless of the title', () => {
+        expect(serializeMention(mention('chat', { chatId: 'cht_123', title: 'An old title' }))).toBe('`chat:cht_123`');
+    });
+
     it('writes a file and a document as @path, from the project folder', () => {
         expect(serializeMention(mention('file', { path: 'src/booking/index.tsx' }))).toBe('@src/booking/index.tsx');
         expect(serializeMention(mention('doc', { path: '.clowdy/docs/decisions/pricing.md' }))).toBe(

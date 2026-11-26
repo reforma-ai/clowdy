@@ -2,7 +2,7 @@ import { isTerminalRunStatus } from '@clowdy/protocol';
 
 import { getChatLastRun, setChatLastRun, setForkPoint } from '../db/chats';
 import { firstUserItem, itemBefore, listItems, nextSeq } from '../db/items';
-import { firstWords, requireChat, saveChat } from '../domain/chats';
+import { firstWords, isFirstWords, requireChat, saveChat } from '../domain/chats';
 import { cutStream, streamItem } from '../domain/items';
 import { conflict, EngineFailure, invalid, notFound, unavailable } from '../errors';
 import { reasonOf } from './fork';
@@ -166,7 +166,7 @@ export async function prepareEdit(
 
             const first = firstUserItem(store.db, run.id);
             const unnamed =
-                first?.id === item.id && first.body.kind === 'user' && source.title === firstWords(first.body);
+                first?.id === item.id && first.body.kind === 'user' && isFirstWords(source.title, first.body);
             const dropped = cutStream(store, run, item.seq);
             const files = attachments.sentIn(source.id, filesOf(dropped)).map(file => file.id);
             const carried = new Set(input.attachmentIds ?? []);

@@ -70,7 +70,7 @@ interface StoredProjectUi {
     chatOrder: ChatId[];
     groupByFolder: boolean;
     collapsedFolders: FolderId[];
-    agentsExpanded: boolean;
+    agentsFoldedByChat: Record<ChatId, boolean>;
     sidePanelOpen: boolean;
     sidePanelTab: SidePanelTab;
     sidePanelExpanded: boolean;
@@ -182,8 +182,6 @@ export class ProjectUi {
     groupByFolder = true;
     /** Agents: the folders whose group is folded in the list. A folder that is not here is open, which is how every group starts. */
     collapsedFolders: readonly FolderId[] = [];
-    /** Chats: the running-agents strip starts folded. The project remembers the person's choice. */
-    agentsFolded = true;
     /** The side panel at the right of the window is open for this project. Closed until the person opens it, and kept for the project, whichever chat is on show. */
     sidePanelOpen = false;
     /** The tab the side panel shows, kept for the project: the one it was left on. */
@@ -219,6 +217,9 @@ export class ProjectUi {
     readonly #windowFitsHalf: () => boolean;
     /** Tasks: the comment each task's composer holds and has not sent, the one written last at the end. Not kept between sessions, and no place of the history. */
     readonly #commentDrafts = new Map<TaskId, string>();
+    /** Chats: the running-agents strip starts folded and remembers only that chat's choice. */
+    readonly #agentsFoldedByChat = observable.map<ChatId, boolean>();
+    readonly #agentsFoldedByDefault: boolean;
     readonly #chatCompletionsSince: number;
     readonly #seenChatCompletions = observable.map<RunId, number>();
 
@@ -235,6 +236,8 @@ export class ProjectUi {
         const since = completions?.since;
         const tracksCompletions = typeof since === 'number' && Number.isFinite(since);
 
+        const { agentsFolded, ...initialView } = initial;
+        this.#agentsFoldedByDefault = agentsFolded !== false;
         this.#tasks = tasks;
         this.#windowFitsHalf = windowFitsHalf;
         // On upgrade there is no read history. Start with the old completions already seen.
@@ -260,8 +263,17 @@ export class ProjectUi {
             this.collapsedFolders = Array.isArray(stored.collapsedFolders)
                 ? stored.collapsedFolders.filter(id => typeof id === 'string')
                 : [];
-            // Older versions saved the open default as agentsFolded: false on unrelated UI changes.
-            this.agentsFolded = stored.agentsExpanded !== true;
+            // A project-wide choice from an older version cannot identify which chat was opened.
+            if (
+                agentsFolded === undefined &&
+                stored.agentsFoldedByChat &&
+                typeof stored.agentsFoldedByChat === 'object' &&
+                !Array.isArray(stored.agentsFoldedByChat)
+            ) {
+                for (const [chatId, folded] of Object.entries(stored.agentsFoldedByChat)) {
+                    if (typeof folded === 'boolean') this.#agentsFoldedByChat.set(chatId, folded);
+                }
+            }
             this.sidePanelOpen = stored.sidePanelOpen === true;
             this.sidePanelTab = SIDE_PANEL_TABS.find(tab => tab === stored.sidePanelTab) ?? this.sidePanelTab;
             this.sidePanelExpanded = stored.sidePanelExpanded === true;
@@ -274,7 +286,7 @@ export class ProjectUi {
                 : [];
         }
 
-        Object.assign(this, initial);
+        Object.assign(this, initialView);
         makeAutoObservable(this, {
             projectId: false,
             pendingFiles: observableRef,
@@ -294,7 +306,7 @@ export class ProjectUi {
                 chatOrder: [...this.chatOrder],
                 groupByFolder: this.groupByFolder,
                 collapsedFolders: [...this.collapsedFolders],
-                agentsExpanded: !this.agentsFolded,
+                agentsFoldedByChat: Object.fromEntries(this.#agentsFoldedByChat),
                 sidePanelOpen: this.sidePanelOpen,
                 sidePanelTab: this.sidePanelTab,
                 sidePanelExpanded: this.sidePanelExpanded,
@@ -521,9 +533,17 @@ export class ProjectUi {
             this.collapsedFolders = this.collapsedFolders.filter(id => id !== folderId);
     }
 
-    /** Folds the rows of the running-agents strip under its line, or shows them again. */
-    toggleAgentsFolded(): void {
-        this.agentsFolded = !this.agentsFolded;
+    /** Whether a chat's running-agents strip is folded. Other chats do not share its choice. */
+    agentsFolded(chatId: ChatId): boolean {
+        return this.#agentsFoldedByChat.get(chatId) ?? this.#agentsFoldedByDefault;
+    }
+
+    /** Folds the rows of this chat's running-agents strip under its line, or shows them again. */
+    toggleAgentsFolded(chatId: ChatId): void {
+        const folded = !this.agentsFolded(chatId);
+
+        if (folded === this.#agentsFoldedByDefault) this.#agentsFoldedByChat.delete(chatId);
+        else this.#agentsFoldedByChat.set(chatId, folded);
     }
 
     /** Opens the side panel at the right of the window, or shuts it. */

@@ -3,8 +3,7 @@ import { ContentColumn } from '@clowdy/components/ContentColumn';
 import { useStickToBottom } from '@clowdy/components/hooks';
 import { Show } from '@clowdy/components/Show';
 import { ArrowDown } from '@clowdy/icons/14';
-import { mergeRefs } from '@clowdy/lib';
-import { Fragment, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
+import { Fragment, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 
 import { ApprovalCard } from './ApprovalCard';
 import { AssistantMessage } from './AssistantMessage';
@@ -20,6 +19,7 @@ import { SelectionReply } from './SelectionReply';
 import { NO_LINKS, type StreamLinks, StreamLinksContext } from './StreamLinks';
 import styles from './StreamView.module.css';
 import { SubagentCard } from './SubagentCard';
+import { captureScrollPosition, LATEST_THRESHOLD, restoreScrollPosition, type ScrollMemory } from './scrollPosition';
 import { isSubagentTool } from './subagents';
 import { ThreadMessageCard, ThreadNoticeCards } from './ThreadCards';
 import { ToolCard } from './ToolCard';
@@ -87,8 +87,12 @@ export interface StreamViewHandle {
 export interface StreamViewProps {
     ref?: Ref<StreamViewHandle>;
     items: StreamItem[];
+    /** Reading position for a chat that may be unmounted while the person reads another. */
+    scrollMemory?: ScrollMemory;
     /** Height in pixels occupied by a composer overlaid on the bottom of the stream. */
     composerInset?: number;
+    /** Distance from the stream's bottom to the top of the message box, excluding the banners above it. */
+    composerSurfaceInset?: number;
     /** The run is going, or waits for the person: its latest turn stays open. Once it is over, that turn folds its work too. */
     active?: boolean;
     /**
@@ -132,7 +136,9 @@ export interface StreamViewProps {
  */
 export function StreamView({
     items,
+    scrollMemory,
     composerInset = 0,
+    composerSurfaceInset = composerInset,
     active = false,
     working,
     onAnswer,
@@ -149,13 +155,36 @@ export function StreamView({
 }: StreamViewProps) {
     const scroller = useRef<HTMLDivElement>(null);
     const inset = Number.isFinite(composerInset) ? Math.max(0, composerInset) : 0;
-    const { scrollRef: stickScrollRef, contentRef, isAtBottom, scrollToBottom } = useStickToBottom();
+    const surfaceInset = Number.isFinite(composerSurfaceInset)
+        ? Math.min(inset, Math.max(0, composerSurfaceInset))
+        : inset;
+    const surfaceInsetRef = useRef(surfaceInset);
+    surfaceInsetRef.current = surfaceInset;
+    const [initialPosition] = useState(() => scrollMemory?.read());
+    const {
+        scrollRef: stickScrollRef,
+        contentRef,
+        isAtBottom,
+        scrollToBottom,
+    } = useStickToBottom({
+        initial: initialPosition ? false : 'instant',
+        threshold: LATEST_THRESHOLD,
+    });
     useImperativeHandle(ref, () => ({ followLatest: () => scrollToBottom({ animation: 'instant' }) }), [
         scrollToBottom,
     ]);
-    const scrollRef = useMemo(
-        () => mergeRefs<HTMLDivElement>(scroller, node => stickScrollRef(node)),
-        [stickScrollRef]
+    const scrollRef = useCallback(
+        (node: HTMLDivElement | null) => {
+            const previous = scroller.current;
+
+            if (previous && !node && previous.clientHeight > 0) {
+                scrollMemory?.write(captureScrollPosition(previous, surfaceInsetRef.current));
+            }
+            if (node && initialPosition) restoreScrollPosition(node, initialPosition);
+            scroller.current = node;
+            stickScrollRef(node);
+        },
+        [initialPosition, scrollMemory, stickScrollRef]
     );
     const marks = useMemo(() => turnMarks(items), [items]);
     const blocks = useMemo(() => groupToolRuns(foldFinishedWork(items, active)), [items, active]);
@@ -273,7 +302,15 @@ export function StreamView({
                     />
                 );
             case 'assistant':
-                return <AssistantMessage text={body.text} streaming={!body.done} at={item.at} actions={actions} />;
+                return (
+                    <AssistantMessage
+                        itemId={item.id}
+                        text={body.text}
+                        streaming={!body.done}
+                        at={item.at}
+                        actions={actions}
+                    />
+                );
             case 'reasoning':
                 return <ReasoningLine body={body} />;
             case 'tool':
@@ -312,7 +349,12 @@ export function StreamView({
             <div
                 className={styles.root}
                 data-composer-overlay={inset > 0 || undefined}
-                style={{ '--composer-inset': `${inset}px` } as CSSProperties}
+                style={
+                    {
+                        '--composer-inset': `${inset}px`,
+                        '--composer-surface-inset': `${surfaceInset}px`,
+                    } as CSSProperties
+                }
             >
                 <div ref={scrollRef} className={styles.scroll}>
                     <ContentColumn ref={contentRef} className={styles.content}>

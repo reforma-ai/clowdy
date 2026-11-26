@@ -305,10 +305,13 @@ describe('the prompts of a run', () => {
 
         // A run without a chat has no thread commands, and every run is told how to reach the task tools.
         expect(none).not.toContain('clowdy thread');
+        expect(none).not.toContain('clowdy chat read');
         expect(none).toContain('Tasks: read, change, comment on and archive them with the shell command `clowdy task`');
         expect(none).toContain('`task_get`, `task_list`, `task_create`, `task_update` and the other `task_` tools');
 
         expect(chat).toContain('Threads: you can hand work to other agents as threads');
+        expect(chat).toContain('clowdy chat read <id>');
+        expect(chat).toContain('chat:<id>');
         expect(chat).toContain('`clowdy thread --help`');
         expect(chat).toContain('`"$CLOWDY_CLI"` is the same command if your shell does not find `clowdy`');
         expect(chat).toContain(

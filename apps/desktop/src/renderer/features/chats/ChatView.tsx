@@ -5,7 +5,7 @@ import { Loader } from '@clowdy/components/Loader';
 import { Text } from '@clowdy/components/Text';
 import { AttentionCircle, Split } from '@clowdy/icons/14';
 import { shownRunStatus } from '@clowdy/protocol';
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { useAgents, useChatStream, useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { type ForkAgent, openQuestion, QuestionPanel, StreamView, type StreamViewHandle } from '../../stream';
@@ -18,6 +18,7 @@ import styles from './ChatView.module.css';
 import { Composer, type ComposerHandle } from './Composer';
 import { canCompactChat, chatProvider, chatWritability, handoffAgents } from './chatProvider';
 import { isRunActive, liveLine, overflowed } from './chatRun';
+import { chatScrollMemory } from './chatScrollMemory';
 import { perform } from './commands';
 import { composerBannerPreferences } from './composerBannerPreferences';
 import { LastRunPlate } from './LastRunPlate';
@@ -46,6 +47,7 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
     const root = useRootStore();
     const project = useProjectState();
     const ui = useProjectUi();
+    const scrollMemory = useMemo(() => chatScrollMemory(ui, chat.id), [ui, chat.id]);
     const skillOfName = useSkillLookup();
     // A task key in a message is a chip that opens the task, an archived one the window knows too (`ProjectState.taskOfKey`); a skill it asks for is a chip too; a thread's card opens that thread.
     const links = useMemo(
@@ -55,6 +57,7 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
             onOpenTask: (taskId: string) => ui.openTask(taskId),
             attachmentBlob: (attachment: Attachment) => root.transport.getAttachment(project.id, attachment.id),
             hasChat: (chatId: string) => project.chats.has(chatId),
+            chatOfId: (chatId: string) => project.chats.get(chatId),
             onOpenChat: (chatId: string) => void openChat(root, project, ui, chatId),
         }),
         [project, ui, root, skillOfName]
@@ -71,24 +74,37 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
     const composer = useRef<ComposerHandle>(null);
     const overlay = useRef<HTMLDivElement>(null);
     const overlayContent = useRef<HTMLDivElement>(null);
+    const banners = useRef<HTMLDivElement>(null);
     const overlayAtBottom = useRef(true);
-    const [composerInset, setComposerInset] = useState(0);
+    const [composerInset, setComposerInset] = useState<number>();
+    const [composerSurfaceInset, setComposerSurfaceInset] = useState(0);
+    const measureOverlay = useCallback(() => {
+        const element = overlay.current;
+        const bannerStack = banners.current;
+
+        if (!element || !bannerStack) return;
+        const bounds = element.getBoundingClientRect();
+
+        setComposerInset(bounds.height);
+        setComposerSurfaceInset(bounds.bottom - bannerStack.getBoundingClientRect().bottom);
+    }, []);
     useLayoutEffect(() => {
         const element = overlay.current;
 
         if (!element) return;
         const measure = () => {
             if (overlayAtBottom.current) element.scrollTop = element.scrollHeight;
-            setComposerInset(element.getBoundingClientRect().height);
+            measureOverlay();
         };
         const observer = new ResizeObserver(measure);
 
         measure();
         observer.observe(element, { box: 'border-box' });
         if (overlayContent.current) observer.observe(overlayContent.current);
+        if (banners.current) observer.observe(banners.current);
 
         return () => observer.disconnect();
-    }, []);
+    }, [measureOverlay]);
     const streamView = useRef<StreamViewHandle>(null);
     const stream = useChatStream(chat);
     const run = chat.orchestratorRunId ? project.runs.get(chat.orchestratorRunId) : undefined;
@@ -149,10 +165,12 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
                 </div>
             )}
 
-            {(!stream || stream.status === 'ready') && (
+            {composerInset !== undefined && (!stream || stream.status === 'ready') && (
                 <StreamView
                     ref={streamView}
+                    scrollMemory={scrollMemory}
                     composerInset={composerInset}
+                    composerSurfaceInset={composerSurfaceInset}
                     items={items}
                     active={isRunActive(run)}
                     working={isRunActive(run) && liveLine(shownRunStatus(run))}
@@ -224,17 +242,24 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
                 onScroll={event => {
                     const element = event.currentTarget;
                     overlayAtBottom.current = element.scrollHeight - element.clientHeight - element.scrollTop < 2;
+                    measureOverlay();
                 }}
             >
                 <div ref={overlayContent}>
-                    <RunningAgents chat={chat} />
-                    {/* What the chat's latest run changed, once it is at rest and the person has not written since; for a read only chat too. */}
-                    {composerBannerPreferences.showChanges && (
-                        <LastRunPlate chat={chat} run={run} items={stream?.status === 'ready' ? items : undefined} />
-                    )}
-                    {composerBannerPreferences.showTasks && progress && (
-                        <TasksBanner key={chat.id} progress={progress} />
-                    )}
+                    <div ref={banners}>
+                        <RunningAgents chat={chat} />
+                        {/* What the chat's latest run changed, once it is at rest and the person has not written since; for a read only chat too. */}
+                        {composerBannerPreferences.showChanges && (
+                            <LastRunPlate
+                                chat={chat}
+                                run={run}
+                                items={stream?.status === 'ready' ? items : undefined}
+                            />
+                        )}
+                        {composerBannerPreferences.showTasks && progress && (
+                            <TasksBanner key={chat.id} progress={progress} />
+                        )}
+                    </div>
                     {/* The composer draws the line under its box itself, with the mode at the end of it; a chat that is read only has no mode to show. */}
                     {writability.writable ? (
                         <Composer
@@ -246,6 +271,7 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
                             question={
                                 asked && run ? (
                                     <QuestionPanel
+                                        bounded
                                         key={asked.questionId}
                                         question={asked}
                                         onAnswer={async answer => {
