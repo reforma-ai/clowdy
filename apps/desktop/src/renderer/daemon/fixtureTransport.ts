@@ -1197,6 +1197,12 @@ export class FixtureTransport implements Transport {
 
         if (!worktree) return fail('conflict', 'Git does not list it as a worktree of the folder');
 
+        if (
+            command.expectedBranch &&
+            (worktree.branch !== command.expectedBranch.name || worktree.headOid !== command.expectedBranch.commit)
+        )
+            return fail('conflict', 'The branch changed. Try again');
+
         if (command.expectedChatIds !== undefined && !command.chatDisposition) {
             return fail('invalid', 'Expected chats require a chat disposition');
         }

@@ -276,6 +276,8 @@ export interface WorktreeInfo {
     branch?: string;
     /** The first seven characters of the commit it is on; empty when git did not say. */
     head: string;
+    /** Full commit ID for confirming branch deletion. */
+    headOid?: string;
     /** The worktree is the folder's own checkout. */
     main: boolean;
     /** Git lists it but its folder is gone from the disk (`prunable`, or nothing there): only its record can be removed. */

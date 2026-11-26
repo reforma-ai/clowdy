@@ -127,6 +127,7 @@ async function setup(
         fields: {
             discard?: boolean;
             deleteBranch?: boolean;
+            expectedBranch?: { name: string; commit: string };
             chatDisposition?: 'archive' | 'delete';
             expectedChatIds?: string[];
             tidy?: boolean;
@@ -173,6 +174,108 @@ async function setup(
 }
 
 describe('workspace.remove', () => {
+    test('removes an unchanged merged worktree and its confirmed branch', async () => {
+        const { repo, found, remove, hasBranch } = await setup();
+        const path = found('confirmed');
+        const tip = git(path, 'rev-parse', 'HEAD');
+        const result = await remove(path, { deleteBranch: true, expectedBranch: { name: 'confirmed', commit: tip } });
+        expect([result.ok, existsSync(path), hasBranch('confirmed'), git(repo, 'rev-parse', 'main')]).toEqual([
+            true,
+            false,
+            false,
+            tip,
+        ]);
+    });
+
+    test('keeps a branch advanced after the worktree was removed', async () => {
+        if (process.platform === 'win32') return;
+        const { root, repo, found, remove } = await setup();
+        const path = found('late');
+        const tip = git(path, 'rev-parse', 'HEAD');
+        const next = commit(repo, 'later.txt', 'Later');
+        const bin = join(root, 'bin');
+        mkdirSync(bin);
+        writeFileSync(
+            join(bin, 'git'),
+            [
+                '#!/bin/sh',
+                'if [ "$1" = update-ref ] && [ "$2" = --no-deref ]; then',
+                '  touch "$CLOWDY_REMOVAL_TEST_GATE/ready"',
+                '  while [ ! -f "$CLOWDY_REMOVAL_TEST_GATE/go" ]; do sleep 0.02; done',
+                'fi',
+                'exec "$CLOWDY_REMOVAL_TEST_GIT" "$@"',
+            ].join('\n'),
+            { mode: 0o755 }
+        );
+        const previousPath = process.env.PATH;
+        process.env.CLOWDY_REMOVAL_TEST_GIT = Bun.which('git')!;
+        process.env.CLOWDY_REMOVAL_TEST_GATE = bin;
+        process.env.PATH = `${bin}:${previousPath}`;
+        const removing = remove(path, { deleteBranch: true, expectedBranch: { name: 'late', commit: tip } });
+        try {
+            await waitFor(() => existsSync(join(bin, 'ready')), 'branch deletion to start');
+            git(repo, 'update-ref', 'refs/heads/late', next, tip);
+        } finally {
+            writeFileSync(join(bin, 'go'), '');
+            await removing;
+            process.env.PATH = previousPath;
+            delete process.env.CLOWDY_REMOVAL_TEST_GIT;
+            delete process.env.CLOWDY_REMOVAL_TEST_GATE;
+        }
+        expect(await removing).toMatchObject({
+            ok: false,
+            error: {
+                code: 'conflict',
+                message: 'The worktree was removed, but the branch changed. The branch was kept',
+            },
+        });
+        expect([existsSync(path), git(repo, 'rev-parse', 'late')]).toEqual([false, next]);
+    });
+
+    test('refuses a different checked-out branch after preview', async () => {
+        const { repo, found, remove, hasBranch } = await setup();
+        const path = found('original');
+        const tip = git(path, 'rev-parse', 'HEAD');
+        git(path, 'switch', '-q', '-c', 'other');
+        const result = await remove(path, { deleteBranch: true, expectedBranch: { name: 'original', commit: tip } });
+        expect([
+            result.ok,
+            existsSync(path),
+            hasBranch('original'),
+            hasBranch('other'),
+            git(repo, 'rev-parse', 'other'),
+        ]).toEqual([false, true, true, true, tip]);
+    });
+
+    test('refuses a symbolic branch without deleting its target', async () => {
+        const { repo, found, remove, hasBranch } = await setup();
+        const path = found('alias');
+        const tip = git(path, 'rev-parse', 'HEAD');
+        git(repo, 'symbolic-ref', 'refs/heads/alias', 'refs/heads/main');
+        const result = await remove(path, { deleteBranch: true, expectedBranch: { name: 'alias', commit: tip } });
+        expect([result.ok, existsSync(path), hasBranch('alias'), git(repo, 'rev-parse', 'main')]).toEqual([
+            false,
+            true,
+            true,
+            tip,
+        ]);
+    });
+
+    test('refuses a branch advanced after preview', async () => {
+        const { repo, found, remove, hasBranch } = await setup();
+        const path = found('advanced');
+        const tip = git(path, 'rev-parse', 'HEAD');
+        const advanced = commit(path);
+        const result = await remove(path, { deleteBranch: true, expectedBranch: { name: 'advanced', commit: tip } });
+        expect([
+            result.ok,
+            existsSync(path),
+            hasBranch('advanced'),
+            git(repo, 'rev-parse', 'advanced'),
+            readFileSync(join(path, 'work.txt'), 'utf8'),
+        ]).toEqual([false, true, true, advanced, 'Work\n']);
+    });
+
     test("removes a clean worktree somebody else made, keeps its branch and its commits, and leaves the folder's own checkout as it was", async () => {
         const { repo, found, remove, listed, hasBranch, rows } = await setup();
         const path = found('feature');

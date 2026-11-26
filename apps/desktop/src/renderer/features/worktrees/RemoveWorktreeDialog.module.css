@@ -7,9 +7,3 @@
 .title {
     padding-right: var(--spacing-xl);
 }
-
-.choice {
-    width: 100%;
-    flex-direction: row-reverse;
-    justify-content: space-between;
-}
