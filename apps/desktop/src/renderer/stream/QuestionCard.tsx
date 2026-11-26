@@ -1,11 +1,12 @@
 import { Text } from '@clowdy/components/Text';
-import { Check } from '@clowdy/icons/14';
+import { Message } from '@clowdy/icons/14';
 
 import styles from './QuestionCard.module.css';
 import { QuestionPanel } from './QuestionPanel';
 import { splitQuestion } from './questionParts';
 
 import type { StreamItemBody } from '@clowdy/protocol';
+import type { ReactNode } from 'react';
 
 type QuestionBody = Extract<StreamItemBody, { kind: 'question' }>;
 
@@ -17,18 +18,25 @@ export interface QuestionCardProps {
     docked?: boolean;
 }
 
-/** The question as a title, then its facts and "My pick" as quieter paragraphs. */
-function QuestionText({ text }: { text: string }) {
-    const { title, paragraphs } = splitQuestion(text);
-
+/**
+ * A question that is over (Reforma's answer card): a message mark and a header, then under a rule the question in a line or two, and what came of
+ * it. The facts and the agent's pick are not repeated: they were for choosing.
+ */
+function SettledCard({ header, asked, children }: { header: string; asked: string; children: ReactNode }) {
     return (
-        <div className={styles.text}>
-            <Text weight="medium">{title}</Text>
-            {paragraphs.map(paragraph => (
-                <Text key={paragraph} color="secondary" whitespace="pre-line">
-                    {paragraph}
+        <div className={styles.settled}>
+            <div className={styles.settledHeader}>
+                <Message className={styles.settledIcon} aria-hidden />
+                <Text variant="sm" weight="medium">
+                    {header}
                 </Text>
-            ))}
+            </div>
+            <div className={styles.settledBody}>
+                <Text variant="label" color="secondary" className={styles.asked}>
+                    {asked}
+                </Text>
+                {children}
+            </div>
         </div>
     );
 }
@@ -40,31 +48,29 @@ function QuestionText({ text }: { text: string }) {
  */
 export function QuestionCard({ question, onAnswer, docked }: QuestionCardProps) {
     const { text, answer, state } = question;
+    const { title } = splitQuestion(text);
 
     if (answer !== undefined) {
         return (
-            <div className={styles.card} data-plain data-answered>
-                <QuestionText text={text} />
-                <div className={styles.answer}>
-                    <Check aria-hidden />
-                    <Text color="secondary">{answer}</Text>
-                </div>
-            </div>
+            <SettledCard header="Answer" asked={title}>
+                <Text variant="sm" wrap="anywhere" whitespace="pre-line">
+                    {answer}
+                </Text>
+            </SettledCard>
         );
     }
 
     if (state) {
         return (
-            <div className={styles.card} data-plain>
-                <QuestionText text={text} />
-                <Text color="secondary">
+            <SettledCard header="Question" asked={title}>
+                <Text variant="sm" color="secondary">
                     {state === 'preparing'
                         ? 'Stopping the agent…'
                         : state === 'expired'
                           ? 'Question expired'
                           : 'Question withdrawn'}
                 </Text>
-            </div>
+            </SettledCard>
         );
     }
 

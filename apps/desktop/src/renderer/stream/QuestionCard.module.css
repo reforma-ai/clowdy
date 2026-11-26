@@ -12,28 +12,58 @@
     background-color: var(--color-surface-float);
 }
 
-/* A question that takes no answer here, or has one already: a plain text in the frame. Once answered it is history, so no plate. */
-.card[data-plain] {
-    gap: var(--spacing-lg);
-    padding: var(--spacing-lg) var(--spacing-xl);
+/* A question that is over, in the family of the agent cards. */
+.settled {
+    @ruleset typography-text-md;
+
+    width: 100%;
+    border: 1px solid var(--color-secondary-muted-border);
+    border-radius: calc(var(--radius-lg) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    background-color: var(--color-surface-float);
+    overflow: hidden;
 }
 
-.card[data-answered] {
-    gap: var(--spacing-md);
-    background-color: transparent;
-}
+.settledHeader {
+    @ruleset typography-text-sm;
 
-.text {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-md);
-}
-
-.answer {
     display: flex;
     align-items: center;
-    gap: var(--spacing-md);
-    color: var(--color-success-text);
+    gap: var(--spacing-sm);
+    min-height: var(--spacing-36);
+    padding: var(--spacing-md) var(--spacing-lg);
+}
+
+.settledIcon {
+    flex-shrink: 0;
+    color: var(--color-secondary-muted-text);
+}
+
+/* The rule stands in from the card's edges, as in the tool cards. */
+.settledBody {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-md) var(--spacing-lg) var(--spacing-lg);
+}
+
+.settledBody::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: var(--spacing-md);
+    right: var(--spacing-md);
+    height: 1px;
+    background-color: var(--color-secondary-muted-border);
+}
+
+/* The question is a reminder of what was answered, so a long one stops at two lines. */
+.asked {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
 }
 
 /* Not a card: the question is in the box under the chat, so the stream only says where. */

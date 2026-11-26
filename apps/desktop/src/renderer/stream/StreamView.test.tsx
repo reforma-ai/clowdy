@@ -494,7 +494,8 @@ describe('runs of tool calls', () => {
         );
         expect(container.textContent).toContain('Answer in the box below');
         expect(container.textContent).not.toContain('A fact about it.');
-        expect(container.textContent).toContain('An earlier fact.');
+        expect(container.textContent).toContain('Earlier?');
+        expect(container.textContent).toContain('Yes');
         expect(container.querySelector('button[aria-label="Next"]')).toBeNull();
     });
 

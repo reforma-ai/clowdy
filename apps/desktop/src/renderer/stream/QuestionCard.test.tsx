@@ -54,13 +54,26 @@ describe('QuestionCard', () => {
         expect(container.textContent).toBe('Answer in the box below');
     });
 
-    it('shows the answer in place of the form once answered, docked or not', async () => {
+    it('shows the question and its answer once answered, without the facts, docked or not', async () => {
         await draw({ answer: 'Admins only' }, { docked: true });
 
         expect(container.querySelector('form')).toBeNull();
-        expect(container.textContent).toContain('The orders page is visible to every signed-in user.');
+        expect(container.textContent).toContain('Answer');
+        expect(container.textContent).toContain('Who can export orders?');
         expect(container.textContent).toContain('Admins only');
+        expect(container.textContent).not.toContain('The orders page is visible');
+        expect(container.textContent).not.toContain('My pick');
         expect(container.textContent).not.toContain('Answer in the box below');
+    });
+
+    it('keeps the lines of an answer the person wrote', async () => {
+        await draw({ answer: 'First line\nSecond line' });
+
+        const line = [...container.querySelectorAll('span')].find(
+            span => span.textContent === 'First line\nSecond line'
+        );
+
+        expect(line?.className).toContain('whitespace-pre-line');
     });
 
     it.each([
@@ -71,6 +84,7 @@ describe('QuestionCard', () => {
         await draw({ state }, { docked: true });
 
         expect(container.querySelector('form')).toBeNull();
+        expect(container.textContent).toContain('Who can export orders?');
         expect(container.textContent).toContain(line);
     });
 });
