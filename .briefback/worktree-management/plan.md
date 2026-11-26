@@ -51,12 +51,12 @@
 
 **This stage:** update the existing `openRemoveWorktree` confirmation and worktree actions to use the guarded command; expose it from card and current chat place. Preview actual affected chats (including archived chats and cascaded descendants across worktrees), send their exact IDs as `expectedChatIds` with disposition, and handle selection after archive/delete. Add a reusable tidy preview/dialog and entry points. Refresh data after completion or refusal.
 
-- [ ] Complete
-  - [ ] Unified removal confirmation, chat disposition, direct actions and archive all
-  - [ ] Tidy selection, branch choice, results and refresh
-  - [ ] Integrated tests and user-flow verification
+- [x] Complete
+  - [x] Unified removal confirmation, chat disposition, direct actions and archive all
+  - [x] Tidy selection, branch choice, results and refresh
+  - [x] Integrated tests and user-flow verification
 
 **Files:** `apps/desktop/src/renderer/features/worktrees/RemoveWorktreeDialog.tsx`, `WorktreeMenu.tsx`, `worktreeView.ts`, `FolderWorktreesList.tsx`, `ManageWorktrees.tsx`, `useProjectWorktrees.ts` as needed, new tidy dialog, `features/agents/ChatFolder.tsx`, `GroupFolderName.tsx`, card menu from Stage 2, shared `OpenWithMenu` only as needed, relevant tests and desktop guidance.
 **Done when:** the user can remove a worktree from the active chat or sidebar card, choose what happens to chats, and clean up eligible trees from a preview without losing unrelated work.
 **Verify:** desktop worktree/sidebar and transport tests, daemon worktree suites, combined typecheck/lint/build and isolated end-to-end UI flow.
-**Commits:** None yet.
+**Commits:** `e755ee16` — shared worktree removal and Tidy up. Independent review fixed archived-only Tidy eligibility and stale branch/discard confirmations; 350 scoped desktop tests passed. Final clean candidate `/tmp/clowdy-worktree-management-e755ee16`: `bun run --cwd apps/desktop build:app` passed; 557 desktop, 108 daemon and 85 protocol tests passed, all three typechecks passed. Targeted lint passed; full desktop lint found one unrelated formatting error introduced by `e04ee6fb` in `ChatPage.test.tsx`, left for its owner. Real isolated daemon + Git UI verification passed grouped cards, current-chip archive and selection fallback, card permanent deletion, Tidy selection and history preservation, plus six refusal probes (dirty, unmerged, unarchived-linked, locked, main checkout and stale chat IDs). Screenshots: `/tmp/clowdy-verify-xYZTtV/`. Running app/data unchanged; no migration.
