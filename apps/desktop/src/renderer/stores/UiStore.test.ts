@@ -1065,7 +1065,7 @@ describe('UiStore', () => {
 
         expect([ui.groupByFolder, ui.collapsedFolders]).toEqual([true, []]);
 
-        ui.setGroupByFolder(false);
+        ui.setChatListLayout('simple');
         ui.toggleFolderCollapsed('fld-api');
         ui.toggleFolderCollapsed('fld-notes');
         ui.toggleFolderCollapsed('fld-api');
@@ -1082,13 +1082,13 @@ describe('UiStore', () => {
         const store = new UiStore(storage);
         const ui = store.forProject('p1');
 
-        expect(ui.groupByWorktree).toBe(false);
-        ui.setGroupByWorktree(true);
+        expect(ui.groupByWorktree).toBe(true);
+        ui.setGroupByWorktree(false);
         ui.setWorktreeOrder(['tree-b', 'tree-a']);
         ui.toggleWorktreeCollapsed('tree-a');
-        expect(store.forProject('p2')).toMatchObject({ groupByWorktree: false, worktreeOrder: [] });
+        expect(store.forProject('p2')).toMatchObject({ groupByWorktree: true, worktreeOrder: [] });
         expect(new UiStore(storage).forProject('p1')).toMatchObject({
-            groupByWorktree: true,
+            groupByWorktree: false,
             worktreeOrder: ['tree-b', 'tree-a'],
             collapsedWorktrees: ['tree-a'],
         });
@@ -1104,7 +1104,7 @@ describe('UiStore', () => {
         ui.setChatListLayout('worktree');
         expect([ui.groupByFolder, ui.groupByWorktree]).toEqual([true, true]);
         expect(new UiStore(storage).forProject('p1')).toMatchObject({ groupByFolder: true, groupByWorktree: true });
-        expect(store.forProject('p2')).toMatchObject({ groupByFolder: true, groupByWorktree: false });
+        expect(store.forProject('p2')).toMatchObject({ groupByFolder: true, groupByWorktree: true });
         ui.setChatListLayout('folder');
         expect([ui.groupByFolder, ui.groupByWorktree]).toEqual([true, false]);
     });
@@ -1113,6 +1113,21 @@ describe('UiStore', () => {
         const storage = memoryStorage({ 'clowdy:ui:p1': '{"groupByFolder":false,"groupByWorktree":true}' });
 
         expect(new UiStore(storage).forProject('p1')).toMatchObject({ groupByFolder: true, groupByWorktree: true });
+    });
+
+    it('defaults to folders and worktrees while preserving saved layouts', () => {
+        const read = (value: string) => new UiStore(memoryStorage({ 'clowdy:ui:p1': value })).forProject('p1');
+
+        expect(new UiStore(memoryStorage()).forProject('p1')).toMatchObject({
+            groupByFolder: true,
+            groupByWorktree: true,
+        });
+        expect(read('{"groupByFolder":true,"groupByWorktree":false}')).toMatchObject({
+            groupByFolder: true,
+            groupByWorktree: false,
+        });
+        expect(read('{"groupByFolder":false}')).toMatchObject({ groupByFolder: false, groupByWorktree: false });
+        expect(read('{"chatId":"c1"}')).toMatchObject({ groupByFolder: true, groupByWorktree: true });
     });
 
     it('opens the folded group of a chat opened from elsewhere, and changes nothing when it is open', () => {
