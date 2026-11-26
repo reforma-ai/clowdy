@@ -66,7 +66,6 @@ describe('Settings', () => {
 
         expect(sidebarPages()).toEqual([
             'Appearance',
-            'Power',
             'Chat',
             'Files',
             'Source Control',
@@ -145,8 +144,8 @@ describe('Settings', () => {
         }
     });
 
-    it('starts in the agent work mode and saves each power choice', async () => {
-        store.ui.openSettings('power');
+    it('offers the sleep mode in Chat and saves each choice', async () => {
+        store.ui.openSettings('chat');
         await draw();
 
         const select = () => container.querySelector('button[aria-label="Sleep mode"]');
@@ -165,8 +164,10 @@ describe('Settings', () => {
         expect(await store.transport.getPowerSettings()).toEqual({ sleepMode: 'always' });
         await pick('Allow sleep');
         expect(await store.transport.getPowerSettings()).toEqual({ sleepMode: 'allow' });
+        act(() => store.ui.showSettingsPage('appearance'));
+        await draw();
+        expect(select()).toBeNull();
         act(() => store.ui.showSettingsPage('chat'));
-        act(() => store.ui.showSettingsPage('power'));
         await draw();
         expect(select()?.textContent).toBe('Allow sleep');
     });
