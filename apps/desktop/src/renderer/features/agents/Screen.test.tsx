@@ -204,6 +204,46 @@ describe('the list', () => {
         expect(providerOf('c-1')).toBeUndefined();
     });
 
+    it('previews an expanded chat as a block and restores its position on cancellation', async () => {
+        await draw(() => ui().toggleChatExpanded('c-6'));
+        const before = rowKeys();
+        const rows = Array.from(container.querySelectorAll<HTMLElement>('[role="row"][data-depth]'));
+        const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+            this: HTMLElement
+        ) {
+            const index = rows.indexOf(this);
+            return index < 0 ? new DOMRect(0, 0, 200, 1000) : new DOMRect(0, index * 36, 200, 36);
+        });
+        try {
+            const transfer = new DataTransfer();
+            transfer.setDragImage = vi.fn();
+            const source = rowOf('c-6').querySelector<HTMLElement>('[draggable="true"]')!;
+            const target = rowOf('c-4');
+            const event = (type: string, y: number) => {
+                const e = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: 50, clientY: y });
+                Object.defineProperty(e, 'dataTransfer', { value: transfer });
+                return e;
+            };
+            await act(async () => {
+                source.dispatchEvent(event('dragstart', 0));
+                target.dispatchEvent(event('dragover', 1));
+            });
+            expect({
+                root: rowOf('c-6').style.getPropertyValue('--reorder-offset'),
+                child: rowOf('c-6a').style.getPropertyValue('--reorder-offset'),
+                displaced: rowOf('c-4').style.getPropertyValue('--reorder-offset'),
+                order: rowKeys(),
+            }).toEqual({ root: '-108px', child: '-108px', displaced: '216px', order: before });
+            await act(async () => source.dispatchEvent(event('dragend', 1)));
+            expect({
+                order: rowKeys(),
+                offsets: rows.map(row => row.style.getPropertyValue('--reorder-offset')).filter(Boolean),
+            }).toEqual({ order: before, offsets: [] });
+        } finally {
+            rect.mockRestore();
+        }
+    });
+
     it('keeps the hand-ordered list through activity and puts a newly created chat first', async () => {
         const chatKeys = () => rowKeys().filter(key => key?.startsWith('c-'));
 
