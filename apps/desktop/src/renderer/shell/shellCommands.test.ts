@@ -21,7 +21,7 @@ let screen: { shown: boolean };
 let loading: { phase: ShellCommandsRoot['phase'] };
 let root: ShellCommandsRoot;
 let selected: string[];
-let history: ShellCommandsRoot['history'] & { canGoBack: boolean; canGoForward: boolean };
+let history: ShellCommandsRoot['history'] & { canGoBack: boolean; canGoForward: boolean; canSwitchChat: boolean };
 
 const press = (init: KeyboardEventInit & { key: string }, target: EventTarget = document.body) => {
     const event = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init });
@@ -37,8 +37,15 @@ beforeEach(() => {
     ui = new UiStore();
     // A stand-in for the real history, which has its own tests: only what the commands read and call.
     history = observable(
-        { canGoBack: false, canGoForward: false, back: vi.fn(), forward: vi.fn() },
-        { back: false, forward: false }
+        {
+            canGoBack: false,
+            canGoForward: false,
+            canSwitchChat: false,
+            back: vi.fn(),
+            forward: vi.fn(),
+            switchChat: vi.fn(),
+        },
+        { back: false, forward: false, switchChat: false }
     );
     // `ui` and `history` stay out of the observable: they are stores of their own, like on the real `RootStore`.
     screen = observable({ shown: true });
@@ -88,6 +95,50 @@ describe('the keys that went with the sections', () => {
         press({ key: 'a' });
 
         expect(ui.forProject('p').sidePanelOpen).toBe(false);
+    });
+});
+
+describe('recent chat shortcut', () => {
+    it('switches from a text field when a previous chat is available', () => {
+        history.canSwitchChat = true;
+        const input = document.body.appendChild(document.createElement('textarea'));
+        const event = press({ key: 'Tab', code: 'Tab', ctrlKey: true }, input);
+
+        expect(event.defaultPrevented).toBe(true);
+        expect(history.switchChat).toHaveBeenCalledOnce();
+        input.remove();
+    });
+
+    it('leaves the key alone when there is no previous chat', () => {
+        const event = press({ key: 'Tab', code: 'Tab', ctrlKey: true });
+
+        expect(event.defaultPrevented).toBe(false);
+        expect(history.switchChat).not.toHaveBeenCalled();
+    });
+
+    it('switches on Windows from a text field', () => {
+        uninstall();
+        registry = createRegistry('win32');
+        for (const command of shellCommands(root)) registry.defineCommand({ ...command, scope: 'app' });
+        uninstall = installDispatcher(registry);
+        history.canSwitchChat = true;
+        const input = document.body.appendChild(document.createElement('textarea'));
+        const event = press({ key: 'Tab', code: 'Tab', ctrlKey: true }, input);
+
+        expect(event.defaultPrevented).toBe(true);
+        expect(history.switchChat).toHaveBeenCalledOnce();
+        input.remove();
+    });
+
+    it('leaves the key to an open dialog', () => {
+        history.canSwitchChat = true;
+        const dialog = document.body.appendChild(document.createElement('div'));
+        dialog.setAttribute('role', 'dialog');
+        const event = press({ key: 'Tab', code: 'Tab', ctrlKey: true }, dialog);
+
+        expect(event.defaultPrevented).toBe(false);
+        expect(history.switchChat).not.toHaveBeenCalled();
+        dialog.remove();
     });
 });
 
@@ -423,6 +474,7 @@ describe('the keymap', () => {
             'sidePanel.tab.terminal',
             'sidePanel.tab.tasks',
             ...Array.from({ length: PROJECT_SLOTS }, (_, slot) => projectSwitchCommand(slot)),
+            'chats.switchRecent',
             'nav.back',
             'nav.forward',
             'find.open',

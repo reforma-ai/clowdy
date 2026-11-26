@@ -1,7 +1,3 @@
 .note {
     padding-inline: var(--spacing-sm);
 }
-
-.time {
-    margin-left: var(--spacing-xs);
-}
