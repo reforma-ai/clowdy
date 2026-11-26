@@ -2,6 +2,8 @@
 
 ## Decisions
 
+- [One conversation screen for chats, threads and sub-agents](decisions/2026-11-25-one-conversation-screen-and-run-names.md) records the shared page with a header of titles, the disabled box of a sub-agent, run names without "Orchestrator NN", and which working agents the chat list shows. Status: accepted.
+
 - [Keep the computer awake during agent work](decisions/2026-11-25-agent-sleep-mode.md) records the three global sleep modes and the daemon-owned idle-sleep assertion. Status: accepted.
 
 - [Archive a merged pull request once the branch has commits of its own since](decisions/2026-11-25-archive-merged-pr-with-new-commits.md) records that a merged pull request leaves the chat list and the visible pull request when the branch has new work. Status: accepted.
