@@ -518,7 +518,7 @@ describe('grouped by folder', () => {
             await press(name(API.id)!);
             expect([ui().draft, ui().chatId]).toEqual([false, FIXTURE_WORKSPACE_CHAT_ID]);
             expect(isSelected(FIXTURE_WORKSPACE_CHAT_ID)).toBe(true);
-            expect(menuItems()).toEqual(['New chat', 'Copy path', 'Open in…', 'Folder settings…']);
+            expect(menuItems()).toEqual(['New chat', 'Copy path', 'Open in…', 'Tidy up…', 'Folder settings…']);
 
             await press(menuItem('New chat'));
             await draw();
@@ -535,6 +535,7 @@ describe('grouped by folder', () => {
                 'Open in Terminal',
                 'Copy path',
                 'Open in…',
+                'Tidy up…',
                 'Folder settings…',
             ]);
 
@@ -598,6 +599,7 @@ describe('grouped by folder', () => {
                 'New chat',
                 'Copy path',
                 'Open in…',
+                'Tidy up…',
                 'Folder settings…',
             ]);
             expect(item('New chat').getAttribute('aria-disabled')).toBe('true');
@@ -1849,11 +1851,11 @@ describe('the Star on GitHub card', () => {
 });
 
 describe('worktree cards', () => {
-    async function restart() {
+    async function restart(data = withFixtureWorktrees(createFixtureData())) {
         act(() => reactRoot.unmount());
         store.dispose();
         reactRoot = createRoot(container);
-        store = new RootStore(new FixtureTransport({ data: withFixtureWorktrees(createFixtureData()) }), {
+        store = new RootStore(new FixtureTransport({ data }), {
             storage: memoryStorage(),
         });
         await store.load();
@@ -1955,6 +1957,89 @@ describe('worktree cards', () => {
             true,
             { mode: 'existing', path: '/Users/dev/worktrees/car-rental/search-filters' },
         ]);
+    });
+
+    it.each(['card', 'chip'] as const)('removes the selected worktree from the %s menu', async entry => {
+        await restart();
+        window.desktop = {
+            getOpenApps: async () => ({ editors: [], terminals: [], fileManagers: [] }),
+            openPath: async () => undefined,
+        } as never;
+        try {
+            await draw(() => {
+                ui().setGroupByWorktree(entry === 'card');
+                ui().openChat(FIXTURE_WORKSPACE_CHAT_ID);
+            });
+            const button =
+                entry === 'card'
+                    ? rowOf(workspaceKey()).querySelector<HTMLElement>('button[aria-label^="Worktree actions:"]')!
+                    : container.querySelector<HTMLElement>('button[aria-label^="Current place:"]')!;
+            await press(button);
+            await press(menuItem('Remove worktree…'));
+            await vi.waitFor(() => expect(openConfirmModal).toHaveBeenCalled());
+            await act(async () => {
+                await vi.mocked(openConfirmModal).mock.lastCall![0].onConfirm();
+            });
+            await draw();
+            const snapshot = await store.transport.getProjectSnapshot(FIXTURE_PROJECT_ID);
+            expect({
+                archived: snapshot.chats
+                    .filter(chat => ['c-9', 'c-10'].includes(chat.id))
+                    .map(chat => Boolean(chat.archivedAt)),
+                selected: rowOf(FIXTURE_WORKSPACE_CHAT_ID) !== null && isSelected(FIXTURE_WORKSPACE_CHAT_ID),
+                listed: (await store.transport.getProjectWorktrees(FIXTURE_PROJECT_ID))
+                    .flatMap(group => group.worktrees)
+                    .some(row => row.workspaceId === 'wks_ab12cd34'),
+            }).toEqual({ archived: [true, true], selected: false, listed: false });
+        } finally {
+            window.desktop = undefined;
+        }
+    });
+
+    it('archives a card with its linked and outside descendants only once, preserving earlier archive history and the worktree', async () => {
+        const data = withFixtureWorktrees(createFixtureData());
+        const parent = data.chats.find(chat => chat.id === 'c-9')!;
+        const archivedAt = data.chats.find(chat => chat.id === 'c-10')!.archivedAt;
+        data.chats.push(
+            { ...parent, id: 'linked-child', parentChatId: parent.id, orchestratorRunId: undefined },
+            {
+                ...parent,
+                id: 'outside-child',
+                parentChatId: parent.id,
+                workspace: undefined,
+                orchestratorRunId: undefined,
+            }
+        );
+        await restart(data);
+        const command = vi.spyOn(store.transport, 'command');
+        await draw(() => ui().setGroupByWorktree(true));
+        await press(rowOf(workspaceKey()).querySelector<HTMLElement>('button[aria-label^="Worktree actions:"]')!);
+        await press(menuItem('Archive all chats…'));
+        await vi.waitFor(() => expect(openConfirmModal).toHaveBeenCalled());
+        await act(async () => {
+            await vi.mocked(openConfirmModal).mock.lastCall![0].onConfirm();
+        });
+        await draw();
+        const snapshot = await store.transport.getProjectSnapshot(FIXTURE_PROJECT_ID);
+        expect({
+            archived: snapshot.chats
+                .filter(chat => ['c-9', 'linked-child', 'outside-child'].includes(chat.id))
+                .map(chat => [chat.id, Boolean(chat.archivedAt)]),
+            previousArchive: snapshot.chats.find(chat => chat.id === 'c-10')?.archivedAt,
+            commands: command.mock.calls.map(([input]) => input).filter(input => input.type === 'chat.setArchived'),
+            tree: (await store.transport.getProjectWorktrees(FIXTURE_PROJECT_ID))
+                .flatMap(group => group.worktrees)
+                .some(row => row.workspaceId === 'wks_ab12cd34'),
+        }).toEqual({
+            archived: [
+                ['c-9', true],
+                ['linked-child', true],
+                ['outside-child', true],
+            ],
+            previousArchive: archivedAt,
+            commands: [{ type: 'chat.setArchived', chatId: 'c-9', archived: true }],
+            tree: true,
+        });
     });
 
     it('does not read the worktree list when grouping is off, and refreshes it on focus and folder Git changes', async () => {

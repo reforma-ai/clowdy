@@ -469,24 +469,23 @@ describe('Manage worktrees', () => {
         expect(document.activeElement).not.toBe(trigger);
     });
 
-    it("draws Remove in the More menu of every worktree but the folder's own checkout, and holds it off for a lock and for a chat that works in the worktree", async () => {
+    it("draws Remove in the More menu of every worktree but the folder's own checkout, and holds it off for a lock", async () => {
         await open();
 
-        for (const path of [FOUND_WORKTREE, MISSING_WORKTREE])
+        for (const path of [FOUND_WORKTREE, MISSING_WORKTREE, CLOWDY_WORKTREE])
             expect(removeOf(await moreMenu(path))?.off, path).toBe(false);
 
-        for (const path of [CLOWDY_WORKTREE, LOCKED_WORKTREE])
-            expect(removeOf(await moreMenu(path))?.off, path).toBe(true);
+        expect(removeOf(await moreMenu(LOCKED_WORKTREE))?.off).toBe(true);
 
         expect(removeOf(await moreMenu('/Users/dev/car-rental'))).toBeUndefined();
         // Remove is not a button of the row any more.
         expect(row(FOUND_WORKTREE).querySelector('button[aria-label^="Remove"]')).toBeNull();
     });
 
-    it('opens no confirmation from a Remove that is off, for a chat or for a lock', async () => {
+    it('opens no confirmation from a Remove that is off for a lock', async () => {
         await open();
 
-        for (const path of [CLOWDY_WORKTREE, LOCKED_WORKTREE]) {
+        for (const path of [LOCKED_WORKTREE]) {
             await openMore(path);
             await click(item('Remove')!);
             await pressEscape();
@@ -516,7 +515,7 @@ describe('Manage worktrees', () => {
         await open();
 
         expect(removeOf(await moreMenu(LOCKED_WORKTREE))?.text).toContain('Git has it locked: on an external drive');
-        expect(removeOf(await moreMenu(CLOWDY_WORKTREE))?.text).toContain('A chat works in it');
+        expect(removeOf(await moreMenu(CLOWDY_WORKTREE))?.off).toBe(false);
         // Nothing stops a worktree that nobody works in and nobody locked: its Remove waits for the confirmation, not for a reason.
         expect(removeOf(await moreMenu(FOUND_WORKTREE))?.text).toBe('Remove…');
     });

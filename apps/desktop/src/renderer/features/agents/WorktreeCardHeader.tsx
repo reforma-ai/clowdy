@@ -5,8 +5,9 @@ import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, More, Split } from '@clo
 import { mainFolder } from '@clowdy/protocol';
 
 import { StatusDot } from '../../shared';
-import { useProjectState, useProjectUi } from '../../stores';
+import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { OpenWithMenu, useFolderGit } from '../openWith';
+import { worktreeMenuExtras } from '../worktrees/worktreeMenuExtras';
 import styles from './AgentList.module.css';
 import { samePath, worktreeLabel } from './workspaceChoice';
 
@@ -104,8 +105,9 @@ export function WorktreeCardHeader({
     );
 }
 
-/** Shared path menu with card-specific ordering actions. Removal and archive actions can extend extra here. */
+/** Shared path menu with card-specific ordering and guarded worktree actions. */
 function WorktreeCardMenu({ card, move }: { card: WorktreeCard; move: MoveActions }) {
+    const root = useRootStore();
     const project = useProjectState();
     const ui = useProjectUi();
     const folderGit = useFolderGit(project.id, card.folder.id);
@@ -145,6 +147,18 @@ function WorktreeCardMenu({ card, move }: { card: WorktreeCard; move: MoveAction
                 ...(move.onMoveUp ? [{ id: 'move-up', label: 'Move up', icon: <ArrowUp />, run: move.onMoveUp }] : []),
                 ...(move.onMoveDown
                     ? [{ id: 'move-down', label: 'Move down', icon: <ArrowDown />, run: move.onMoveDown }]
+                    : []),
+                ...(!card.pending
+                    ? worktreeMenuExtras(
+                          {
+                              root,
+                              projectId: project.id,
+                              folderId: card.folder.id,
+                              path: card.path,
+                              workspaceId: card.actual?.workspaceId ?? card.workspace?.id,
+                          },
+                          card.used
+                      )
                     : []),
             ]}
             aria-label="Worktree actions"

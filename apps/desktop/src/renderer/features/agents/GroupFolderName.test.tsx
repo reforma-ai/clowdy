@@ -100,7 +100,13 @@ describe("the menu of a folder group's title", () => {
     it('has Folder settings last, under a separator, and opens the dialog on that folder', async () => {
         await draw(API);
 
-        expect(items().map(row => row.textContent)).toEqual(['New chat', 'Copy path', 'Open in…', 'Folder settings…']);
+        expect(items().map(row => row.textContent)).toEqual([
+            'New chat',
+            'Copy path',
+            'Open in…',
+            'Tidy up…',
+            'Folder settings…',
+        ]);
         // A separator stands right before it: the last one in the menu comes before the item.
         const separators = [
             ...document.body.querySelectorAll('[role="menu"][aria-label="Open folder"] [role="separator"]'),
@@ -149,7 +155,13 @@ describe("the menu of a folder group's title", () => {
     it("has it for a folder that is no repository too, since the dialog is the project's and says when none of its folders is one", async () => {
         await draw({ ...FIXTURE_NOTES_FOLDER });
 
-        expect(items().map(row => row.textContent)).toEqual(['New chat', 'Copy path', 'Open in…', 'Folder settings…']);
+        expect(items().map(row => row.textContent)).toEqual([
+            'New chat',
+            'Copy path',
+            'Open in…',
+            'Tidy up…',
+            'Folder settings…',
+        ]);
     });
 
     it('has it for a folder that is gone from the disk, under the note and the repair, and for the personal space', async () => {

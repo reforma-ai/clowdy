@@ -2,6 +2,7 @@ import { Box } from '@clowdy/components/Box';
 import { Checkbox } from '@clowdy/components/Checkbox';
 import { For } from '@clowdy/components/For';
 import { openConfirmModal } from '@clowdy/components/modals';
+import { Radio, RadioGroup } from '@clowdy/components/Radio';
 import { Show } from '@clowdy/components/Show';
 import { Text } from '@clowdy/components/Text';
 import { toast } from '@clowdy/components/Toast';
@@ -9,31 +10,25 @@ import { useId, useState } from 'react';
 
 import { PathText } from '../../shared/PathText';
 import { worktreeLabel } from '../agents/workspaceChoice';
-import { branchWarning, removalPlan, STRANDED_WARNING } from './worktreeView';
+import { affectedChats, affectedSummary, readWorktree, refreshWorktreeTarget } from './worktreeActions';
+import { branchWarning, removalPlan, removeHint, STRANDED_WARNING } from './worktreeView';
 
-import type { FolderWorktrees, ProjectId, WorktreeInfo } from '@clowdy/protocol';
-import type { RootStore } from '../../stores';
+import type { WorktreeInfo } from '@clowdy/protocol';
+import type { WorktreeTarget } from './worktreeActions';
 import type { RemovalPlan } from './worktreeView';
-
-export interface RemoveWorktreeOptions {
-    root: RootStore;
-    projectId: ProjectId;
-    /** The folder the worktree is a checkout of. */
-    group: Pick<FolderWorktrees, 'folderId'>;
-    worktree: WorktreeInfo;
-    /** Reads the list again, once the command has answered: the removed row goes, and a refusal usually means the row changed under the person's hands. */
-    reload: () => Promise<void>;
-}
 
 /** What the person chose in the confirmation besides removing: it is read when the button is pressed. */
 interface RemoveChoice {
     deleteBranch: boolean;
+    disposition: 'archive' | 'delete';
 }
 
 interface RemoveMessageProps {
     worktree: WorktreeInfo;
     plan: RemovalPlan;
     choice: RemoveChoice;
+    count: number;
+    outside: number;
 }
 
 /**
@@ -41,8 +36,9 @@ interface RemoveMessageProps {
  * branch whose work is in the base (and is not the base itself); otherwise the text explains the risk of deleting the branch. A detached HEAD has no branch to
  * offer, and when its commits are not in the base the dialog warns that commits may be lost.
  */
-function RemoveMessage({ worktree, plan, choice }: RemoveMessageProps) {
+function RemoveMessage({ worktree, plan, choice, count, outside }: RemoveMessageProps) {
     const [deleteBranch, setDeleteBranch] = useState(choice.deleteBranch);
+    const [disposition, setDisposition] = useState(choice.disposition);
     const warning = plan.branch && branchWarning(plan.branch);
     const warningId = useId();
 
@@ -64,6 +60,24 @@ function RemoveMessage({ worktree, plan, choice }: RemoveMessageProps) {
                     )}
                 </For>
             </Box>
+
+            {count > 0 && (
+                <Box gap="xs">
+                    <Text weight="medium">{affectedSummary(count, outside)}</Text>
+                    <RadioGroup
+                        size="sm"
+                        aria-label="Chat disposition"
+                        value={disposition}
+                        onChange={value => {
+                            choice.disposition = value === 'delete' ? 'delete' : 'archive';
+                            setDisposition(choice.disposition);
+                        }}
+                    >
+                        <Radio value="archive">Archive chats (keep history)</Radio>
+                        <Radio value="delete">Delete chats permanently</Radio>
+                    </RadioGroup>
+                </Box>
+            )}
 
             <Show when={plan.branch}>
                 {branch => (
@@ -100,39 +114,93 @@ function RemoveMessage({ worktree, plan, choice }: RemoveMessageProps) {
     );
 }
 
-/**
- * Asks before a worktree of the Manage dialog is removed, and sends `workspace.remove`. `Remove worktree` is red (and sends `discard: true`) for a tree with uncommitted changes or
- * an initialised submodule; `Remove record` is used when its folder is gone. The
- * branch is a box of its own (`deleteBranch`), whatever the branch is called, ticked from the start only when its work is in the base. Cancelling sends nothing. The list is
- * read again once the daemon has answered, and a refusal toasts the daemon's own reason and closes the confirmation, so the next Remove asks about the row as the list now has it.
- */
-export function openRemoveWorktree({ root, projectId, group, worktree, reload }: RemoveWorktreeOptions): void {
-    const plan = removalPlan(worktree);
-    const choice: RemoveChoice = { deleteBranch: plan.branch?.selected ?? false };
-
-    openConfirmModal(
-        {
-            title: plan.title,
-            message: <RemoveMessage worktree={worktree} plan={plan} choice={choice} />,
-            confirmLabel: plan.confirmLabel,
-            destructive: plan.kind === 'discard',
-            onConfirm: async () => {
-                const result = await root.command({
-                    type: 'workspace.remove',
-                    projectId,
-                    folderId: group.folderId,
-                    path: worktree.path,
-                    ...(plan.kind === 'discard' && { discard: true }),
-                    ...(plan.branch && choice.deleteBranch && { deleteBranch: true }),
-                });
-
-                await reload();
-
-                // A refusal means the row is not what the confirmation showed. The reason is toasted and the confirmation closes, so the next Remove asks about the row as the list
-                // now has it (a thrown message would keep this stale one open).
-                if (!result.ok) toast.error({ title: "Couldn't remove the worktree", message: result.error.message });
+/** Open a confirmation only after reading current Git and chat state. */
+export async function openRemoveWorktree(target: WorktreeTarget): Promise<void> {
+    const { root, projectId, folderId } = target;
+    try {
+        const { worktree, snapshot } = await readWorktree(target);
+        const chats = affectedChats(worktree, snapshot, folderId);
+        const hint = worktree.main ? 'This is the project checkout' : (removeHint(worktree) ?? chats.blocker);
+        if (hint) throw new Error(hint);
+        const plan = removalPlan(worktree);
+        const choice: RemoveChoice = { deleteBranch: plan.branch?.selected ?? false, disposition: 'archive' };
+        openConfirmModal(
+            {
+                title: plan.title,
+                message: (
+                    <RemoveMessage
+                        worktree={worktree}
+                        plan={plan}
+                        choice={choice}
+                        count={chats.ids.size}
+                        outside={chats.outside}
+                    />
+                ),
+                confirmLabel: plan.confirmLabel,
+                destructive: plan.kind === 'discard' || chats.ids.size > 0,
+                initialFocus: plan.kind === 'discard' || chats.ids.size > 0 ? 'cancel' : 'confirm',
+                onConfirm: async () => {
+                    const { deleteBranch, disposition } = choice;
+                    if (chats.ids.size === 0 || deleteBranch || plan.kind === 'discard') {
+                        try {
+                            const current = await readWorktree(target);
+                            if (
+                                chats.ids.size === 0 &&
+                                affectedChats(current.worktree, current.snapshot, folderId).ids.size > 0
+                            ) {
+                                throw new Error('The chats linked to this worktree changed. Try again');
+                            }
+                            // A deletion checkbox authorizes the branch that was shown, not a different
+                            // checkout or new commits made while this confirmation was open.
+                            if (
+                                deleteBranch &&
+                                (current.worktree.branch !== worktree.branch ||
+                                    current.worktree.head !== worktree.head ||
+                                    current.worktree.base !== worktree.base ||
+                                    current.worktree.merged !== worktree.merged)
+                            )
+                                throw new Error('The branch changed. Try again');
+                            if (
+                                plan.kind === 'discard' &&
+                                (current.worktree.changes !== worktree.changes ||
+                                    current.worktree.submodules !== worktree.submodules ||
+                                    current.worktree.branch !== worktree.branch ||
+                                    current.worktree.head !== worktree.head)
+                            )
+                                throw new Error('The local changes in this worktree changed. Try again');
+                        } catch (error) {
+                            await refreshWorktreeTarget(target);
+                            toast.error({
+                                title: "Couldn't remove the worktree",
+                                message: error instanceof Error ? error.message : String(error),
+                            });
+                            return;
+                        }
+                    }
+                    const result = await root.command({
+                        type: 'workspace.remove',
+                        projectId,
+                        folderId,
+                        path: worktree.path,
+                        ...(plan.kind === 'discard' && { discard: true }),
+                        ...(plan.branch && deleteBranch && { deleteBranch: true }),
+                        ...(chats.ids.size > 0 && {
+                            chatDisposition: disposition,
+                            expectedChatIds: [...chats.ids],
+                        }),
+                    });
+                    await refreshWorktreeTarget(target, chats.affected);
+                    if (!result.ok)
+                        toast.error({ title: "Couldn't remove the worktree", message: result.error.message });
+                },
             },
-        },
-        { width: 440 }
-    );
+            { width: 440 }
+        );
+    } catch (error) {
+        await refreshWorktreeTarget(target);
+        toast.error({
+            title: "Couldn't remove the worktree",
+            message: error instanceof Error ? error.message : String(error),
+        });
+    }
 }

@@ -1,4 +1,5 @@
 import { Alert, AlertAction, AlertDescription, AlertIcon } from '@clowdy/components/Alert';
+import { Box } from '@clowdy/components/Box';
 import { Button } from '@clowdy/components/Button';
 import { For } from '@clowdy/components/For';
 import { useModalContext } from '@clowdy/components/Modal';
@@ -14,6 +15,7 @@ import { refreshFolderGit } from '../openWith';
 import { openCreateWorktree } from './CreateWorktreeDialog';
 import styles from './ManageWorktrees.module.css';
 import { openRemoveWorktree } from './RemoveWorktreeDialog';
+import { openTidyWorktrees } from './TidyWorktreesDialog';
 import { useProjectWorktrees } from './useProjectWorktrees';
 import { WorktreeGroup, type WorktreeRowActions } from './WorktreeRow';
 import { WorktreesSkeleton } from './WorktreesSkeleton';
@@ -89,12 +91,21 @@ export function FolderWorktreesList({
             leave();
         },
         onRemove: (group: FolderWorktrees, worktree: WorktreeInfo) =>
-            openRemoveWorktree({ root, projectId, group, worktree, reload }),
+            void openRemoveWorktree({ root, projectId, folderId: group.folderId, path: worktree.path, reload }),
     };
 
     return (
         <div className={styles.groups}>
-            <Text variant="heading-4">Worktrees</Text>
+            <Box direction="row" justify="between" align="center">
+                <Text variant="heading-4">Worktrees</Text>
+                <Button
+                    size="sm"
+                    variant="bordered"
+                    onPress={() => void openTidyWorktrees({ root, projectId, folderId, reload })}
+                >
+                    Tidy up…
+                </Button>
+            </Box>
             {pendingChanges && (
                 <Text variant="sm" color="secondary">
                     Save folder settings before creating a worktree
