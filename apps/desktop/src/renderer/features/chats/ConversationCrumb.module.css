@@ -1,0 +1,29 @@
+@reference '@clowdy/styles/rulesets';
+
+/* The line over a conversation's stream: in the stream's column, quiet, one line. */
+.crumb {
+    flex-shrink: 0;
+    padding: var(--spacing-md) var(--spacing-xxl) 0;
+}
+
+.line {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    min-width: 0;
+    color: var(--color-secondary-muted-text);
+}
+
+.icon {
+    display: inline-flex;
+    flex-shrink: 0;
+}
+
+.link {
+    @ruleset typography-text-xs;
+
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

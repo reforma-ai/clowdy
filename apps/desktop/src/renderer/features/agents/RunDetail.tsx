@@ -1,186 +1,48 @@
-import { Alert, AlertAction, AlertDescription, AlertIcon } from '@clowdy/components/Alert';
-import { Button } from '@clowdy/components/Button';
-import { Loader } from '@clowdy/components/Loader';
 import { Text } from '@clowdy/components/Text';
-import { toast } from '@clowdy/components/Toast';
-import { AttentionCircle } from '@clowdy/icons/14';
-import { StopBold } from '@clowdy/icons/16';
-import {
-    type ApprovalDecision,
-    isTerminalRunStatus,
-    type Run,
-    type RunRole,
-    shownRunReason,
-    shownRunStatus,
-} from '@clowdy/protocol';
-import { useState } from 'react';
+import { Robot } from '@clowdy/icons/14';
 
-import { AgentChip, RunStatusPill, TaskChip } from '../../shared';
-import { useProjectState, useRootStore, useRunStream } from '../../stores';
-import { AgentAvatar, StreamView } from '../../stream';
-import styles from './RunDetail.module.css';
+import { useRunLabel } from '../../shared';
+import { useProjectState, useRunStream } from '../../stores';
+import { ConversationCrumb } from '../chats/ConversationCrumb';
+import { ConversationView } from '../chats/ConversationView';
+import { SubagentBox } from '../chats/SubagentBox';
+import { useStreamLinks } from '../chats/useStreamLinks';
+import { chatOfRun } from './agentTree';
 
-const ROLE_LABEL: Record<RunRole, string> = {
-    orchestrator: 'Orchestrator',
-    executor: 'Sub-agent',
-};
+import type { Run } from '@clowdy/protocol';
 
-/** The right side: who the selected run is, what it is linked to, and its stream. Nothing to type here. */
+/**
+ * The page of a native sub-agent: the conversation page a chat has, over the sub-agent's own stream. Its box is the chat's with nothing to type
+ * (`SubagentBox`), the line over the stream says whose sub-agent it is, and it has none of the chat's banners, nor a Reply, a Fork or an Edit on its messages.
+ */
 export function RunDetail({ run }: { run: Run }) {
     const project = useProjectState();
-    const parent = run.parentRunId ? project.runs.get(run.parentRunId) : undefined;
-
-    return (
-        <section className={styles.detail} aria-label={run.name}>
-            <RunHeader run={run} parent={parent} />
-            <RunStream run={run} />
-            <footer className={styles.footer}>
-                <Text variant="sm" color="secondary">
-                    Viewing agent work
-                </Text>
-            </footer>
-        </section>
-    );
-}
-
-function RunHeader({ run, parent }: { run: Run; parent: Run | undefined }) {
-    const project = useProjectState();
-    const root = useRootStore();
-    const [isStopping, setIsStopping] = useState(false);
-    const tasks = project.tasksOfRun(run.id);
-    // A failed run's error is in its stream.
-    const reason = run.status === 'failed' ? undefined : shownRunReason(run);
-
-    const stop = async () => {
-        setIsStopping(true);
-
-        const result = await root.command({ type: 'run.cancel', runId: run.id });
-
-        setIsStopping(false);
-
-        if (!result.ok) toast.error({ message: `Could not stop ${run.name}: ${result.error.message}` });
-    };
-
-    return (
-        <header className={styles.header}>
-            <div className={styles.titleLine}>
-                <AgentAvatar role={run.role} size="md" />
-                <div className={styles.heading}>
-                    <div className={styles.nameLine}>
-                        <Text variant="heading-5" truncate>
-                            {run.name}
-                        </Text>
-                        <RunStatusPill run={run} />
-                    </div>
-                    <Text color="secondary" truncate>
-                        {run.summary ? `${ROLE_LABEL[run.role]}: ${run.summary}` : ROLE_LABEL[run.role]}
-                    </Text>
-                </div>
-                {!isTerminalRunStatus(run.status) &&
-                    (!run.canStopAlone ? (
-                        // A sub-agent lives inside its parent's session: when that session cannot end it alone, the daemon refuses to stop it.
-                        <Text variant="sm" color="secondary">{`Runs inside ${parent?.name ?? 'its parent run'}`}</Text>
-                    ) : (
-                        <Button variant="bordered" size="sm" isPending={isStopping} onPress={() => void stop()}>
-                            <StopBold aria-hidden />
-                            Stop
-                        </Button>
-                    ))}
-            </div>
-
-            {reason && (
-                <Text variant="sm" color="secondary">
-                    {reason}
-                </Text>
-            )}
-
-            {(tasks.length > 0 || run.parentRunId) && (
-                <div className={styles.links}>
-                    {tasks.length > 0 && (
-                        <div className={styles.group}>
-                            <Text variant="sm" color="secondary">
-                                {tasks.length === 1 ? 'Task' : 'Tasks'}
-                            </Text>
-                            {tasks.map(task => (
-                                <TaskChip key={task.id} task={task} />
-                            ))}
-                        </div>
-                    )}
-                    {run.parentRunId && (
-                        <div className={styles.group}>
-                            <Text variant="sm" color="secondary">
-                                Parent
-                            </Text>
-                            {parent ? (
-                                <AgentChip run={parent} />
-                            ) : (
-                                <Text variant="sm" color="secondary">
-                                    not available
-                                </Text>
-                            )}
-                        </div>
-                    )}
-                </div>
-            )}
-        </header>
-    );
-}
-
-function RunStream({ run }: { run: Run }) {
-    const root = useRootStore();
+    const label = useRunLabel();
+    const links = useStreamLinks();
     const stream = useRunStream(run.id);
-
-    if (!stream || stream.status === 'idle' || (stream.status === 'loading' && stream.items.length === 0)) {
-        return (
-            <div className={styles.center}>
-                <Loader size="xs" />
-                <Text color="secondary">Loading the stream…</Text>
-            </div>
-        );
-    }
-
-    if (stream.status === 'failed' && stream.items.length === 0) {
-        return (
-            <div className={styles.center}>
-                <Alert color="danger" className={styles.failure}>
-                    <AlertIcon>
-                        <AttentionCircle />
-                    </AlertIcon>
-                    <AlertDescription>{`Could not load what ${run.name} did. ${stream.error}`}</AlertDescription>
-                    <AlertAction>
-                        <Button size="sm" variant="bordered" onPress={() => void stream.reload()}>
-                            Retry
-                        </Button>
-                    </AlertAction>
-                </Alert>
-            </div>
-        );
-    }
-
-    const answer = async (questionId: string, text: string) => {
-        const result = await root.command({ type: 'run.answer', runId: run.id, questionId, answer: text });
-
-        if (!result.ok) toast.error({ message: `Could not send the answer: ${result.error.message}` });
-    };
-
-    // The card of a request for permission is decided while its own item is open, whatever the run is doing.
-    const decide = async (approvalId: string, decision: ApprovalDecision) => {
-        const result = await root.command({ type: 'run.decide', runId: run.id, approvalId, decision });
-
-        if (!result.ok) toast.error({ message: `Could not send the decision: ${result.error.message}` });
-    };
-
-    // The live line follows what the person reads of the run: none while a card waits for them. A question is answered only while the run itself is parked (the daemon's rule).
-    const shown = shownRunStatus(run);
+    const chat = chatOfRun(project.chats.values(), run);
 
     return (
-        <StreamView
-            items={stream.items}
-            active={!isTerminalRunStatus(run.status)}
-            working={shown === 'running' || (shown === 'waiting_background' && 'Waiting for background work…')}
-            onAnswer={run.status === 'waiting_user' ? answer : undefined}
-            onDecide={decide}
-            emptyState={<Text color="secondary">This run has not written anything yet.</Text>}
+        <ConversationView
+            run={run}
+            stream={stream}
+            top={
+                chat && (
+                    <ConversationCrumb
+                        label="Chat of the sub-agent"
+                        icon={<Robot />}
+                        lead={`${label(run)} in`}
+                        title={chat.title}
+                        onOpen={() => links.onOpenChat(chat.id)}
+                    />
+                )
+            }
+            // Copy and the time stay, as in a chat that is read only; there is no one to reply to, fork or edit.
+            messageActions={{}}
+            // A sub-agent has no row of its work above a box to say it rests for its background work, so its stream does.
+            backgroundLine="Waiting for background work…"
+            emptyState={<Text color="secondary">This sub-agent has not written anything yet</Text>}
+            bottom={<SubagentBox run={run} />}
         />
     );
 }
