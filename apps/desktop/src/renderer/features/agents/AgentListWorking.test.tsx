@@ -157,9 +157,9 @@ describe('the agents that work, under a folded chat', () => {
         expect(titleOf('r-na-03')).toBe('General agent');
     });
 
-    it('shows the state of a sub-agent as its dot', () => {
+    it('distinguishes a working sub-agent from one waiting for background work', () => {
         expect(rowOf('r-na-03').querySelector('[role="img"]')?.getAttribute('aria-label')).toBe('Working');
-        expect(rowOf('r-na-05').querySelector('[role="img"]')?.getAttribute('aria-label')).toBe('Background');
+        expect(rowOf('r-na-05').querySelector('[aria-label="Waiting for background work"] svg')).not.toBeNull();
     });
 
     it('lists only what waits for the person with the setting off, which is how the list was', async () => {

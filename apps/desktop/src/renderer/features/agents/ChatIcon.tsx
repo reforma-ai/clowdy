@@ -59,9 +59,9 @@ export function ChatStatus({
             : undefined;
     const ownStatus = own && shownRunStatus(own);
     const showDraft = draft && tone === 'neutral' && ownStatus === undefined;
-    const showCommand = ownStatus === 'waiting_background' && own?.background?.some(item => item.kind === 'command');
-    const label = showCommand
-        ? 'Background command running'
+    const showBackground = ownStatus === 'waiting_background';
+    const label = showBackground
+        ? 'Waiting for background work'
         : ownStatus
           ? RUN_STATUS_VIEW[ownStatus].label
           : showDraft
@@ -74,7 +74,7 @@ export function ChatStatus({
         <span className={className} role="img" aria-label={label}>
             {showDraft ? (
                 <Edit className={styles.draft} aria-hidden />
-            ) : showCommand ? (
+            ) : showBackground ? (
                 <BoltBordered className={styles.command} aria-hidden />
             ) : (
                 <StatusDot status={ownStatus} tone={tone} />

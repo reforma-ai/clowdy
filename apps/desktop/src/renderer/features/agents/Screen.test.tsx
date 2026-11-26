@@ -1389,9 +1389,9 @@ describe('the archive', () => {
         expect(rowOf('c-4').querySelector('button[aria-label="Archive"]')?.hasAttribute('disabled')).toBe(false);
     });
 
-    it('shows a bolt while a chat waits for commands, giving an active agent or a question its usual indicator', async () => {
+    it('shows a bolt while a chat waits for background work, giving an active agent or a question its usual indicator', async () => {
         const run = project().runs.get('r-orch-5')!;
-        expect(rowOf('c-5').querySelector('[aria-label="Background command running"] svg')).not.toBeNull();
+        expect(rowOf('c-5').querySelector('[aria-label="Waiting for background work"] svg')).not.toBeNull();
 
         await draw(() => project().runs.set(run.id, { ...run, status: 'running' }));
         expect(rowOf('c-5').querySelector('[aria-label="Working"] [data-tone="success"]')).not.toBeNull();
@@ -1400,7 +1400,7 @@ describe('the archive', () => {
         expect(rowOf('c-5').querySelector('[aria-label="Waiting"] [data-tone="accent"]')).not.toBeNull();
 
         await draw(() => project().runs.set(run.id, { ...run, background: [] }));
-        expect(rowOf('c-5').querySelector('[aria-label="Background"] [data-tone="success"]')).not.toBeNull();
+        expect(rowOf('c-5').querySelector('[aria-label="Waiting for background work"] svg')).not.toBeNull();
     });
 
     it('cannot be asked of a chat whose agents work, and the list keeps it', async () => {
@@ -2174,13 +2174,38 @@ describe('worktree cards', () => {
         });
         await draw();
         expect(rowOf('c-6a1').querySelector('[aria-label="Different worktree"]')).toBeNull();
+        expect(rowOf(workspaceKey()).querySelector('[aria-label="Chats working"]')).toBeNull();
+        await arrow(workspaceKey(), 'ArrowLeft');
+        await draw();
         expect(rowOf(workspaceKey()).querySelector('[aria-label="Chats working"]')).not.toBeNull();
+        await arrow(workspaceKey(), 'ArrowRight');
+        await draw();
+        expect(rowOf(workspaceKey()).querySelector('[aria-label="Chats working"]')).toBeNull();
 
         await draw(() => {
             const { workspace: _, ...chat } = project().chats.get('c-6a1')!;
             project().chats.set(chat.id, chat);
         });
         expect(rowOf('c-6a1').querySelector('[aria-label="Different worktree"]')).not.toBeNull();
+    });
+
+    it('shows a waiting indicator on a collapsed worktree and hides it when expanded', async () => {
+        await restart();
+        const workspace = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
+        await draw(() => {
+            project().chats.set('c-6', { ...project().chats.get('c-6')!, workspace });
+            project().runs.set('r-orch-6e', { ...project().runs.get('r-orch-6e')!, awaitingUser: true });
+            ui().setGroupByWorktree(true);
+        });
+        expect(rowOf(workspaceKey()).querySelector('[aria-label="Chats waiting for you"]')).toBeNull();
+        await arrow(workspaceKey(), 'ArrowLeft');
+        await draw();
+        expect(
+            rowOf(workspaceKey()).querySelector('[aria-label="Chats waiting for you"] [data-tone="accent"]')
+        ).not.toBeNull();
+        await arrow(workspaceKey(), 'ArrowRight');
+        await draw();
+        expect(rowOf(workspaceKey()).querySelector('[aria-label="Chats waiting for you"]')).toBeNull();
     });
 
     it('hides a worktree used only by a thread while keeping the thread under its parent', async () => {
