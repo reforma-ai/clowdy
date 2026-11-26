@@ -1,11 +1,13 @@
 import { Breadcrumb } from '@clowdy/components/Breadcrumb';
 import { ContentColumn } from '@clowdy/components/ContentColumn';
+import { Input } from '@clowdy/components/Input';
 import { useEffect, useRef, useState } from 'react';
 
 import { useRunLabel } from '../../shared';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { openChat, openRun } from './archiveChat';
 import styles from './ConversationHeader.module.css';
+import { perform } from './commands';
 import { conversationHeaderPath, foldedPath, type HeaderTarget } from './conversationHeaderPath';
 
 import type { Chat, Run } from '@clowdy/protocol';
@@ -75,7 +77,11 @@ export function ConversationHeader({ chat, subagent }: ConversationHeaderProps) 
 
                                 return index === items.length - 1 ? (
                                     <Breadcrumb.Page key={item.key} className={styles.page}>
-                                        <span title={item.label}>{item.label}</span>
+                                        {chat && !subagent && chat.archivedAt === undefined ? (
+                                            <ChatTitle chat={chat} label={item.label} />
+                                        ) : (
+                                            <span title={item.label}>{item.label}</span>
+                                        )}
                                     </Breadcrumb.Page>
                                 ) : (
                                     <Breadcrumb.Link
@@ -95,5 +101,63 @@ export function ConversationHeader({ chat, subagent }: ConversationHeaderProps) 
                 </div>
             </ContentColumn>
         </header>
+    );
+}
+
+/**
+ * The title of the chat the page is, which a double click turns into a field in its own place, as the title of a row in the chat list does: Enter or leaving the field
+ * renames the chat, Escape keeps the name, and there is no button to save with.
+ */
+function ChatTitle({ chat, label }: { chat: Chat; label: string }) {
+    const [isRenaming, setIsRenaming] = useState(false);
+
+    return isRenaming ? (
+        <TitleField chat={chat} onDone={() => setIsRenaming(false)} />
+    ) : (
+        <span title={label} onDoubleClick={() => setIsRenaming(true)}>
+            {label}
+        </span>
+    );
+}
+
+function TitleField({ chat, onDone }: { chat: Chat; onDone: () => void }) {
+    const root = useRootStore();
+    const [title, setTitle] = useState(chat.title);
+    const finished = useRef(false);
+
+    const commit = () => {
+        if (finished.current) return;
+        finished.current = true;
+        const next = title.trim();
+
+        onDone();
+
+        if (next && next !== chat.title) void perform(root, { type: 'chat.rename', chatId: chat.id, title: next });
+    };
+
+    return (
+        <Input
+            type="text"
+            variant="inline"
+            aria-label="Chat title"
+            className={styles.titleField}
+            autoFocus
+            autoSelect
+            value={title}
+            onChange={setTitle}
+            onKeyDown={event => {
+                if (event.nativeEvent.isComposing) return;
+
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    commit();
+                } else if (event.key === 'Escape') {
+                    event.preventDefault();
+                    finished.current = true;
+                    onDone();
+                }
+            }}
+            onBlur={commit}
+        />
     );
 }
