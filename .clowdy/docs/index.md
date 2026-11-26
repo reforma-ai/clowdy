@@ -2,6 +2,8 @@
 
 ## Decisions
 
+- [File chips find files named without their folder](decisions/2026-11-26-file-chip-finds-bare-names.md) records that a chip looks the file up in the project when it is not at the written path: one match opens, several are listed, and a path outside the project gets Open in…. Status: accepted.
+
 - [One conversation screen for chats, threads and sub-agents](decisions/2026-11-25-one-conversation-screen-and-run-names.md) records the shared page with a header of titles, the disabled box of a sub-agent, run names without "Orchestrator NN", and which working agents the chat list shows. Status: accepted.
 
 - [Keep the computer awake during agent work](decisions/2026-11-25-agent-sleep-mode.md) records the three global sleep modes and the daemon-owned idle-sleep assertion. Status: accepted.
