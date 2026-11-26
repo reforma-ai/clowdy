@@ -1,6 +1,7 @@
 import { isTerminalRunStatus } from '@clowdy/protocol';
 
 import { getChat } from '../db/chats';
+import { appendItem } from '../domain/items';
 import { errorMessage } from '../errors';
 import { TurnWriter } from './writer';
 
@@ -364,6 +365,10 @@ export class NativeAgents {
 
         // A call the sub-agent left running ends with it.
         agent.writer.finish();
+
+        // A failure is the last line of its stream, as a failed thread's is, so its page says it too: the card of its call in the parent's stream is not the only place.
+        if (state === 'error')
+            appendItem(this.store, agent.run.id, { kind: 'error', text: summary ?? 'The sub-agent failed' });
 
         if (state === 'done') {
             this.runs.setStatus(agent.run.id, 'succeeded', { result: summary });
