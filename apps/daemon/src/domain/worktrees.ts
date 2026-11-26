@@ -162,6 +162,7 @@ export async function inspectWorktree(
         path: resolve(entry.path),
         ...(entry.branch !== undefined && { branch: entry.branch }),
         head: shortHash(entry.head),
+        ...(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(entry.head) && { headOid: entry.head }),
         main: owner.main,
         missing: present === undefined,
         ...(entry.locked !== undefined && { locked: entry.locked }),

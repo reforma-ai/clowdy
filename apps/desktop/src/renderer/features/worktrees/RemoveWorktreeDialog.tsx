@@ -211,6 +211,9 @@ function ReadRemoval({ target }: { target: WorktreeTarget }) {
                             outside={chats.outside}
                             onConfirm={async () => {
                                 const { deleteBranch, disposition } = choice;
+                                if (deleteBranch && (!worktree.branch || !worktree.headOid)) {
+                                    throw new Error('Could not verify the branch commit');
+                                }
                                 if (chats.ids.size === 0 || deleteBranch || plan.kind === 'discard') {
                                     try {
                                         const current = await readWorktree(target);
@@ -249,7 +252,12 @@ function ReadRemoval({ target }: { target: WorktreeTarget }) {
                                     folderId,
                                     path: worktree.path,
                                     ...(plan.kind === 'discard' && { discard: true }),
-                                    ...(plan.branch && deleteBranch && { deleteBranch: true }),
+                                    ...(plan.branch &&
+                                        deleteBranch &&
+                                        worktree.headOid && {
+                                            deleteBranch: true,
+                                            expectedBranch: { name: plan.branch.name, commit: worktree.headOid },
+                                        }),
                                     ...(chats.ids.size > 0 && {
                                         chatDisposition: disposition,
                                         expectedChatIds: [...chats.ids],

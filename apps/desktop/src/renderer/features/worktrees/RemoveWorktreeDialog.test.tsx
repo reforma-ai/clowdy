@@ -241,6 +241,7 @@ describe('Remove in Manage worktrees', () => {
                     folderId: 'fld_car_rental',
                     path: CLEAN_MERGED,
                     deleteBranch: true,
+                    expectedBranch: { name: 'feature/done', commit: 'aaa1111000000000000000000000000000000000' },
                 },
             ]);
             expect(removals()[0]).not.toHaveProperty('discard');
@@ -364,6 +365,7 @@ describe('Remove in Manage worktrees', () => {
                     folderId: 'fld_car_rental',
                     path: CLEAN_UNMERGED,
                     deleteBranch: true,
+                    expectedBranch: { name: 'wip/pricing', commit: 'bbb2222000000000000000000000000000000000' },
                 },
             ]);
         });
