@@ -376,12 +376,16 @@ export function AgentList({
         }
     };
 
-    // A press on the row of the chat that is open, and not on a control of the row: the same as above, for the pointer. Read in the capture phase: a row stops the click it takes.
+    // Row controls handle their own clicks; an open chat stays selected and a folded worktree opens.
     const onClick = (event: MouseEvent) => {
         const target = event.target as Element;
+        if (target.closest('button')) return;
+        const key = target.closest('[role="row"]')?.getAttribute('data-key');
+        const entry = entries.find(candidate => entryKey(candidate) === key);
 
-        if (!target.closest('button') && target.closest('[role="row"]')?.getAttribute('data-key') === selectedId)
-            showSelected();
+        if (entry?.kind === 'worktree' && entry.isCollapsed && entry.card.roots.length > 0)
+            ui.expandWorktree(entry.card.key);
+        else if (key === selectedId) showSelected();
     };
 
     const select = (id: string) => {

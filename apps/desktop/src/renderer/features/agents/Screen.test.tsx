@@ -2031,6 +2031,32 @@ describe('worktree cards', () => {
         expect(ui().collapsedWorktrees).not.toContain(key);
     });
 
+    it('opens a folded worktree on a row click without closing it on another click', async () => {
+        await restart();
+        await draw(() => ui().setGroupByWorktree(true));
+        const key = workspaceKey();
+        await arrow(key, 'ArrowLeft');
+        await draw();
+        expect(rowOf(FIXTURE_WORKSPACE_CHAT_ID)).toBeNull();
+        await press(rowOf(key));
+        await draw();
+        expect(rowOf(FIXTURE_WORKSPACE_CHAT_ID)).not.toBeNull();
+        await press(rowOf(key));
+        await draw();
+        expect(rowOf(FIXTURE_WORKSPACE_CHAT_ID)).not.toBeNull();
+    });
+
+    it('keeps a folded worktree closed when opening its actions menu', async () => {
+        await restart();
+        await draw(() => ui().setGroupByWorktree(true));
+        const key = workspaceKey();
+        await arrow(key, 'ArrowLeft');
+        await draw();
+        await press(rowOf(key).querySelector<HTMLElement>('button[aria-label^="Worktree actions:"]')!);
+        expect(menuItem('New chat')).toBeDefined();
+        expect(rowOf(FIXTURE_WORKSPACE_CHAT_ID)).toBeNull();
+    });
+
     it('shows unused worktrees in the list when enabled in Display', async () => {
         await restart();
         await draw(() => ui().setGroupByWorktree(true));
