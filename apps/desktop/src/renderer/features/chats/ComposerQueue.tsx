@@ -5,15 +5,19 @@ import { Scrollable } from '@clowdy/components/Scrollable';
 import { Show } from '@clowdy/components/Show';
 import { SortableList } from '@clowdy/components/SortableList';
 import { Text } from '@clowdy/components/Text';
-import { ArrowUp, Clip, Collapse, EditPen, Split, Trash } from '@clowdy/icons/14';
+import { ArrowUp, Clip, Collapse, EditPen, Trash } from '@clowdy/icons/14';
 import { type RefObject, useEffect, useRef, useState } from 'react';
 
 import { Unavailable } from '../../shared/Unavailable';
-import { useRootStore } from '../../stores';
+import { useProjectState, useRootStore } from '../../stores';
+import { OutcomeMark } from '../../stream/OutcomeMark';
+import { worstOutcome } from '../../stream/threadMessages';
+import { AgentMark } from '../agents/AgentMark';
 import styles from './ComposerQueue.module.css';
+import { chatEngine } from './chatProvider';
 import { perform } from './commands';
 
-import type { Chat, QueuedMessage, QueuePause } from '@clowdy/protocol';
+import type { Chat, MessageSource, QueuedMessage, QueuePause } from '@clowdy/protocol';
 
 const filesLabel = (count: number) => (count === 1 ? '1 file' : `${count} files`);
 
@@ -131,6 +135,7 @@ export function ComposerQueue({ chat, busy, running, onEdit }: ComposerQueueProp
         if (item.from) {
             return (
                 <ThreadItemRow
+                    from={item.from}
                     label={queuedLabel(item)}
                     isFirst={isFirst}
                     steering={steering}
@@ -309,6 +314,7 @@ function QueuedRow({
 }
 
 interface ThreadItemRowProps {
+    from: MessageSource;
     label: string;
     isFirst: boolean;
     /** It waits for the agent's next step, or its send is in flight. */
@@ -320,13 +326,15 @@ interface ThreadItemRowProps {
 
 /**
  * An item a thread sent while the orchestrator worked: threads that stopped (its one-line summary, `Thread "Fix login" finished`) or a thread's message.
- * The thread mark and the line, with the up arrow and Remove.
+ * The mark and the line, with the up arrow and Remove.
  */
-function ThreadItemRow({ label, isFirst, steering, busy, onSendNow, onRemove }: ThreadItemRowProps) {
+function ThreadItemRow({ from, label, isFirst, steering, busy, onSendNow, onRemove }: ThreadItemRowProps) {
     return (
         <div className={styles.item} data-first={isFirst || undefined} data-thread>
             <div className={styles.preview} data-command>
-                <Split className={styles.mark} aria-hidden />
+                <span className={styles.mark} aria-hidden>
+                    <ThreadRowMark from={from} />
+                </span>
                 <span className={styles.text}>{label}</span>
             </div>
 
@@ -352,6 +360,18 @@ function ThreadItemRow({ label, isFirst, steering, busy, onSendNow, onRemove }: 
             </Box>
         </div>
     );
+}
+
+/**
+ * The mark that opens a thread's row, the same as on its card in the stream: the outcome of the threads that stopped (a check for a finished one, and for several the
+ * worst of them), or the agent of the chat that wrote the message.
+ */
+function ThreadRowMark({ from }: { from: MessageSource }) {
+    const project = useProjectState();
+
+    if (from.kind === 'threadNotice') return <OutcomeMark outcome={worstOutcome(from.threads)} />;
+
+    return <AgentMark engine={chatEngine(project.chats, project.runs, from.chatId)} />;
 }
 
 interface CompactRowProps {
