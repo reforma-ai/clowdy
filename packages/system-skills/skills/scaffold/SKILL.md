@@ -7,9 +7,9 @@ description: "Start a new application from nothing for someone who describes a p
 
 Turn "I want an app that does X" into a working skeleton. ONE agent builds it first so later work shares the same layout, commands and conventions.
 
-Use this when the folder is empty (or holds only a README or licence) and the user wants a new application. If an app already exists, do not scaffold: read its documents (clowdy:docs) and plan with clowdy:orchestrate. Never overwrite existing files.
+Use this when the folder is empty (or holds only a README or licence) and the user wants a new application. If an app already exists, do not scaffold: read its documents<!-- skill:docs --> (clowdy:docs)<!-- /skill --> and plan<!-- skill:orchestrate --> with clowdy:orchestrate<!-- /skill -->. Never overwrite existing files.
 
-Your first message says `Mode: autopilot` or `Mode: semi-manual`. It decides who answers the forks below (clowdy:autopilot, clowdy:semi-manual).
+Your first message says `Mode: autopilot` or `Mode: semi-manual`. It decides who answers the forks below<!-- skill:autopilot --> (clowdy:autopilot)<!-- /skill --><!-- skill:semi-manual --> (clowdy:semi-manual)<!-- /skill -->.
 
 ## Done looks like
 
@@ -26,7 +26,7 @@ Your first message says `Mode: autopilot` or `Mode: semi-manual`. It decides who
 ### 1. Brief to product statement and milestone
 
 1. Read the request and anything attached. List the folder.
-2. Write the statement in the user's words, one page, using the `product.md` template of clowdy:docs: what it is, who uses it and for what, the first milestone, what is not now.
+2. Write the statement in the user's words, one page<!-- skill:docs -->, using the `product.md` template of clowdy:docs<!-- /skill -->: what it is, who uses it and for what, the first milestone, what is not now.
 3. Make the milestone a flow someone can run, not a feature list: 5 to 10 steps with an expected result that prove the core value. Bad: "ordering, admin, payments". Good: "A customer opens the site, picks a cake and a pick-up time, submits; the owner opens the admin page and sees that order."
 4. A gap in the brief: in autopilot take the most likely reading and write it under Hypotheses in `product.md`. In semi-manual it becomes a card only when two readings give different products (see step 2); never ask about names or looks.
 
@@ -41,9 +41,9 @@ Decide in this order (detail in [stack-criteria](references/stack-criteria.md)):
 
 Check what is installed before you commit to a toolchain (`bun --version`, `node --version`, `python3 --version`, `go version`). Pick what is there. If the right tool is missing and needs the user's action, say so as a blocker and continue with what does not need it.
 
-**Autopilot:** decide, then write `decisions/<date>-stack.md` at once (clowdy:docs, decision template).
+**Autopilot:** decide, then write `decisions/<date>-stack.md` at once<!-- skill:docs --> (clowdy:docs, decision template)<!-- /skill -->.
 
-**Semi-manual:** the stack itself is never a card. The cards are the forks that change the product: platform, hosting, data and sign-in (table in stack-criteria), plus a product reading from step 1 when two readings give different products. Ask the ones the brief leaves open in one round of at most four cards, one at a time (card format and rules: clowdy:semi-manual), decide the rest yourself. After the answers write `product.md` and the records (the user's answers as `Decided by: user (semi-manual)`, your stack choices under "Decided by the agent"), then ask the one confirmation card; its body holds the first milestone and the choices in plain words. Create no tasks and start no run before the user confirms.
+**Semi-manual:** the stack itself is never a card. The cards are the forks that change the product: platform, hosting, data and sign-in (table in stack-criteria), plus a product reading from step 1 when two readings give different products. Ask the ones the brief leaves open in one round of at most four cards, one at a time<!-- skill:semi-manual --> (card format and rules: clowdy:semi-manual)<!-- /skill -->, decide the rest yourself. After the answers write `product.md` and the records (the user's answers as `Decided by: user (semi-manual)`, your stack choices under "Decided by the agent"), then ask the one confirmation card; its body holds the first milestone and the choices in plain words. Create no tasks and start no run before the user confirms.
 
 ```js
 ask_user({
@@ -68,21 +68,21 @@ Do not trust your own "done": run the check and run commands and look at the res
 
 ### 4. Documents and conventions
 
-Load clowdy:docs. You wrote `product.md` and the stack decision in steps 1 and 2; create `index.md` for them before the skeleton starts (you are its only writer). When the skeleton stands, write `architecture.md` from what you actually built, and the README, and add its line to `index.md`. Before any slice starts, `architecture.md` must say, in about a page: the layout, one line per folder; the commands (check, run, test, build); where a new route, screen, table or test goes and how it is named; how errors, config and logging work; which files are shared and who may edit them, plus the dependency rule (add what your task needs, never upgrade the rest); and the contracts two slices will both rely on (API shapes, data tables). A convention that is not written there does not exist for the next agent.
+<!-- skill:docs -->Load clowdy:docs. <!-- /skill -->You wrote `product.md` and the stack decision in steps 1 and 2; create `index.md` for them before the skeleton starts (you are its only writer). When the skeleton stands, write `architecture.md` from what you actually built, and the README, and add its line to `index.md`. Before any slice starts, `architecture.md` must say, in about a page: the layout, one line per folder; the commands (check, run, test, build); where a new route, screen, table or test goes and how it is named; how errors, config and logging work; which files are shared and who may edit them, plus the dependency rule (add what your task needs, never upgrade the rest); and the contracts two slices will both rely on (API shapes, data tables). A convention that is not written there does not exist for the next agent.
 
 ### 5. Plan the first task graph
 
 Plan after the skeleton passes its check, when Owns paths are real. Slice catalog and rules: [task-graph](references/task-graph.md):
 
 - Slice by what can be built and verified on its own: data model, API, UI shell, each feature screen, auth, deployment script, demo data. Not by layer for its own sake.
-- Create tasks with `clowdy task create`, in dependency order, each description in the five-part template of clowdy:orchestrate (Outcome, Owns, Needs, Check, Out of scope).
+- Create tasks with `clowdy task create`, in dependency order, each description<!-- skill:orchestrate --> in the five-part template of clowdy:orchestrate (Outcome, Owns, Needs, Check, Out of scope)<!-- /skill -->.
 - Two tasks are independent when they own different paths and neither needs the other's output. A contract both need is written into `architecture.md` first, so the two can be built against it in any order, or by threads side by side.
 - Size the first milestone's tasks by outcome, dependency and reviewability. Delegate compatible parts inside a slice when useful.
 - Verification is not a task: you verify the first milestone on the combined result (step 6). Move the skeleton task to Done only after you saw its check pass.
 
 ### 6. Build the slices
 
-Continue the loop in clowdy:orchestrate at step 4. The skeleton fixed the layout and contracts. Choose direct or delegated work; run ready slices in parallel when their ownership and contracts are compatible. Each thread brief carries the task key, mode, owned paths, contracts, `architecture.md`, check command and report format. Start ready threads together and end your turn; as each reports, check its slice, start newly ready work and replan when a slice reveals a fact. Review and commit each stage as clowdy:orchestrate says. When the slices are Done, run the milestone flow from `product.md` on the combined result yourself or through a fresh checking thread. Move verified behavior to Implemented in `product.md` and write the check report to `checks/`.
+Continue the loop<!-- skill:orchestrate --> in clowdy:orchestrate at step 4<!-- /skill -->. The skeleton fixed the layout and contracts. Choose direct or delegated work; run ready slices in parallel when their ownership and contracts are compatible. Each thread brief carries the task key, mode, owned paths, contracts, `architecture.md`, check command and report format. Start ready threads together and end your turn; as each reports, check its slice, start newly ready work and replan when a slice reveals a fact. Review and commit each stage<!-- skill:orchestrate --> as clowdy:orchestrate says<!-- /skill -->. When the slices are Done, run the milestone flow from `product.md` on the combined result yourself or through a fresh checking thread. Move verified behavior to Implemented in `product.md` and write the check report to `checks/`.
 
 ### 7. Tell the user
 

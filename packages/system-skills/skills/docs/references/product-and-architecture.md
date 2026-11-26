@@ -1,6 +1,6 @@
 # product.md and architecture.md templates
 
-Both files separate what exists from what is intended (see the four labels in clowdy:docs). Copy the shape, delete sections that have nothing to say, never fill a section with guesses.
+Both files separate what exists from what is intended<!-- skill:docs --> (see the four labels in clowdy:docs)<!-- /skill -->. Copy the shape, delete sections that have nothing to say, never fill a section with guesses.
 
 ## product.md
 

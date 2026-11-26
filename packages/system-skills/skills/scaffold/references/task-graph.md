@@ -1,6 +1,6 @@
 # The first task graph
 
-Plan it after the skeleton passes its check, so Owns paths are real. The task template, sizing and status flow are in clowdy:orchestrate; this file adds what is specific to a new application.
+Plan it after the skeleton passes its check, so Owns paths are real. <!-- skill:orchestrate -->The task template, sizing and status flow are in clowdy:orchestrate. <!-- /skill -->This file adds what is specific to a new application.
 
 ## Slice catalog
 
@@ -21,7 +21,7 @@ Split by outcome, dependencies and reviewability; assign compatible owned paths 
 
 ## Description of each task
 
-Use the five-part template of clowdy:orchestrate (Outcome, Owns, Needs, Check, Out of scope). For a new app, Needs names the `architecture.md` section and the decision records to follow, and Check is a command plus the visible behavior. Also name the shared files the task may touch and the rule for each (copied from `architecture.md`).
+Use the five-part template<!-- skill:orchestrate --> of clowdy:orchestrate<!-- /skill --> (Outcome, Owns, Needs, Check, Out of scope). For a new app, Needs names the `architecture.md` section and the decision records to follow, and Check is a command plus the visible behavior. Also name the shared files the task may touch and the rule for each (copied from `architecture.md`).
 
 ## Dependencies
 
@@ -62,8 +62,8 @@ CLW-5 Deployment script                      Owns: deploy/**
         Check: running it on a clean machine produces a build that starts and answers /health
 ```
 
-You build CLW-2 first. CLW-3 and CLW-5 own other paths, so two threads build them meanwhile (`clowdy thread spawn --tasks CLW-3`, CLW-3 against the fixtures), started in one step. CLW-4 starts when CLW-2 is Done, as a thread or by you. When all four are Done, you walk the full milestone flow on the combined result (clowdy:orchestrate, Verify); a failure goes back to the owning task with the exact step that broke.
+You build CLW-2 first. CLW-3 and CLW-5 own other paths, so two threads build them meanwhile (`clowdy thread spawn --tasks CLW-3`, CLW-3 against the fixtures), started in one step. CLW-4 starts when CLW-2 is Done, as a thread or by you. When all four are Done, you walk the full milestone flow on the combined result<!-- skill:orchestrate --> (clowdy:orchestrate, Verify)<!-- /skill -->; a failure goes back to the owning task with the exact step that broke.
 
 ## Replanning
 
-When a slice reveals new facts (a missing table, a wrong contract, a larger slice than expected), stop the affected threads (`clowdy thread stop`) and sub-agents, fix `architecture.md` Contracts first, tell the threads that go on what changed (`clowdy thread tell`), then replan as in clowdy:orchestrate. Do not let two slices keep building against different versions of a contract.
+When a slice reveals new facts (a missing table, a wrong contract, a larger slice than expected), stop the affected threads (`clowdy thread stop`) and sub-agents, fix `architecture.md` Contracts first, tell the threads that go on what changed (`clowdy thread tell`), then replan<!-- skill:orchestrate --> as in clowdy:orchestrate<!-- /skill -->. Do not let two slices keep building against different versions of a contract.

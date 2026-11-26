@@ -52,6 +52,7 @@ export interface CatalogInput {
     project: readonly ProjectScan[];
     /** Folder names of the user skills that are switched off. */
     disabled: ReadonlySet<string>;
+    systemDisabled?: ReadonlySet<string>;
     /** Problems found before the catalog was built. */
     warnings?: string[];
 }
@@ -60,14 +61,22 @@ export interface CatalogInput {
  * The catalog the API serves. Names are the ones the engines use: `clowdy:` for system skills, `user:` for the
  * person's own (both are plugins), plain for project skills. A user skill that is off still shows, with the cost it would have.
  */
-export function buildCatalog({ system, user, project, disabled, warnings = [] }: CatalogInput): SkillCatalog {
+export function buildCatalog({
+    system,
+    user,
+    project,
+    disabled,
+    systemDisabled = new Set(),
+    warnings = [],
+}: CatalogInput): SkillCatalog {
+    const systemEnabled = !systemDisabled.has('*');
     const entries = [
         ...system.skills.map(skill =>
             entryOf(skill, {
                 id: `system:${skill.folder}`,
                 name: `${SYSTEM_PLUGIN_NAME}:${skill.folder}`,
                 source: 'system',
-                enabled: true,
+                enabled: !systemDisabled.has(skill.folder),
                 engines: ENGINES,
             })
         ),
@@ -85,7 +94,10 @@ export function buildCatalog({ system, user, project, disabled, warnings = [] }:
     const tokens = Math.max(
         ...ENGINES.map(engine =>
             entries
-                .filter(entry => entry.enabled && entry.engines.includes(engine))
+                .filter(
+                    entry =>
+                        entry.enabled && (entry.source !== 'system' || systemEnabled) && entry.engines.includes(engine)
+                )
                 .reduce((sum, entry) => sum + entry.tokens, 0)
         )
     );
@@ -102,7 +114,7 @@ export function buildCatalog({ system, user, project, disabled, warnings = [] }:
         );
     }
 
-    return { entries, tokens, warnings: all };
+    return { entries, tokens, warnings: all, systemEnabled };
 }
 
 /** A folder both engines read (a link, say) is one skill that both see. */

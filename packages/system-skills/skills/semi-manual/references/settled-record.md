@@ -2,7 +2,7 @@
 
 Read this when the frontier is empty and you are about to record the grill.
 
-The grill produces a set of decisions from one conversation. Write them as one record per topic. It has the same header and conventions as every decision record (file naming, `Decided by`, superseding, the index line, what must stay out): see the decision template in clowdy:docs. Only the body differs. A decision that could be replaced on its own, such as a technology or a data format, gets its own file so it can be superseded without touching the rest.
+The grill produces a set of decisions from one conversation. Write them as one record per topic. It has the same header and conventions as every decision record (file naming, `Decided by`, superseding, the index line, what must stay out).<!-- skill:docs --> See the decision template in clowdy:docs.<!-- /skill --> Only the body differs. A decision that could be replaced on its own, such as a technology or a data format, gets its own file so it can be superseded without touching the rest.
 
 The slug names the topic: `orders-export-scope`. List `decisions/` first. If a record on the topic exists and still holds, reuse it. Write a new record that supersedes the old one only when an answer replaces it. Keep it under about 50 lines.
 

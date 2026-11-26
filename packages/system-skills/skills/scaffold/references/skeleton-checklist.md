@@ -51,7 +51,7 @@ Nothing else. No badges, no roadmap, no aspirational features.
 
 ## 7. Documents
 
-- [ ] `architecture.md` written from the repository as it is now (layout, commands, conventions, shared files, contracts), using the template of clowdy:docs, in the project's main checkout. Every command in it is one you ran.
+- [ ] `architecture.md` written from the repository as it is now (layout, commands, conventions, shared files, contracts)<!-- skill:docs -->, using the template of clowdy:docs<!-- /skill -->, in the project's main checkout. Every command in it is one you ran.
 - [ ] `product.md` and `index.md` exist (you wrote them in steps 1 and 4 of the skill). `index.md` has the `architecture.md` line.
 
 ## 8. Prove it

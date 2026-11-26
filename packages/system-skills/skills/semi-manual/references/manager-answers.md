@@ -43,7 +43,7 @@ Make delegated decisions visible.
 
 - Record the choice as `user (delegated)` so later readers can tell it was your pick.
 - If the delegated choice is costly or hard to undo, say so before starting work, in one line, and let the confirmation card carry it.
-- Delegation applies to the card they were asked. It does not cover later forks, unless they said "decide everything yourself". In that case go on as in clowdy:autopilot and say so in one line.
+- Delegation applies to the card they were asked. It does not cover later forks, unless they said "decide everything yourself". In that case go on<!-- skill:autopilot --> as in clowdy:autopilot<!-- /skill --> and say so in one line.
 
 ## Silence and interruptions
 

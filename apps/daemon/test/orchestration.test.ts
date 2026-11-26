@@ -52,6 +52,34 @@ async function setup(
     return { h, engine, project, task };
 }
 
+describe('system skill delivery', () => {
+    test('new runs omit disabled entry instructions and restore them when re-enabled', async () => {
+        const { h, engine, task } = await setup();
+
+        h.ok('skills.setEnabled', { name: 'clowdy:orchestrate', enabled: false });
+        h.ok('task.start', { taskId: task('First').id });
+        await waitFor(() => engine.turns.length === 1, 'first run');
+        expect(engine.turns[0].systemPrompt).not.toContain('clowdy:orchestrate');
+        expect(engine.turns[0].prompt).not.toContain('Follow clowdy:orchestrate');
+
+        h.ok('skills.setEnabled', { name: 'clowdy:orchestrate', enabled: true });
+        h.ok('task.start', { taskId: task('Second').id });
+        await waitFor(() => engine.turns.length === 2, 'second run');
+        expect(engine.turns[1].systemPrompt).toContain('<skill name="clowdy:orchestrate">');
+        expect(engine.turns[1].prompt).toStartWith('Follow clowdy:orchestrate');
+    });
+
+    test('new runs do not direct agents to a disabled supporting skill', async () => {
+        const { h, engine, task } = await setup();
+
+        h.ok('skills.setEnabled', { name: 'clowdy:docs', enabled: false });
+        h.ok('task.start', { taskId: task('Inspect').id });
+        await waitFor(() => engine.turns.length === 1, 'run');
+        expect(engine.turns[0].systemPrompt).not.toContain('clowdy:docs');
+        expect(engine.turns[0].systemPrompt).toContain('<skill name="clowdy:orchestrate">');
+    });
+});
+
 describe('task.start', () => {
     test('opens a new chat named after the task, linked to it, with an orchestrator bound to the task', async () => {
         const { h, engine, project, task } = await setup();

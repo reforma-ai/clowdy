@@ -19,14 +19,14 @@ export function groupSkills(entries: readonly SkillEntry[], projectName?: string
         {
             source: 'system',
             title: 'System',
-            hint: 'Come with Clowdy and teach agents how to work here. Always on.',
-            empty: 'No system skills are installed.',
+            hint: 'Bundled with Clowdy to guide agents',
+            empty: 'No system skills are installed',
             skills: [],
         },
         {
             source: 'user',
             title: 'User',
-            hint: 'From ~/.claude/skills and ~/.agents/skills on this computer. Switch off the ones agents should not use.',
+            hint: 'From ~/.claude/skills and ~/.agents/skills on this computer',
             empty: 'You have no skills of your own yet. A skill is a folder with a SKILL.md file; put it in ~/.claude/skills or ~/.agents/skills and it shows up here.',
             skills: [],
         },
@@ -36,7 +36,7 @@ export function groupSkills(entries: readonly SkillEntry[], projectName?: string
         groups.push({
             source: 'project',
             title: 'Project',
-            hint: `From the .claude/skills and .agents/skills folders of ${projectName}. Always on for this project.`,
+            hint: `From ${projectName}'s .claude/skills and .agents/skills folders`,
             empty: `${projectName} has no skills of its own. Add a folder with a SKILL.md file to .claude/skills (for Claude) or .agents/skills (for Codex) in the project.`,
             skills: [],
         });

@@ -22,7 +22,7 @@ Create files only when there is something to say; no empty placeholders.
 | `architecture.md` | Stack, folder layout, commands, conventions, how to add things, constraints | Structure, conventions or commands change |
 | `decisions/` | One file per significant decision, as new files only | The moment you decide |
 | `research/` | One note per investigated question, with sources | You finish investigating, before you build on it |
-| `checks/` | One report per verification: what ran, result, evidence, limits | After each significant verification (clowdy:orchestrate, Verify) |
+| `checks/` | One report per verification: what ran, result, evidence, limits | After each significant verification<!-- skill:orchestrate --> (clowdy:orchestrate, Verify)<!-- /skill --> |
 
 You are the orchestrator, so you write the documents. Sub-agents write none: they return findings and proposed changes in their answers. A thread writes the documents its brief asks for and the decision records its mode calls for, never `index.md`: the chat the person started is its one writer.
 
@@ -50,7 +50,7 @@ Give each kind its own heading in `product.md` and `architecture.md` (`## Implem
 
 ## Decisions
 
-Record every significant decision when you make it, not at the end of the task: a product fork, the stack, the data model, auth, hosting, a trade-off, a reversal. Routine choices (names, small refactors) get no record. clowdy:autopilot and clowdy:semi-manual say who decides; the [decision template](references/decision-template.md) says how it is written down.
+Record every significant decision when you make it, not at the end of the task: a product fork, the stack, the data model, auth, hosting, a trade-off, a reversal. Routine choices (names, small refactors) get no record. The mode determines who decides. <!-- skill:autopilot -->See clowdy:autopilot. <!-- /skill --><!-- skill:semi-manual -->See clowdy:semi-manual. <!-- /skill -->The [decision template](references/decision-template.md) says how it is written down.
 
 To supersede a decision:
 
@@ -79,7 +79,7 @@ Instead, summarize with the proving excerpt, reproduction command and task key. 
 
 ## Start a chat from the docs
 
-1. Read `index.md`. If it does not exist, the project has no memory yet: skim `README` and the top-level layout, and write documents only when you have something worth keeping. A new app starts with clowdy:scaffold.
+1. Read `index.md`. If it does not exist, the project has no memory yet: skim `README` and the top-level layout, and write documents only when you have something worth keeping.<!-- skill:scaffold --> A new app starts with clowdy:scaffold.<!-- /skill -->
 2. Open only the documents the task needs, chosen from the index lines and the links in the task. When several cover one topic, read the newest and skip superseded ones.
 3. Verify before you rely: open the cited file, run the cheap command. Docs go stale. If the code disagrees, trust the code, fix the document or relabel the claim as a Hypothesis, and tell the user in one line only when it changes the plan. A chat that only asks a question reports the mismatch and does not edit the document unless asked.
 4. Do not read every document and do not paste documents back at the user.

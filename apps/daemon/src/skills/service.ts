@@ -5,7 +5,12 @@ import { folderNames } from '@clowdy/protocol';
 import { getProject, listProjects } from '../db/projects';
 import { invalid, notFound } from '../errors';
 import { buildCatalog, mergeUserSkills } from './catalog';
-import { defaultSystemSkillsSource, materializeSystemSkills, SYSTEM_PLUGIN_NAME } from './materialize';
+import {
+    defaultSystemSkillsSource,
+    materializeSystemSkills,
+    SYSTEM_PLUGIN_NAME,
+    snapshotSystemSkills,
+} from './materialize';
 import { buildUserMirror, USER_PLUGIN_NAME } from './mirror';
 import { SkillScanner } from './scan';
 import { SkillSettings } from './settings';
@@ -39,6 +44,7 @@ export class SkillsService {
     private settings: SkillSettings;
     private watchers = new FolderWatchers();
     private systemDir: string;
+    private systemSource: string;
     /** What the last announcement (or the start) saw, to tell a real change from a touched file. */
     private userFingerprint?: string;
     private projectFingerprints = new Map<string, string>();
@@ -49,11 +55,12 @@ export class SkillsService {
         private config: Config
     ) {
         this.settings = new SkillSettings(config.dataDir);
-        this.systemDir = materializeSystemSkills(
+        this.systemSource = snapshotSystemSkills(
             config.systemSkillsSource ?? defaultSystemSkillsSource(),
             config.dataDir
-        ).dir;
-        config.systemSkillsDir = this.systemDir;
+        );
+        this.systemDir = materializeSystemSkills(this.systemSource, config.dataDir).dir;
+        this.rebuildSystem();
         this.syncUser();
     }
 
@@ -89,21 +96,39 @@ export class SkillsService {
             this.watchProject(project);
         }
 
-        const { disabled, warning } = this.settings.read();
+        const { disabled, systemDisabled, warning } = this.settings.read();
 
         return buildCatalog({
             system: this.scanner.scan(join(this.systemDir, 'skills')),
             user: mergeUserSkills(this.userScans()),
             project: project ? this.projectScans(project) : [],
             disabled,
+            systemDisabled,
             warnings: warning ? [warning] : [],
         });
     }
 
-    /** Switches a user skill on or off for every run; `name` is the entry's name (`user:deploy`). */
+    /** Changes a user or system selection, or the global system switch (`clowdy:*`). */
     setEnabled(name: string, enabled: boolean): void {
         if (name.startsWith(`${SYSTEM_PLUGIN_NAME}:`)) {
-            throw invalid('System skills cannot be switched off');
+            const folder = name.slice(SYSTEM_PLUGIN_NAME.length + 1);
+
+            if (
+                folder !== '*' &&
+                !this.scanner.scan(join(this.systemDir, 'skills')).skills.some(skill => skill.folder === folder)
+            ) {
+                throw notFound('Skill', name);
+            }
+            if (this.settings.setEnabled(folder, enabled, true)) {
+                try {
+                    this.rebuildSystem();
+                } catch (error) {
+                    this.settings.setEnabled(folder, !enabled, true);
+                    throw error;
+                }
+                this.announce(listProjects(this.store.db));
+            }
+            return;
         }
 
         if (!name.startsWith(`${USER_PLUGIN_NAME}:`)) {
@@ -120,6 +145,17 @@ export class SkillsService {
             this.rebuildMirror();
             this.announce(listProjects(this.store.db));
         }
+    }
+
+    private rebuildSystem(): void {
+        const { systemDisabled } = this.settings.read();
+        const disabled = systemDisabled.has('*')
+            ? new Set(this.scanner.scan(join(this.systemDir, 'skills')).skills.map(skill => skill.folder))
+            : systemDisabled;
+
+        this.config.systemSkillsDir = disabled.size
+            ? materializeSystemSkills(this.systemSource, this.config.dataDir, disabled).dir
+            : this.systemDir;
     }
 
     private userScans(): LabeledScan[] {

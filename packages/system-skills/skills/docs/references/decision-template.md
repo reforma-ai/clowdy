@@ -40,11 +40,11 @@ One shape for every record in `decisions/`, whoever decides (autopilot or the gr
 
 - Before writing, list `decisions/` and read any record on the same topic. If one still holds, follow it and write nothing. If your file name is taken, add `-2`.
 - `Status` is `accepted` or `superseded`. Write the record after the choice is made, so there is no `proposed` state.
-- `Decided by` is `autopilot`, `user (semi-manual)` or `user (delegated)`. The last two come from the grill in clowdy:semi-manual. A record decided by the user binds every later run until the user says otherwise: an agent may not supersede it.
+- `Decided by` is `autopilot`, `user (semi-manual)` or `user (delegated)`. The last two identify decisions made with the user.<!-- skill:semi-manual --> They come from the grill in clowdy:semi-manual.<!-- /skill --> A record decided by the user binds every later run until the user says otherwise: an agent may not supersede it.
 - Date from `date +%F`, not from memory. Keep it under about 40 lines. State what is true, what you assumed and what you chose in separate places.
-- `Supersedes` and `Superseded by` hold a relative link to the other file, for example `[Hosted database](2026-11-17-hosted-db.md)`, or `none`. How to supersede: clowdy:docs, section "Decisions".
+- `Supersedes` and `Superseded by` hold a relative link to the other file, for example `[Hosted database](2026-11-17-hosted-db.md)`, or `none`.<!-- skill:docs --> How to supersede: clowdy:docs, section "Decisions".<!-- /skill -->
 - Prose in the language of the project's documents; file names and field labels stay in English. No secrets, no pasted logs: summarize and name the file or command.
-- Add the record's line to `index.md` once it is written (clowdy:docs).
+- Add the record's line to `index.md` once it is written<!-- skill:docs --> (clowdy:docs)<!-- /skill -->.
 
 ## Example for a stack choice
 
