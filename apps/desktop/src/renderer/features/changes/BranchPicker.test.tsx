@@ -359,6 +359,7 @@ describe('copying a branch from the branch picker', () => {
         const remove = vi.spyOn(transport, 'deleteGitBranch');
         const switchTo = vi.spyOn(transport, 'switchGitBranch');
         await open();
+        if (!row(name)) await press(buttonOf('Show unavailable branches')!);
 
         await act(async () => {
             row(name).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 }));
@@ -422,6 +423,8 @@ describe("the branch of the Changes sidebar, for the folder's own checkout", () 
 
         await open();
 
+        expect(row('clowdy/ab12cd34')).toBeUndefined();
+        await press(buttonOf('Show unavailable branches')!);
         const held = row('clowdy/ab12cd34');
 
         expect(held.getAttribute('aria-disabled')).toBe('true');
@@ -445,6 +448,16 @@ describe("the branch of the Changes sidebar, for the folder's own checkout", () 
         await settle();
         expect(switchTo).not.toHaveBeenCalled();
         expect(popover()).not.toBeNull();
+    });
+
+    it('finds unavailable branches while filtering and hides them again when the filter is cleared', async () => {
+        await start({ branches: ['held'] });
+        await open();
+        await type(search(), 'ab12cd');
+        expect(row('clowdy/ab12cd34').getAttribute('aria-disabled')).toBe('true');
+        await type(search(), '');
+        expect(row('clowdy/ab12cd34')).toBeUndefined();
+        expect(buttonOf('Show unavailable branches')).toBeDefined();
     });
 
     it('filters as the person types, on every word in any order', async () => {
@@ -732,6 +745,7 @@ describe("the branch of the Changes sidebar, for a chat's worktree", () => {
         const switchTo = vi.spyOn(transport, 'switchGitBranch');
 
         await open();
+        await press(buttonOf('Show unavailable branches')!);
         expect(row('main').getAttribute('aria-disabled')).toBe('true');
         expect(row('main').textContent).toContain('Checked out in the main worktree');
         await press(row('dev'));

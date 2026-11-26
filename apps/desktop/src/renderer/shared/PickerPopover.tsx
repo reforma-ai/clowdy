@@ -39,6 +39,8 @@ export interface PickerListProps {
     empty?: ReactNode;
     /** Styles for the list area below the filter. */
     listClassName?: string;
+    /** Reports the filter text to an owner that adjusts the options while searching. */
+    onQueryChange?: (query: string) => void;
     /** The person chose an option that is not disabled. The list does not close anything: its owner does. */
     onPick: (id: string) => void;
 }
@@ -104,6 +106,7 @@ export function PickerList({
     placeholder,
     empty = 'Nothing found',
     listClassName,
+    onQueryChange,
     onPick,
 }: PickerListProps) {
     const [query, setQuery] = useState('');
@@ -139,7 +142,10 @@ export function PickerList({
     return (
         <Autocomplete
             inputValue={query}
-            onInputChange={setQuery}
+            onInputChange={value => {
+                setQuery(value);
+                onQueryChange?.(value);
+            }}
             filter={matches}
             maxHeight="16rem"
             placeholder={placeholder}
@@ -204,6 +210,7 @@ export function PickerPopover({
     placeholder,
     empty,
     listClassName,
+    onQueryChange,
     footer,
     content,
     placement,
@@ -245,6 +252,7 @@ export function PickerPopover({
                             placeholder={placeholder}
                             empty={empty}
                             listClassName={listClassName}
+                            onQueryChange={onQueryChange}
                             onPick={pick}
                         />
                         {footer}

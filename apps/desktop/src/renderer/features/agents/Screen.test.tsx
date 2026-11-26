@@ -4,6 +4,7 @@ import { Modal } from '@clowdy/components/Modal';
 import { openConfirmModal } from '@clowdy/components/modals';
 import { emptyComposerDoc, plainTextToDoc } from '@clowdy/components/RichInput';
 import { runInAction } from 'mobx';
+import { observer } from 'mobx-react-lite';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -36,6 +37,13 @@ import type { KeyValueStorage } from '../../stores/storage';
 
 // `Modal` cannot load under the desktop's Vitest (decorators), and no confirmation is opened here.
 vi.mock('@clowdy/components/modals', () => ({ openConfirmModal: vi.fn() }));
+
+vi.mock('../changes/BranchPicker', async importOriginal => ({
+    BranchPicker: observer((await importOriginal<typeof import('../changes/BranchPicker')>()).BranchPicker),
+}));
+vi.mock('../changes/BranchList', async importOriginal => ({
+    BranchList: observer((await importOriginal<typeof import('../changes/BranchList')>()).BranchList),
+}));
 
 // The pages beside the list are drawn by their own tests; here they only say which one was asked for. A chat's `controls` stand beside it, as the line under its message box.
 vi.mock('../chats/ChatView', () => ({
@@ -194,6 +202,46 @@ describe('the list', () => {
             project().chats.set('c-1', { ...project().chats.get('c-1')!, engine: 'fake' });
         });
         expect(providerOf('c-1')).toBeUndefined();
+    });
+
+    it('previews an expanded chat as a block and restores its position on cancellation', async () => {
+        await draw(() => ui().toggleChatExpanded('c-6'));
+        const before = rowKeys();
+        const rows = Array.from(container.querySelectorAll<HTMLElement>('[role="row"][data-depth]'));
+        const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+            this: HTMLElement
+        ) {
+            const index = rows.indexOf(this);
+            return index < 0 ? new DOMRect(0, 0, 200, 1000) : new DOMRect(0, index * 36, 200, 36);
+        });
+        try {
+            const transfer = new DataTransfer();
+            transfer.setDragImage = vi.fn();
+            const source = rowOf('c-6').querySelector<HTMLElement>('[draggable="true"]')!;
+            const target = rowOf('c-4');
+            const event = (type: string, y: number) => {
+                const e = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: 50, clientY: y });
+                Object.defineProperty(e, 'dataTransfer', { value: transfer });
+                return e;
+            };
+            await act(async () => {
+                source.dispatchEvent(event('dragstart', 0));
+                target.dispatchEvent(event('dragover', 1));
+            });
+            expect({
+                root: rowOf('c-6').style.getPropertyValue('--reorder-offset'),
+                child: rowOf('c-6a').style.getPropertyValue('--reorder-offset'),
+                displaced: rowOf('c-4').style.getPropertyValue('--reorder-offset'),
+                order: rowKeys(),
+            }).toEqual({ root: '-108px', child: '-108px', displaced: '216px', order: before });
+            await act(async () => source.dispatchEvent(event('dragend', 1)));
+            expect({
+                order: rowKeys(),
+                offsets: rows.map(row => row.style.getPropertyValue('--reorder-offset')).filter(Boolean),
+            }).toEqual({ order: before, offsets: [] });
+        } finally {
+            rect.mockRestore();
+        }
     });
 
     it('keeps the hand-ordered list through activity and puts a newly created chat first', async () => {
@@ -2031,6 +2079,32 @@ describe('worktree cards', () => {
         expect(ui().collapsedWorktrees).not.toContain(key);
     });
 
+    it('opens a folded worktree on a row click without closing it on another click', async () => {
+        await restart();
+        await draw(() => ui().setGroupByWorktree(true));
+        const key = workspaceKey();
+        await arrow(key, 'ArrowLeft');
+        await draw();
+        expect(rowOf(FIXTURE_WORKSPACE_CHAT_ID)).toBeNull();
+        await press(rowOf(key));
+        await draw();
+        expect(rowOf(FIXTURE_WORKSPACE_CHAT_ID)).not.toBeNull();
+        await press(rowOf(key));
+        await draw();
+        expect(rowOf(FIXTURE_WORKSPACE_CHAT_ID)).not.toBeNull();
+    });
+
+    it('keeps a folded worktree closed when opening its actions menu', async () => {
+        await restart();
+        await draw(() => ui().setGroupByWorktree(true));
+        const key = workspaceKey();
+        await arrow(key, 'ArrowLeft');
+        await draw();
+        await press(rowOf(key).querySelector<HTMLElement>('button[aria-label^="Worktree actions:"]')!);
+        expect(menuItem('New chat')).toBeDefined();
+        expect(rowOf(FIXTURE_WORKSPACE_CHAT_ID)).toBeNull();
+    });
+
     it('shows unused worktrees in the list when enabled in Display', async () => {
         await restart();
         await draw(() => ui().setGroupByWorktree(true));
@@ -2044,6 +2118,47 @@ describe('worktree cards', () => {
         await press(menuItem('Show unused worktrees'));
         await draw();
         expect(cardRows()).toEqual([workspaceKey()]);
+    });
+
+    it('opens branch selection for the clicked unused worktree without changing the selected chat', async () => {
+        await restart();
+        const original = store.transport.command.bind(store.transport);
+        const command = vi.spyOn(store.transport, 'command').mockImplementation(input =>
+            input.type === 'workspace.open'
+                ? Promise.resolve({
+                      ok: true,
+                      requestId: 'test',
+                      data: {
+                          workspace: {
+                              id: 'wks_ab12cd34',
+                              folderId: input.folderId,
+                              path: input.path,
+                              ready: true,
+                              managed: false,
+                          },
+                      },
+                  })
+                : original(input)
+        );
+        await draw(() => {
+            ui().setGroupByWorktree(true);
+            ui().openChat('c-4');
+            chatListPreferences.setShowUnusedWorktrees(true);
+        });
+        await draw();
+        const card = cardRows().find(key => key?.includes('search-filters'))!;
+        await press(rowOf(card).querySelector<HTMLElement>('button[aria-label^="Worktree actions:"]')!);
+        await press(menuItem('Switch branch'));
+        await vi.waitFor(() =>
+            expect(command).toHaveBeenCalledWith({
+                type: 'workspace.open',
+                projectId: FIXTURE_PROJECT_ID,
+                folderId: 'fld_car_rental',
+                path: '/Users/dev/worktrees/car-rental/search-filters',
+            })
+        );
+        expect(ui().chatId).toBe('c-4');
+        await vi.waitFor(() => expect(document.querySelector('input[placeholder="Filter branches"]')).not.toBeNull());
     });
 
     it('starts a draft in a worktree with no chats from its own menu', async () => {
