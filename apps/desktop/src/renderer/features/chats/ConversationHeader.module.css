@@ -1,9 +1,12 @@
 @reference '@clowdy/styles/rulesets';
 
-/* The title of the page, as the header of Tasks has it: the path on the left and the status of the run on the right, at the page's edge, with no border. */
-.header {
+/* The title of the page: the path on the left and the status of the run on the right, in the column of the messages, with no border. */
+.root {
     flex-shrink: 0;
-    padding: var(--spacing-lg) var(--spacing-lg) var(--spacing-md);
+}
+
+.header {
+    padding: var(--spacing-lg) var(--spacing-xxl) var(--spacing-md);
 }
 
 .line {

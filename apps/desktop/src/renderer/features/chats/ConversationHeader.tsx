@@ -1,8 +1,9 @@
 import { Breadcrumb } from '@clowdy/components/Breadcrumb';
+import { ContentColumn } from '@clowdy/components/ContentColumn';
 import { Text } from '@clowdy/components/Text';
 import { useEffect, useRef, useState } from 'react';
 
-import { RunStatusPill, SCREEN_TITLE, useRunLabel } from '../../shared';
+import { RunStatusPill, useRunLabel } from '../../shared';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { orchestratorOf } from '../agents/agentTree';
 import { openChat, openRun } from './archiveChat';
@@ -20,7 +21,7 @@ export interface ConversationHeaderProps {
 }
 
 /**
- * The header over every conversation, made of the chats' own titles, set as the title of a screen is (`SCREEN_TITLE`, as Tasks has its own): at the page's left edge, with no border. A chat shows its title; a thread the path down to it (`Chat › Thread`); a native sub-agent the path of
+ * The header over every conversation, made of the chats' own titles, in the column of the messages (not at the page's edge) and in the type of a heading of a card (`heading-5`), with no border. A chat shows its title; a thread the path down to it (`Chat › Thread`); a native sub-agent the path of
  * its chat and then its own name, with the sub-agents it runs inside between them. Every part but the last opens that page; the last is the page itself. A long path folds its
  * middle into `…`, which opens it out, and titles truncate. While the page's run works or waits, its status stands at the right end, and a sub-agent's summary
  * is one quiet line under the path. Stop, the model and the mode are in the message box, not here.
@@ -63,49 +64,51 @@ export function ConversationHeader({ chat, subagent }: ConversationHeaderProps) 
             : openRun(root, project, ui, target.runId));
 
     return (
-        <header className={styles.header}>
-            <div className={styles.line}>
-                <div ref={pathRef} className={styles.path}>
-                    <Breadcrumb variant={SCREEN_TITLE} aria-label="Conversation path">
-                        {foldedPath(parts, isOpenedOut).map((item, index, items) => {
-                            if ('fold' in item)
-                                return (
-                                    <Breadcrumb.Link key="fold" onPress={() => setIsOpenedOut(true)}>
-                                        <span aria-hidden>…</span>
-                                        <span className={styles.visuallyHidden}>{`Show ${item.hidden} more`}</span>
+        <header className={styles.root}>
+            <ContentColumn className={styles.header}>
+                <div className={styles.line}>
+                    <div ref={pathRef} className={styles.path}>
+                        <Breadcrumb variant="heading-5" aria-label="Conversation path">
+                            {foldedPath(parts, isOpenedOut).map((item, index, items) => {
+                                if ('fold' in item)
+                                    return (
+                                        <Breadcrumb.Link key="fold" onPress={() => setIsOpenedOut(true)}>
+                                            <span aria-hidden>…</span>
+                                            <span className={styles.visuallyHidden}>{`Show ${item.hidden} more`}</span>
+                                        </Breadcrumb.Link>
+                                    );
+
+                                const { target } = item;
+
+                                return index === items.length - 1 ? (
+                                    <Breadcrumb.Page key={item.key} className={styles.page}>
+                                        <span title={item.label}>{item.label}</span>
+                                    </Breadcrumb.Page>
+                                ) : (
+                                    <Breadcrumb.Link
+                                        key={item.key}
+                                        isDisabled={target === undefined}
+                                        onPress={target && (() => open(target))}
+                                    >
+                                        {/* A title that is cut short reads in full on hover; a chat in the archive says why it does not open. */}
+                                        <span title={target ? item.label : `${item.label}, in the archive`}>
+                                            {item.label}
+                                        </span>
                                     </Breadcrumb.Link>
                                 );
+                            })}
+                        </Breadcrumb>
+                    </div>
 
-                            const { target } = item;
-
-                            return index === items.length - 1 ? (
-                                <Breadcrumb.Page key={item.key} className={styles.page}>
-                                    <span title={item.label}>{item.label}</span>
-                                </Breadcrumb.Page>
-                            ) : (
-                                <Breadcrumb.Link
-                                    key={item.key}
-                                    isDisabled={target === undefined}
-                                    onPress={target && (() => open(target))}
-                                >
-                                    {/* A title that is cut short reads in full on hover; a chat in the archive says why it does not open. */}
-                                    <span title={target ? item.label : `${item.label}, in the archive`}>
-                                        {item.label}
-                                    </span>
-                                </Breadcrumb.Link>
-                            );
-                        })}
-                    </Breadcrumb>
+                    {isRunActive(run) && <RunStatusPill run={run} className={styles.status} />}
                 </div>
 
-                {isRunActive(run) && <RunStatusPill run={run} className={styles.status} />}
-            </div>
-
-            {summary && (
-                <Text variant="sm" color="secondary" truncate title={summary} className={styles.summary}>
-                    {summary}
-                </Text>
-            )}
+                {summary && (
+                    <Text variant="sm" color="secondary" truncate title={summary} className={styles.summary}>
+                        {summary}
+                    </Text>
+                )}
+            </ContentColumn>
         </header>
     );
 }
