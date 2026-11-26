@@ -34,11 +34,6 @@
     }
 }
 
-/* An icon that keeps a colour of its own beside its drawing (the badge of `VersionWarn`) has the drawing in black; it follows the item's colour like the other icons do. */
-.glyph > svg path[fill='black'] {
-    fill: currentColor;
-}
-
 /* On the tile's top right corner, beside the icon and not over it: the git icons have a node in their own corner (a 14px icon has 9px of the tile around it). */
 .dot {
     position: absolute;

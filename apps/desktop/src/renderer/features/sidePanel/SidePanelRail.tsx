@@ -1,4 +1,4 @@
-import { Checkbox, Commit, Merge, Terminal, Version, VersionWarn } from '@clowdy/icons/14';
+import { Checkbox, Commit, Merge, Terminal } from '@clowdy/icons/14';
 import { File, Folder, Settings } from '@clowdy/icons/16';
 import { useRef } from 'react';
 
@@ -6,7 +6,6 @@ import { commandTooltip } from '../../hotkeys';
 import { RailItem } from '../../shared/RailItem';
 import { useFileDragHover } from '../../shared/useFileDragHover';
 import { useRootStore } from '../../stores';
-import { type ChangesStage } from '../changes/changesStage';
 import { SETTINGS_COMMAND } from '../settings/commands';
 import { SIDE_PANEL_TAB_LABELS, sidePanelTabCommand } from './commands';
 import { panelOrder } from './panelOrder';
@@ -26,21 +25,13 @@ const TABS = {
     tasks: { icon: Checkbox, size: 14 },
 } satisfies Record<SidePanelTab, { icon: typeof Folder; size: number }>;
 
-/** The icon of the Changes tab by how far the place's work is: nothing to land, commits waiting, a pull request open, or a problem. The tab keeps its label, so it is the same tab whichever it draws. */
-const CHANGES_ICONS = {
-    clean: Commit,
-    ahead: Version,
-    pullRequest: Merge,
-    problem: VersionWarn,
-} satisfies Record<ChangesStage, typeof Folder>;
-
 /**
  * The rail at the right edge of the window, as tall as the window and there whether the side panel is open or not: the button that steps the panel first (`SidePanelCorner`,
  * where the title band's height is, so it is the first thing the Windows caption buttons leave room for), then an item for each tab of the panel, and Settings
  * pinned at the bottom. A click on a tab opens the panel on it, or shuts it when that tab is the one it shows,
  * and the key of the tab does the same (`ProjectUi.toggleSidePanelTab`; `Cmd+Esc` shuts or opens the panel whatever tab it shows). Only the tab the panel shows is
  * current (in the primary colour, as the open chat is in Reforma's rail), and none is while the panel is shut. The button and the tabs are not drawn where the window shows
- * no project; Settings, which is the window's and not a project's, always is. The Changes tab draws the stage of the place's work in its icon, and a dot while files are uncommitted and the tab is not the one on show; its tooltip says
+ * no project; Settings, which is the window's and not a project's, always is. The Changes tab draws the merge icon while the branch has a pull request to show (the one Source Control lists), and a dot while files are uncommitted and the tab is not the one on show; its tooltip says
  * the same in words.
  */
 export function SidePanelRail() {
@@ -78,7 +69,7 @@ export function SidePanelRail() {
                                 key={tab}
                                 label={label}
                                 dragHoverKey={tab}
-                                icon={tab === 'changes' && changes ? CHANGES_ICONS[changes.stage] : TABS[tab].icon}
+                                icon={tab === 'changes' && changes?.pullRequest ? Merge : TABS[tab].icon}
                                 size={TABS[tab].size}
                                 current={current}
                                 accent
