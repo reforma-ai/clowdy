@@ -704,8 +704,7 @@ describe('Remove in Manage worktrees', () => {
     });
 
     describe('a refusal', () => {
-        it("toasts the daemon's own reason, reads the list again since the row may have changed, and closes the confirmation", async () => {
-            const error = vi.spyOn(toast, 'error').mockReturnValue('' as never);
+        it("shows the daemon's refusal and requires reopening", async () => {
             const refuse = vi.fn(
                 async (): Promise<CommandResult> => ({
                     ok: false,
@@ -719,18 +718,16 @@ describe('Remove in Manage worktrees', () => {
             await confirm('Remove worktree');
 
             expect(refuse).toHaveBeenCalledTimes(1);
-            expect(error).toHaveBeenCalledWith({
-                title: "Couldn't remove the worktree",
-                message: 'The chat "Fix the login" works in this worktree',
-            });
-            expect(isConfirming()).toBe(false);
-            expect(Modal.opened).toHaveLength(1);
+            expect(confirmation().querySelector('[role="alert"]')?.textContent).toContain(
+                'The chat "Fix the login" works in this worktree'
+            );
+            expect(textButton(confirmation(), 'Remove worktree')!.disabled).toBe(true);
+            expect(isConfirming()).toBe(true);
             expect(getProjectWorktrees).toHaveBeenCalledTimes(4);
             expect(row(CLEAN_MERGED)).not.toBeNull();
         });
 
-        it('toasts what the daemon says of a folder that changed since the list was read, and the next Remove asks the red question about the row as it is now', async () => {
-            const error = vi.spyOn(toast, 'error').mockReturnValue('' as never);
+        it('shows a refusal and reads changed state after reopening', async () => {
             const data = dataWithKinds();
 
             await open({ data });
@@ -739,10 +736,12 @@ describe('Remove in Manage worktrees', () => {
             data.worktrees![CAR_RENTAL]!.find(worktree => worktree.path === CLEAN_MERGED)!.changes = 2;
             await confirm('Remove worktree');
 
-            expect(error).toHaveBeenCalledWith({
-                title: "Couldn't remove the worktree",
-                message: 'The worktree has changes that are not committed',
-            });
+            expect(confirmation().querySelector('[role="alert"]')?.textContent).toContain(
+                'The worktree has changes that are not committed'
+            );
+            expect(textButton(confirmation(), 'Remove worktree')!.disabled).toBe(true);
+            await click(confirmation().querySelector<HTMLElement>('button[aria-label="Close"]')!);
+            await settle();
             expect(isConfirming()).toBe(false);
             expect(row(CLEAN_MERGED)!.textContent).toContain('2 changes');
 

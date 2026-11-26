@@ -6,7 +6,6 @@ import { Modal, useModalContext } from '@clowdy/components/Modal';
 import { Show } from '@clowdy/components/Show';
 import { Switch } from '@clowdy/components/Switch';
 import { Text } from '@clowdy/components/Text';
-import { toast } from '@clowdy/components/Toast';
 import { AttentionCircle, Close } from '@clowdy/icons/14';
 import { useEffect, useId, useState } from 'react';
 
@@ -56,6 +55,7 @@ function RemoveMessage({ worktree, plan, choice, count, outside, onConfirm }: Re
     const [deleteBranch, setDeleteBranch] = useState(choice.deleteBranch);
     const [disposition, setDisposition] = useState(choice.disposition);
     const [pending, setPending] = useState(false);
+    const [failure, setFailure] = useState<string>();
     const warning = deleteBranch && plan.branch ? branchWarning(plan.branch) : undefined;
     const warningId = useId();
     const headingId = useId();
@@ -149,10 +149,18 @@ function RemoveMessage({ worktree, plan, choice, count, outside, onConfirm }: Re
             <Show when={plan.stranded}>
                 <Risk>{STRANDED_WARNING}</Risk>
             </Show>
+            {failure && (
+                <Alert color="danger" role="alert">
+                    <AlertIcon>
+                        <AttentionCircle />
+                    </AlertIcon>
+                    <AlertDescription>{failure} — close and reopen this dialog to try again</AlertDescription>
+                </Alert>
+            )}
             <Button
                 color="danger"
                 fullWidth
-                isDisabled={pending}
+                isDisabled={pending || !!failure}
                 isPending={pending}
                 onPress={async () => {
                     if (pending) return;
@@ -164,7 +172,7 @@ function RemoveMessage({ worktree, plan, choice, count, outside, onConfirm }: Re
                     } catch (error) {
                         setPending(false);
                         modal.updateOptions({ clickOut: true, closeOnEscape: true });
-                        toast.error({ message: error instanceof Error ? error.message : 'Something went wrong' });
+                        setFailure(error instanceof Error ? error.message : 'Something went wrong');
                     }
                 }}
             >
@@ -232,11 +240,7 @@ function ReadRemoval({ target }: { target: WorktreeTarget }) {
                                             throw new Error('The local changes in this worktree changed. Try again');
                                     } catch (error) {
                                         await refreshWorktreeTarget(target);
-                                        toast.error({
-                                            title: "Couldn't remove the worktree",
-                                            message: error instanceof Error ? error.message : String(error),
-                                        });
-                                        return;
+                                        throw error;
                                     }
                                 }
                                 const result = await root.command({
@@ -252,11 +256,7 @@ function ReadRemoval({ target }: { target: WorktreeTarget }) {
                                     }),
                                 });
                                 await refreshWorktreeTarget(target, chats.affected);
-                                if (!result.ok)
-                                    toast.error({
-                                        title: "Couldn't remove the worktree",
-                                        message: result.error.message,
-                                    });
+                                if (!result.ok) throw new Error(result.error.message);
                             }}
                         />
                     );
