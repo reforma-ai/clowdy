@@ -35,7 +35,7 @@ Write one note per question in `research/<YYYY-MM-DD>-<topic>.md` for a future r
 
 ## Rules
 
-- Every Fact has a source in the formats clowdy:docs defines. A claim without a source goes under Hypotheses.
+- Every Fact has a source<!-- skill:docs --> in the formats clowdy:docs defines<!-- /skill -->. A claim without a source goes under Hypotheses.
 - Quote little. A one-line excerpt with its source beats a pasted page. No raw logs.
 - Web sources: record the access date. Prefer official documentation over blog posts, and say which one you used.
 - When the note stops being true, change its `Status` to `outdated`, add a line saying what changed, and move its entry in `index.md` under `Outdated:`. Do not delete it.

@@ -16,7 +16,7 @@ Choose direct work, sub-agents or threads when the gain in speed, quality or con
 
 ## 2. The brief
 
-The thread does not see this conversation or these skills (it has clowdy:orchestrate and clowdy:thread of its own, nothing of your plan). The brief is everything it knows:
+The thread does not see this conversation or your plan.<!-- skill:orchestrate --> It has clowdy:orchestrate of its own.<!-- /skill --><!-- skill:thread --> It has clowdy:thread of its own.<!-- /skill --> The brief is everything it knows:
 
 ```text
 Mode: <autopilot | semi-manual>.

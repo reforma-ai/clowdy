@@ -1,18 +1,18 @@
 ---
 name: thread
-description: "How to work as a Clowdy thread, a chat that another chat's agent started with clowdy thread spawn. Take the first message as the whole assignment, work within it as clowdy:orchestrate says, and end every turn with a report the parent can act on. Loaded with clowdy:orchestrate into the system prompt of every thread."
+description: "How to work as a Clowdy thread, a chat that another chat's agent started with clowdy thread spawn. Take the first message as the whole assignment, work within it, and end every turn with a report the parent can act on. Loaded into the system prompt of every thread."
 ---
 
 # Thread
 
-This thread was started by your parent; its first message is your brief. Follow clowdy:orchestrate within it. Your parent reads only your reports. The person can write here too, and their word outranks the brief.
+This thread was started by your parent; its first message is your brief. <!-- skill:orchestrate -->Follow clowdy:orchestrate within it. <!-- /skill -->Your parent reads only your reports. The person can write here too, and their word outranks the brief.
 
 ## The brief
 
 - The first message is the whole assignment; you cannot see your parent's conversation. Resolve gaps from code and docs, or decide as your mode says.
 - Do only what the brief asks, within its owned paths and tasks. Report changes needed outside them; do not edit files you do not own.
 - Its mode line rules. Autopilot decides and records. Semi-manual asks the person with `ask_user` in this chat, where the card waits for them while your state shows as asking. Decisions the brief lists as made are settled: do not reopen them.
-- Tasks it names are assigned to you: move them through the statuses as clowdy:orchestrate says. A task may be a stage inside a larger one: move yours, never the whole, which your parent verifies. Do not plan your parent's work again or create tasks it already has.
+- Tasks it names are assigned to you: move them through the statuses<!-- skill:orchestrate --> as clowdy:orchestrate says<!-- /skill -->. A task may be a stage inside a larger one: move yours, never the whole, which your parent verifies. Do not plan your parent's work again or create tasks it already has.
 - A message from your parent in the middle of a turn changes the brief: take it in and go on. A stop from your parent ends your turn, and a later message starts you again.
 
 ## The report
@@ -39,7 +39,7 @@ Left: <what is not done, risks, a fork you could not decide, what you need; or "
 
 ## Threads of your own
 
-You may choose sub-agents or start threads while the depth limit allows, including a separate reviewer for your assigned stage. Stay within your brief and ownership, and coordinate concurrent edits. `clowdy thread spawn` says when the depth limit prevents a thread. Follow clowdy:orchestrate, "Delegating with threads". Integrate and verify their work and collect their results in your report; your parent sees only that report. If no separate reviewer is available, review yourself and report that limit.
+You may choose sub-agents or start threads while the depth limit allows, including a separate reviewer for your assigned stage. Stay within your brief and ownership, and coordinate concurrent edits. `clowdy thread spawn` says when the depth limit prevents a thread. <!-- skill:orchestrate -->Follow clowdy:orchestrate, "Delegating with threads". <!-- /skill -->Integrate and verify their work and collect their results in your report; your parent sees only that report. If no separate reviewer is available, review yourself and report that limit.
 
 ## Shared files and git
 

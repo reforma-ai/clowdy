@@ -5,7 +5,12 @@ import { folderNames } from '@clowdy/protocol';
 import { getProject, listProjects } from '../db/projects';
 import { invalid, notFound } from '../errors';
 import { buildCatalog, mergeUserSkills } from './catalog';
-import { defaultSystemSkillsSource, materializeSystemSkills, SYSTEM_PLUGIN_NAME } from './materialize';
+import {
+    defaultSystemSkillsSource,
+    materializeSystemSkills,
+    SYSTEM_PLUGIN_NAME,
+    snapshotSystemSkills,
+} from './materialize';
 import { buildUserMirror, USER_PLUGIN_NAME } from './mirror';
 import { SkillScanner } from './scan';
 import { SkillSettings } from './settings';
@@ -39,6 +44,7 @@ export class SkillsService {
     private settings: SkillSettings;
     private watchers = new FolderWatchers();
     private systemDir: string;
+    private systemSource: string;
     /** What the last announcement (or the start) saw, to tell a real change from a touched file. */
     private userFingerprint?: string;
     private projectFingerprints = new Map<string, string>();
@@ -49,10 +55,11 @@ export class SkillsService {
         private config: Config
     ) {
         this.settings = new SkillSettings(config.dataDir);
-        this.systemDir = materializeSystemSkills(
+        this.systemSource = snapshotSystemSkills(
             config.systemSkillsSource ?? defaultSystemSkillsSource(),
             config.dataDir
-        ).dir;
+        );
+        this.systemDir = materializeSystemSkills(this.systemSource, config.dataDir).dir;
         this.rebuildSystem();
         this.syncUser();
     }
@@ -113,7 +120,12 @@ export class SkillsService {
                 throw notFound('Skill', name);
             }
             if (this.settings.setEnabled(folder, enabled, true)) {
-                this.rebuildSystem();
+                try {
+                    this.rebuildSystem();
+                } catch (error) {
+                    this.settings.setEnabled(folder, !enabled, true);
+                    throw error;
+                }
                 this.announce(listProjects(this.store.db));
             }
             return;
@@ -142,7 +154,7 @@ export class SkillsService {
             : systemDisabled;
 
         this.config.systemSkillsDir = disabled.size
-            ? materializeSystemSkills(this.systemDir, this.config.dataDir, disabled).dir
+            ? materializeSystemSkills(this.systemSource, this.config.dataDir, disabled).dir
             : this.systemDir;
     }
 

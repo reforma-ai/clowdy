@@ -1,6 +1,6 @@
 # Choosing the stack
 
-The manager described a product. You choose the technology, apply the criteria in order, and record the result as a decision (clowdy:docs, decision template). The first criterion that decides the question ends the discussion.
+The manager described a product. You choose the technology, apply the criteria in order, and record the result as a decision<!-- skill:docs --> (clowdy:docs, decision template)<!-- /skill -->. The first criterion that decides the question ends the discussion.
 
 ## Criteria, in order
 
@@ -58,11 +58,11 @@ Versions in your memory are old. At scaffold time:
 
 ## Record the decision
 
-One record for the stack, `decisions/<date>-stack.md`, in the decision template of clowdy:docs. In Options put the chosen stack, the closest alternative, and the reason it lost, citing the criterion number. Add `Assumptions` for anything unverified (expected size, who hosts it). Autopilot writes it immediately with `Decided by: autopilot`. In semi-manual the user's answers on platform, hosting, data and sign-in go into the settled record of clowdy:semi-manual (`Decided by: user (semi-manual)`), and your stack choices under "Decided by the agent".
+One record for the stack: `decisions/<date>-stack.md`<!-- skill:docs -->, using the decision template of clowdy:docs<!-- /skill -->. In Options put the chosen stack, the closest alternative, and the reason it lost, citing the criterion number. Add `Assumptions` for anything unverified (expected size, who hosts it). Autopilot writes it immediately with `Decided by: autopilot`. In semi-manual the user's answers on platform, hosting, data and sign-in go into the settled record<!-- skill:semi-manual --> of clowdy:semi-manual<!-- /skill --> (`Decided by: user (semi-manual)`), and your stack choices under "Decided by the agent".
 
 ## Semi-manual: the four forks that change the product
 
-Ask only these, one `ask_user` card each (shape and rules: clowdy:semi-manual), only when the brief leaves the fork open and the answer changes what the user gets. Write each question in manager words, give two to three options, name the consequence in time, cost or ability, and mark the one you recommend. Together with any product question from step 1 of scaffold they make one round of at most four cards.
+Ask only these, one `ask_user` card each<!-- skill:semi-manual --> (shape and rules: clowdy:semi-manual)<!-- /skill -->, only when the brief leaves the fork open and the answer changes what the user gets. Write each question in manager words, give two to three options, name the consequence in time, cost or ability, and mark the one you recommend. Together with any product question from step 1 of scaffold they make one round of at most four cards.
 
 | Fork | Question | Typical options (with consequence) |
 | --- | --- | --- |

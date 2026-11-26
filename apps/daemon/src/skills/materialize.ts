@@ -28,6 +28,32 @@ export interface MaterializedSkills {
     hash: string;
 }
 
+/** Snapshot the annotated source once so later switches use the same bundle as the catalog. */
+export function snapshotSystemSkills(source: string, dataDir: string): string {
+    checkManifest(source);
+    const files = pluginFiles(source);
+    const content = (file: string) => readFileSync(join(source, file));
+    const hash = hashFiles(files, content);
+    const parent = join(dataDir, 'system-skills-source');
+    const existing = join(parent, hash);
+    if (existsSync(existing) && hashPlugin(existing) !== hash) {
+        rmSync(existing, { recursive: true, force: true });
+    }
+    const dir = ensureHashDir(parent, hash, temp => copyFiles(temp, files, content));
+    pruneHashDirs(parent, KEEP_COPIES, hash);
+    return dir;
+}
+
+function copyFiles(target: string, files: string[], content: (file: string) => Buffer): void {
+    mkdirSync(join(target, SKILLS), { recursive: true });
+    for (const file of files) {
+        const to = join(target, file);
+        mkdirSync(dirname(to), { recursive: true });
+        writeFileSync(to, content(file));
+        chmodSync(to, 0o444);
+    }
+}
+
 /**
  * Copies the system skills plugin (the manifest and `skills/`, nothing else) to `<dataDir>/system-skills/<hash>`,
  * where `hash` covers the copied content. Engines load this copy, never the app's own folder, whose path and
@@ -46,17 +72,9 @@ export function materializeSystemSkills(
     const content = (file: string) => {
         const bytes = readFileSync(join(source, file));
 
-        if (!disabled?.size || !file.endsWith('.md')) return bytes;
+        if (!file.endsWith('.md')) return bytes;
 
-        const references = [...disabled].map(name => `clowdy:${name}`);
-        return Buffer.from(
-            bytes
-                .toString('utf8')
-                .split('\n')
-                .map(line => filterReferences(line, references))
-                .filter(line => line !== undefined)
-                .join('\n')
-        );
+        return Buffer.from(renderSkillReferences(bytes.toString('utf8'), disabled ?? new Set(), file));
     };
     const hash = hashFiles(files, content);
     const parent = join(dataDir, disabled ? 'system-skills-active' : 'system-skills');
@@ -66,43 +84,29 @@ export function materializeSystemSkills(
         rmSync(existing, { recursive: true, force: true });
     }
 
-    const dir = ensureHashDir(parent, hash, temp => {
-        mkdirSync(join(temp, SKILLS), { recursive: true });
-        for (const file of files) {
-            const to = join(temp, file);
-            mkdirSync(dirname(to), { recursive: true });
-            writeFileSync(to, content(file));
-            chmodSync(to, 0o444);
-        }
-    });
+    const dir = ensureHashDir(parent, hash, temp => copyFiles(temp, files, content));
 
     if (!disabled) pruneHashDirs(parent, KEEP_COPIES, hash);
 
     return { dir, hash };
 }
 
-/** Remove sentences that name unavailable skills while retaining independent sentences on the same line. */
-function filterReferences(line: string, references: readonly string[]): string | undefined {
-    if (!references.some(ref => line.includes(ref))) return line;
-    if (line.startsWith('description:')) return 'description: Clowdy system skill';
-
-    // The mode instruction names both alternatives in one sentence; keep the available one.
-    const modeInstruction =
-        'As soon as the message turns out to be a change and not a pure question, load clowdy:autopilot or clowdy:semi-manual and follow it.';
-    if (line.includes(modeInstruction)) {
-        const choices = [
-            !references.includes('clowdy:autopilot') && 'clowdy:autopilot for autopilot mode',
-            !references.includes('clowdy:semi-manual') && 'clowdy:semi-manual for semi-manual mode',
-        ].filter(Boolean);
-        line = line.replace(modeInstruction, choices.length ? `For a change, load ${choices.join(' or ')}.` : '');
+/** Render explicitly delimited optional references; reject unreviewed references instead of guessing what to remove. */
+function renderSkillReferences(source: string, disabled: ReadonlySet<string>, file: string): string {
+    const marker = /<!-- skill:([a-z][a-z0-9-]*) -->([\s\S]*?)<!-- \/skill -->/g;
+    const reference = /clowdy:([a-z][a-z0-9-]*)\b/g;
+    const rendered = source.replace(marker, (_match, skill: string, content: string) => {
+        const names = [...content.matchAll(reference)].map(match => match[1]);
+        if (names.some(name => name !== skill)) throw new Error(`Mismatched skill reference in ${file}`);
+        return disabled.has(skill) ? '' : content;
+    });
+    // Unannotated references are always rejected, including in the all-enabled copy. This keeps
+    // future skill edits from silently reintroducing instructions to a disabled skill.
+    const outside = source.replace(marker, '');
+    if (reference.test(outside) || /<!-- (?:\/skill|skill:)/.test(outside)) {
+        throw new Error(`Unannotated or malformed skill reference in ${file}`);
     }
-
-    const prefix = /^(\s*(?:- |\d+\. )?(?:\*\*[^*]+\*\*\s*)?)/.exec(line)?.[0] ?? '';
-    const body = line.slice(prefix.length);
-    const kept = body
-        .split(/(?<=[.!?]) +(?=[A-Z])/)
-        .filter(sentence => !references.some(ref => sentence.includes(ref)));
-    return kept.length && kept.join(' ').trim() ? `${prefix}${kept.join(' ')}` : undefined;
+    return rendered;
 }
 
 function checkManifest(source: string): void {

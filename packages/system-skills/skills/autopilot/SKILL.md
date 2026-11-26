@@ -30,11 +30,11 @@ When a question looks like it needs the user, first spend a few minutes making i
    - **Reversibility.** Prefer the option you can undo cheaply. Say what the undo is.
    - **Cost.** Effort, new dependencies, running cost, maintenance, risk to other tasks.
 3. If criteria tie, take the smaller and more reversible option.
-4. Write the decision record now, before you build on it: `decisions/<YYYY-MM-DD>-<slug>.md` in the project's main checkout, shape and rules in clowdy:docs (decision template), `Decided by: autopilot`.
+4. Write the decision record now, before you build on it: `decisions/<YYYY-MM-DD>-<slug>.md` in the project's main checkout<!-- skill:docs -->, shape and rules in clowdy:docs (decision template)<!-- /skill -->, `Decided by: autopilot`.
 5. Act on the decision. Do not wait for anyone to approve it.
 6. Give it one line in your report: the choice in plain words, plus the record's path.
 
-If the decision contradicts an existing record, write a new record that supersedes it (clowdy:docs says how). If the old record says `Decided by: user`, you may not supersede it: that is a blocker (section 5).
+If the decision contradicts an existing record, write a new record that supersedes it<!-- skill:docs --> (clowdy:docs says how)<!-- /skill -->. If the old record says `Decided by: user`, you may not supersede it: that is a blocker (section 5).
 
 ## 3. State assumptions
 
@@ -79,13 +79,13 @@ A blocker is never a reason to stop everything. Order of action:
 
 Stop when one of these is true:
 
-- The goal is met and verified by real commands or flows that you ran (see clowdy:orchestrate, Verify), not by anyone's "done".
+- The goal is met and verified by real commands or flows that you ran<!-- skill:orchestrate --> (see clowdy:orchestrate, Verify)<!-- /skill -->, not by anyone's "done".
 - Everything left is blocked, or out of scope and filed as follow-up tasks.
 - The third attempt at the same thing failed. Change the approach once and record the change when it is significant. If the new approach fails too, stop and report failed with the concrete reason.
 
 Do not stop to ask whether to continue, to post progress, or to confirm a choice the records already settle. Do not report the cycle as finished while threads of it still work.
 
-The final report is for a manager: what changed and why, not how. Use the report format of clowdy:orchestrate and add the line `Decided for you:` with each significant decision in plain words, the reason in a few words, and the record's path under the docs folder. Blockers, risks and follow-up tasks go under `Open`.
+The final report is for a manager: what changed and why, not how. <!-- skill:orchestrate -->Use the report format of clowdy:orchestrate. <!-- /skill -->Add the line `Decided for you:` with each significant decision in plain words, the reason in a few words, and the record's path under the docs folder. Blockers, risks and follow-up tasks go under `Open`.
 
 ## Example
 

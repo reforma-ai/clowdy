@@ -237,6 +237,22 @@ describe('runs on an ACP agent, through the real runtime', () => {
         expect(systemPrompt).toContain('/skills/<name>/SKILL.md');
     });
 
+    test('new ACP sessions receive the selected system skills after switches change', async () => {
+        const { h, project, say, texts } = await setup();
+        h.ok('skills.setEnabled', { name: 'clowdy:orchestrate', enabled: false });
+        const first = say('info');
+        await waitFor(() => h.run(first).status === 'succeeded', 'disabled session', 15_000);
+        const disabled = JSON.parse(texts(first)[1]) as { systemPrompt: string };
+        expect(disabled.systemPrompt).not.toContain('clowdy:orchestrate');
+
+        h.ok('skills.setEnabled', { name: 'clowdy:orchestrate', enabled: true });
+        const { chat } = h.ok('chat.create', { projectId: project.id });
+        const second = h.ok('chat.send', { chatId: chat.id, text: 'info' }).runId;
+        await waitFor(() => h.run(second).status === 'succeeded', 'enabled session', 15_000);
+        const enabled = JSON.parse(texts(second)[1]) as { systemPrompt: string };
+        expect(enabled.systemPrompt).toContain('<skill name="clowdy:orchestrate">');
+    });
+
     test("a sub-agent Claude's adapter stamps becomes a native child run under its call, ended by the call", async () => {
         const { h, project, say, texts } = await setup();
         const runId = say('subagent Explore Map the docs\nsay all mapped');

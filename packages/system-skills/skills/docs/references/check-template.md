@@ -40,4 +40,4 @@ Write one report per verification in `checks/<YYYY-MM-DD>-<what-was-checked>.md`
 - Run real commands and real user flows. If a step could not run, the report says so under Known limits and the result is not `passed` for that step.
 - No secrets, no raw logs, no personal data in the report, in screenshots either.
 - The same summary goes on the task as a comment (`clowdy task comment <key> "<summary>"`) and in the final report, with the path of this file. Add the report to `index.md`.
-- How to verify is in clowdy:orchestrate (Verify); this file only fixes the shape of the record.
+- This file only fixes the shape of the record.<!-- skill:orchestrate --> How to verify is in clowdy:orchestrate (Verify).<!-- /skill -->
