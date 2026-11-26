@@ -127,6 +127,10 @@ describe('native sub-agents as child runs', () => {
             finishedAt: expect.any(Number),
         });
         expect(review).toMatchObject({ status: 'failed', error: 'The diff was unreadable' });
+        // A failure closes the child's own stream, as a failed thread's; a sub-agent that is done or was stopped has no such line.
+        expect(items(review.id).at(-1)?.body).toEqual({ kind: 'error', text: 'The diff was unreadable' });
+        expect(items(explore.id).some(item => item.body.kind === 'error')).toBe(false);
+        expect(items(plan.id).some(item => item.body.kind === 'error')).toBe(false);
         // An engine that does not say which call started a sub-agent leaves the run without one.
         expect(review.parentToolCallId).toBeUndefined();
         expect(plan).toMatchObject({ status: 'cancelled', statusReason: 'Not needed' });

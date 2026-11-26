@@ -120,6 +120,23 @@ describe('a message from another thread', () => {
         expect(linkNamed(cards('thread-message')[0], 'Show full message')).toBeUndefined();
     });
 
+    it('is named by what the chat is called now, not by the title it had when the message was written', async () => {
+        await draw([message], { onOpenChat: vi.fn(), chatOfId: id => ({ id, title: 'Ship the whole checkout' }) });
+
+        expect(cards('thread-message')[0].textContent).toContain('Message from Ship the whole checkout');
+        expect(cards('thread-message')[0].textContent).not.toContain('Ship the checkout');
+    });
+
+    it('keeps the title it was written with when the chat is gone or has no title', async () => {
+        await draw([message], { chatOfId: () => undefined });
+
+        expect(cards('thread-message')[0].textContent).toContain('Message from Ship the checkout');
+
+        await draw([message], { chatOfId: id => ({ id, title: '  ' }) });
+
+        expect(cards('thread-message')[0].textContent).toContain('Message from Ship the checkout');
+    });
+
     it('names a chat that is gone in plain words', async () => {
         await draw([message], { onOpenChat: vi.fn(), hasChat: () => false });
 
@@ -194,6 +211,15 @@ describe('threads that stopped', () => {
         expect(cards('agent-card')[0].querySelector('button')).toBeNull();
         expect(cards('agent-card')[0].getAttribute('data-pressable')).toBeNull();
         expect(cards('agent-card')[1].getAttribute('data-pressable')).toBe('');
+    });
+
+    it('names a thread that stopped by what it is called now', async () => {
+        await draw([notice], {
+            chatOfId: id => (id === 'c-a' ? { id, title: 'Refund tests' } : undefined),
+        });
+
+        expect(cards('agent-card')[0].textContent).toContain('Refund tests finished');
+        expect(cards('agent-card')[1].textContent).toContain('Migrate the payments table failed');
     });
 
     it('has nothing to press where nothing opens chats', async () => {
