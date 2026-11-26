@@ -267,10 +267,12 @@ export function AgentList({
         for (const row of rows) visibleRows.set(row.id, row);
         return entry.kind === 'worktree' ? [entryKey(entry), ...rows.map(row => row.id)] : [entryKey(entry)];
     });
-    // The new-chat row is the open one on every new-chat page, whatever folder it is for: the folder is told by the select under the message box.
+    // A draft has a selected row only when the ungrouped list has a new-chat row.
     // A sub-agent that has no row (its chat's folder group is folded, or it is no native sub-agent) leaves its chat's row as the open one, so the list never shows nothing open.
     const selectedId = selection.draft
-        ? NEW_CHAT_ROW
+        ? grouped
+            ? undefined
+            : NEW_CHAT_ROW
         : openRun && navigationIds.includes(openRun.id)
           ? openRun.id
           : openChatId;
@@ -315,7 +317,7 @@ export function AgentList({
         agentCommands({
             list: () => list.current,
             // The headings are rows the arrows stop on, so they are in the order J and K step through; a group's note has no focus.
-            ids: () => [NEW_CHAT_ROW, ...navigationIds],
+            ids: () => (grouped ? navigationIds : [NEW_CHAT_ROW, ...navigationIds]),
             openId: () => selectedId,
         })
     );
@@ -668,20 +670,22 @@ export function AgentList({
                             if (id !== undefined) select(String(id));
                         }}
                     >
-                        <GridListItem
-                            id={NEW_CHAT_ROW}
-                            text="New chat"
-                            icon={<NewChat />}
-                            className={styles.newChat}
-                            // The shortcut is a hint for the pointer on its way to the row, not a label the row wears at rest.
-                            endAffix={
-                                <span className={styles.end} data-show={listBoxItemDataShow.itemHover}>
-                                    <CommandHotkey id={NEW_CHAT_COMMAND} size="xs" />
-                                </span>
-                            }
-                        >
-                            <span className={styles.title}>New chat</span>
-                        </GridListItem>
+                        {!grouped && (
+                            <GridListItem
+                                id={NEW_CHAT_ROW}
+                                text="New chat"
+                                icon={<NewChat />}
+                                className={styles.newChat}
+                                // The shortcut is a hint for the pointer on its way to the row, not a label the row wears at rest.
+                                endAffix={
+                                    <span className={styles.end} data-show={listBoxItemDataShow.itemHover}>
+                                        <CommandHotkey id={NEW_CHAT_COMMAND} size="xs" />
+                                    </span>
+                                }
+                            >
+                                <span className={styles.title}>New chat</span>
+                            </GridListItem>
+                        )}
                         {entries.map(renderEntry)}
                     </GridList>
                 </div>
