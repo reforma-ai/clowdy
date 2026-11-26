@@ -336,6 +336,7 @@ describe('the Expand running agents check', () => {
             'Show finished sub-threads',
             'Expand running agents',
             'Group chats by folder',
+            'Group chats by worktree',
         ]);
         expect(menuItem('Expand running agents').getAttribute('aria-checked')).toBe('true');
 
