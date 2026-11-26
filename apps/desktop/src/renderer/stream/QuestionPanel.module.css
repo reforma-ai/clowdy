@@ -8,16 +8,55 @@
     width: 100%;
 }
 
-/* The question: a title with no plate of its own. It may run to a few lines when the agent writes the facts into it, so it is plain text at the size of the field. */
+/* The question: a title with no plate of its own, at most two lines until the rest is asked for. The facts under it stop at three. */
 .header {
+    @ruleset typography-text-md;
+
     padding: var(--spacing-md);
+    font-weight: 500;
 }
 
+/* What is true now and the agent's pick. A confirmation card holds a whole plan here, so the toggle opens it. */
 .facts {
+    @ruleset typography-text-sm;
+
+    padding-inline: var(--spacing-md);
+    color: var(--color-secondary-muted-text);
+}
+
+.lines {
+    display: -webkit-box;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    white-space: pre-line;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: var(--question-lines);
+}
+
+.lines[data-open] {
+    display: block;
+    -webkit-line-clamp: unset;
+}
+
+.paragraphs {
     display: flex;
     flex-direction: column;
     gap: var(--spacing-sm);
+}
+
+.paragraph {
+    overflow-wrap: anywhere;
+    white-space: pre-line;
+}
+
+.more {
     padding-inline: var(--spacing-md);
+}
+
+.toggle {
+    @ruleset typography-label-sm;
+
+    gap: var(--spacing-xxs);
 }
 
 .options {

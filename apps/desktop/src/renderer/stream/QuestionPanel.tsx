@@ -5,9 +5,10 @@ import { GridList, GridListItem, useCellEditMode } from '@clowdy/components/List
 import { Show } from '@clowdy/components/Show';
 import { Text } from '@clowdy/components/Text';
 import { Textarea } from '@clowdy/components/Textarea';
+import { ChevronDown } from '@clowdy/icons/8';
 import { Edit } from '@clowdy/icons/12';
 import { SendBold } from '@clowdy/icons/16';
-import { useRef, useState } from 'react';
+import { type CSSProperties, type ReactNode, useLayoutEffect, useRef, useState } from 'react';
 
 import styles from './QuestionPanel.module.css';
 import { SKIPPED_ANSWER, splitQuestion } from './questionParts';
@@ -27,6 +28,50 @@ export interface QuestionPanelProps {
     onAnswer?: (answer: string) => void | Promise<void>;
 }
 
+/** The most lines of the question's title, and of the facts under it, that show until the person asks for the rest. */
+const TITLE_LINES = 2;
+const FACTS_LINES = 3;
+
+/** Text that stops at `lines` lines with an ellipsis until `open`, and says through `onClip` whether it cuts something. */
+function Lines({
+    lines,
+    open,
+    onClip,
+    children,
+}: {
+    lines: number;
+    open: boolean;
+    onClip: (clipped: boolean) => void;
+    children: ReactNode;
+}) {
+    const ref = useRef<HTMLDivElement>(null);
+
+    useLayoutEffect(() => {
+        const element = ref.current;
+
+        if (!element || open) return;
+
+        const measure = () => onClip(element.scrollHeight > element.clientHeight + 1);
+        const observer = new ResizeObserver(measure);
+
+        measure();
+        observer.observe(element);
+
+        return () => observer.disconnect();
+    }, [open, onClip, children]);
+
+    return (
+        <div
+            ref={ref}
+            className={styles.lines}
+            data-open={open || undefined}
+            style={{ '--question-lines': lines } as CSSProperties}
+        >
+            {children}
+        </div>
+    );
+}
+
 /**
  * The form of a question the run waits on (semi-manual mode), without a frame of its own: the title, the facts, the options as numbered
  * rows with what each one means, the recommended one preselected, a row with a field for another answer, Skip at the start of the line under
@@ -39,6 +84,10 @@ export function QuestionPanel({ question, onAnswer }: QuestionPanelProps) {
     const [selected, setSelected] = useState(recommended ?? options[0]?.id ?? CUSTOM_ID);
     const [custom, setCustom] = useState('');
     const [isPending, setIsPending] = useState(false);
+    // One toggle opens the title and the facts together; it shows while either is cut.
+    const [open, setOpen] = useState(false);
+    const [titleCut, setTitleCut] = useState(false);
+    const [factsCut, setFactsCut] = useState(false);
     const fieldRef = useRef<HTMLTextAreaElement>(null);
     const chosen = options.find(option => option.id === selected);
     const reply = selected === CUSTOM_ID ? custom.trim() : chosen?.label;
@@ -85,20 +134,44 @@ export function QuestionPanel({ question, onAnswer }: QuestionPanelProps) {
             }}
         >
             <div className={styles.header}>
-                <Text variant="md" weight="medium" wrap="anywhere" whitespace="pre-line">
+                <Lines lines={TITLE_LINES} open={open} onClip={setTitleCut}>
                     {title}
-                </Text>
+                </Lines>
             </div>
 
             <Show when={paragraphs.length > 0}>
                 <div className={styles.facts}>
-                    <For each={paragraphs}>
-                        {paragraph => (
-                            <Text key={paragraph} variant="sm" color="secondary" whitespace="pre-line">
-                                {paragraph}
-                            </Text>
-                        )}
-                    </For>
+                    {open ? (
+                        <div className={styles.paragraphs}>
+                            <For each={paragraphs}>
+                                {paragraph => (
+                                    <div key={paragraph} className={styles.paragraph}>
+                                        {paragraph}
+                                    </div>
+                                )}
+                            </For>
+                        </div>
+                    ) : (
+                        // Shut, the paragraphs run on from line to line, so that the lines are counted as they are drawn.
+                        <Lines lines={FACTS_LINES} open={false} onClip={setFactsCut}>
+                            {paragraphs.join('\n')}
+                        </Lines>
+                    )}
+                </div>
+            </Show>
+
+            <Show when={titleCut || factsCut}>
+                <div className={styles.more}>
+                    <Button
+                        variant="inline"
+                        color="secondary"
+                        className={styles.toggle}
+                        aria-expanded={open}
+                        onPress={() => setOpen(!open)}
+                    >
+                        {open ? 'Show less' : 'Show more'}
+                        <ChevronDown className="chevron" aria-expanded={open} aria-hidden />
+                    </Button>
                 </div>
             </Show>
 

@@ -13,8 +13,27 @@ type Question = Extract<StreamItemBody, { kind: 'question' }>;
 
 let container: HTMLDivElement;
 let root: Root;
+/** What the clamps measure: the height of the text, and the height it is allowed. */
+let layout = { scrollHeight: 0, clientHeight: 0 };
 
 beforeEach(() => {
+    layout = { scrollHeight: 0, clientHeight: 0 };
+    vi.stubGlobal(
+        'ResizeObserver',
+        class {
+            observe = () => undefined;
+            disconnect = () => undefined;
+            unobserve = () => undefined;
+        }
+    );
+    Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+        configurable: true,
+        get: () => layout.scrollHeight,
+    });
+    Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+        configurable: true,
+        get: () => layout.clientHeight,
+    });
     container = document.createElement('div');
     document.body.append(container);
     root = createRoot(container);
@@ -23,6 +42,9 @@ beforeEach(() => {
 afterEach(() => {
     act(() => root.unmount());
     container.remove();
+    vi.unstubAllGlobals();
+    Reflect.deleteProperty(HTMLElement.prototype, 'scrollHeight');
+    Reflect.deleteProperty(HTMLElement.prototype, 'clientHeight');
 });
 
 const question = (fields: Partial<Question> = {}): Question => ({
@@ -172,5 +194,49 @@ describe('QuestionPanel', () => {
 
         expect(onAnswer).toHaveBeenCalledOnce();
         expect(skip()?.disabled).toBe(true);
+    });
+
+    describe('a long question', () => {
+        const toggle = () =>
+            [...container.querySelectorAll('button')].find(button => button.textContent?.includes('Show'));
+        const withText = (text: string) =>
+            [...container.querySelectorAll('div')].filter(div => div.children.length === 0 && div.textContent === text);
+
+        it('has no toggle when the title and the facts fit', async () => {
+            await draw(undefined, vi.fn());
+
+            expect(toggle()).toBeUndefined();
+        });
+
+        it('opens the title and the facts together from one toggle, and shuts them again', async () => {
+            layout = { scrollHeight: 200, clientHeight: 40 };
+            await draw(undefined, vi.fn());
+
+            expect(toggle()?.textContent).toBe('Show more');
+            expect(toggle()?.getAttribute('aria-expanded')).toBe('false');
+            // Shut, the facts run on from line to line in one block, so the lines are counted as they are drawn.
+            expect(withText('The orders page is visible to every signed-in user.\nMy pick: Admins only.')).toHaveLength(
+                1
+            );
+            expect(container.querySelectorAll('button[aria-expanded]')).toHaveLength(1);
+
+            await act(async () => toggle()!.click());
+
+            expect(toggle()?.textContent).toBe('Show less');
+            expect(toggle()?.getAttribute('aria-expanded')).toBe('true');
+            expect(withText('The orders page is visible to every signed-in user.')).toHaveLength(1);
+            expect(withText('My pick: Admins only.')).toHaveLength(1);
+
+            await act(async () => toggle()!.click());
+
+            expect(toggle()?.textContent).toBe('Show more');
+        });
+
+        it('offers the toggle for a long title when there are no facts', async () => {
+            layout = { scrollHeight: 120, clientHeight: 40 };
+            await draw({ text: 'A question that runs on and on?' }, vi.fn());
+
+            expect(toggle()?.textContent).toBe('Show more');
+        });
     });
 });
