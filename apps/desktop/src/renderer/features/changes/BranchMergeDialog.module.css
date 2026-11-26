@@ -61,6 +61,14 @@
 .primary[data-size][data-variant] {
     flex: 1;
     min-width: 0;
+    height: auto;
+    min-height: var(--clowdy-button-size);
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+/* Square on the side the mode button joins; alone, the button keeps its own corners. */
+.split[data-mode] > .primary[data-size][data-variant] {
     border-start-end-radius: 0;
     border-end-end-radius: 0;
 }

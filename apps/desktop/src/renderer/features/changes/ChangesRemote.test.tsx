@@ -1072,6 +1072,45 @@ describe('merging branches from the sync menu', () => {
         expect(success).toHaveBeenCalledWith({ message: 'Pushed main to origin' });
     });
 
+    it('hides the mode button and keeps one button spinning through the merge and the sync after it', async () => {
+        await start({ gitWrites: { clean: true, remote: 'level' } });
+        const applyMerge = transport.branchMergeGit.bind(transport);
+        const applySync = transport.syncGit.bind(transport);
+        const releaseMerge = Promise.withResolvers<void>();
+        const releaseSync = Promise.withResolvers<void>();
+        vi.spyOn(transport, 'branchMergeGit').mockImplementation(async (project, place, request) => {
+            if (request.action === 'merge') await releaseMerge.promise;
+            return applyMerge(project, place, request);
+        });
+        vi.spyOn(transport, 'syncGit').mockImplementationOnce(async (project, place, target, progress) => {
+            progress?.({ phase: 'fetch' });
+            await releaseSync.promise;
+            return applySync(project, place, target, progress);
+        });
+
+        await open('Merge into branch…');
+        await press(option('main'));
+        await settle();
+        const primary = button('Merge');
+        expect(modeTrigger()).not.toBeNull();
+
+        await press(primary);
+        await settle();
+        expect(modeTrigger()).toBeNull();
+        expect(primary.getAttribute('data-pending')).toBe('true');
+
+        releaseMerge.resolve();
+        await settle();
+        expect(modeTrigger()).toBeNull();
+        expect(primary.isConnected).toBe(true);
+        expect(primary.getAttribute('data-pending')).toBe('true');
+        expect(heading()).toBe('Merged clowdy/ab12cd34 into main');
+
+        releaseSync.resolve();
+        await settle();
+        expect(dialog()).toBeNull();
+    });
+
     it('closes an outgoing merge that has no push action and shows a toast', async () => {
         await start({ gitWrites: { clean: true, remote: 'no_origin' } });
         const success = vi.spyOn(toast, 'success').mockReturnValue('');
