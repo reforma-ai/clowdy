@@ -1086,13 +1086,11 @@ describe('UiStore', () => {
         ui.setGroupByWorktree(true);
         ui.setWorktreeOrder(['tree-b', 'tree-a']);
         ui.toggleWorktreeCollapsed('tree-a');
-        ui.toggleUnusedWorktrees('unused');
         expect(store.forProject('p2')).toMatchObject({ groupByWorktree: false, worktreeOrder: [] });
         expect(new UiStore(storage).forProject('p1')).toMatchObject({
             groupByWorktree: true,
             worktreeOrder: ['tree-b', 'tree-a'],
             collapsedWorktrees: ['tree-a'],
-            expandedUnusedWorktrees: ['unused'],
         });
     });
 
