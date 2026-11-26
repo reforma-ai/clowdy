@@ -838,7 +838,7 @@ const SubagentItem = memo(function SubagentItem({
             data-depth={depth}
             data-drop-position={drop}
         >
-            <span className={styles.title} title={run.summary || undefined}>
+            <span className={styles.title} title={label}>
                 {label}
             </span>
         </GridListItem>

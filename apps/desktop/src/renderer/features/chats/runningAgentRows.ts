@@ -1,6 +1,6 @@
 import { isTerminalRunStatus, shownRunStatus } from '@clowdy/protocol';
 
-import { subagentLabel } from '../../stream/subagents';
+import { agentPurpose, subagentLabel } from '../../stream/subagents';
 import { orchestratorOf } from '../agents/agentTree';
 import { isRunActive } from './chatRun';
 
@@ -90,8 +90,15 @@ export function backgroundRowText(count: number): string {
     return count === 1 ? 'Background task running' : `${count} background tasks running`;
 }
 
-/** How a row names its sub-agent: by its type (`Explore agent`). */
-export function agentRowLabel(run: Pick<Run, 'name'>): string {
+/**
+ * How a sub-agent is named to the person: by what it was asked to do, the one line its agent gave it (`Run.summary`, `Review the clone route diff`), as a thread is by its
+ * title. A sub-agent that has none reads by its type (`Explore agent`). Users take a sub-agent and a thread for nearly the same thing, so the type is no name.
+ */
+export function agentRowLabel(run: Pick<Run, 'name' | 'summary'>): string {
+    const purpose = agentPurpose(run);
+
+    if (purpose) return purpose;
+
     const label = subagentLabel(run.name) ?? 'Sub-agent';
 
     return /agent$/i.test(label) ? label : `${label} agent`;

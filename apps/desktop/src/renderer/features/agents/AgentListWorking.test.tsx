@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { runInAction } from 'mobx';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -39,9 +40,9 @@ vi.mock('./RunDetail', () => ({
 
 /*
  * The agents that work, and the finished ones, in the Agents list of the fixture project. The chat c-1 (orchestrator r-orch-1, at work) has the native
- * sub-agents, oldest first: r-na-01 (Explore agent, done), r-na-04 (General agent, failed), r-na-03 (General agent, works), r-na-02 (Explore agent, works) with
- * r-na-05 below it (Explore agent, rests for background work). The chat c-6 has the threads c-6a (works, with its finished thread c-6a1), c-6b (done), c-6c
- * (failed) and c-6e (rests for background work), and between c-6b and c-6c its own sub-agent r-na-07 (General agent, done). The test build has no MobX
+ * sub-agents, oldest first: r-na-01 ("Map the booking flow", done), r-na-04 ("Weekend pricing rules", failed), r-na-03 ("Update the booking form", works), r-na-02 ("Find where the price is computed", works) with
+ * r-na-05 below it ("List the callers of the price helper", rests for background work). The chat c-6 has the threads c-6a (works, with its finished thread c-6a1), c-6b (done), c-6c
+ * (failed) and c-6e (rests for background work), and between c-6b and c-6c its own sub-agent r-na-07 ("Check the refund rules", done). The test build has no MobX
  * observer plugin, so the screen is drawn again by hand after a change, as the observer does in the app.
  */
 
@@ -133,11 +134,21 @@ describe('the agents that work, under a folded chat', () => {
         expect(foldOf('c-1')?.getAttribute('aria-expanded')).toBe('false');
     });
 
-    it('names a sub-agent by its type and says what it does when the pointer rests on it, never by the daemon’s name', () => {
-        expect(titleOf('r-na-03')).toBe('General agent');
-        expect(titleOf('r-na-02')).toBe('Explore agent');
+    it('names a sub-agent by what it was asked to do, as a thread is by its title, never by its type or the daemon’s name', () => {
+        expect(titleOf('r-na-03')).toBe('Update the booking form');
+        expect(titleOf('r-na-02')).toBe('Find where the price is computed');
         expect(rowOf('r-na-03').querySelector('[title]')?.getAttribute('title')).toBe('Update the booking form');
+        expect(rowOf('r-na-03').textContent).not.toContain('General agent');
         expect(rowOf('r-na-03').textContent).not.toContain('general-purpose');
+    });
+
+    it('names a sub-agent that was given no purpose by its type', async () => {
+        await draw(() => {
+            ui().toggleChatExpanded('c-1');
+            runInAction(() => project().runs.set('r-na-03', { ...project().runs.get('r-na-03')!, summary: '' }));
+        });
+
+        expect(titleOf('r-na-03')).toBe('General agent');
     });
 
     it('shows the state of a sub-agent as its dot', () => {
@@ -207,7 +218,7 @@ describe('finished sub-agents', () => {
         ]);
         // There is no group row, and no fold but the chat's.
         expect(rowKeys().some(candidate => candidate?.startsWith('@finished'))).toBe(false);
-        expect(rowOf('r-na-01').textContent).toBe('Explore agent');
+        expect(rowOf('r-na-01').textContent).toBe('Map the booking flow');
         expect(rowOf('c-1').textContent).toBe('Simplify booking');
     });
 
@@ -225,7 +236,7 @@ describe('finished sub-agents', () => {
             'c-6e',
         ]);
         expect(rowOf('r-na-07').dataset.depth).toBe('1');
-        expect(titleOf('r-na-07')).toBe('General agent');
+        expect(titleOf('r-na-07')).toBe('Check the refund rules');
     });
 
     it('show the dot of their run as a finished thread does: red when failed, none when done', async () => {

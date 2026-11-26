@@ -15,8 +15,8 @@ import type { KeyValueStorage } from '../../stores/storage';
 
 /*
  * The header over a conversation, on the fixture project. Threads: c-6 "Ship the checkout" > c-6a "Fix the price rounding" (working) > c-6a1 "Check the
- * currency table" (done). Sub-agents of c-1 "Simplify booking": r-na-02 (Explore, working, "Find where the price is computed"), r-na-03 (General, working) and
- * r-na-01 (Explore, done). The test build has no MobX observer plugin, so the view is drawn again by hand after a change.
+ * currency table" (done). Sub-agents of c-1 "Simplify booking": r-na-02 (working, "Find where the price is computed"), r-na-03 (working, "Update the booking form") and
+ * r-na-01 (done, "Map the booking flow"). A sub-agent is named by what it was asked to do. The test build has no MobX observer plugin, so the view is drawn again by hand after a change.
  */
 
 const memoryStorage = (): KeyValueStorage => {
@@ -147,8 +147,9 @@ describe('ConversationHeader, a sub-agent', () => {
     it('shows the path of its chat and then its own name as the people read it', async () => {
         await draw(chatOf('c-1'), runOf('r-na-03'));
 
-        expect(pathText()).toEqual(['Simplify booking', 'General agent']);
-        expect(path()?.querySelector('[aria-current="page"]')?.textContent).toBe('General agent');
+        expect(pathText()).toEqual(['Simplify booking', 'Update the booking form']);
+        expect(path()?.querySelector('[aria-current="page"]')?.textContent).toBe('Update the booking form');
+        expect(container.textContent).not.toContain('General agent');
         expect(container.textContent).not.toContain('general-purpose');
         expect(container.textContent).not.toContain('Orchestrator');
     });
@@ -162,11 +163,17 @@ describe('ConversationHeader, a sub-agent', () => {
         expect(ui().runId).toBeNull();
     });
 
-    it('puts its summary under the path as one line', async () => {
+    it('is named by what it was asked to do, once: no line for it under the path', async () => {
         await draw(chatOf('c-1'), runOf('r-na-02'));
 
-        expect(container.textContent).toContain('Find where the price is computed');
-        expect(path()?.textContent).not.toContain('Find where');
+        expect(pathText()).toEqual(['Simplify booking', 'Find where the price is computed']);
+        expect(container.textContent!.split('Find where the price is computed')).toHaveLength(2);
+    });
+
+    it('is named by its type when it was given no purpose', async () => {
+        await draw(chatOf('c-1'), { ...runOf('r-na-02'), summary: '' });
+
+        expect(pathText()).toEqual(['Simplify booking', 'Explore agent']);
     });
 
     it('shows its status while it works and not once it is over', async () => {
@@ -196,7 +203,7 @@ describe('ConversationHeader, a sub-agent', () => {
         });
         await draw(chatOf('c-6a'), runOf('r-na-70'));
 
-        expect(pathText()).toEqual(['Ship the checkout', 'Fix the price rounding', 'Explore agent']);
+        expect(pathText()).toEqual(['Ship the checkout', 'Fix the price rounding', 'Find where the price is computed']);
 
         await press('Ship the checkout');
         await vi.waitFor(() => expect(ui().chatId).toBe('c-6'));
@@ -212,9 +219,9 @@ describe('ConversationHeader, a sub-agent', () => {
         });
         await draw(chatOf('c-1'), runOf('r-na-71'));
 
-        expect(pathText()).toEqual(['Simplify booking', 'General agent', 'Explore agent']);
+        expect(pathText()).toEqual(['Simplify booking', 'Update the booking form', 'Find where the price is computed']);
 
-        await press('General agent');
+        await press('Update the booking form');
         await vi.waitFor(() => expect(ui().runId).toBe('r-na-03'));
     });
 
@@ -230,7 +237,7 @@ describe('ConversationHeader, a sub-agent', () => {
         });
         await draw(chatOf('c-6a'), runOf('r-na-72'));
 
-        expect(pathText()).toEqual(['Ship the checkout', 'Fix the price rounding', 'Explore agent']);
+        expect(pathText()).toEqual(['Ship the checkout', 'Fix the price rounding', 'Find where the price is computed']);
         expect(part('Ship the checkout')!.querySelector('button')!.disabled).toBe(true);
         expect(part('Fix the price rounding')!.querySelector('button')!.disabled).toBe(false);
     });
@@ -248,7 +255,12 @@ describe('ConversationHeader, a sub-agent', () => {
         });
         await draw(chatOf('c-6a'), runOf('r-na-74'));
 
-        expect(pathText()).toEqual(['Ship the checkout', 'Fix the price rounding', 'General agent', 'General agent']);
+        expect(pathText()).toEqual([
+            'Ship the checkout',
+            'Fix the price rounding',
+            'Update the booking form',
+            'Update the booking form',
+        ]);
 
         await press('Ship the checkout');
         await vi.waitFor(() => expect(ui().chatId).toBe('c-6'));
@@ -257,7 +269,7 @@ describe('ConversationHeader, a sub-agent', () => {
     it('is the sub-agent alone when its chat is gone', async () => {
         await draw(undefined, runOf('r-na-02'));
 
-        expect(pathText()).toEqual(['Explore agent']);
+        expect(pathText()).toEqual(['Find where the price is computed']);
     });
 });
 
@@ -320,7 +332,12 @@ describe('ConversationHeader, a long path', () => {
         await open(deep);
         await draw(chatOf('c-x3'), runOf('r-na-02'));
 
-        expect(pathText()).toEqual(['Ship the checkout', '…Show 4 more', 'Deeper 3', 'Explore agent']);
-        expect(path()?.querySelector('[aria-current="page"]')?.textContent).toBe('Explore agent');
+        expect(pathText()).toEqual([
+            'Ship the checkout',
+            '…Show 4 more',
+            'Deeper 3',
+            'Find where the price is computed',
+        ]);
+        expect(path()?.querySelector('[aria-current="page"]')?.textContent).toBe('Find where the price is computed');
     });
 });

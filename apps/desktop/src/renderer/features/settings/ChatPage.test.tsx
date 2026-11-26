@@ -31,7 +31,8 @@ const radio = (group: string, label: string) =>
     )!;
 const checked = (group: string) =>
     container.querySelector(`[aria-label="${group}"] [role="radio"][aria-checked="true"]`)?.textContent;
-const finished = () => container.querySelector<HTMLInputElement>('input[aria-label="Finished threads and sub-agents"]')!;
+const finished = () =>
+    container.querySelector<HTMLInputElement>('input[aria-label="Finished threads and sub-agents"]')!;
 const labels = (group: string) =>
     [...container.querySelectorAll<HTMLElement>(`[aria-label="${group}"] [role="radio"]`)].map(
         item => item.textContent

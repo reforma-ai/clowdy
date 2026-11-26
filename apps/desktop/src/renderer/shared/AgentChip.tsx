@@ -3,7 +3,6 @@ import { cn } from '@clowdy/lib';
 
 import { useProjectUi } from '../stores';
 import styles from './Chip.module.css';
-import { runSummary } from './runLabel';
 import { useRunLabel } from './useRunLabel';
 
 import type { Run } from '@clowdy/protocol';
@@ -24,7 +23,7 @@ export function AgentChip({ run, onPress, className }: AgentChipProps) {
         <button
             type="button"
             className={cn(styles.chip, className)}
-            title={runSummary(run) ?? label}
+            title={label}
             onClick={onPress ?? (() => ui.openRun(run.id))}
         >
             <span className={styles.icon}>

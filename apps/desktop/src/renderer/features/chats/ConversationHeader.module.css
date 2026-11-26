@@ -56,13 +56,6 @@
     flex-shrink: 0;
 }
 
-/* A sub-agent's summary: one quiet line under its path. */
-.summary {
-    display: block;
-    max-width: 100%;
-    margin-block-start: var(--spacing-xxs);
-}
-
 /* Names the `…` for a screen reader; the eye reads the three dots. */
 .visuallyHidden {
     position: absolute;

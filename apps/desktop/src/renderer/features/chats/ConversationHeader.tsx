@@ -1,6 +1,5 @@
 import { Breadcrumb } from '@clowdy/components/Breadcrumb';
 import { ContentColumn } from '@clowdy/components/ContentColumn';
-import { Text } from '@clowdy/components/Text';
 import { useEffect, useRef, useState } from 'react';
 
 import { RunStatusPill, useRunLabel } from '../../shared';
@@ -23,8 +22,7 @@ export interface ConversationHeaderProps {
 /**
  * The header over every conversation, made of the chats' own titles, in the column of the messages (not at the page's edge) and in the type of a heading of a card (`heading-5`), with no border. A chat shows its title; a thread the path down to it (`Chat › Thread`); a native sub-agent the path of
  * its chat and then its own name, with the sub-agents it runs inside between them. Every part but the last opens that page; the last is the page itself. A long path folds its
- * middle into `…`, which opens it out, and titles truncate. While the page's run works or waits, its status stands at the right end, and a sub-agent's summary
- * is one quiet line under the path. Stop, the model and the mode are in the message box, not here.
+ * middle into `…`, which opens it out, and titles truncate. While the page's run works or waits, its status stands at the right end; a sub-agent's own part is what it was asked to do (`runLabel`), so there is no line for it under the path. Stop, the model and the mode are in the message box, not here.
  */
 export function ConversationHeader({ chat, subagent }: ConversationHeaderProps) {
     const root = useRootStore();
@@ -56,7 +54,6 @@ export function ConversationHeader({ chat, subagent }: ConversationHeaderProps) 
     }, [isOpenedOut]);
 
     const run = subagent ?? (chat && orchestratorOf(chat, project.runs));
-    const summary = subagent?.summary.trim();
 
     const open = (target: HeaderTarget) =>
         void (target.kind === 'chat'
@@ -102,12 +99,6 @@ export function ConversationHeader({ chat, subagent }: ConversationHeaderProps) 
 
                     {isRunActive(run) && <RunStatusPill run={run} className={styles.status} />}
                 </div>
-
-                {summary && (
-                    <Text variant="sm" color="secondary" truncate title={summary} className={styles.summary}>
-                        {summary}
-                    </Text>
-                )}
             </ContentColumn>
         </header>
     );

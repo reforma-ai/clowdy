@@ -6,7 +6,7 @@ import { isTerminalRunStatus, type StreamItemBody } from '@clowdy/protocol';
 
 import { useProjectState, useProjectUi } from '../stores';
 import styles from './SubagentCard.module.css';
-import { agentStatusLine, childOfCall, subagentLabel, subagentName, subagentTitle } from './subagents';
+import { agentPurpose, agentStatusLine, childOfCall, subagentLabel, subagentName, subagentTitle } from './subagents';
 import { useAgentActivity } from './useAgentActivity';
 
 type ToolBody = Extract<StreamItemBody, { kind: 'tool' }>;
@@ -86,7 +86,7 @@ export interface SubagentCardProps {
 }
 
 /**
- * An agent's own sub-agent, on the call that started it: `Exploring` with what the sub-agent does while it runs, `Ran Explore agent` after.
+ * An agent's own sub-agent, on the call that started it: its purpose (the line its agent gave it) with what the sub-agent does while it runs, `Finished` after; a sub-agent with no purpose reads `Exploring`, then `Ran Explore agent`.
  * When the agent reported the sub-agent's work, the daemon made a native child run under this call, which the activity comes from and a press
  * opens; an agent that reported nothing leaves a card that only says it ran.
  */
@@ -104,7 +104,10 @@ export function SubagentCard({ call, active }: SubagentCardProps) {
 
     return (
         <AgentCard
-            title={stalled ? 'The agent did not finish' : subagentTitle(label, live)}
+            // What the sub-agent was asked to do is its name, as the list and its page call it; the type and the verb are for a card whose agent gave none.
+            title={
+                stalled ? 'The agent did not finish' : ((child && agentPurpose(child)) ?? subagentTitle(label, live))
+            }
             line={agentStatusLine({ live, failed, stalled, activity })}
             error={failed ? call.error?.trim() || 'The agent failed' : undefined}
             running={live}
