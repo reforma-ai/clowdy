@@ -71,7 +71,7 @@ function workspaceFacts({ path, branch, folder, nameable }: PromptWorkspace): st
         `Worktree: you work in a git worktree of ${folder}, at ${path}, ${branch ? `on the branch ${branch}` : 'on a detached HEAD'}. Read and change files there, run commands there and commit your work there.`,
         `The main checkout at ${folder} is the person's and other agents' place: leave its files alone, and use it only to read what the worktree does not have.`,
         nameable &&
-            'The name of your branch is a placeholder made from the id of this chat. As soon as you know what the work is, and before your first commit, name it once: `clowdy worktree name <two to four English words, lower case, joined with dashes>`, such as `clowdy worktree name fix-login-redirect`. It renames the branch where it stands and nothing else moves, so keep working in the same folder; do not rename it with git yourself.',
+            'The name of your branch is a placeholder made from the id of this chat. Name it once, as soon as the first message tells you what this chat is about (a question or an investigation counts, not only edits) and always before your first commit: `clowdy worktree name <two to four English words, lower case, joined with dashes>`, such as `clowdy worktree name fix-login-redirect`. It renames the branch where it stands and nothing else moves, so keep working in the same folder; do not rename it with git yourself.',
     ]
         .filter(Boolean)
         .join(' ');
