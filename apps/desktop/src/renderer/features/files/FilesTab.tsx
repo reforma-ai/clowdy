@@ -59,6 +59,7 @@ function PlaceFiles({ place, variant }: { place: Place; variant: 'files' | 'docs
                           {
                               id: 'add-to-chat',
                               label: 'Add to chat',
+                              placement: 'first' as const,
                               icon: <Message />,
                               onAction: () => {
                                   if (mentionFilesIntoComposer(fileReferences(place, targets))) ui.showChat();
