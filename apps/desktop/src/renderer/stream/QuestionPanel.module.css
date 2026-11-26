@@ -84,7 +84,6 @@
 
 /* The 1px edge is always there, so turning it visible does not move the row. */
 .option[data-field] {
-    align-items: center;
     border: 1px solid transparent;
 }
 
@@ -96,9 +95,11 @@
     background-color: transparent;
 }
 
+/* The same line as the options' labels, so the first line of the field sits level with its number and a longer answer is set like the rows above it. */
 .field {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+    line-height: var(--ask-option-line);
 }
 
 /* A rule under the options, as far from the last row as from the buttons: the panel's own gap above it, the same padding below. */

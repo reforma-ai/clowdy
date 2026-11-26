@@ -149,6 +149,7 @@ export function QuestionPanel({ question, onAnswer }: QuestionPanelProps) {
                 <GridListItem
                     id={CUSTOM_ID}
                     className={styles.option}
+                    align="start"
                     scrollActive={false}
                     textValue="Your own answer"
                     data-field=""
