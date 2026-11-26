@@ -7,6 +7,7 @@ import { EXAMPLES } from '../src/cli/clowdy';
 import { CLI_ENTRY, installShim } from '../src/cli/shim';
 import { getChat } from '../src/db/chats';
 import { listItems } from '../src/db/items';
+import { appendItem } from '../src/domain/items';
 import { taskCommentsPage } from '../src/domain/taskComments';
 import { ToolBridge } from '../src/engine/acp/bridge';
 import { toolsFor } from '../src/runs/tools';
@@ -296,6 +297,101 @@ describe("clowdy in an agent's shell, against a daemon", () => {
 
         return { h, engine, store, chat: chatOf(chat.id), tools, access, chatOf, runOf, on, shell, json };
     }
+
+    test('reads a mentioned project chat in pages without waking it or disclosing another project', async () => {
+        const { h, chat, chatOf, runOf, shell, json } = await setup();
+        const target = h.ok('chat.create', { projectId: chat.projectId, title: 'Earlier decisions' }).chat as Chat;
+        h.ok('chat.send', { chatId: target.id, text: 'First question' });
+        await waitFor(
+            () => chatOf(target.id).orchestratorRunId && runOf(target.id).status === 'succeeded',
+            'target ends'
+        );
+
+        const targetRun = runOf(target.id);
+        const question = appendItem(h.store, targetRun.id, {
+            kind: 'question',
+            questionId: 'question-1',
+            text: 'Which architecture?',
+            options: [{ id: 'local', label: 'Keep it local' }],
+            answer: 'Keep it local',
+        });
+        const notice = appendItem(h.store, targetRun.id, {
+            kind: 'user',
+            text: '',
+            from: {
+                kind: 'threadNotice',
+                threads: [{ chatId: 'thread-1', title: 'Review', outcome: 'finished', text: 'The design is feasible' }],
+            },
+        });
+        appendItem(h.store, targetRun.id, { kind: 'reasoning', text: 'Private reasoning', done: true });
+        appendItem(h.store, targetRun.id, {
+            kind: 'tool',
+            toolCallId: 'ignored',
+            name: 'Example',
+            input: 'Private input',
+            state: 'done',
+            output: 'Private output',
+        });
+        const last = appendItem(h.store, targetRun.id, { kind: 'assistant', text: 'Latest answer', done: true });
+        h.ok('chat.setArchived', { chatId: target.id, archived: true });
+        const archived = chatOf(target.id);
+        const cursor = h.store.headCursor();
+        const page = await json(`clowdy chat read chat:${target.id} --limit 1`);
+        expect(page).toMatchObject({
+            chatId: target.id,
+            title: 'Earlier decisions',
+            messages: [{ seq: last.seq, role: 'assistant', text: 'Latest answer', done: true }],
+            nextBefore: last.seq,
+        });
+        const noticePage = await json(`clowdy chat read ${target.id} --before ${page.nextBefore} --limit 1`);
+        expect(noticePage).toMatchObject({
+            messages: [{ seq: notice.seq, source: { kind: 'threadNotice' } }],
+            nextBefore: notice.seq,
+        });
+        const questionPage = await json(`clowdy chat read ${target.id} --before ${noticePage.nextBefore} --limit 1`);
+        expect(questionPage).toMatchObject({
+            messages: [{ seq: question.seq, role: 'question', answer: 'Keep it local' }],
+            nextBefore: question.seq,
+        });
+        const earlier = await json(`clowdy chat read ${target.id} --before ${page.nextBefore}`);
+        expect(earlier.messages[0]).toMatchObject({ role: 'user', text: 'First question' });
+        expect(earlier.messages.slice(-2)).toMatchObject([
+            {
+                seq: question.seq,
+                role: 'question',
+                text: 'Which architecture?',
+                options: [{ id: 'local', label: 'Keep it local' }],
+                answer: 'Keep it local',
+            },
+            {
+                seq: notice.seq,
+                role: 'user',
+                source: {
+                    kind: 'threadNotice',
+                    threads: [{ title: 'Review', outcome: 'finished', text: 'The design is feasible' }],
+                },
+            },
+        ]);
+        const all = await json(`clowdy chat read ${target.id}`);
+        expect(all.messages).toEqual([...earlier.messages, ...page.messages]);
+        expect(earlier).not.toHaveProperty('nextBefore');
+        for (const hidden of ['Private reasoning', 'Private input', 'Private output']) {
+            expect(JSON.stringify(all)).not.toContain(hidden);
+        }
+        expect(chatOf(target.id)).toEqual(archived);
+        expect(h.store.headCursor()).toBe(cursor);
+
+        const empty = h.ok('chat.create', { projectId: chat.projectId, title: 'Empty' }).chat as Chat;
+        expect(await json(`clowdy chat read ${empty.id}`)).toEqual({ chatId: empty.id, title: 'Empty', messages: [] });
+        const foreign = h.ok('chat.create', { projectId: h.openRepo('another').id, title: 'Private chat' })
+            .chat as Chat;
+        const denied = await shell(`clowdy chat read ${foreign.id}`);
+        expect(denied.code).toBe(1);
+        expect(denied.stderr).toContain('does not exist');
+        expect(denied.stdout).not.toContain('Private chat');
+        expect((await shell('clowdy chat read cht_missing')).code).toBe(1);
+        expect((await shell(`clowdy chat read ${target.id} --limit 51`)).code).not.toBe(0);
+    });
 
     test('spawns a thread from a heredoc, then lists, tells, reads, waits for and stops it', async () => {
         const { h, store, chat, chatOf, runOf, on, shell, json } = await setup();
@@ -847,6 +943,7 @@ describe("clowdy in an agent's shell, against a daemon", () => {
         );
 
         expect([...commands.keys()].sort()).toEqual([
+            'chat_read',
             'task_archive',
             'task_comment',
             'task_comments',

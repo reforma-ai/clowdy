@@ -1,5 +1,5 @@
 import { FileIcon } from '@clowdy/components/FileIcon';
-import { Page } from '@clowdy/icons/14';
+import { Message, Page } from '@clowdy/icons/14';
 import { cn } from '@clowdy/lib';
 
 import chipStyles from '../../shared/Chip.module.css';
@@ -13,9 +13,11 @@ import type { ReactNode } from 'react';
 
 const ICON_SIZE = 12;
 
-/** The mark of a document or file mention. Task mentions follow their current status. */
+/** The mark of a chat, document or file mention. Task mentions follow their current status. */
 export function mentionIcon({ kind, data }: Pick<ComposerMentionAttrs, 'kind' | 'data'>, size = ICON_SIZE): ReactNode {
     switch (kind) {
+        case 'chat':
+            return <Message width={size} height={size} />;
         case 'doc':
             return <Page width={size} height={size} />;
         case 'file': {

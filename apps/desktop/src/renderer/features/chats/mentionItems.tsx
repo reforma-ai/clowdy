@@ -7,6 +7,7 @@ import { mentionIcon } from './MentionChip';
 
 import type { RichInputTriggerItem } from '@clowdy/components/RichInput';
 import type {
+    Chat,
     DocNode,
     DocsTree,
     FolderId,
@@ -19,6 +20,7 @@ import type {
 
 /** How many of each kind the `@` menu lists: it is a pick list, not a search page. */
 export const TASKS_SHOWN = 6;
+export const CHATS_SHOWN = 6;
 export const DOCS_SHOWN = 6;
 /** The most documents of one source the menu lists, so that a source with many plans does not take the whole list from the others. */
 export const DOCS_PER_SOURCE = 4;
@@ -54,6 +56,33 @@ export function taskItems(
                 section: 'Tasks',
                 kind: 'task',
                 displayText: task.key,
+                data,
+            };
+        });
+}
+
+/** Other chats of this project, most recently active first. Archived chats are searchable by title too. */
+export function chatItems(chats: readonly Chat[], query: string, currentChatId?: string): RichInputTriggerItem[] {
+    const words = wordsOf(query);
+
+    return chats
+        .filter(chat => chat.id !== currentChatId && hasAll(words, `${chat.title} ${chat.id}`.toLowerCase()))
+        .toSorted(
+            (a, b) =>
+                Number(a.archivedAt !== undefined) - Number(b.archivedAt !== undefined) || b.updatedAt - a.updatedAt
+        )
+        .slice(0, CHATS_SHOWN)
+        .map(chat => {
+            const data = { chatId: chat.id, title: chat.title };
+
+            return {
+                value: `chat:${chat.id}`,
+                label: chat.title,
+                description: chat.archivedAt !== undefined ? 'Archived' : undefined,
+                icon: mentionIcon({ kind: 'chat', data }, 14),
+                section: 'Chats',
+                kind: 'chat',
+                displayText: chat.title,
                 data,
             };
         });

@@ -194,7 +194,7 @@ export function Composer({
               folder: folderById(folders, start?.folderId),
               ...(start?.workspaceRow && { workspace: start.workspaceRow }),
           };
-    const triggers = useMentionTriggers(box, place);
+    const triggers = useMentionTriggers(box, place, chat?.id);
     // The message the box replies to, shown as a card above the field. The box of an edit frame has none.
     const replyTo = useReplyQuote(key);
     const { agents } = useAgents();

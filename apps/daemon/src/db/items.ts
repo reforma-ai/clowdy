@@ -55,6 +55,17 @@ export function listItems(db: Database, runId: string, after: number, flagged = 
     ).map(row => toItem(row, flagged));
 }
 
+/** Conversation messages and decision cards only, newest first. The caller requests one extra row to tell whether there is an older page. */
+export function listMessagesBefore(db: Database, runId: string, before: number, limit: number): StreamItem[] {
+    return (
+        db
+            .query(
+                "SELECT * FROM stream_items WHERE run_id = ? AND seq < ? AND json_extract(body, '$.kind') IN ('user', 'assistant', 'question') ORDER BY seq DESC LIMIT ?"
+            )
+            .all(runId, before, limit) as ItemRow[]
+    ).map(row => toItem(row, false));
+}
+
 export function getItem(db: Database, runId: string, seq: number, flagged = false): StreamItem | undefined {
     const row = db
         .query(`${flagged ? FLAGGED : 'SELECT * FROM stream_items s'} WHERE s.run_id = ? AND s.seq = ?`)

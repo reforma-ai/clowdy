@@ -76,7 +76,7 @@ async function setup(
 }
 
 describe('the tool vocabulary', () => {
-    test('an orchestrator has the task tools, the thread tools, and ask_user only in semi-manual', async () => {
+    test('an orchestrator has the task, thread and chat tools, and ask_user only in semi-manual', async () => {
         const { orchestrator, toolsOf } = await setup();
         const names = (run: Run) => toolsOf(run).map(tool => tool.name);
         const threads = [
@@ -99,6 +99,7 @@ describe('the tool vocabulary', () => {
             'task_archive',
             'task_unarchive',
             ...threads,
+            'chat_read',
         ]);
 
         const semi = await setup(undefined, {}, 'semi');
@@ -113,6 +114,7 @@ describe('the tool vocabulary', () => {
             'task_archive',
             'task_unarchive',
             ...threads,
+            'chat_read',
             'ask_user',
         ]);
 
@@ -124,7 +126,7 @@ describe('the tool vocabulary', () => {
         }
     });
 
-    test('the task tools are shell commands unless the agent uses MCP, in which case they are MCP tools of the same name; the thread tools are always shell commands', async () => {
+    test('the task tools are shell commands unless the agent uses MCP; the thread and chat tools are always shell commands', async () => {
         const { h, orchestrator } = await setup();
         const { store, runs, threads } = h.daemon.services;
         const tools = (channel?: 'cli' | 'mcp') => toolsFor({ store, runs, threads }, orchestrator, 'semi', channel);
@@ -142,7 +144,7 @@ describe('the tool vocabulary', () => {
             'task_archive',
             'task_unarchive',
         ];
-        const threadTools = [
+        const chatTools = [
             'thread_spawn',
             'thread_tell',
             'thread_stop',
@@ -150,11 +152,12 @@ describe('the tool vocabulary', () => {
             'thread_output',
             'thread_log',
             'thread_list',
+            'chat_read',
         ];
 
-        expect(shell()).toEqual([...taskTools, ...threadTools]);
-        expect(shell('cli')).toEqual([...taskTools, ...threadTools]);
-        expect(shell('mcp')).toEqual(threadTools);
+        expect(shell()).toEqual([...taskTools, ...chatTools]);
+        expect(shell('cli')).toEqual([...taskTools, ...chatTools]);
+        expect(shell('mcp')).toEqual(chatTools);
         expect(tools('mcp').map(tool => tool.name)).toEqual(tools('cli').map(tool => tool.name));
         expect(tools('mcp').find(tool => tool.name === 'task_get')?.cli).toBeUndefined();
 
@@ -182,9 +185,9 @@ describe('the tool vocabulary', () => {
             expect(viaMcp.server).toBeDefined();
             expect(viaShell.cli && (await listed(viaShell.cli.url, viaShell.cli.auth, '/cli/tools'))).toEqual([
                 ...taskTools,
-                ...threadTools,
+                ...chatTools,
             ]);
-            expect(viaMcp.cli && (await listed(viaMcp.cli.url, viaMcp.cli.auth, '/cli/tools'))).toEqual(threadTools);
+            expect(viaMcp.cli && (await listed(viaMcp.cli.url, viaMcp.cli.auth, '/cli/tools'))).toEqual(chatTools);
             expect(viaMcp.cli && (await listed(viaMcp.cli.url, viaMcp.cli.auth, '/tools'))).toEqual(taskTools);
         } finally {
             bridge.stop();

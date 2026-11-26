@@ -19,11 +19,11 @@ const VOCABULARY = ['ask_user'];
 const REMOVED = ['run_spawn', 'run_inspect', 'run_wait', 'run_cancel', 'report_result'];
 /**
  * What reads as a tool name in a skill. The prefixes include the removed tools' on purpose, so that naming one is caught, and the task and thread
- * tools', which the skills teach as `clowdy task` and `clowdy thread` commands and never as tools.
+ * tools', which the skills teach as `clowdy task`, `clowdy thread` and `clowdy chat` commands and never as tools.
  */
-const TOOL_NAME = /\b(?:task|run|ask|report|thread)_[a-z]+\b/g;
-/** A `clowdy task` or `clowdy thread` command as a skill writes it, with the rest of its line or code span, where its options are. */
-const COMMAND = /\bclowdy (task|thread) ([a-z][a-z-]*)([^`\n]*)/g;
+const TOOL_NAME = /\b(?:task|run|ask|report|thread|chat)_[a-z]+\b/g;
+/** A Clowdy shell command as a skill writes it, with the rest of its line or code span, where its options are. */
+const COMMAND = /\bclowdy (task|thread|chat) ([a-z][a-z-]*)([^`\n]*)/g;
 
 /** The tool names a text mentions, once each, sorted. */
 function toolNamesIn(text: string): string[] {
@@ -48,7 +48,7 @@ function skillTexts(dir = join(defaultSystemSkillsSource(), 'skills')): string[]
 
 /**
  * The tools of the orchestrator of a semi-manual chat (the one with the most) that are not shell commands, by name, with their fields and schemas, and
- * its shell commands (`clowdy task <command>`, `clowdy thread <command>`) by group and command.
+ * its shell commands (`clowdy task <command>`, `clowdy thread <command>`, `clowdy chat read`) by group and command.
  */
 async function daemonTools() {
     const h = await startHarness();
@@ -68,7 +68,7 @@ async function daemonTools() {
         const commands = new Map<string, CliTool>();
         const tools = toolsFor({ store, runs, threads }, orchestrator, runs.modeOf(orchestrator));
 
-        // The task and thread tools are shell commands for the agent (`ToolDefinition.cli`); the skills teach them as `clowdy` commands, not as tools.
+        // The task, thread and chat tools are shell commands for the agent (`ToolDefinition.cli`); the skills teach them as `clowdy` commands, not as tools.
         for (const tool of tools.filter(candidate => !candidate.cli)) {
             fields.set(tool.name, new Set(Object.keys((tool.inputSchema.properties ?? {}) as Record<string, unknown>)));
             schemas.set(tool.name, [tool.schema]);
@@ -77,7 +77,7 @@ async function daemonTools() {
         for (const tool of tools.filter(candidate => candidate.cli)) {
             const { group, command } = commandOf(tool);
 
-            expect(['task', 'thread']).toContain(group);
+            expect(['task', 'thread', 'chat']).toContain(group);
             commands.set(`${group} ${command}`, {
                 ...tool,
                 positional: [...(tool.cli?.positional ?? [])],
@@ -162,7 +162,7 @@ describe('the system skills and the tools the daemon gives agents', () => {
                 ).matchAll(/'([a-z-]+)'/g),
             ].map(match => `${group} ${match[1]}`);
 
-        expect([...listed('task'), ...listed('thread')].sort()).toEqual([...commands.keys()].sort());
+        expect([...listed('task'), ...listed('thread'), ...listed('chat')].sort()).toEqual([...commands.keys()].sort());
     });
 
     test('list the same tools in the validator of the skills package', () => {

@@ -3,7 +3,16 @@ import type { ReactNode } from 'react';
 
 export type ComposerDoc = JSONContent;
 
-export type ComposerMentionKind = 'file' | 'variable' | 'layer' | 'command' | 'link' | 'integration' | 'task' | 'doc';
+export type ComposerMentionKind =
+    | 'file'
+    | 'variable'
+    | 'layer'
+    | 'command'
+    | 'link'
+    | 'integration'
+    | 'task'
+    | 'doc'
+    | 'chat';
 
 export type ComposerMentionAttrs = {
     id: string;

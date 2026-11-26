@@ -3,7 +3,7 @@ import { type RefObject, useMemo, useRef } from 'react';
 import { useProjectState, useRootStore } from '../../stores';
 import { isPlaceReady, type Place } from '../sidePanel/currentPlace';
 import { MENTION_TRIGGER, SKILL_TRIGGER } from './composerMentions';
-import { docItems, FILES_SHOWN, fileItems, skillItems, taskItems } from './mentionItems';
+import { chatItems, docItems, FILES_SHOWN, fileItems, skillItems, taskItems } from './mentionItems';
 
 import type { RichInputTrigger, RichInputTriggerItem } from '@clowdy/components/RichInput';
 import type { SkillEntry } from '@clowdy/protocol';
@@ -12,12 +12,16 @@ import type { SkillEntry } from '@clowdy/protocol';
 const orNothing = <T>(promise: Promise<T[]>): Promise<T[]> => promise.catch(() => []);
 
 /**
- * The two pick lists of the message box. `@` offers the project's tasks, documents and files, `/` its skills. Both
+ * The two pick lists of the message box. `@` offers the project's tasks, chats, documents and files, `/` its skills. Both
  * open above the whole box, as wide as it is, and are searched as the person types. The documents and files are those of the box's `place`, the ones the Files and Docs tabs show
  * for it: the worktree's for a chat that works in one (and none while the worktree is not made yet: it has no files), the folder's own checkout's otherwise. A path that is picked
  * is the one the agent reads from its working directory: relative for the place's own folder, absolute for another folder of the project.
  */
-export function useMentionTriggers(box: RefObject<HTMLElement | null>, place: Place): readonly RichInputTrigger[] {
+export function useMentionTriggers(
+    box: RefObject<HTMLElement | null>,
+    place: Place,
+    currentChatId?: string
+): readonly RichInputTrigger[] {
     const root = useRootStore();
     const project = useProjectState();
     // The ids and the state of the place, not the object, which is made again on every draw of the box.
@@ -48,7 +52,7 @@ export function useMentionTriggers(box: RefObject<HTMLElement | null>, place: Pl
         const mention: RichInputTrigger = {
             char: MENTION_TRIGGER,
             position: 'any',
-            accessibilityLabel: 'Mention a task, document or file',
+            accessibilityLabel: 'Mention a task, chat, document or file',
             ...menu,
             onSearch: async (query): Promise<RichInputTriggerItem[]> => {
                 const { folders } = project.project;
@@ -68,7 +72,12 @@ export function useMentionTriggers(box: RefObject<HTMLElement | null>, place: Pl
                       ])
                     : [[], []];
 
-                return [...taskItems(project.taskList, query, project.statuses), ...docs, ...files];
+                return [
+                    ...taskItems(project.taskList, query, project.statuses),
+                    ...chatItems(project.chatList, query, currentChatId),
+                    ...docs,
+                    ...files,
+                ];
             },
         };
 
@@ -81,5 +90,5 @@ export function useMentionTriggers(box: RefObject<HTMLElement | null>, place: Pl
         };
 
         return [mention, skill];
-    }, [root, project, box, folderId, workspaceId, ready]);
+    }, [root, project, box, folderId, workspaceId, ready, currentChatId]);
 }
