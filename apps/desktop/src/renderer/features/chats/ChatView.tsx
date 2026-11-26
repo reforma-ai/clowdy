@@ -1,6 +1,5 @@
 import { Button } from '@clowdy/components/Button';
 import { Text } from '@clowdy/components/Text';
-import { Split } from '@clowdy/icons/14';
 import { useMemo, useRef } from 'react';
 
 import { useAgents, useChatStream, useProjectState, useProjectUi, useRootStore } from '../../stores';
@@ -11,7 +10,7 @@ import { ChatControls } from './ChatControls';
 import { ChatDropZone } from './ChatDropZone';
 import styles from './ChatView.module.css';
 import { Composer, type ComposerHandle } from './Composer';
-import { ConversationCrumb } from './ConversationCrumb';
+import { ConversationHeader } from './ConversationHeader';
 import { ConversationView } from './ConversationView';
 import { canCompactChat, chatProvider, chatWritability, handoffAgents } from './chatProvider';
 import { isRunActive, overflowed } from './chatRun';
@@ -36,7 +35,7 @@ import type { ReactNode } from 'react';
 /**
  * One chat: the conversation page (`ConversationView`) with the composer banners above the message box and the composer in the box's place. When the chat's provider cannot run
  * (switched off, not installed, signed out) the stream stays as it is and a notice stands in place of the composer. A thread is a chat like
- * any other, with a slim line over its stream that names the chat it belongs to and opens it. `controls` are what the line under the message box holds at its
+ * any other, with the same header over its stream (`ConversationHeader`) that names the path down to it. `controls` are what the line under the message box holds at its
  * start (where the chat works, read only), the line the new-chat page drew with controls that change; the composer adds the mode at the end of that line, so a chat
  * that can be written to always has the line, and a read only one has it only when the caller has `controls`.
  */
@@ -46,7 +45,6 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
     const ui = useProjectUi();
     const scrollMemory = useMemo(() => chatScrollMemory(ui, chat.id), [ui, chat.id]);
     const links = useStreamLinks();
-    const parent = chat.parentChatId === undefined ? undefined : project.chats.get(chat.parentChatId);
     // A fork says where it came from. The source opens from there while it is listed: one in the archive is named only, since opening it would bring it back.
     const source = chat.forkedFrom && project.chats.get(chat.forkedFrom.chatId);
     const origin = chat.forkedFrom && {
@@ -96,7 +94,7 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
                 run={run}
                 stream={stream}
                 links={links}
-                top={parent && <ThreadCrumb parent={parent} onOpen={() => links.onOpenChat(parent.id)} />}
+                top={<ConversationHeader chat={chat} />}
                 scrollMemory={scrollMemory}
                 // Reply puts a message in the message box as a card, or quotes selected words into the draft; a fork is a conversation to go on in, and an edit sends the
                 // message again: a chat that is read only has none of them. The chat is rewritten from a message only at rest, so while the agent works Edit is not drawn.
@@ -193,13 +191,6 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
                 }
             />
         </ChatDropZone>
-    );
-}
-
-/** The line over a thread's stream: whose thread it is, and the parent's title, which opens the parent. */
-function ThreadCrumb({ parent, onOpen }: { parent: Chat; onOpen: () => void }) {
-    return (
-        <ConversationCrumb label="Parent chat" icon={<Split />} lead="Thread of" title={parent.title} onOpen={onOpen} />
     );
 }
 

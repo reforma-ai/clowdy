@@ -599,17 +599,34 @@ describe('a chat whose orchestrator waits for background work', () => {
     });
 });
 
-describe('a thread', () => {
-    const crumb = () => container.querySelector<HTMLElement>('nav[aria-label="Parent chat"]');
+describe('the header of a chat', () => {
+    it('is its title over the stream, with nothing to press, and the status of its run while it works', async () => {
+        await start();
+        await draw('c-1');
 
-    it('has a line over its stream that names the chat it belongs to, whose title opens that chat', async () => {
+        const path = container.querySelector<HTMLElement>('nav[aria-label="Conversation path"]')!;
+
+        expect(path.textContent).toBe('Simplify booking');
+        expect(path.querySelector('button')).toBeNull();
+        expect(container.querySelector('[data-tone]')?.textContent).toBe('Working');
+    });
+});
+
+describe('a thread', () => {
+    const path = () => container.querySelector<HTMLElement>('nav[aria-label="Conversation path"]');
+
+    it('has the header of the chat it belongs to over its stream: the path down to it, each part above it opening that chat', async () => {
         await start();
         await draw('c-6a1');
 
-        expect(crumb()?.textContent).toBe('Thread of Fix the price rounding');
+        expect([...path()!.querySelectorAll('li')].map(item => item.textContent)).toEqual([
+            'Ship the checkout',
+            'Fix the price rounding',
+            'Check the currency table',
+        ]);
 
         await act(async () =>
-            [...crumb()!.querySelectorAll('button')]
+            [...path()!.querySelectorAll('button')]
                 .find(candidate => candidate.textContent === 'Fix the price rounding')!
                 .click()
         );
@@ -649,11 +666,11 @@ describe('a thread', () => {
         );
     });
 
-    it('has no parent crumb on a top-level chat and folds its active threads by default', async () => {
+    it('has no parent in its path on a top-level chat and folds its active threads by default', async () => {
         await start();
         await draw('c-6');
 
-        expect(crumb()).toBeNull();
+        expect(path()?.textContent).toBe('Ship the checkout');
         const banner = container.querySelector('[aria-label="Work in progress"]')!;
         const toggle = banner.querySelector<HTMLButtonElement>('button[aria-expanded]')!;
 

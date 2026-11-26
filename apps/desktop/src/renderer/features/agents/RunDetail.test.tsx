@@ -80,14 +80,15 @@ afterEach(() => {
 });
 
 describe('RunDetail, the page', () => {
-    it('has the page of a chat: its stream, with the line of whose sub-agent it is over it, and none of the old header or footer', async () => {
+    it('has the page of a chat: its stream, with the path to it over it, and none of the old header or footer', async () => {
         await draw(runOf('r-na-02'));
         await draw(runOf('r-na-02'));
 
         expect(container.textContent).toContain('Looking for the price helper and its callers.');
-        expect(container.querySelector('nav[aria-label="Chat of the sub-agent"]')?.textContent).toBe(
-            'Explore agent in Simplify booking'
+        expect(container.querySelector('nav[aria-label="Conversation path"]')?.textContent).toBe(
+            'Simplify bookingExplore agent'
         );
+        expect(container.textContent).toContain('Find where the price is computed');
         expect(container.querySelector('header')).toBeNull();
         expect(container.querySelector('footer')).toBeNull();
         expect(container.textContent).not.toContain('Viewing agent work');
@@ -96,10 +97,10 @@ describe('RunDetail, the page', () => {
         expect(container.textContent).not.toContain('general-purpose');
     });
 
-    it('opens its chat from the line over the stream', async () => {
+    it('opens its chat from the first part of the path', async () => {
         await draw(runOf('r-na-02'));
 
-        const link = container.querySelector<HTMLElement>('nav[aria-label="Chat of the sub-agent"] button')!;
+        const link = container.querySelector<HTMLElement>('nav[aria-label="Conversation path"] button')!;
 
         await act(async () => link.click());
 
