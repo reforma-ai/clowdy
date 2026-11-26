@@ -46,14 +46,6 @@
     color: var(--color-secondary-muted-text);
 }
 
-.card[data-outcome='finished'] .icon {
-    color: var(--color-success);
-}
-
-.card[data-outcome='failed'] .icon {
-    color: var(--color-danger);
-}
-
 .title {
     min-width: 0;
     font-weight: 500;

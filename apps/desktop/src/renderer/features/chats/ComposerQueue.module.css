@@ -58,7 +58,7 @@
 }
 
 .mark {
-    display: block;
+    display: flex;
     flex-shrink: 0;
     color: var(--color-secondary-muted-text);
 }

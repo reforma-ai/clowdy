@@ -8,7 +8,7 @@ import { Composer } from './Composer';
 import { filesOf } from './composerFiles';
 import { modelStore } from './modelTestKit';
 
-import type { Chat, CommandResult, QueuedMessage, Run } from '@clowdy/protocol';
+import type { Chat, CommandResult, QueuedMessage, Run, ThreadNotice } from '@clowdy/protocol';
 import type { Editor } from '@tiptap/core';
 import type { CommandInput } from '../../daemon/transport';
 
@@ -45,7 +45,12 @@ async function mount(chat: Chat, status: Run['status'] = 'running') {
         command,
         transport,
         skillsRevision: 0,
-        selectedProject: { project: { id: 'p', folders: [{ id: 'f1', path: '/Users/dev/web' }] }, taskList: [] },
+        selectedProject: {
+            project: { id: 'p', folders: [{ id: 'f1', path: '/Users/dev/web' }] },
+            taskList: [],
+            chats: new Map([['c-t', { id: 'c-t', title: 'Fix login', orchestratorRunId: 'r-t' }]]),
+            runs: new Map([['r-t', { id: 'r-t', engine: 'codex' }]]),
+        },
         ...(await modelStore()),
     };
 
@@ -301,6 +306,46 @@ describe('the queue in the composer', () => {
 
             expect(noticeRow().textContent).toContain('Fix login: Use the staging keys');
             expect(buttonIn(noticeRow(), 'Edit')).toBeUndefined();
+        });
+
+        it('opens with the mark of the agent that wrote a message, and with the outcome of the threads that stopped, as on their cards', async () => {
+            const stopped = (outcomes: ThreadNotice['outcome'][]) =>
+                queued('q-n', 'Threads stopped', {
+                    from: {
+                        kind: 'threadNotice',
+                        threads: outcomes.map((outcome, index) => ({ chatId: `c-${index}`, title: 'T', outcome })),
+                    },
+                });
+            const markOf = () => noticeRow().querySelector('svg');
+
+            await mount(
+                chatWith([
+                    queued('q-m', 'Use the keys', { from: { kind: 'thread', chatId: 'c-t', title: 'Fix login' } }),
+                ])
+            );
+
+            // The chat that wrote runs on Codex (its orchestrator's engine).
+            expect(markOf()?.getAttribute('data-provider')).toBe('codex');
+
+            await mount(
+                chatWith([queued('q-m', 'Use the keys', { from: { kind: 'thread', chatId: 'gone', title: 'Old' } })])
+            );
+
+            expect(markOf()?.hasAttribute('data-provider')).toBe(false);
+            expect(markOf()).not.toBeNull();
+
+            for (const [outcomes, expected] of [
+                [['finished'], 'finished'],
+                [['failed'], 'failed'],
+                [['interrupted'], 'interrupted'],
+                [['finished', 'finished'], 'finished'],
+                [['finished', 'interrupted'], 'interrupted'],
+                [['finished', 'failed', 'interrupted'], 'failed'],
+            ] as const) {
+                await mount(chatWith([stopped([...outcomes])]));
+
+                expect(markOf()?.getAttribute('data-outcome')).toBe(expected);
+            }
         });
     });
 });

@@ -1,13 +1,13 @@
 import { Button } from '@clowdy/components/Button';
 import { Shimmer } from '@clowdy/components/Shimmer';
 import { Text } from '@clowdy/components/Text';
-import { Completed, Error as ErrorMark, TaskCanceled } from '@clowdy/icons/14';
 import { ProgressLoader } from '@clowdy/icons/assets';
 import { type ReactNode, use, useId } from 'react';
 
 import { AgentMark } from '../features/agents/AgentMark';
 import { Clamp } from './Clamp';
 import { Markdown } from './Markdown';
+import { OutcomeMark } from './OutcomeMark';
 import { StreamLinksContext } from './StreamLinks';
 import styles from './ThreadCards.module.css';
 import { OUTCOME_WORDS } from './threadMessages';
@@ -20,12 +20,6 @@ const REPORT_LINES = 4;
 const MESSAGE_LINES = 16;
 /** What opens the rest of a long text in a card, as it does on the person's own long messages. */
 const MORE_LABEL = 'Show full message';
-
-const OUTCOME_ICONS: Record<ThreadOutcome, ReactNode> = {
-    finished: <Completed />,
-    failed: <ErrorMark />,
-    interrupted: <TaskCanceled />,
-};
 
 /** What opens a chat from a card that names it: nothing when the project no longer has that chat (or nothing opens chats here). */
 function useOpenChat(chatId: ChatId): (() => void) | undefined {
@@ -61,6 +55,45 @@ function ChatName({ chatId, title }: { chatId: ChatId; title: string }) {
     );
 }
 
+interface CardFrameProps {
+    /** What a test or a style finds the card by: `agent-card` or `thread-message`. */
+    slot: string;
+    /** The mark that opens the title line: the title and the mark are one line, and what is under it starts at the card's edge. */
+    icon: ReactNode;
+    /** The title line's words (a press, a link, a shimmer). */
+    title: ReactNode;
+    /** How it ended, for the colour of its mark. */
+    outcome?: ThreadOutcome;
+    pressable?: boolean;
+    busy?: boolean;
+    /** The stream item the card is, so the turn rail can scroll to it. */
+    turn?: string;
+    /** What is under the title line. */
+    children?: ReactNode;
+}
+
+/** The one frame of every card of other work in a stream: the plate, a title line that holds the icon, and the rows under it. */
+function CardFrame({ slot, icon, title, outcome, pressable, busy, turn, children }: CardFrameProps) {
+    return (
+        <div
+            className={styles.card}
+            data-slot={slot}
+            data-outcome={outcome}
+            data-pressable={pressable ? '' : undefined}
+            data-turn={turn}
+            aria-busy={busy || undefined}
+        >
+            <div className={styles.head}>
+                <span className={styles.icon} aria-hidden>
+                    {icon}
+                </span>
+                <span className={styles.title}>{title}</span>
+            </div>
+            {children}
+        </div>
+    );
+}
+
 export interface AgentCardProps {
     /** What the agent or the thread is called: what a sub-agent was asked to do, or a thread's title. */
     name: string;
@@ -87,32 +120,27 @@ export function AgentCard({ name, outcome, activity, report, open = [], onOpen }
     const title = running ? <Shimmer duration={1}>{name}</Shimmer> : `${name} ${OUTCOME_WORDS[outcome]}`;
 
     return (
-        <div
-            className={styles.card}
-            data-slot="agent-card"
-            data-outcome={outcome}
-            data-pressable={onOpen ? '' : undefined}
-            aria-busy={running || undefined}
+        <CardFrame
+            slot="agent-card"
+            icon={running ? <ProgressLoader size={14} /> : <OutcomeMark outcome={outcome} />}
+            title={
+                onOpen ? (
+                    <button
+                        type="button"
+                        className={styles.press}
+                        aria-describedby={activity ? activityId : undefined}
+                        onClick={onOpen}
+                    >
+                        {title}
+                    </button>
+                ) : (
+                    title
+                )
+            }
+            outcome={outcome}
+            pressable={onOpen !== undefined}
+            busy={running}
         >
-            <div className={styles.head}>
-                <span className={styles.icon} aria-hidden>
-                    {running ? <ProgressLoader size={14} /> : OUTCOME_ICONS[outcome]}
-                </span>
-                <span className={styles.title}>
-                    {onOpen ? (
-                        <button
-                            type="button"
-                            className={styles.press}
-                            aria-describedby={activity ? activityId : undefined}
-                            onClick={onOpen}
-                        >
-                            {title}
-                        </button>
-                    ) : (
-                        title
-                    )}
-                </span>
-            </div>
             {activity && (
                 <Text id={activityId} variant="sm" color="secondary" truncate>
                     {activity}
@@ -137,7 +165,7 @@ export function AgentCard({ name, outcome, activity, report, open = [], onOpen }
                     className={styles.open}
                 >{`Still running: ${open.join(', ')}`}</Text>
             )}
-        </div>
+        </CardFrame>
     );
 }
 
@@ -159,21 +187,22 @@ export function ThreadMessageCard({ chatId, title, text, turn }: ThreadMessageCa
     const { engineOfChat } = use(StreamLinksContext);
 
     return (
-        <div className={styles.card} data-slot="thread-message" data-turn={turn}>
-            <div className={styles.head}>
-                <span className={styles.icon} aria-hidden>
-                    <AgentMark engine={engineOfChat?.(chatId)} />
-                </span>
-                <span className={styles.title}>
+        <CardFrame
+            slot="thread-message"
+            icon={<AgentMark engine={engineOfChat?.(chatId)} />}
+            title={
+                <>
                     Message from <ChatName chatId={chatId} title={title} />
-                </span>
-            </div>
+                </>
+            }
+            turn={turn}
+        >
             {text.trim() !== '' && (
                 <Clamp lines={MESSAGE_LINES} moreLabel={MORE_LABEL} align="start">
                     <Markdown text={text} />
                 </Clamp>
             )}
-        </div>
+        </CardFrame>
     );
 }
 
