@@ -98,6 +98,13 @@ export function QuestionPanel({ question, onAnswer, bounded }: QuestionPanelProp
         if (id === CUSTOM_ID) requestAnimationFrame(() => fieldRef.current?.focus({ preventScroll: true }));
     };
 
+    // The words of an option can be selected, to carry a piece of one into the person's own answer. While a row is pressed the library keeps text from being
+    // selected, so a press on the words does not reach the row, and a click that left nothing selected picks it instead.
+    const keepFromRow = (event: PointerEvent<Element>) => event.stopPropagation();
+    const pickUnlessSelecting = (id: string) => {
+        if (!window.getSelection()?.toString()) select(id);
+    };
+
     // Reaching into the field picks its row, and the list must not take the press for a toggle of its own.
     const pickField = (event: PointerEvent<Element> | FocusEvent<Element>) => {
         event.stopPropagation();
@@ -156,7 +163,12 @@ export function QuestionPanel({ question, onAnswer, bounded }: QuestionPanelProp
                                 <Text slot="icon" variant="sm" className={styles.number} aria-hidden>
                                     {index + 1}
                                 </Text>
-                                <Box slot="label" className={styles.body}>
+                                <Box
+                                    slot="label"
+                                    className={styles.body}
+                                    onPointerDown={keepFromRow}
+                                    onClick={() => pickUnlessSelecting(option.id)}
+                                >
                                     <span>
                                         {option.id === recommended ? (
                                             <WithRecommendedMark label={option.label} />

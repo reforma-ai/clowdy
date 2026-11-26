@@ -79,6 +79,9 @@
     white-space: normal;
     text-overflow: clip;
     line-height: var(--ask-option-line);
+    /* A row is not selectable text, but what it says is. */
+    user-select: text;
+    cursor: text;
 }
 
 .tail {
