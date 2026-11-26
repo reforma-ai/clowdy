@@ -569,7 +569,7 @@ describe('a chat whose orchestrator waits for background work', () => {
         // The commands are folded under one line that counts them. Opened, each has a row, and only the first can be stopped alone: the other is counted.
         const commands = [
             ...container.querySelectorAll<HTMLButtonElement>('[aria-label="Work in progress"] button[aria-expanded]'),
-        ].find(button => button.textContent === 'Background commands2 running')!;
+        ].find(button => button.textContent === 'Background work2 running')!;
 
         expect(commands.getAttribute('aria-expanded')).toBe('false');
 
@@ -579,7 +579,11 @@ describe('a chat whose orchestrator waits for background work', () => {
             [...container.querySelectorAll('[aria-label="Work in progress"] [class*="agentRows"] > div')].map(
                 row => row.textContent
             )
-        ).toEqual(['Command: bun run testStop', 'Command: bun run typecheck', 'Background task runningStop run']);
+        ).toEqual([
+            'Command: bun run testStop',
+            'Command: bun run typecheck',
+            "Some work can't be stopped separatelyStop run",
+        ]);
         expect(container.textContent).not.toContain('Waiting for background work…');
         expect(notice()).toBeNull();
         expect(field()).not.toBeNull();

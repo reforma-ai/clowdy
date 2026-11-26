@@ -15,7 +15,6 @@ import {
     agentRowLabel,
     backgroundItemText,
     backgroundRows,
-    backgroundRowText,
     canStopAlone,
     drawnRows,
     openBackground,
@@ -133,21 +132,20 @@ function AgentsHeader({ chatId, count }: { chatId: ChatId; count: number }) {
 }
 
 /**
- * A background command or cancellable task. Stop is offered only when the agent can cancel the item alone; it leaves the run and other work going.
+ * A background command or task. Stop is offered only when the agent can cancel the item alone; it leaves the run and other work going.
  */
 function BackgroundItemRow({ runId, item }: { runId: RunId; item: BackgroundItem }) {
     const root = useRootStore();
     const title = backgroundItemText(item);
+    const stoppable = item.kind !== 'subagent' && item.canStopAlone === true;
 
     return (
         <ComposerBannerStatus
             icon={<Terminal />}
-            action={item.canStopAlone ? 'Stop' : undefined}
-            actionLabel={item.canStopAlone ? `Stop ${title.charAt(0).toLowerCase()}${title.slice(1)}` : undefined}
+            action={stoppable ? 'Stop' : undefined}
+            actionLabel={stoppable ? `Stop ${title.charAt(0).toLowerCase()}${title.slice(1)}` : undefined}
             onAction={
-                item.canStopAlone
-                    ? () => void perform(root, { type: 'run.stopBackground', runId, itemId: item.id })
-                    : undefined
+                stoppable ? () => void perform(root, { type: 'run.stopBackground', runId, itemId: item.id }) : undefined
             }
         >
             <Shimmer duration={1}>{title}</Shimmer>
@@ -156,10 +154,9 @@ function BackgroundItemRow({ runId, item }: { runId: RunId; item: BackgroundItem
 }
 
 /**
- * What the orchestrator's session keeps open after its turn that no agent row shows (a command, a workflow, a sub-agent that has no run to open): one
- * shimmering line with how many, and Stop, which ends the run and with it all of that. Not pressable, since there is no run of its own to open.
+ * Explains why some work has no individual Stop and offers Stop run, which ends the orchestrator and all background work.
  */
-function BackgroundRow({ runId, count }: { runId: RunId; count: number }) {
+function BackgroundRow({ runId }: { runId: RunId }) {
     const root = useRootStore();
 
     return (
@@ -169,7 +166,7 @@ function BackgroundRow({ runId, count }: { runId: RunId; count: number }) {
             actionLabel="Stop run and all background work"
             onAction={() => void perform(root, { type: 'run.cancel', runId })}
         >
-            <Shimmer duration={1}>{backgroundRowText(count)}</Shimmer>
+            <Shimmer duration={1}>Some work can't be stopped separately</Shimmer>
         </ComposerBannerStatus>
     );
 }
@@ -186,8 +183,7 @@ function Row({ row, now }: { row: StripRow; now: number }) {
  * The work of the chat that goes on now, one row each above the message box (Reforma's `ChatComposerSubagents`): under the "Agents" header
  * the native sub-agents of the orchestrator and the threads of the chat that work, oldest
  * first, each with its name and available progress (a sub-agent's row opens its run, a thread's row opens the thread's chat; Stop ends that one alone), then
- * a row for each background command the agent lets the person stop alone (its own Stop ends that command only), then one row that counts the rest of
- * the background work the orchestrator has open. Each thing is in one row: a sub-agent with a child run is its row, not a count. Nothing while there is
+ * a row for each background command or task (its Stop, when available, ends that item only), then an explanation when work cannot be stopped alone. A sub-agent with a child run is shown only under Agents. Nothing while there is
  * none of these. Agents and stoppable background work have independent disclosures.
  */
 export function RunningAgents({ chat }: { chat: Chat }) {
@@ -203,7 +199,7 @@ export function RunningAgents({ chat }: { chat: Chat }) {
     const threads = threadsAtWork(project.threadsOf(chat.id), project.runs);
     const rows = stripRows(agents, threads);
     const orchestrator = chat.orchestratorRunId === undefined ? undefined : project.runs.get(chat.orchestratorRunId);
-    // A sub-agent with a child run is one of the rows above, and is not counted again here; a command that can be stopped alone has a row of its own.
+    // A sub-agent with a child run is shown above and is not counted again here.
     const { own, counted: background } = backgroundRows(openBackground(orchestrator), agents);
     const folded = ui.agentsFolded(chat.id) && rows.length > 0;
     // A fold hides what goes on, not what waits for the person.
@@ -221,29 +217,29 @@ export function RunningAgents({ chat }: { chat: Chat }) {
                     ))}
                 </div>
             )}
-            {own.length > 0 && orchestrator && (
+            {(own.length > 0 || background.length > 0) && orchestrator && (
                 <>
                     <ComposerBannerHeader
                         expanded={commandsExpanded}
                         onPress={() => setCommandsExpanded(open => !open)}
-                        summary={<Text variant="xs" color="secondary">{`${own.length} running`}</Text>}
+                        summary={
+                            <Text
+                                variant="xs"
+                                color="secondary"
+                            >{`${new Set([...own, ...background].map(item => item.id)).size} running`}</Text>
+                        }
                     >
-                        {own.every(item => item.kind === 'command') ? 'Background commands' : 'Background work'}
+                        Background work
                     </ComposerBannerHeader>
                     {commandsExpanded && (
                         <div className={styles.agentRows}>
                             {own.map(item => (
                                 <BackgroundItemRow key={item.id} runId={orchestrator.id} item={item} />
                             ))}
-                            {background.length > 0 && (
-                                <BackgroundRow runId={orchestrator.id} count={background.length} />
-                            )}
+                            {background.length > 0 && <BackgroundRow runId={orchestrator.id} />}
                         </div>
                     )}
                 </>
-            )}
-            {!folded && orchestrator && own.length === 0 && background.length > 0 && (
-                <BackgroundRow runId={orchestrator.id} count={background.length} />
             )}
         </ComposerBanner>
     );

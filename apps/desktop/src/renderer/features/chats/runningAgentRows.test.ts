@@ -4,7 +4,6 @@ import {
     agentRowLabel,
     backgroundItemText,
     backgroundRows,
-    backgroundRowText,
     canStopAlone,
     drawnRows,
     MAX_AGENT_ROWS,
@@ -89,12 +88,6 @@ describe('the background row', () => {
             expect(openBackground(run('orch', status, { background: open })), status).toEqual([]);
         }
     });
-
-    it('counts the items in the singular and the plural', () => {
-        expect(backgroundRowText(1)).toBe('Background task running');
-        expect(backgroundRowText(2)).toBe('2 background tasks running');
-        expect(backgroundRowText(12)).toBe('12 background tasks running');
-    });
 });
 
 describe('what the background row counts', () => {
@@ -154,12 +147,12 @@ describe('the rows of background items', () => {
         expect(counted).toEqual([plain]);
     });
 
-    it('never gives a sub-agent one: its row is its child run, and one with none is counted', () => {
+    it('shows a sub-agent without a child run as background work', () => {
         const explore = { id: 'call-1', kind: 'subagent' as const, title: 'Explore', canStopAlone: true };
         const child = run('child', 'running', { origin: 'native', parentToolCallId: 'call-1' });
 
         expect(backgroundRows([explore], [child])).toEqual({ own: [], counted: [] });
-        expect(backgroundRows([explore], [])).toEqual({ own: [], counted: [explore] });
+        expect(backgroundRows([explore], [])).toEqual({ own: [explore], counted: [explore] });
     });
 
     it('names a row by what the item is and what it runs', () => {
