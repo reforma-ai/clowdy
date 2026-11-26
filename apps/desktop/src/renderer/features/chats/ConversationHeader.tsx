@@ -2,12 +2,10 @@ import { Breadcrumb } from '@clowdy/components/Breadcrumb';
 import { ContentColumn } from '@clowdy/components/ContentColumn';
 import { useEffect, useRef, useState } from 'react';
 
-import { RunStatusPill, useRunLabel } from '../../shared';
+import { useRunLabel } from '../../shared';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
-import { orchestratorOf } from '../agents/agentTree';
 import { openChat, openRun } from './archiveChat';
 import styles from './ConversationHeader.module.css';
-import { isRunActive } from './chatRun';
 import { conversationHeaderPath, foldedPath, type HeaderTarget } from './conversationHeaderPath';
 
 import type { Chat, Run } from '@clowdy/protocol';
@@ -22,7 +20,7 @@ export interface ConversationHeaderProps {
 /**
  * The header over every conversation, made of the chats' own titles, in the column of the messages (not at the page's edge) and in the type of a heading of a card (`heading-5`), with no border. A chat shows its title; a thread the path down to it (`Chat › Thread`); a native sub-agent the path of
  * its chat and then its own name, with the sub-agents it runs inside between them. Every part but the last opens that page; the last is the page itself. A long path folds its
- * middle into `…`, which opens it out, and titles truncate. While the page's run works or waits, its status stands at the right end; a sub-agent's own part is what it was asked to do (`runLabel`), so there is no line for it under the path. Stop, the model and the mode are in the message box, not here.
+ * middle into `…`, which opens it out, and titles truncate. It has no status of the run: the stream, the box and the list's dots say it. A sub-agent's own part is what it was asked to do (`runLabel`), so there is no line for it under the path. Stop, the model and the mode are in the message box, not here.
  */
 export function ConversationHeader({ chat, subagent }: ConversationHeaderProps) {
     const root = useRootStore();
@@ -52,8 +50,6 @@ export function ConversationHeader({ chat, subagent }: ConversationHeaderProps) 
             .find(button => button.textContent === firstHidden.current)
             ?.focus();
     }, [isOpenedOut]);
-
-    const run = subagent ?? (chat && orchestratorOf(chat, project.runs));
 
     const open = (target: HeaderTarget) =>
         void (target.kind === 'chat'
@@ -96,8 +92,6 @@ export function ConversationHeader({ chat, subagent }: ConversationHeaderProps) 
                             })}
                         </Breadcrumb>
                     </div>
-
-                    {isRunActive(run) && <RunStatusPill run={run} className={styles.status} />}
                 </div>
             </ContentColumn>
         </header>

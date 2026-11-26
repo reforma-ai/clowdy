@@ -1,6 +1,6 @@
 @reference '@clowdy/styles/rulesets';
 
-/* The title of the page: the path on the left and the status of the run on the right, in the column of the messages, with no border. */
+/* The title of the page: the path of titles, in the column of the messages, with no border. */
 .root {
     flex-shrink: 0;
 }
@@ -50,10 +50,6 @@
 /* The page's own part is the title: the ancestors above it are quiet links. */
 .page {
     font-weight: 500;
-}
-
-.status {
-    flex-shrink: 0;
 }
 
 /* Names the `…` for a screen reader; the eye reads the three dots. */

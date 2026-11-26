@@ -53,7 +53,6 @@ const pathText = () => [...(path()?.querySelectorAll('li') ?? [])].map(item => i
 const part = (label: string) =>
     [...(path()?.querySelectorAll('li') ?? [])].find(item => item.textContent === label) as HTMLElement | undefined;
 const press = (label: string) => act(async () => part(label)!.querySelector('button')!.click());
-const status = () => container.querySelector('[data-tone]')?.textContent;
 
 beforeEach(async () => {
     store = new RootStore(new FixtureTransport({ data: createFixtureData() }), { storage: memoryStorage() });
@@ -78,27 +77,20 @@ describe('ConversationHeader, a chat', () => {
         expect(path()?.querySelector('[aria-current="page"]')?.textContent).toBe('Ship the checkout');
     });
 
-    it('shows the status of its run while it works, and none once it is done', async () => {
-        await draw(chatOf('c-1'));
+    it('has no status of the run, whether it works, waits for the person or is done', async () => {
+        for (const id of ['c-1', 'c-3', 'c-6']) {
+            await draw(chatOf(id));
 
-        expect(status()).toBe('Working');
-
-        await draw(chatOf('c-6'));
-
-        expect(status()).toBeUndefined();
-    });
-
-    it('says Waiting while a question is open to the person', async () => {
-        await draw(chatOf('c-3'));
-
-        expect(status()).toBe('Waiting');
+            expect(container.querySelector('[data-tone]')).toBeNull();
+            expect(container.textContent).toBe(chatOf(id).title);
+        }
     });
 
     it('has no summary line, no Stop, no model and no mode', async () => {
         await draw(chatOf('c-1'));
 
         expect(container.querySelectorAll('button')).toHaveLength(0);
-        expect(container.textContent).toBe('Simplify bookingWorking');
+        expect(container.textContent).toBe('Simplify booking');
     });
 });
 
@@ -176,20 +168,16 @@ describe('ConversationHeader, a sub-agent', () => {
         expect(pathText()).toEqual(['Simplify booking', 'Explore agent']);
     });
 
-    it('shows its status while it works and not once it is over', async () => {
-        await draw(chatOf('c-1'), runOf('r-na-02'));
+    it('has no status of the sub-agent either', async () => {
+        for (const run of [
+            runOf('r-na-02'),
+            runOf('r-na-01'),
+            { ...runOf('r-na-02'), status: 'waiting_user' as const },
+        ]) {
+            await draw(chatOf('c-1'), run);
 
-        expect(status()).toBe('Working');
-
-        await draw(chatOf('c-1'), runOf('r-na-01'));
-
-        expect(status()).toBeUndefined();
-    });
-
-    it('shows the status of the sub-agent, not of its chat, when they differ', async () => {
-        await draw(chatOf('c-1'), { ...runOf('r-na-02'), status: 'waiting_user' });
-
-        expect(status()).toBe('Waiting');
+            expect(container.querySelector('[data-tone]')).toBeNull();
+        }
     });
 
     it('goes below a thread: every chat above it, then the sub-agent', async () => {

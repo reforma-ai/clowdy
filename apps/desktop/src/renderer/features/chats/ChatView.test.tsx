@@ -600,7 +600,7 @@ describe('a chat whose orchestrator waits for background work', () => {
 });
 
 describe('the header of a chat', () => {
-    it('is its title over the stream, with nothing to press, and the status of its run while it works', async () => {
+    it('is its title over the stream, with nothing to press and no status of its run', async () => {
         await start();
         await draw('c-1');
 
@@ -608,7 +608,7 @@ describe('the header of a chat', () => {
 
         expect(path.textContent).toBe('Simplify booking');
         expect(path.querySelector('button')).toBeNull();
-        expect(container.querySelector('[data-tone]')?.textContent).toBe('Working');
+        expect(container.querySelector('header [data-tone]')).toBeNull();
     });
 });
 
