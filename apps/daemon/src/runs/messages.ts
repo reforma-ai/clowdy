@@ -4,6 +4,7 @@ import { getRunWork } from '../db/runs';
 import { choiceOf, DEFAULT_CHAT_TITLE, firstWords, requireChat, saveChat } from '../domain/chats';
 import { appendItem } from '../domain/items';
 import { requireProject } from '../domain/projects';
+import { assertChatAvailable } from '../domain/workspaces';
 import { invalid, unavailable } from '../errors';
 import { firstMessage } from './prompts';
 import { isAtRest } from './queue';
@@ -85,6 +86,7 @@ export function sendMessage(
     }
 
     const { archivedAt: _, ...chat } = requireChat(store, chatId);
+    assertChatAvailable(store, chatId);
     const project = requireProject(store, chat.projectId);
     const engine = runs.resolveEngine(project, chat.engine);
 

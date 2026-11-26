@@ -520,7 +520,16 @@ describe('FixtureTransport workspace.remove', () => {
     const MISSING = '/Users/dev/car-rental-old';
     const remove = (
         transport: FixtureTransport,
-        fields: { path: string; projectId?: string; folderId?: string; discard?: boolean; deleteBranch?: boolean }
+        fields: {
+            path: string;
+            projectId?: string;
+            folderId?: string;
+            discard?: boolean;
+            deleteBranch?: boolean;
+            chatDisposition?: 'archive' | 'delete';
+            expectedChatIds?: string[];
+            tidy?: boolean;
+        }
     ) =>
         transport.command({
             type: 'workspace.remove',
@@ -598,6 +607,77 @@ describe('FixtureTransport workspace.remove', () => {
         expect(await paths(transport)).not.toContain(FIXTURE_WORKTREE_PATH);
         const snapshot = await transport.getProjectSnapshot(FIXTURE_PROJECT_ID);
         expect(snapshot.chats.find(chat => chat.id === FIXTURE_WORKSPACE_CHAT_ID)?.archivedAt).toBeDefined();
+    });
+
+    it.each(['archive', 'delete'] as const)('applies explicit %s to linked chats', async chatDisposition => {
+        const transport = new FixtureTransport({ data: withFixtureWorktrees(createFixtureData()) });
+        const before = await transport.getProjectSnapshot(FIXTURE_PROJECT_ID);
+        const linked = before.chats.filter(chat => chat.workspace?.path === FIXTURE_WORKTREE_PATH);
+        expect(linked).toHaveLength(2);
+        expect(
+            await remove(transport, {
+                path: FIXTURE_WORKTREE_PATH,
+                discard: true,
+                chatDisposition,
+                expectedChatIds: linked.map(chat => chat.id),
+            })
+        ).toMatchObject({
+            ok: true,
+        });
+        const after = await transport.getProjectSnapshot(FIXTURE_PROJECT_ID);
+        const affected = after.chats.filter(chat => linked.some(each => each.id === chat.id));
+        expect(affected).toEqual(
+            chatDisposition === 'delete' ? [] : linked.map(chat => ({ ...chat, archivedAt: expect.any(Number) }))
+        );
+        expect(await paths(transport)).not.toContain(FIXTURE_WORKTREE_PATH);
+    });
+
+    it('refuses chat disposition with stale preview IDs', async () => {
+        const transport = new FixtureTransport({ data: withFixtureWorktrees(createFixtureData()) });
+        const before = await transport.getProjectSnapshot(FIXTURE_PROJECT_ID);
+        expect(
+            await remove(transport, {
+                path: FIXTURE_WORKTREE_PATH,
+                discard: true,
+                chatDisposition: 'delete',
+                expectedChatIds: [],
+            })
+        ).toMatchObject({ ok: false, error: { code: 'conflict' } });
+        expect((await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).chats).toEqual(before.chats);
+        expect(await paths(transport)).toContain(FIXTURE_WORKTREE_PATH);
+    });
+
+    it('tidies a merged clean unused worktree but refuses unsafe choices', async () => {
+        const transport = new FixtureTransport({ data: withFixtureWorktrees(createFixtureData()) });
+        expect(await remove(transport, { path: FOUND, tidy: true, discard: true })).toMatchObject({
+            ok: false,
+            error: { code: 'invalid' },
+        });
+        expect(await remove(transport, { path: FOUND, tidy: true, chatDisposition: 'archive' })).toMatchObject({
+            ok: false,
+            error: { code: 'invalid' },
+        });
+        expect(await remove(transport, { path: FOUND, tidy: true })).toMatchObject({
+            ok: false,
+            error: { code: 'conflict' },
+        });
+        expect(await remove(transport, { path: LOCKED, tidy: true })).toMatchObject({
+            ok: false,
+            error: { code: 'conflict' },
+        });
+        expect(await remove(transport, { path: MISSING, tidy: true })).toMatchObject({
+            ok: false,
+            error: { code: 'conflict' },
+        });
+        const detached = '/Users/dev/worktrees/car-rental-api/readme';
+        expect(await remove(transport, { path: detached, folderId: 'fld_api', tidy: true })).toMatchObject({
+            ok: true,
+        });
+        expect(
+            (await transport.getProjectWorktrees(FIXTURE_PROJECT_ID))
+                .flatMap(group => group.worktrees)
+                .map(tree => tree.path)
+        ).not.toContain(detached);
     });
 
     it('refuses what the daemon refuses, and removes nothing', async () => {

@@ -23,8 +23,14 @@ export const workspaceAsyncHandlers: Pick<AsyncHandlers, 'workspace.create' | 'w
         return () => created;
     },
     /** Waits for Git to remove the worktree and, when asked, its branch. The removal updates the store as it goes. */
-    'workspace.remove': async ({ store, config }, command) => {
-        const removed = await removeWorktree(store, config, requireProject(store, command.projectId), command);
+    'workspace.remove': async ({ store, config, attachments }, command) => {
+        const removed = await removeWorktree(
+            store,
+            config,
+            requireProject(store, command.projectId),
+            command,
+            attachments
+        );
 
         return () => removed;
     },

@@ -6,7 +6,7 @@ import { chatsOfWorkspace, deleteWorkspace, getWorkspace, toChatWorkspace } from
 import { conflict, invalid, notFound } from '../errors';
 import { newId } from '../ids';
 import { requireProject } from './projects';
-import { createWorkspace, inheritWorkspace, isStandaloneWorktree } from './workspaces';
+import { assertChatAvailable, createWorkspace, inheritWorkspace, isStandaloneWorktree } from './workspaces';
 
 import type {
     Chat,
@@ -138,6 +138,8 @@ export function createChat(store: Store, input: NewChat, workspaces?: Pick<Confi
     return store.tx(() => {
         const project = requireProject(store, input.projectId);
 
+        if (input.parentChatId) assertChatAvailable(store, input.parentChatId);
+
         if (input.folderId !== undefined) {
             chatFolder(project, input.folderId);
         }
@@ -263,6 +265,7 @@ export function stoppedSubtree(store: Store, chat: Chat): Chat[] {
 export function deleteChat(store: Store, chatId: string, attachments: AttachmentsService): string[] {
     return store.tx(() => {
         const chats = stoppedSubtree(store, requireChat(store, chatId));
+        for (const each of chats) assertChatAvailable(store, each.id);
         const workspaceIds = new Set(chats.flatMap(each => (each.workspace ? [each.workspace.id] : [])));
         const runIds = chats.reverse().flatMap(each => {
             const runIdsOfChat = runsOfChat(store.db, each.id).map(run => run.id);
@@ -286,6 +289,15 @@ export function deleteChat(store: Store, chatId: string, attachments: Attachment
     });
 }
 
+/** Archive a preflighted set of chats exactly once, keeping existing archival timestamps. */
+export function archiveStoppedChats(store: Store, chats: readonly Chat[]): void {
+    for (const chat of chats) assertChatAvailable(store, chat.id);
+    const now = Date.now();
+    for (const chat of [...chats].reverse()) {
+        if (chat.archivedAt === undefined) saveChat(store, { ...chat, archivedAt: now });
+    }
+}
+
 /**
  * Archives the chat with every thread below it, or brings the chat back. Only the flag changes: the runs, tasks and stream stay, and each chat keeps its
  * place in the order of activity. A chat whose agents are working cannot be archived, as it cannot be deleted: it would drop out of sight while still
@@ -295,6 +307,8 @@ export function deleteChat(store: Store, chatId: string, attachments: Attachment
 export function setChatArchived(store: Store, chatId: string, archived: boolean): Chat {
     return store.tx(() => {
         const chat = requireChat(store, chatId);
+
+        assertChatAvailable(store, chat.id);
 
         if ((chat.archivedAt !== undefined) === archived) {
             return chat;
@@ -306,14 +320,9 @@ export function setChatArchived(store: Store, chatId: string, archived: boolean)
             return saveChat(store, rest);
         }
 
-        const chats = stoppedSubtree(store, chat);
-        const now = Date.now();
+        archiveStoppedChats(store, stoppedSubtree(store, chat));
 
-        for (const thread of chats.slice(1).filter(candidate => candidate.archivedAt === undefined)) {
-            saveChat(store, { ...thread, archivedAt: now });
-        }
-
-        return saveChat(store, { ...rest, archivedAt: now });
+        return requireChat(store, chat.id);
     });
 }
 

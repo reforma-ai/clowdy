@@ -1,6 +1,6 @@
 import { existsSync, realpathSync } from 'node:fs';
 import { lstat } from 'node:fs/promises';
-import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import {
     branchNameProblem,
     branchPrefixOf,
@@ -11,8 +11,9 @@ import {
     STOPPED_TOOL,
 } from '@clowdy/protocol';
 
-import { getChat } from '../db/chats';
+import { getChat, listChats } from '../db/chats';
 import { getProject } from '../db/projects';
+import { getRunWork } from '../db/runs';
 import {
     chatsOfWorkspace,
     deleteWorkspace,
@@ -117,6 +118,80 @@ export function placeOf(path: string): string {
 
 /** Whether two paths are the same place. */
 export const samePlace = (a: string, b: string): boolean => pathKey(placeOf(a)) === pathKey(placeOf(b));
+
+/** A removal reserves its exact path and the stopped chats it will dispose of during Git's asynchronous mutation. */
+const removalReservations = new WeakMap<Store, Set<{ projectId: string; path: string; chats: ReadonlySet<string> }>>();
+const pendingChatChanges = new WeakMap<Store, Set<{ chatId: string }>>();
+
+/** Fork and edit wait outside their transaction. Do not remove underneath such a pending operation. */
+export function beginChatChange(store: Store, chatId: string): () => void {
+    assertChatAvailable(store, chatId);
+    const pending = pendingChatChanges.get(store) ?? new Set();
+    const change = { chatId };
+    pending.add(change);
+    pendingChatChanges.set(store, pending);
+    return () => pending.delete(change);
+}
+
+export function assertProjectChatsAvailable(store: Store, projectId: string): void {
+    const reservations = removalReservations.get(store);
+    if (!reservations?.size) return;
+    if ([...reservations].some(reservation => reservation.projectId === projectId)) {
+        throw conflict('A worktree of this project is being removed');
+    }
+    for (const chat of listChats(store.db, projectId)) assertChatAvailable(store, chat.id);
+}
+
+export function reserveRemoval(store: Store, projectId: string, path: string, chats: ReadonlySet<string>): () => void {
+    const reservations = removalReservations.get(store) ?? new Set();
+    const reservation = { projectId, path: placeOf(path), chats };
+    assertWorkspaceAvailable(store, path);
+    for (const id of chats) assertChatAvailable(store, id);
+    for (const change of pendingChatChanges.get(store) ?? []) {
+        const chat = getChat(store.db, change.chatId);
+        const cwd = chat?.orchestratorRunId && getRunWork(store.db, chat.orchestratorRunId).cwd;
+        if (
+            chats.has(change.chatId) ||
+            (chat?.workspace && withinPath(reservation.path, chat.workspace.path)) ||
+            (cwd !== undefined && withinPath(reservation.path, cwd))
+        ) {
+            throw conflict('A chat linked to this worktree is being edited or forked');
+        }
+    }
+    reservations.add(reservation);
+    removalReservations.set(store, reservations);
+
+    return () => reservations.delete(reservation);
+}
+
+function withinPath(root: string, path: string): boolean {
+    const way = relative(pathKey(root), pathKey(placeOf(path)));
+    return way === '' || (way !== '..' && !way.startsWith(`..${sep}`) && !isAbsolute(way));
+}
+
+export function assertWorkspaceAvailable(store: Store, path: string): void {
+    if ([...(removalReservations.get(store) ?? [])].some(reservation => withinPath(reservation.path, path))) {
+        throw conflict('The worktree is being removed');
+    }
+}
+
+export function chatRemovalReserved(store: Store, chatId: string): boolean {
+    const reservations = removalReservations.get(store);
+    if (!reservations?.size) return false;
+    const chat = getChat(store.db, chatId);
+    const cwd = chat?.orchestratorRunId && getRunWork(store.db, chat.orchestratorRunId).cwd;
+    return [...reservations].some(
+        reservation =>
+            reservation.chats.has(chatId) ||
+            (chat?.workspace !== undefined && withinPath(reservation.path, chat.workspace.path)) ||
+            (cwd !== undefined && withinPath(reservation.path, cwd))
+    );
+}
+
+export function assertChatAvailable(store: Store, chatId: string): void {
+    if (chatRemovalReserved(store, chatId))
+        throw conflict('The chat is being removed or its worktree is being removed');
+}
 
 /**
  * Whether something is there on the disk at the path, a folder, a file or a link (a dangling one included). Only "no such file" and "a parent is no folder" say it
@@ -369,6 +444,8 @@ export async function createStandaloneWorktree(
             if (!base || !start) throw invalid('The repository has no commit to start a worktree from');
             if (await isThere(path)) throw conflict(`${path} already exists`);
 
+            assertWorkspaceAvailable(store, path);
+
             // A daemon stopped before checkout may have left a reservation with no worktree on disk.
             const prior = listWorkspacesOfProject(store.db, project.id).find(
                 row => row.folderId === folder.id && row.branch === branch && !row.ready && isStandaloneWorktree(row)
@@ -561,6 +638,7 @@ function createNewWorkspace(
     }
 
     const layout = workspaceLayout(config, project, folder, chatId, choice.branchPrefix, choice.branchName);
+    assertWorkspaceAvailable(store, layout.path);
     const clash = branchInTheWay(folder.path, layout.branch);
 
     if (clash) {
@@ -825,6 +903,7 @@ function openExistingWorkspace(store: Store, project: Project, folder: ProjectFo
         throw invalid('The path of a worktree must be absolute');
     }
 
+    assertWorkspaceAvailable(store, path);
     const listed = readGit(folder.path, ['worktree', 'list', '--porcelain']);
     const entry = parseWorktrees(listed.ok ? listed.stdout : '').find(
         candidate => !candidate.bare && samePlace(candidate.path, path)
@@ -886,6 +965,8 @@ export function inheritWorkspace(
     if (record.projectId !== project.id || (folderId !== undefined && record.folderId !== folderId)) {
         throw invalid(`Workspace ${workspaceId} is not a worktree of the folder the chat works in`);
     }
+
+    assertWorkspaceAvailable(store, record.path);
 
     return toChatWorkspace(record);
 }

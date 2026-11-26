@@ -1,8 +1,10 @@
 import { rmdir } from 'node:fs/promises';
-import { dirname, isAbsolute, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { isTerminalRunStatus } from '@clowdy/protocol';
 
-import { getChat, listChatDescendants } from '../db/chats';
-import { getProject } from '../db/projects';
+import { getChat, listChatDescendants, runsOfChat } from '../db/chats';
+import { getProject, listProjects } from '../db/projects';
+import { getRunWork, listActiveRuns } from '../db/runs';
 import {
     chatsOfWorkspace,
     deleteWorkspace,
@@ -12,6 +14,7 @@ import {
 } from '../db/workspaces';
 import { conflict, invalid } from '../errors';
 import {
+    baseOf,
     commitOf,
     countChanges,
     hasCheckedOutSubmodules,
@@ -20,20 +23,22 @@ import {
     parseWorktrees,
     workingTreeRoot,
 } from '../git/state';
-import { requireChat, stoppedSubtree } from './chats';
+import { archiveStoppedChats, deleteChat, parentChain, requireChat, stoppedSubtree } from './chats';
 import { gitRead } from './git';
 import {
+    assertChatAvailable,
     exclusive,
     isStandaloneWorktree,
     mustGit,
-    openWorkspace,
     pathKey,
     placeOf,
+    reserveRemoval,
     samePlace,
     WorkspaceError,
 } from './workspaces';
 
-import type { Chat, ChatWorkspaceRemoval, Project } from '@clowdy/protocol';
+import type { Chat, ChatWorkspaceRemoval, Project, ProjectFolder } from '@clowdy/protocol';
+import type { AttachmentsService } from '../attachments/service';
 import type { Config } from '../config';
 import type { WorkspaceRecord } from '../db/workspaces';
 import type { ListedWorktree } from '../git/state';
@@ -62,6 +67,8 @@ interface Removable {
     force: boolean;
     /** The branch that goes with the worktree, and the commit it is at; none when the branch stays, the worktree has none, or the repository no longer names it. */
     branch?: { name: string; commit: string };
+    /** Base checked at the start of a tidy operation. */
+    tidyBase?: string;
 }
 
 /** The worktree may not be removed, and why in the words the person reads (the reason of the `conflict` that refuses a removal). */
@@ -205,6 +212,10 @@ async function checkWorkspaceRemoval(store: Store, target: Target, choices: Choi
 
     const missing = entry.prunable || !there;
 
+    if (!choices.allowMissing && (missing || !(await isOnDisk(join(path, '.git'))))) {
+        return no('The worktree is gone from the disk');
+    }
+
     // Another worktree inside this one (Claude Code makes them under `.claude/worktrees`) is deleted with it when `.gitignore` hides it from the status, with its uncommitted work and
     // past its chats and its lock: the checks here are of this worktree alone, so the inner one has to go first.
     const inside = [
@@ -278,8 +289,10 @@ async function checkRemoval(store: Store, chat: Chat): Promise<Verdict> {
     }
 
     const below = new Set([chat.id, ...listChatDescendants(store.db, chat.id).map(entry => entry.chat.id)]);
-    const siblings =
-        project?.folders.filter(candidate => candidate.path !== folder).map(candidate => candidate.path) ?? [];
+    const siblings = otherProjectFolders(store, record.projectId, record.folderId);
+    if (otherWorkspaceChatUse(store, record.path, record.id) || activeRunInWorktree(store, record.path)) {
+        return refused('Another workspace or run is using this worktree', record);
+    }
     const verdict = await checkWorkspaceRemoval(
         store,
         { folder, siblings, path: record.path, record, allowed: below },
@@ -328,9 +341,9 @@ export async function workspaceRemoval(store: Store, chatId: string): Promise<Ch
 
 /** Whether `path` is below `root`, by their names. */
 function isBelow(root: string, path: string): boolean {
-    const way = relative(resolve(root), resolve(path));
+    const way = relative(pathKey(root), pathKey(path));
 
-    return way !== '' && !way.startsWith('..') && !isAbsolute(way);
+    return way !== '' && way !== '..' && !way.startsWith(`..${sep}`) && !isAbsolute(way);
 }
 
 /**
@@ -460,6 +473,13 @@ async function removeWorktreeAndBranch(
 
     // The tree is gone and the branch is still named by the repository: a chat that stays after this has the branch it can make the worktree from again.
     if (verdict.branch) {
+        if (verdict.tidyBase) {
+            const current = await commitOf(verdict.folder, `refs/heads/${verdict.branch.name}`);
+            const base = await readBaseCommit(verdict.folder, verdict.tidyBase);
+            if (!base || current !== verdict.branch.commit || !(await isMerged(verdict.folder, current, base))) {
+                throw conflict('The worktree was removed, but the branch or base changed. The branch was kept');
+            }
+        }
         try {
             await mustGit(
                 verdict.folder,
@@ -482,9 +502,8 @@ async function removeWorktreeAndBranch(
  * and a failure of the first leaves the second alone.
  *
  * It runs on the same `exclusive` line as the turn's own `Prepare workspace` for the path, and a turn that starts while it runs waits there (`isBeingRemoved`): the stopped
- * check is made once more on the line, right before git is run, so a turn that came while the removal waited its turn refuses it. A turn that comes after that finds the
- * tree gone when it gets its turn and makes the worktree again, as it does for any Clowdy-made worktree that is gone (its work was merged, so nothing is lost); the delete
- * itself is then refused, as the chat is busy.
+ * check is made once more on the line, right before git is run, so a turn that came while the removal waited its turn refuses it. The path and affected chat IDs are then
+ * reserved for the Git mutation so a turn or attachment cannot start in a worktree that is being deleted.
  */
 export async function removeChatWorkspace(
     store: Store,
@@ -493,7 +512,7 @@ export async function removeChatWorkspace(
 ): Promise<void> {
     const chat = requireChat(store, chatId);
 
-    stoppedSubtree(store, chat);
+    for (const each of stoppedSubtree(store, chat)) assertChatAvailable(store, each.id);
 
     const record = chat.workspace && getWorkspace(store.db, chat.workspace.id);
 
@@ -511,12 +530,109 @@ export async function removeChatWorkspace(
                 throw conflict(verdict.reason);
             }
 
-            stoppedSubtree(store, requireChat(store, chatId));
-            await removeWorktreeAndBranch(store, config, verdict);
+            const stopped = stoppedSubtree(store, requireChat(store, chatId));
+            const allowed = new Set(stopped.map(each => each.id));
+            const busy = busyChat(store, { record, allowed });
+            if (busy !== undefined) throw conflict(busy);
+            if (otherWorkspaceChatUse(store, record.path, record.id)) {
+                throw conflict('Another project or folder has chats in this worktree');
+            }
+            if (
+                otherProjectFolders(store, record.projectId, record.folderId).some(
+                    path => samePlace(path, record.path) || isBelow(placeOf(record.path), placeOf(path))
+                )
+            ) {
+                throw conflict('The project folders changed. Try again');
+            }
+            if (activeRunInWorktree(store, record.path)) {
+                throw conflict('A run is still working in this worktree');
+            }
+            const release = reserveRemoval(store, chat.projectId, record.path, allowed);
+            try {
+                await removeWorktreeAndBranch(store, config, verdict);
+            } finally {
+                release();
+            }
         });
     } finally {
         markRemoving(store, record.id, false);
     }
+}
+
+/** A linked thread is a root only if none of its ancestors is linked: disposition cascades exactly once. */
+function linkedRoots(store: Store, record: WorkspaceRecord | undefined): Chat[] {
+    const linked = record ? chatsOfWorkspace(store.db, record.id).map(id => requireChat(store, id)) : [];
+    const ids = new Set(linked.map(chat => chat.id));
+    return linked.filter(chat => !parentChain(store, chat).some(parent => ids.has(parent.id)));
+}
+
+function affectedChats(store: Store, record: WorkspaceRecord | undefined): { roots: Chat[]; ids: Set<string> } {
+    const roots = linkedRoots(store, record);
+    return {
+        roots,
+        ids: new Set(
+            roots.flatMap(root => [root.id, ...listChatDescendants(store.db, root.id).map(entry => entry.chat.id)])
+        ),
+    };
+}
+
+function sameIds(first: ReadonlySet<string>, second: ReadonlySet<string>): boolean {
+    return first.size === second.size && [...first].every(id => second.has(id));
+}
+
+/** An explicit run cwd can use a worktree without a workspace row (e.g. a thread started in a hand-made checkout). */
+function activeRunInWorktree(store: Store, path: string): boolean {
+    const target = placeOf(path);
+    return listActiveRuns(store.db).some(run => {
+        const { cwd } = getRunWork(store.db, run.id);
+        return cwd !== undefined && (samePlace(target, cwd) || isBelow(target, placeOf(cwd)));
+    });
+}
+
+function otherProjectFolders(store: Store, projectId: string, folderId: string): string[] {
+    return listProjects(store.db).flatMap(project =>
+        project.folders.filter(folder => project.id !== projectId || folder.id !== folderId).map(folder => folder.path)
+    );
+}
+
+/** Never dispose of or remove underneath another workspace's chats, even if its history is archived. */
+function otherWorkspaceChatUse(store: Store, path: string, workspaceId?: string): boolean {
+    const target = placeOf(path);
+    return listProjects(store.db).some(project =>
+        listWorkspacesOfProject(store.db, project.id).some(
+            record =>
+                record.id !== workspaceId &&
+                (samePlace(record.path, path) || isBelow(target, placeOf(record.path))) &&
+                chatsOfWorkspace(store.db, record.id).length > 0
+        )
+    );
+}
+
+async function readBaseCommit(folder: string, base: string): Promise<string | undefined> {
+    return (
+        (await commitOf(folder, `refs/heads/${base}`)) ?? (await commitOf(folder, `refs/remotes/${base}`)) ?? undefined
+    );
+}
+
+async function checkTidy(
+    verdict: Removable,
+    folder: ProjectFolder,
+    record: WorkspaceRecord | undefined
+): Promise<string> {
+    const base = record?.base ?? (await baseOf(folder));
+    const commit = base && (await readBaseCommit(folder.path, base));
+    if (!base || !commit || !(await isMerged(verdict.path, 'HEAD', commit))) {
+        throw conflict('The worktree is not merged into its base');
+    }
+    if (verdict.branch) {
+        if (verdict.branch.name === base || verdict.branch.name === base.slice(base.indexOf('/') + 1)) {
+            throw conflict('The base branch cannot be deleted by Tidy up');
+        }
+        if (!(await isMerged(folder.path, verdict.branch.commit, commit))) {
+            throw conflict('The branch is not merged into its base');
+        }
+    }
+    return base;
 }
 
 /** What a removal by path asks for (`workspace.remove`). */
@@ -528,6 +644,9 @@ export interface WorktreeRemoval {
     discard?: boolean;
     /** Delete the branch the worktree has checked out (`branch -D`, merged or not) once the worktree is gone; without this the branch stays and no commit is lost. */
     deleteBranch?: boolean;
+    chatDisposition?: 'archive' | 'delete';
+    expectedChatIds?: readonly string[];
+    tidy?: boolean;
 }
 
 /** What a removal by path did. */
@@ -546,17 +665,16 @@ export interface RemovedWorktree {
  *
  * A worktree whose folder is gone (git lists it as prunable) has its record removed alone, and the branch with it when asked; every other stale record of the repository stays.
  *
- * The removal goes through the same `exclusive` line as the turn's own `Prepare workspace` for the path, with the worktree's row marked as being removed (`isBeingRemoved`) for as
- * long as it waits and runs, so a turn of a chat that picked the worktree meanwhile does not open its session in a tree that is being deleted: it waits, finds the tree gone, and
- * fails as for any worktree that is gone. The checks are made on the line, and the chats once more right before git is run. A worktree no chat has worked in has no row yet: it
- * gets one (`openWorkspace`, the row the new-chat page would make) for the length of the removal, and it is deleted with the worktree, with the row of one that had it, unless a
- * chat points at it by then.
+ * The removal waits on the same `exclusive` line as workspace preparation. Once validated, the path and affected chats are reserved until Git finishes. New chats, turns,
+ * forks, edits, archive/restore and deletes cannot change the disposition while the tree is being removed. A late attachment before reservation refuses explicit disposition.
+ * Tidy additionally checks the current base and merge state, rejects missing trees, and never forces a removal. External Git operations and files are not locked by the daemon.
  */
 export async function removeWorktree(
     store: Store,
     config: Pick<Config, 'workspacesDir'>,
     project: Project,
-    request: WorktreeRemoval
+    request: WorktreeRemoval,
+    attachments: AttachmentsService
 ): Promise<RemovedWorktree> {
     const folder = project.folders.find(candidate => candidate.id === request.folderId);
 
@@ -568,13 +686,22 @@ export async function removeWorktree(
         throw invalid('The path of a worktree must be absolute');
     }
 
-    const siblings = project.folders.filter(candidate => candidate.id !== folder.id).map(candidate => candidate.path);
+    if (request.expectedChatIds !== undefined && !request.chatDisposition) {
+        throw invalid('Expected chats require a chat disposition');
+    }
+
+    if (request.tidy && (request.discard || request.chatDisposition)) {
+        throw invalid('Tidy up cannot discard changes or dispose of chats');
+    }
+
+    const otherFolders = () => otherProjectFolders(store, project.id, folder.id);
+    const siblings = otherFolders();
     const recordOf = () =>
         listWorkspacesOfProject(store.db, project.id).find(
             candidate => candidate.folderId === folder.id && samePlace(candidate.path, request.path)
         );
     const choices: Choices = {
-        allowMissing: true,
+        allowMissing: !request.tidy,
         discard: request.discard === true,
         ...(request.deleteBranch === true && { branch: (listed: ListedWorktree) => listed.branch }),
     };
@@ -583,7 +710,7 @@ export async function removeWorktree(
         siblings,
         path: request.path,
         record: recordOf(),
-        allowed: new Set(),
+        allowed: request.chatDisposition ? initial.ids : new Set(),
     });
     let marked: string | undefined;
     const mark = (workspaceId: string) => {
@@ -594,6 +721,10 @@ export async function removeWorktree(
     };
     // A worktree some chat has used has its row already, and it is marked before anything is waited for, as a chat's removal marks its own.
     const first = recordOf();
+    const initial = affectedChats(store, first);
+    if (request.expectedChatIds !== undefined && !sameIds(new Set(request.expectedChatIds), initial.ids)) {
+        throw conflict('The chats linked to this worktree changed. Try again');
+    }
 
     if (first) {
         mark(first.id);
@@ -615,36 +746,87 @@ export async function removeWorktree(
                 throw conflict(verdict.reason);
             }
 
-            // Nothing is waited for from here to the start of git: a chat that picked the worktree while the checks ran is seen now, and one that comes later waits on the line.
+            const tidyBase = request.tidy ? await checkTidy(verdict, folder, recordOf()) : undefined;
             const current = target();
+            const affected = affectedChats(store, current.record);
             const busy = busyChat(store, current);
 
-            if (busy !== undefined) {
-                throw conflict(busy);
+            if (busy !== undefined) throw conflict(busy);
+
+            // Do not unexpectedly dispose of a newly attached chat or descendant, even one already stopped.
+            if (request.chatDisposition && !sameIds(affected.ids, initial.ids)) {
+                throw conflict('The chats linked to this worktree changed. Try again');
+            }
+            if (request.chatDisposition) {
+                for (const root of affected.roots) stoppedSubtree(store, root);
+            } else if (
+                current.record &&
+                chatsOfWorkspace(store.db, current.record.id).some(id =>
+                    runsOfChat(store.db, id).some(run => !isTerminalRunStatus(run.status))
+                )
+            ) {
+                throw conflict('A chat in this worktree is still working');
             }
 
-            const record =
-                current.record ??
-                (verdict.missing
-                    ? undefined
-                    : store.tx(() =>
-                          getWorkspace(store.db, openWorkspace(store, project, folder.id, request.path).id)
-                      ));
-
-            if (record) {
-                mark(record.id);
+            // Other projects may use the same physical directory; their chats are not in this command's preview.
+            if (otherWorkspaceChatUse(store, request.path, current.record?.id)) {
+                throw conflict('Another project or folder has chats in this worktree');
+            }
+            const latest = getProject(store.db, project.id)?.folders.find(candidate => candidate.id === folder.id);
+            if (
+                !latest ||
+                latest.path !== folder.path ||
+                (request.tidy && latest.settings?.baseBranch !== folder.settings?.baseBranch) ||
+                otherFolders().some(
+                    path => samePlace(path, request.path) || isBelow(placeOf(request.path), placeOf(path))
+                )
+            ) {
+                throw conflict('The project folders or base changed. Try again');
             }
 
-            await removeWorktreeAndBranch(store, config, { ...verdict, ...(record && { record }) }, () => {
-                // A chat that picked the worktree after the check keeps its row: the worktree is gone for it as for any chat whose worktree went from the disk.
-                if (record) {
-                    store.tx(() => {
-                        if (chatsOfWorkspace(store.db, record.id).length === 0) {
-                            deleteWorkspace(store.db, record.id);
-                        }
-                    });
-                }
-            });
+            if (activeRunInWorktree(store, request.path)) {
+                throw conflict('A run is still working in this worktree');
+            }
+
+            const record = current.record;
+            if (record) mark(record.id);
+
+            let release = reserveRemoval(
+                store,
+                project.id,
+                request.path,
+                request.chatDisposition ? affected.ids : new Set()
+            );
+            try {
+                await removeWorktreeAndBranch(
+                    store,
+                    config,
+                    { ...verdict, ...(record && { record }), tidyBase },
+                    () => {
+                        // Git succeeded. Release briefly inside this synchronous callback so ordinary lifecycle
+                        // operations can perform the requested disposition without another caller interleaving.
+                        release();
+                        store.tx(() => {
+                            if (request.chatDisposition === 'delete') {
+                                for (const root of affected.roots) deleteChat(store, root.id, attachments);
+                            } else if (request.chatDisposition === 'archive') {
+                                // An already archived root can have an unarchived descendant; visit every
+                                // affected chat, preserving archival timestamps and existing history.
+                                archiveStoppedChats(
+                                    store,
+                                    [...affected.ids].map(id => requireChat(store, id))
+                                );
+                            }
+                            if (record && chatsOfWorkspace(store.db, record.id).length === 0) {
+                                deleteWorkspace(store.db, record.id);
+                            }
+                        });
+                        release = reserveRemoval(store, project.id, request.path, new Set());
+                    }
+                );
+            } finally {
+                release();
+            }
 
             // Git prints `C:/work/app` on Windows; the app's paths are written as the machine writes them.
             return { path: resolve(verdict.listedPath), branchDeleted: verdict.branch !== undefined };

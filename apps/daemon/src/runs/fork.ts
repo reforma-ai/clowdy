@@ -5,6 +5,7 @@ import { itemRef, listItemsWithRefs } from '../db/items';
 import { countRunsWithRole, getRunWork, setRunWork, upsertRun } from '../db/runs';
 import { choiceOf, DEFAULT_CHAT_TITLE, requireChat } from '../domain/chats';
 import { copyItems, streamItem } from '../domain/items';
+import { assertChatAvailable, beginChatChange } from '../domain/workspaces';
 import { conflict, EngineFailure, invalid, notFound, unavailable } from '../errors';
 import { newId } from '../ids';
 import { requireEnabled } from './messages';
@@ -39,6 +40,7 @@ interface ForkPlan {
  */
 function planFork({ store, runs, agents }: Services, chatId: string, itemId: string): ForkPlan {
     const chat = requireChat(store, chatId);
+    assertChatAvailable(store, chatId);
 
     if (!chat.orchestratorRunId) {
         throw invalid('This chat has no conversation to fork yet');
@@ -88,11 +90,13 @@ export const reasonOf = (error: EngineFailure) => error.message.trim().replace(/
 export async function prepareFork(services: Services, chatId: string, itemId: string): Promise<() => { chat: Chat }> {
     const { store, driver, attachments } = services;
     const plan = planFork(services, chatId, itemId);
+    const release = beginChatChange(store, chatId);
     let sessionId: string;
 
     try {
         sessionId = await driver.forkSession(plan.run.id, plan.ref);
     } catch (error) {
+        release();
         if (error instanceof EngineFailure) {
             throw unavailable(`Couldn't fork the conversation: ${reasonOf(error)}`);
         }
@@ -101,8 +105,10 @@ export async function prepareFork(services: Services, chatId: string, itemId: st
     }
 
     return () => {
+        release();
         // The source may have been deleted, or its stream cut, while the agent copied the session: the copy is then left in the agent's own list, unused.
         const source = requireChat(store, plan.chat.id);
+        assertChatAvailable(store, source.id);
         const answer =
             source.orchestratorRunId === plan.run.id ? streamItem(store, plan.run, plan.answer.id) : undefined;
 
