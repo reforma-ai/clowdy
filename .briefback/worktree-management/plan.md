@@ -36,14 +36,14 @@
 
 **This stage:** group actual root chats by their own worktree, keep thread tree, persist ordering and collapse, show unused groups; include card More with existing non-removal actions. Use `getProjectWorktrees` to supplement workspace records, not to hide pending/missing chats. Stage 3 adds the shared deletion and cleanup items to these menus.
 
-- [ ] Complete
-  - [ ] Grouping, visual cards, ordering, collapse, unused section and indicator
-  - [ ] Keyboard, drag and selection behavior, persisted view state and tests
+- [x] Complete
+  - [x] Grouping, visual cards, ordering, collapse, unused section and indicator
+  - [x] Keyboard, drag and selection behavior, persisted view state and tests
 
 **Files:** `apps/desktop/src/renderer/features/agents/AgentList.tsx`, `agentTree.ts`, `useChatListOrder.ts`, `AgentList.module.css`, new card component(s) where warranted, related tests, `apps/desktop/src/renderer/stores/UiStore.ts` and relevant tests; read-only existing worktree API. Own these sidebar paths only; do not edit `GroupFolderName.tsx`, `ChatFolder.tsx` or shared `features/worktrees`/`openWith` files yet.
 **Done when:** enabling and disabling grouping works, reorder restrictions hold, workspace-only threads get low-priority indicator, unopened unused trees are manageable through standard actions, and all list states render correctly.
 **Verify:** targeted AgentList/agentTree/Screen/UiStore tests, typecheck, lint, and screenshot in isolated fixture renderer.
-**Commits:** None yet.
+**Commits:** `6714d96e` — worktree cards; independent review: 323 tests across six suites, desktop typecheck, targeted Biome and diff checks passed. Isolated fixture screenshot before review: `/tmp/clowdy-stage2-worktrees.png`. Real Git UI flow remains for Stage 3.
 
 ## Stage 3 — Common remove and tidy UI (CLO-204)
 
