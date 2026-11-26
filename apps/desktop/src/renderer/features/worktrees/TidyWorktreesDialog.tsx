@@ -5,8 +5,9 @@ import { Text } from '@clowdy/components/Text';
 import { toast } from '@clowdy/components/Toast';
 import { useState } from 'react';
 
-import { PathText } from '../../shared/PathText';
 import { worktreeLabel } from '../agents/workspaceChoice';
+import styles from './ManageWorktrees.module.css';
+import { WorktreeRowSummary } from './WorktreeRow';
 import { linkedChatIds, refreshWorktreeTarget } from './worktreeActions';
 import { removalPlan } from './worktreeView';
 
@@ -29,27 +30,28 @@ function TidyPreview({ rows, choice }: { rows: WorktreeInfo[]; choice: Choice })
                 Select merged worktrees with no local changes, submodules or unarchived chats. Archived chat history
                 stays.
             </Text>
-            <Box gap="md" style={{ maxHeight: 280, overflowY: 'auto' }}>
-                {rows.map(row => (
-                    <Box key={row.path} gap="xxs">
-                        <Checkbox
-                            size="sm"
-                            isSelected={selected.has(row.path)}
-                            aria-label={`Remove ${worktreeLabel(row)}: ${row.path}`}
-                            onChange={checked => {
-                                const next = new Set(selected);
-                                if (checked) next.add(row.path);
-                                else next.delete(row.path);
-                                choice.selected = next;
-                                setSelected(next);
-                            }}
-                        >
-                            {worktreeLabel(row)}
-                        </Checkbox>
-                        <PathText path={row.path} variant="sm" color="secondary" />
-                    </Box>
-                ))}
-            </Box>
+            <div className={styles.tidyRows}>
+                <ul className={styles.card} aria-label="Worktrees to remove">
+                    {rows.map(row => (
+                        <li key={row.path} className={styles.row}>
+                            <WorktreeRowSummary worktree={row} />
+                            <Checkbox
+                                className={styles.tidyCheck}
+                                size="sm"
+                                isSelected={selected.has(row.path)}
+                                aria-label={`Remove ${worktreeLabel(row)}: ${row.path}`}
+                                onChange={checked => {
+                                    const next = new Set(selected);
+                                    if (checked) next.add(row.path);
+                                    else next.delete(row.path);
+                                    choice.selected = next;
+                                    setSelected(next);
+                                }}
+                            />
+                        </li>
+                    ))}
+                </ul>
+            </div>
             <Text variant="sm" color="secondary">
                 {selected.size} of {rows.length} selected
             </Text>
@@ -130,7 +132,7 @@ export async function openTidyWorktrees(target: TidyTarget): Promise<void> {
                 },
             },
             {
-                width: 480,
+                width: 540,
                 onClose: () => {
                     const result = report;
                     if (!result) return;
