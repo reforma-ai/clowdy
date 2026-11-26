@@ -193,6 +193,7 @@ describe('ConversationView, the live line', () => {
 
         expect(text()).toContain(reason);
         expect(text()).not.toContain('Waiting for a free slot');
+        expect(container.querySelector('[role="status"][data-color="warning"]')?.textContent).toContain(reason);
     });
 
     it('shows when a paused run will continue', async () => {
@@ -204,5 +205,10 @@ describe('ConversationView, the live line', () => {
         });
 
         expect(text()).toContain(reason);
+        expect(container.querySelector('[role="status"][data-color="warning"]')?.textContent).toContain(reason);
+
+        await draw({ run: { ...runOf('r-na-02'), status: 'running' }, stream: await streamOf('r-na-02') });
+
+        expect(container.querySelector('[role="status"][data-color="warning"]')).toBeNull();
     });
 });

@@ -1,7 +1,9 @@
+import { Alert, AlertDescription, AlertIcon } from '@clowdy/components/Alert';
 import { Button } from '@clowdy/components/Button';
 import { ContentColumn } from '@clowdy/components/ContentColumn';
 import { useStickToBottom } from '@clowdy/components/hooks';
 import { Show } from '@clowdy/components/Show';
+import { Spinner } from '@clowdy/components/Spinner';
 import { ArrowDown } from '@clowdy/icons/14';
 import { Fragment, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 
@@ -100,6 +102,8 @@ export interface StreamViewProps {
      * work) instead of working. With `true`, a collapsed tool group at the end can show its latest running tool on the live line.
      */
     working?: boolean | string;
+    /** A usage limit that will resume: shown in the conversation until the run continues. */
+    waitingNotice?: string;
     /** The person answered a `question` item. */
     onAnswer?: (questionId: string, answer: string) => void | Promise<void>;
     /** The question whose form the box under the stream draws: its card is a line saying so, and the form is not drawn twice. */
@@ -141,6 +145,7 @@ export function StreamView({
     composerSurfaceInset = composerInset,
     active = false,
     working,
+    waitingNotice,
     onAnswer,
     dockedQuestionId,
     onDecide,
@@ -396,6 +401,14 @@ export function StreamView({
                             }
                         })}
                         {showWorking && <WorkingLine text={typeof working === 'string' ? working : undefined} />}
+                        {waitingNotice && (
+                            <Alert color="warning" role="status">
+                                <AlertIcon>
+                                    <Spinner size="xs" />
+                                </AlertIcon>
+                                <AlertDescription>{waitingNotice}</AlertDescription>
+                            </Alert>
+                        )}
                         {inset > 0 && <div className={styles.clearance} aria-hidden="true" />}
                     </ContentColumn>
                 </div>

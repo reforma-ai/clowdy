@@ -107,10 +107,16 @@ export function ConversationView({
     const hasItems = streamItems.length > 0;
     const items = useMemo(() => (leading ? [leading, ...streamItems] : streamItems), [leading, streamItems]);
     const shown = run && shownRunStatus(run);
+    // The daemon's usage-limit reason carries the reset time; other queue and retry reasons remain ordinary live lines.
+    const usageLimit =
+        (shown === 'queued' || shown === 'blocked') && run?.statusReason?.includes(' is at its usage limit until ')
+            ? run.statusReason
+            : undefined;
     // The live line follows what the person reads of the run: none while a card waits for them.
     const working =
         isRunActive(run) &&
         shown !== undefined &&
+        !usageLimit &&
         (shown === 'waiting_background' && backgroundLine ? backgroundLine : liveLine(shown, run.statusReason));
 
     return (
@@ -151,6 +157,7 @@ export function ConversationView({
                         items={items}
                         active={isRunActive(run)}
                         working={working}
+                        waitingNotice={usageLimit}
                         links={links}
                         // A question the run no longer waits on (stopped, interrupted) is shown but cannot be answered.
                         onAnswer={
