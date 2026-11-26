@@ -1,0 +1,21 @@
+.head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-lg);
+}
+
+.name {
+    margin: 0;
+    min-width: 0;
+}
+
+/* One line for each folder, written out whole and broken where it must (the card's width is set); the main one is the first. */
+.folders {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xxs);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
