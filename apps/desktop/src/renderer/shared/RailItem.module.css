@@ -35,11 +35,37 @@
 }
 
 /* On the tile's top right corner, beside the icon and not over it: the git icons have a node in their own corner (a 14px icon has 9px of the tile around it). */
-.dot {
+.badge {
     position: absolute;
-    top: var(--spacing-2);
-    right: var(--spacing-2);
     display: flex;
+}
+
+/* A dot that is smaller than a chat's: it only says that there is something, and the count says how much. */
+.dot {
+    top: var(--spacing-6);
+    right: var(--spacing-6);
+
+    > span {
+        width: var(--spacing-4);
+        height: var(--spacing-4);
+    }
+}
+
+/* The count of commits with its arrow, as `CommitCountBadge` draws them in Source Control, a little over the tile's corner. */
+.count {
+    top: calc(var(--spacing-8) * -1);
+    right: calc(var(--spacing-6) * -1);
+    align-items: center;
+    gap: var(--spacing-2);
+    height: var(--spacing-14);
+    padding-inline: var(--spacing-4);
+    border-radius: var(--radius-full);
+    background: var(--color-secondary-muted);
+    color: var(--color-text);
+    font-size: var(--spacing-10);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
 }
 
 .label {

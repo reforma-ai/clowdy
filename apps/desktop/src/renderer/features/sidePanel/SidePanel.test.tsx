@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { Commit, Merge } from '@clowdy/icons/14';
+import { ArrowDown, ArrowUp, Commit, Merge } from '@clowdy/icons/14';
 import { observer } from 'mobx-react-lite';
 import { act, useEffect } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -100,8 +100,11 @@ const doubleClick = (target: HTMLElement) =>
     });
 const panel = () => container.querySelector<HTMLElement>('aside[aria-label="Panel"]');
 const rail = () => container.querySelector<HTMLElement>('nav[aria-label="Panel tabs"]');
+/** The item of a tab, found by the label under its glyph: a badge on the glyph is text of the button too. */
 const tab = (name: string) =>
-    [...(rail()?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find(button => button.textContent === name);
+    [...(rail()?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find(
+        button => button.lastElementChild?.textContent === name
+    );
 const ui = () => store.ui.forProject(store.selectedProjectId!);
 const expandButton = () => container.querySelector<HTMLButtonElement>('button[aria-label="Side panel"]');
 const settingsItem = () =>
@@ -720,15 +723,36 @@ describe('the Changes item of the rail', () => {
     };
     const iconOf = () => tab('Changes')!.querySelector('svg')!.innerHTML;
     const dot = () => tab('Changes')!.querySelector('[data-tone]');
+    /** The count badge, which is hidden from a reader of the button (its name says it). */
+    const pill = () => tab('Changes')!.querySelector('[aria-hidden="true"]:not(svg):not([data-tone])');
+    const count = () => pill()?.textContent;
+    /** The arrow of the count badge, as markup to set against an icon's. */
+    const arrowOf = () => pill()?.querySelector('svg')?.innerHTML;
+    /** What the tooltip of the Changes tab says once the keyboard has brought focus to it. */
+    async function tooltipText() {
+        await act(async () => {
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+            tab('Changes')!.focus();
+        });
+        await settle();
+
+        return document.querySelector('[role="tooltip"]')?.textContent ?? '';
+    }
 
     /** A window with the chat that works in a worktree open: three uncommitted files, two commits that the base does not have, and the pull request the script says. */
-    async function inWorktree(script: 'open' | 'none' | 'draft' | 'merged', tweak?: (data: FixtureData) => void) {
+    async function inWorktree(
+        script: 'open' | 'none' | 'draft' | 'merged',
+        tweak?: (data: FixtureData) => void,
+        remote?: 'ahead' | 'behind' | 'level' | 'diverged'
+    ) {
         const data = withFixtureWorkspace(createFixtureData());
 
         data.pullRequests['/Users/dev/car-rental'] = { checkout: 'none', worktree: script };
         tweak?.(data);
         store.dispose();
-        store = new RootStore(new FixtureTransport({ data }), { storage: memory() });
+        store = new RootStore(new FixtureTransport({ data, ...(remote && { gitWrites: { remote } }) }), {
+            storage: memory(),
+        });
         await store.load();
         store.selectProject(FIXTURE_PROJECT_ID);
         ui().openChat(FIXTURE_WORKSPACE_CHAT_ID);
@@ -742,6 +766,7 @@ describe('the Changes item of the rail', () => {
 
         expect(iconOf()).toBe(markupOf(Commit));
         expect(dot()).toBeNull();
+        expect(count()).toBeUndefined();
     });
 
     it('draws a dot that counts the uncommitted files, and the icon of a pull request that is open', async () => {
@@ -791,46 +816,94 @@ describe('the Changes item of the rail', () => {
         expect(iconOf()).toBe(markupOf(Commit));
     });
 
-    it('draws no dot while the Changes tab is on show, and draws it again when another tab is', async () => {
+    it('keeps its badge while the Changes tab is on show, and while the panel is shut', async () => {
         await inWorktree('draft');
 
         await press(tab('Changes')!);
         await settle();
 
         expect(tab('Changes')?.getAttribute('aria-current')).toBe('page');
-        expect(dot()).toBeNull();
-        expect(tab('Changes')!.getAttribute('aria-label')).toBeNull();
+        expect(dot()).not.toBeNull();
+        expect(tab('Changes')!.getAttribute('aria-label')).toBe('Changes, 3 uncommitted files');
         expect(iconOf()).toBe(markupOf(Merge));
 
-        await press(tab('Files')!);
-        await settle();
-
-        expect(dot()).not.toBeNull();
-    });
-
-    it('draws the dot while the panel is shut, though Changes was the tab it showed last', async () => {
-        await inWorktree('draft');
-        await press(tab('Changes')!);
-        await settle();
         await press(tab('Changes')!);
         await settle();
 
         expect(ui().sidePanelOpen).toBe(false);
         expect(dot()).not.toBeNull();
-    });
 
-    it('says in its tooltip what the icon and the dot say, under its label', async () => {
-        await inWorktree('draft');
-        await act(async () => {
-            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
-            tab('Changes')!.focus();
-        });
+        // The count is no different.
+        await inWorktree('draft', undefined, 'ahead');
+        await press(tab('Changes')!);
         await settle();
 
-        const tip = document.querySelector('[role="tooltip"]')?.textContent ?? '';
+        expect(tab('Changes')?.getAttribute('aria-current')).toBe('page');
+        expect(count()).toBe('2');
+
+        await press(tab('Changes')!);
+        await settle();
+
+        expect(ui().sidePanelOpen).toBe(false);
+        expect(count()).toBe('2');
+    });
+
+    it('draws the count of the sync button, with the arrow of its way, in place of the dot', async () => {
+        await inWorktree('draft', undefined, 'ahead');
+
+        expect(markupOf(ArrowUp)).not.toBe(markupOf(ArrowDown));
+        expect(count()).toBe('2');
+        expect(arrowOf()).toBe(markupOf(ArrowUp));
+        expect(dot()).toBeNull();
+        expect(tab('Changes')!.getAttribute('aria-label')).toBe('Changes, 2 commits to push');
+
+        await inWorktree('draft', undefined, 'behind');
+
+        expect(count()).toBe('2');
+        expect(arrowOf()).toBe(markupOf(ArrowDown));
+        expect(tab('Changes')!.getAttribute('aria-label')).toBe('Changes, 2 commits to pull');
+
+        // Level with its upstream, the base has a commit that the branch lacks: the button offers Update from the base, and so does the count.
+        await inWorktree('draft', undefined, 'level');
+
+        expect(count()).toBe('1');
+        expect(arrowOf()).toBe(markupOf(ArrowDown));
+        expect(tab('Changes')!.getAttribute('aria-label')).toMatch(/^Changes, 1 commit to merge from /);
+    });
+
+    it('counts the commits to push when the branch has diverged, and names both ways in its name', async () => {
+        await inWorktree('draft', undefined, 'diverged');
+
+        expect(count()).toBe('1');
+        expect(arrowOf()).toBe(markupOf(ArrowUp));
+        expect(tab('Changes')!.getAttribute('aria-label')).toBe('Changes, 2 commits to pull and 1 commit to push');
+    });
+
+    it('draws the small dot only while nothing counts', async () => {
+        await inWorktree('draft');
+
+        expect(dot()).not.toBeNull();
+        expect(count()).toBeUndefined();
+
+        await inWorktree('draft', undefined, 'ahead');
+
+        expect(dot()).toBeNull();
+        expect(count()).toBe('2');
+    });
+
+    it('says in its tooltip what the icon and the badge say, under its label', async () => {
+        await inWorktree('draft', undefined, 'ahead');
+
+        const tip = await tooltipText();
 
         expect(tip.startsWith('Changes')).toBe(true);
-        expect(tip).toMatch(/Draft pull request #\d+, checks are running3 uncommitted files$/);
+        expect(tip).toMatch(/Draft pull request #\d+, checks are running2 commits to push3 uncommitted files$/);
+    });
+
+    it('says in its tooltip that the pull request is merged', async () => {
+        await inWorktree('merged');
+
+        expect(await tooltipText()).toMatch(/Pull request #\d+ is merged3 uncommitted files$/);
     });
 
     it('has no dot on the other tabs', async () => {

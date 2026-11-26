@@ -1,4 +1,5 @@
 import { Tooltip } from '@clowdy/components/Tooltip';
+import { ArrowDown, ArrowUp } from '@clowdy/icons/14';
 import { cn } from '@clowdy/lib';
 
 import styles from './RailItem.module.css';
@@ -6,6 +7,11 @@ import { StatusDot } from './StatusDot';
 
 import type { ComponentProps, ComponentType, ReactNode, SVGProps } from 'react';
 import type { StatusTone } from './runStatus';
+
+/** What an item says beside its glyph: a small dot, or a count of commits with the arrow of the way they go. `label` is what a screen reader hears after the item's own label. */
+export type RailBadge =
+    | { kind: 'dot'; tone: StatusTone; label: string }
+    | { kind: 'count'; arrow: 'up' | 'down'; count: number; label: string };
 
 export interface RailItemProps {
     label: string;
@@ -17,8 +23,8 @@ export interface RailItemProps {
     /** The current item is drawn in the primary colour instead of the neutral one, as Reforma's rail does for the chat that is open. */
     accent?: boolean;
     disabled?: boolean;
-    /** A small dot on the glyph's top right corner, for something that wants a look while the page is not on show; `label` is what a screen reader hears after the item's own label. */
-    dot?: { tone: StatusTone; label: string };
+    /** A badge on the glyph's top right corner. */
+    badge?: RailBadge;
     /** What a tooltip says (the label is on the button already, so it is for the key that does the same); none, no tooltip. */
     tooltip?: ReactNode;
     /** Beside which edge of the item the tooltip opens: away from the rail's own edge of the window. */
@@ -36,7 +42,7 @@ export function RailItem({
     current,
     accent,
     disabled,
-    dot,
+    badge,
     tooltip,
     tooltipPlacement = 'right',
     className,
@@ -49,17 +55,23 @@ export function RailItem({
                 type="button"
                 className={cn(styles.item, accent && styles.accent, className)}
                 disabled={disabled}
-                // The dot is a picture of this, so the name says it after the label (a dot read from the content would come first: `3 uncommitted files Changes`).
-                aria-label={dot ? `${label}, ${dot.label}` : undefined}
+                // The badge is a picture of this, so the name says it after the label (a badge read from the content would come first: `3 uncommitted files Changes`).
+                aria-label={badge ? `${label}, ${badge.label}` : undefined}
                 aria-current={current ? 'page' : undefined}
                 data-drag-hover-key={dragHoverKey}
                 onClick={onPress}
             >
                 <span className={styles.glyph}>
                     <Icon width={size} height={size} aria-hidden />
-                    {dot && (
-                        <span className={styles.dot}>
-                            <StatusDot tone={dot.tone} />
+                    {badge?.kind === 'dot' && (
+                        <span className={cn(styles.badge, styles.dot)}>
+                            <StatusDot tone={badge.tone} />
+                        </span>
+                    )}
+                    {badge?.kind === 'count' && (
+                        <span className={cn(styles.badge, styles.count)} aria-hidden="true">
+                            {badge.arrow === 'up' ? <ArrowUp size={10} /> : <ArrowDown size={10} />}
+                            {badge.count}
                         </span>
                     )}
                 </span>

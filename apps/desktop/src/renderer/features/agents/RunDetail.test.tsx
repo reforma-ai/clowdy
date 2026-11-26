@@ -89,7 +89,12 @@ describe('RunDetail, the page', () => {
             'Simplify bookingExplore agent'
         );
         expect(container.textContent).toContain('Find where the price is computed');
-        expect(container.querySelector('header')).toBeNull();
+        // The one header is the conversation's own, the path; the old one with the avatar, the Parent chip and the Stop button is gone.
+        expect(
+            [...container.querySelectorAll('header')].map(found =>
+                found.querySelector('nav')?.getAttribute('aria-label')
+            )
+        ).toEqual(['Conversation path']);
         expect(container.querySelector('footer')).toBeNull();
         expect(container.textContent).not.toContain('Viewing agent work');
         // The daemon's name of the run is shown nowhere.

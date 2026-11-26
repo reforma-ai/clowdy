@@ -1,9 +1,8 @@
 import { Breadcrumb } from '@clowdy/components/Breadcrumb';
-import { ContentColumn } from '@clowdy/components/ContentColumn';
 import { Text } from '@clowdy/components/Text';
 import { useEffect, useRef, useState } from 'react';
 
-import { RunStatusPill, useRunLabel } from '../../shared';
+import { RunStatusPill, SCREEN_TITLE, useRunLabel } from '../../shared';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { orchestratorOf } from '../agents/agentTree';
 import { openChat, openRun } from './archiveChat';
@@ -21,7 +20,7 @@ export interface ConversationHeaderProps {
 }
 
 /**
- * The thin header over every conversation, made of the chats' own titles. A chat shows its title; a thread the path down to it (`Chat › Thread`); a native sub-agent the path of
+ * The header over every conversation, made of the chats' own titles, set as the title of a screen is (`SCREEN_TITLE`, as Tasks has its own): at the page's left edge, with no border. A chat shows its title; a thread the path down to it (`Chat › Thread`); a native sub-agent the path of
  * its chat and then its own name, with the sub-agents it runs inside between them. Every part but the last opens that page; the last is the page itself. A long path folds its
  * middle into `…`, which opens it out, and titles truncate. While the page's run works or waits, its status stands at the right end, and a sub-agent's summary
  * is one quiet line under the path. Stop, the model and the mode are in the message box, not here.
@@ -64,10 +63,10 @@ export function ConversationHeader({ chat, subagent }: ConversationHeaderProps) 
             : openRun(root, project, ui, target.runId));
 
     return (
-        <ContentColumn className={styles.header}>
+        <header className={styles.header}>
             <div className={styles.line}>
                 <div ref={pathRef} className={styles.path}>
-                    <Breadcrumb variant="sm" aria-label="Conversation path">
+                    <Breadcrumb variant={SCREEN_TITLE} aria-label="Conversation path">
                         {foldedPath(parts, isOpenedOut).map((item, index, items) => {
                             if ('fold' in item)
                                 return (
@@ -103,10 +102,10 @@ export function ConversationHeader({ chat, subagent }: ConversationHeaderProps) 
             </div>
 
             {summary && (
-                <Text variant="xs" color="secondary" truncate title={summary} className={styles.summary}>
+                <Text variant="sm" color="secondary" truncate title={summary} className={styles.summary}>
                     {summary}
                 </Text>
             )}
-        </ContentColumn>
+        </header>
     );
 }

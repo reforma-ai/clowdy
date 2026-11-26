@@ -1,9 +1,9 @@
 @reference '@clowdy/styles/rulesets';
 
-/* One thin line over the stream, in the stream's column: the path on the left and the status of the run on the right. */
+/* The title of the page, as the header of Tasks has it: the path on the left and the status of the run on the right, at the page's edge, with no border. */
 .header {
     flex-shrink: 0;
-    padding: var(--spacing-md) var(--spacing-xxl) 0;
+    padding: var(--spacing-lg) var(--spacing-lg) var(--spacing-md);
 }
 
 .line {
@@ -11,6 +11,8 @@
     align-items: center;
     gap: var(--spacing-md);
     min-width: 0;
+    /* The height of the row of Tasks' header (its buttons set it there), so the title stands level with the heading of the chat list. */
+    min-height: 1.875rem;
 }
 
 .path {
