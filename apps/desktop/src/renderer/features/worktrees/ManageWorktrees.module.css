@@ -212,12 +212,6 @@
     gap: var(--spacing-xs);
 }
 
-.chatPreview > div {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
 .chatCount {
     text-decoration: underline dotted;
     text-underline-offset: 0.15em;

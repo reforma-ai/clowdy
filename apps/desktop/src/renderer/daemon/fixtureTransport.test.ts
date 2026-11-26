@@ -1534,10 +1534,11 @@ describe('FixtureTransport threads', () => {
             ['c-6c', ['r-orch-6c']],
             ['c-6b', ['r-orch-6b']],
             ['c-6a', ['r-orch-6a']],
-            ['c-6', ['r-orch-6']],
+            // Its sub-agent r-na-07 goes with its orchestrator.
+            ['c-6', ['r-orch-6', 'r-na-07']],
         ]);
         expect(after.chats.some(chat => chat.id.startsWith('c-6'))).toBe(false);
-        expect(after.runs.some(run => run.id.startsWith('r-orch-6'))).toBe(false);
+        expect(after.runs.some(run => run.id.startsWith('r-orch-6') || run.id === 'r-na-07')).toBe(false);
     });
 
     it("takes a message to a thread in that thread's chat, and tells its parent at rest when the turn ends, which starts the parent's turn", async () => {

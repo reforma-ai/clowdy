@@ -70,6 +70,10 @@ interface StoredProjectUi {
     chatOrder: ChatId[];
     groupByFolder: boolean;
     collapsedFolders: FolderId[];
+    groupByWorktree: boolean;
+    worktreeOrder: string[];
+    collapsedWorktrees: string[];
+    expandedUnusedWorktrees: string[];
     agentsFoldedByChat: Record<ChatId, boolean>;
     sidePanelOpen: boolean;
     sidePanelTab: SidePanelTab;
@@ -106,6 +110,7 @@ export type InitialProjectUi = Partial<
         | 'runId'
         | 'expandedChats'
         | 'groupByFolder'
+        | 'groupByWorktree'
         | 'collapsedFolders'
         | 'sidePanelOpen'
         | 'sidePanelTab'
@@ -127,6 +132,8 @@ export function initialUiFromSearch(search: string): InitialProjectUi {
     if (params.get('expand')) initial.expandedChats = params.get('expand')!.split(',').filter(Boolean);
 
     if (params.has('group')) initial.groupByFolder = params.get('group') !== '0';
+
+    if (params.has('groupWorktrees')) initial.groupByWorktree = params.get('groupWorktrees') !== '0';
 
     if (params.get('collapsed')) initial.collapsedFolders = params.get('collapsed')!.split(',').filter(Boolean);
 
@@ -182,6 +189,10 @@ export class ProjectUi {
     groupByFolder = true;
     /** Agents: the folders whose group is folded in the list. A folder that is not here is open, which is how every group starts. */
     collapsedFolders: readonly FolderId[] = [];
+    groupByWorktree = false;
+    worktreeOrder: readonly string[] = [];
+    collapsedWorktrees: readonly string[] = [];
+    expandedUnusedWorktrees: readonly string[] = [];
     /** The side panel at the right of the window is open for this project. Closed until the person opens it, and kept for the project, whichever chat is on show. */
     sidePanelOpen = false;
     /** The tab the side panel shows, kept for the project: the one it was left on. */
@@ -263,6 +274,12 @@ export class ProjectUi {
             this.collapsedFolders = Array.isArray(stored.collapsedFolders)
                 ? stored.collapsedFolders.filter(id => typeof id === 'string')
                 : [];
+            this.groupByWorktree = stored.groupByWorktree === true;
+            const strings = (value: unknown): string[] =>
+                Array.isArray(value) ? [...new Set(value.filter(id => typeof id === 'string'))] : [];
+            this.worktreeOrder = strings(stored.worktreeOrder);
+            this.collapsedWorktrees = strings(stored.collapsedWorktrees);
+            this.expandedUnusedWorktrees = strings(stored.expandedUnusedWorktrees);
             // A project-wide choice from an older version cannot identify which chat was opened.
             if (
                 agentsFolded === undefined &&
@@ -295,6 +312,9 @@ export class ProjectUi {
             expandedChats: observableRef,
             chatOrder: observableRef,
             collapsedFolders: observableRef,
+            worktreeOrder: observableRef,
+            collapsedWorktrees: observableRef,
+            expandedUnusedWorktrees: observableRef,
             tasksCollapsed: observableRef,
         });
         reaction(
@@ -306,6 +326,10 @@ export class ProjectUi {
                 chatOrder: [...this.chatOrder],
                 groupByFolder: this.groupByFolder,
                 collapsedFolders: [...this.collapsedFolders],
+                groupByWorktree: this.groupByWorktree,
+                worktreeOrder: [...this.worktreeOrder],
+                collapsedWorktrees: [...this.collapsedWorktrees],
+                expandedUnusedWorktrees: [...this.expandedUnusedWorktrees],
                 agentsFoldedByChat: Object.fromEntries(this.#agentsFoldedByChat),
                 sidePanelOpen: this.sidePanelOpen,
                 sidePanelTab: this.sidePanelTab,
@@ -512,6 +536,31 @@ export class ProjectUi {
 
     setGroupByFolder(group: boolean): void {
         this.groupByFolder = group;
+    }
+
+    setGroupByWorktree(group: boolean): void {
+        this.groupByWorktree = group;
+    }
+
+    setWorktreeOrder(order: readonly string[]): void {
+        this.worktreeOrder = order;
+    }
+
+    toggleWorktreeCollapsed(key: string): void {
+        this.collapsedWorktrees = this.collapsedWorktrees.includes(key)
+            ? this.collapsedWorktrees.filter(id => id !== key)
+            : [...this.collapsedWorktrees, key];
+    }
+
+    expandWorktree(key: string): void {
+        if (this.collapsedWorktrees.includes(key))
+            this.collapsedWorktrees = this.collapsedWorktrees.filter(id => id !== key);
+    }
+
+    toggleUnusedWorktrees(key: string): void {
+        this.expandedUnusedWorktrees = this.expandedUnusedWorktrees.includes(key)
+            ? this.expandedUnusedWorktrees.filter(id => id !== key)
+            : [...this.expandedUnusedWorktrees, key];
     }
 
     setChatOrder(order: readonly ChatId[], visibleChatId?: ChatId): void {

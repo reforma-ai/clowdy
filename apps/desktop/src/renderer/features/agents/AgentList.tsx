@@ -3,6 +3,7 @@ import { Input } from '@clowdy/components/Input';
 import {
     GridList,
     GridListItem,
+    GridListSection,
     listBoxItemDataShow,
     Menu,
     MenuItem,
@@ -12,12 +13,24 @@ import {
 import { Panel, PanelContent } from '@clowdy/components/Panel';
 import { Popover, PopoverScroll, PopoverTrigger, useContextMenu } from '@clowdy/components/Popover';
 import { Show } from '@clowdy/components/Show';
-import { Archive, Check, ChevronDown, ChevronRight, Merge, Message, More, NewChat, Robot } from '@clowdy/icons/14';
+import {
+    Archive,
+    Check,
+    ChevronDown,
+    ChevronRight,
+    Merge,
+    Message,
+    More,
+    NewChat,
+    Robot,
+    Split,
+} from '@clowdy/icons/14';
 import { observer } from 'mobx-react-lite';
 import {
     type CSSProperties,
     type KeyboardEvent,
     type MouseEvent,
+    memo,
     type ReactNode,
     type SyntheticEvent,
     useEffect,
@@ -58,7 +71,6 @@ import {
     asksThePerson,
     type ChatRow,
     chatDotTone,
-    type FinishedRow,
     groupFolderOf,
     isActiveThread,
     nativeAgentsByRoot,
@@ -71,6 +83,9 @@ import { GroupFolderName } from './GroupFolderName';
 import { openNewChat } from './openNewChat';
 import { StarCard } from './StarCard';
 import { useChatListOrder } from './useChatListOrder';
+import { useSidebarWorktrees } from './useSidebarWorktrees';
+import { WorktreeCardHeader } from './WorktreeCardHeader';
+import { chatWorktreeKey, type WorktreeCard, worktreeCards } from './worktreeCards';
 
 import type { Chat, ChatId, FolderId, ProjectInfo, Run, RunId } from '@clowdy/protocol';
 
@@ -84,19 +99,25 @@ const GROUP_PREFIX = '@folder:';
 const EMPTY_PREFIX = '@empty:';
 const groupKey = (folderId: FolderId) => `${GROUP_PREFIX}${folderId}`;
 
-/** What a line of the list is: a chat (or a thread), a sub-agent of one, or a chat's group of finished sub-agents; the heading of a folder's group, or the note of a group that has no chat. */
+/** What a line of the list is: a chat (or a thread) or a sub-agent of one; the heading of a folder's group, or the note of a group that has no chat. */
 type ListEntry =
     | { kind: 'row'; row: AgentRow }
     | { kind: 'group'; group: AgentGroup; isCollapsed: boolean }
-    | { kind: 'empty'; folderId: FolderId };
+    | { kind: 'empty'; folderId: FolderId }
+    | { kind: 'worktree'; card: WorktreeCard; isCollapsed: boolean; rows: AgentRow[] }
+    | { kind: 'unused'; key: string; isCollapsed: boolean };
 
-/** The key of a line's row in the grid list: a chat's id, a sub-agent's run id, the id of a finished group, or the id of a heading or a note. */
+/** The key of a line's row in the grid list: a chat's id, a sub-agent's run id, or the id of a heading or a note. */
 const entryKey = (entry: ListEntry) =>
     entry.kind === 'row'
         ? entry.row.id
         : entry.kind === 'group'
           ? groupKey(entry.group.folder.id)
-          : `${EMPTY_PREFIX}${entry.folderId}`;
+          : entry.kind === 'worktree'
+            ? entry.card.key
+            : entry.kind === 'unused'
+              ? entry.key
+              : `${EMPTY_PREFIX}${entry.folderId}`;
 
 /** The events a row's own buttons must not pass up: they are React children of the row, so the row would take their clicks and keys as its own. */
 const ownEvents = {
@@ -118,8 +139,8 @@ interface ChatActions {
 
 /**
  * The project's agents: the row that starts a chat, then the chats in use in the person's order, each with what works for it below: the native sub-agents it
- * started (a row each, and one group row for the finished ones) and the threads its agents started, folded until the person opens them, except what works
- * (with Expand running agents on) or waits for the person. Archived chats are not here, they are in the archive's list (the button
+ * started and the threads its agents started in one list, oldest first, folded until the person opens them, except what works (with Expand running agents on)
+ * or waits for the person. Archived chats are not here, they are in the archive's list (the button
  * in the heading, beside the filters), and take their threads with them. `missing` are the folders gone from the disk (`Screen` reads them once for the list and the new-chat page): their group is marked and its button is off. With the menu's Group chats by folder on (it is, until the person turns it off), the
  * chats stand in a group for the folder they work in, under a heading that folds the group. Its name opens the folder's menu (`GroupFolderName`), and the menu and heading both offer a new chat in that folder.
  */
@@ -163,7 +184,7 @@ export function AgentList({
                 );
         }
     }, [projectInfo, histories]);
-    const order = useChatListOrder(chats, selection.draft ? undefined : selection.chat?.id);
+
     const runOf = (chat: Chat) => orchestratorOf(chat, project.runs);
     const actions: ChatActions = {
         // The popover hands focus back to its trigger as it closes: starting at once would have that blur end the rename.
@@ -185,6 +206,12 @@ export function AgentList({
     const openRun = selection.draft ? undefined : selection.run;
     const { folders } = project.project;
     const grouped = ui.groupByFolder;
+    const groupedByWorktree = ui.groupByWorktree;
+    const actual = useSidebarWorktrees(groupedByWorktree);
+    const cards = groupedByWorktree
+        ? worktreeCards(chats, project.chats.values(), folders, actual, projectInfo, ui.worktreeOrder)
+        : [];
+    const order = useChatListOrder(chats, openChatId, cards);
     const { showFinishedThreads, expandRunningAgents } = chatListPreferences;
     // The sub-agents of every chat, found in one pass over the project's runs and not once per chat.
     const agentsByRoot = nativeAgentsByRoot(project.runs.values());
@@ -202,24 +229,56 @@ export function AgentList({
             openChatId,
             openRunId: openRun?.id,
         });
+    const rowEntries = (roots: readonly Chat[]): ListEntry[] => rowsOf(roots).map(row => ({ kind: 'row', row }));
+    const cardEntries = (roots: readonly Chat[], scoped: readonly WorktreeCard[], scope: string): ListEntry[] => {
+        const cardEntry = (card: WorktreeCard): ListEntry => {
+            const isCollapsed = ui.collapsedWorktrees.includes(card.key);
+            return { kind: 'worktree', card, isCollapsed, rows: isCollapsed ? [] : rowsOf(card.roots) };
+        };
+        const used = scoped.filter(card => card.used);
+        const unused = scoped.filter(card => !card.used);
+        const isCollapsed = !ui.expandedUnusedWorktrees.includes(scope);
+        return [
+            ...rowEntries(roots.filter(chat => !chat.workspace)),
+            ...used.map(cardEntry),
+            ...(unused.length
+                ? [{ kind: 'unused' as const, key: scope, isCollapsed }, ...(isCollapsed ? [] : unused.map(cardEntry))]
+                : []),
+        ];
+    };
     const entries: ListEntry[] = grouped
         ? agentGroups(chats, folders).flatMap((group): ListEntry[] => {
               const isCollapsed = ui.collapsedFolders.includes(group.folder.id);
-              const groupRows = isCollapsed ? [] : rowsOf(group.roots);
-              const body: ListEntry[] = isCollapsed
+              const body = isCollapsed
                   ? []
-                  : groupRows.length > 0
-                    ? groupRows.map(row => ({ kind: 'row', row }))
-                    : [{ kind: 'empty', folderId: group.folder.id }];
-
-              return [{ kind: 'group', group, isCollapsed }, ...body];
+                  : groupedByWorktree
+                    ? cardEntries(
+                          group.roots,
+                          cards.filter(card => card.folder.id === group.folder.id),
+                          `@unused:${group.folder.id}`
+                      )
+                    : rowEntries(group.roots);
+              return [
+                  { kind: 'group', group, isCollapsed },
+                  ...(isCollapsed || body.length ? body : [{ kind: 'empty' as const, folderId: group.folder.id }]),
+              ];
           })
-        : rowsOf(chats).map(row => ({ kind: 'row', row }));
+        : groupedByWorktree
+          ? cardEntries(chats, cards, '@unused:all')
+          : rowEntries(chats);
+
+    const visibleRows = new Map<string, AgentRow>();
+    const navigationIds = entries.flatMap(entry => {
+        if (entry.kind === 'empty') return [];
+        const rows = entry.kind === 'worktree' ? entry.rows : entry.kind === 'row' ? [entry.row] : [];
+        for (const row of rows) visibleRows.set(row.id, row);
+        return entry.kind === 'worktree' ? [entryKey(entry), ...rows.map(row => row.id)] : [entryKey(entry)];
+    });
     // The new-chat row is the open one on every new-chat page, whatever folder it is for: the folder is told by the select under the message box.
-    // A sub-agent that is not listed (its group is folded, or its chat is) leaves its chat's row as the open one, so the list never shows nothing open.
+    // A sub-agent that has no row (its chat's folder group is folded, or it is no native sub-agent) leaves its chat's row as the open one, so the list never shows nothing open.
     const selectedId = selection.draft
         ? NEW_CHAT_ROW
-        : openRun && entries.some(entry => entry.kind === 'row' && entry.row.id === openRun.id)
+        : openRun && navigationIds.includes(openRun.id)
           ? openRun.id
           : openChatId;
     useFileDragHover(
@@ -234,25 +293,28 @@ export function AgentList({
         }
     );
 
-    // A thread or a sub-agent opened from elsewhere (a chip, a card, back and forward, the keyboard) may sit below a fold: open the folds above it, and the
-    // folded group of the chat it belongs to. For a sub-agent that is its chat, when its row is not listed already (a working one is, under a folded chat, and so
-    // is the open one that is over: it has a row of its own, outside its group, which stays folded). When the open page changes, and when the list turns
-    // grouped; not on other changes, so the person can still fold the chat or the group it sits in.
+    // A thread opened from elsewhere (a chip, a card, back and forward, the keyboard) may sit below a fold: open the folds above it, and the folded group of
+    // the chat it belongs to. A sub-agent needs no fold of its chat opened: its row stands below a folded chat while it is the open page. When the open page
+    // changes, and when the list turns grouped; not on other changes, so the person can still fold the chat or the group it sits in.
     const openRunId = openRun?.id;
-    const openRunListed = useRef(false);
-    openRunListed.current = openRunId !== undefined && selectedId === openRunId;
+    const opened = openChatId ? project.chats.get(openChatId) : undefined;
+    const ancestors = opened ? ancestorChats(project.chats, opened.id) : [];
+    // An unarchived child whose parent is archived/missing is itself a visible root.
+    const rootChat = opened && [opened, ...ancestors].find(chat => chats.some(root => root.id === chat.id));
+    const selectedCard = groupedByWorktree && rootChat ? chatWorktreeKey(rootChat, cards) : undefined;
+    const selectedFolder = selectedCard ? cards.find(card => card.key === selectedCard)?.folder.id : undefined;
     useEffect(() => {
         if (openChatId === undefined) return;
 
-        ui.expandChats([
-            ...ancestorChats(project.chats, openChatId).map(chat => chat.id),
-            ...(openRunId === undefined || openRunListed.current ? [] : [openChatId]),
-        ]);
+        ui.expandChats(ancestorChats(project.chats, openChatId).map(chat => chat.id));
 
-        const folderId = grouped ? groupFolderOf(project.chats, project.project.folders, openChatId) : undefined;
+        const folderId = grouped
+            ? (selectedFolder ?? groupFolderOf(project.chats, project.project.folders, openChatId))
+            : undefined;
 
         if (folderId !== undefined) ui.expandFolder(folderId);
-    }, [openChatId, openRunId, grouped, project, ui]);
+        if (selectedCard) ui.expandWorktree(selectedCard);
+    }, [openChatId, openRunId, grouped, selectedCard, selectedFolder, project, ui]);
 
     useHotkeyScope(AGENTS_SCOPE);
     useCommands(
@@ -260,7 +322,7 @@ export function AgentList({
         agentCommands({
             list: () => list.current,
             // The headings are rows the arrows stop on, so they are in the order J and K step through; a group's note has no focus.
-            ids: () => [NEW_CHAT_ROW, ...entries.filter(entry => entry.kind !== 'empty').map(entryKey)],
+            ids: () => [NEW_CHAT_ROW, ...navigationIds],
             openId: () => selectedId,
         })
     );
@@ -279,10 +341,15 @@ export function AgentList({
     /** The fold a row has, if any: the threads of a chat, or the chats of a folder's group. */
     const foldOf = (key: string | undefined): { isExpanded: boolean; toggle: () => void } | undefined => {
         const entry = entries.find(candidate => entryKey(candidate) === key);
+        const row = key === undefined ? undefined : visibleRows.get(key);
 
-        // The fold of a chat, and of its group of finished sub-agents, is kept with the chats' (`finishedGroupId`).
-        if (entry?.kind === 'row' && entry.row.childCount > 0)
-            return { isExpanded: entry.row.isExpanded, toggle: () => ui.toggleChatExpanded(entry.row.id) };
+        // Only a chat has a fold: a sub-agent's row has none.
+        if (row && row.childCount > 0)
+            return { isExpanded: row.isExpanded, toggle: () => ui.toggleChatExpanded(row.id) };
+        if (entry?.kind === 'worktree' && entry.card.roots.length > 0)
+            return { isExpanded: !entry.isCollapsed, toggle: () => ui.toggleWorktreeCollapsed(entry.card.key) };
+        if (entry?.kind === 'unused')
+            return { isExpanded: !entry.isCollapsed, toggle: () => ui.toggleUnusedWorktrees(entry.key) };
 
         if (entry?.kind === 'group')
             return { isExpanded: !entry.isCollapsed, toggle: () => ui.toggleFolderCollapsed(entry.group.folder.id) };
@@ -324,15 +391,12 @@ export function AgentList({
     };
 
     const select = (id: string) => {
-        const entry = entries.find(candidate => entryKey(candidate) === id);
-        const row = entry?.kind === 'row' ? entry.row : undefined;
+        const row = visibleRows.get(id);
 
         if (id === NEW_CHAT_ROW) openNewChat(project, ui);
-        // The group of finished sub-agents is no page, and a press on its row has nothing else to do but fold it.
-        else if (row?.kind === 'finished') ui.toggleChatExpanded(row.id);
         else if (row?.kind === 'subagent') ui.openRun(row.id);
         // A heading is a label, not a page: only its chevron, and Right and Left on it, fold the group.
-        else if (!id.startsWith(GROUP_PREFIX)) ui.openChat(id);
+        else if (row?.kind === 'chat') ui.openChat(id);
     };
 
     const renderGroup = (group: AgentGroup, isCollapsed: boolean) => {
@@ -397,12 +461,72 @@ export function AgentList({
         );
     };
 
+    const cardActivity = (card: WorktreeCard) => {
+        const active = [...card.linkedChats, ...card.roots.flatMap(chat => project.threadsBelow(chat.id))].filter(
+            chat => chat.archivedAt === undefined
+        );
+        return active.some(chat => asksThePerson(chat, project.runs))
+            ? 'asking'
+            : active.some(chat => isActiveThread(chat, project.runs))
+              ? 'working'
+              : undefined;
+    };
+
     const renderEntry = (entry: ListEntry) => {
         switch (entry.kind) {
             case 'row':
                 return renderAgentRow(entry.row);
             case 'group':
                 return renderGroup(entry.group, entry.isCollapsed);
+            case 'worktree':
+                return (
+                    <GridListSection
+                        key={entry.card.key}
+                        id={entry.card.key + ':section'}
+                        className={styles.worktreeCard}
+                        data-worktree-card={entry.card.key}
+                        data-drop-position={
+                            order.drop?.indicatorId === entry.card.key ? order.drop.position : undefined
+                        }
+                    >
+                        <WorktreeCardHeader
+                            card={entry.card}
+                            collapsed={entry.isCollapsed}
+                            activity={cardActivity(entry.card)}
+                            showFolder={!grouped && folders.length > 1}
+                            onToggle={() => ui.toggleWorktreeCollapsed(entry.card.key)}
+                            onDragStart={event => order.startCard(event, entry.card.key)}
+                            move={order.cardActions(entry.card.key)}
+                        />
+                        {entry.rows.map(renderAgentRow)}
+                    </GridListSection>
+                );
+            case 'unused':
+                return (
+                    <GridListItem
+                        key={entry.key}
+                        id={entry.key}
+                        text="Unused worktrees"
+                        className={styles.unusedWorktrees}
+                        plateless
+                    >
+                        <span className={styles.worktreeTitle} {...ownEvents}>
+                            <Button
+                                variant="filling"
+                                color="secondary"
+                                size="xs"
+                                iconOnly
+                                aria-label={`${entry.isCollapsed ? 'Expand' : 'Collapse'} unused worktrees`}
+                                aria-expanded={!entry.isCollapsed}
+                                preventFocusOnPress
+                                onPress={() => ui.toggleUnusedWorktrees(entry.key)}
+                            >
+                                {entry.isCollapsed ? <ChevronRight /> : <ChevronDown />}
+                            </Button>
+                            Unused worktrees
+                        </span>
+                    </GridListItem>
+                );
             case 'empty':
                 return (
                     <GridListItem
@@ -425,66 +549,20 @@ export function AgentList({
                 return renderRow(row);
             case 'subagent':
                 return renderSubagent(row);
-            case 'finished':
-                return renderFinished(row);
         }
     };
 
     // A sub-agent is the page of its parent's work, not a chat of its own: nothing to rename, archive, delete, move or drag, and the parent's guards
     // and unread mark do not read it. Its row opens the page and shows the state it is in.
-    const renderSubagent = ({ run, depth, id }: SubagentRow) => {
-        const label = runLabel(run);
-
-        return (
-            <GridListItem
-                key={id}
-                id={id}
-                text={label}
-                icon={<Robot />}
-                endAffix={
-                    <span className={styles.agentStatus}>
-                        <ChatStatus run={run} />
-                    </span>
-                }
-                className={styles.agentRow}
-                style={{ '--depth': depth } as CSSProperties}
-                data-depth={depth}
-                data-drop-position={order.drop?.indicatorId === id ? order.drop.position : undefined}
-            >
-                <span className={styles.title} title={run.summary || undefined}>
-                    {label}
-                </span>
-            </GridListItem>
-        );
-    };
-
-    const renderFinished = (row: FinishedRow) => {
-        const { depth, id, isExpanded, childCount } = row;
-
-        return (
-            <GridListItem
-                key={id}
-                id={id}
-                text={`Finished sub-agents of ${row.chat.title}`}
-                icon={
-                    <Fold
-                        label={`${isExpanded ? 'Collapse' : 'Expand'} finished sub-agents of ${row.chat.title}`}
-                        isExpanded={isExpanded}
-                        icon={<Robot />}
-                        onToggle={() => ui.toggleChatExpanded(id)}
-                    />
-                }
-                endAffix={<span className={styles.count}>{childCount}</span>}
-                className={styles.agentRow}
-                style={{ '--depth': depth } as CSSProperties}
-                data-finished
-                data-depth={depth}
-                data-drop-position={order.drop?.indicatorId === id ? order.drop.position : undefined}
-            >
-                <span className={styles.title}>Finished sub-agents</span>
-            </GridListItem>
-        );
-    };
+    const renderSubagent = ({ run, depth, id }: SubagentRow) => (
+        <SubagentItem
+            key={id}
+            run={run}
+            label={runLabel(run)}
+            depth={depth}
+            drop={order.drop?.indicatorId === id ? order.drop.position : undefined}
+        />
+    );
 
     const renderRow = (row: ChatRow) => {
         const { chat } = row;
@@ -505,6 +583,7 @@ export function AgentList({
             <ChatStatus run={run} threads={threads} draft={draft} unread={unread} className={styles.archiveStatus} />
         );
         const icon = <ChatIcon chat={chat} run={run} threads={threads} showStatus={false} />;
+        const parent = chat.parentChatId ? project.chats.get(chat.parentChatId) : undefined;
 
         return (
             <GridListItem
@@ -547,6 +626,12 @@ export function AgentList({
                             busy={busy}
                             status={status}
                             showPullRequests={showPullRequests}
+                            crossWorktree={
+                                groupedByWorktree &&
+                                row.depth > 0 &&
+                                parent !== undefined &&
+                                chatWorktreeKey(chat, cards) !== chatWorktreeKey(parent, cards)
+                            }
                             isOpen={menuOpenId === chat.id}
                             onOpenChange={open => setMenuOpenId(open ? chat.id : null)}
                             move={menuOpenId === chat.id ? order.actions(chat.id) : undefined}
@@ -661,6 +746,7 @@ function FilterMenu() {
         ...(showFinishedThreads ? ['finished'] : []),
         ...(expandRunningAgents ? ['running'] : []),
         ...(ui.groupByFolder ? ['folders'] : []),
+        ...(ui.groupByWorktree ? ['worktrees'] : []),
     ];
 
     return (
@@ -683,6 +769,7 @@ function FilterMenu() {
                                 if (on('running') !== expandRunningAgents)
                                     chatListPreferences.setExpandRunningAgents(!expandRunningAgents);
                                 if (on('folders') !== ui.groupByFolder) ui.setGroupByFolder(!ui.groupByFolder);
+                                if (on('worktrees') !== ui.groupByWorktree) ui.setGroupByWorktree(!ui.groupByWorktree);
                             }}
                         >
                             <MenuItem
@@ -706,6 +793,13 @@ function FilterMenu() {
                             >
                                 Group chats by folder
                             </MenuItem>
+                            <MenuItem
+                                id="worktrees"
+                                textValue="Group chats by worktree"
+                                endAffix={ui.groupByWorktree ? <Check /> : undefined}
+                            >
+                                Group chats by worktree
+                            </MenuItem>
                         </MenuSection>
                     </Menu>
                 </PopoverScroll>
@@ -713,6 +807,43 @@ function FilterMenu() {
         </PopoverTrigger>
     );
 }
+
+/**
+ * A sub-agent's row. A component of its own that the list draws again only when its run, its place or its drop mark changes, since a chat that ran a workflow lists
+ * hundreds of them and every change to any run draws the list again.
+ */
+const SubagentItem = memo(function SubagentItem({
+    run,
+    label,
+    depth,
+    drop,
+}: {
+    run: Run;
+    label: string;
+    depth: number;
+    drop: 'before' | 'after' | undefined;
+}) {
+    return (
+        <GridListItem
+            id={run.id}
+            text={label}
+            icon={<Robot />}
+            endAffix={
+                <span className={styles.agentStatus}>
+                    <ChatStatus run={run} />
+                </span>
+            }
+            className={styles.agentRow}
+            style={{ '--depth': depth } as CSSProperties}
+            data-depth={depth}
+            data-drop-position={drop}
+        >
+            <span className={styles.title} title={label}>
+                {label}
+            </span>
+        </GridListItem>
+    );
+});
 
 /** The icon of a row that has lines below it (threads, sub-agents): on hover the chevron that folds them takes its place, in the same room. */
 function Fold({
@@ -762,6 +893,7 @@ function RowEnd({
     move,
     branchKey,
     showPullRequests,
+    crossWorktree,
 }: {
     chat: Chat;
     actions: ChatActions;
@@ -772,6 +904,7 @@ function RowEnd({
     move?: { onMoveUp?: () => void; onMoveDown?: () => void };
     branchKey?: BranchPullRequestKey;
     showPullRequests: boolean;
+    crossWorktree: boolean;
 }) {
     const close = () => onOpenChange(false);
 
@@ -779,7 +912,7 @@ function RowEnd({
         // The buttons and the popover are React children of the row, so their clicks and keys would reach the row through the tree.
         <span className={styles.chatActions} {...ownEvents}>
             {status}
-            <BranchPullRequestBadge branchKey={branchKey} visible={showPullRequests} />
+            <BranchPullRequestBadge branchKey={branchKey} visible={showPullRequests} crossWorktree={crossWorktree} />
             {!busy && (
                 <Button
                     className={styles.rowAction}
@@ -846,13 +979,21 @@ function chatBranchKey(
 const BranchPullRequestBadge = observer(function BranchPullRequestBadge({
     branchKey,
     visible,
+    crossWorktree,
 }: {
     branchKey?: BranchPullRequestKey;
     visible: boolean;
+    crossWorktree: boolean;
 }) {
     const fact = useBranchPullRequests(branchKey);
     const pullRequests = fact?.visiblePullRequests ?? [];
-    if (!visible || pullRequests.length === 0) return null;
+    if (!visible) return null;
+    if (pullRequests.length === 0)
+        return crossWorktree ? (
+            <span className={styles.pullRequests} role="img" aria-label="Different worktree" title="Different worktree">
+                <Split aria-hidden="true" />
+            </span>
+        ) : null;
 
     const state = pullRequests.some(pr => pr.state === 'open')
         ? 'open'

@@ -86,9 +86,8 @@ describe('RunDetail, the page', () => {
 
         expect(container.textContent).toContain('Looking for the price helper and its callers.');
         expect(container.querySelector('nav[aria-label="Conversation path"]')?.textContent).toBe(
-            'Simplify bookingExplore agent'
+            'Simplify bookingFind where the price is computed'
         );
-        expect(container.textContent).toContain('Find where the price is computed');
         // The one header is the conversation's own, the path; the old one with the avatar, the Parent chip and the Stop button is gone.
         expect(
             [...container.querySelectorAll('header')].map(found =>
@@ -134,7 +133,7 @@ describe('RunDetail, the page', () => {
         await draw(runOf('r-na-02'));
 
         for (const label of banners) expect(container.querySelector(`[aria-label="${label}"]`)).toBeNull();
-        expect(container.querySelector('[aria-label^="Open General agent"]')).toBeNull();
+        expect(container.querySelector('[aria-label^="Open Update the booking form"]')).toBeNull();
     });
 
     it('reads a finished sub-agent without Reply, Fork or Edit under its answer, and keeps Copy', async () => {
@@ -194,14 +193,14 @@ describe('RunDetail, the message box', () => {
         expect(runOf('r-orch-1').status).toBe('running');
     });
 
-    it('says why when the daemon refuses to stop it, naming the sub-agent as the person reads it', async () => {
+    it('says why when the daemon refuses to stop it, naming the sub-agent by what it was asked to do', async () => {
         await draw(runOf('r-na-02'));
         vi.spyOn(store, 'command').mockResolvedValueOnce(refusal('The session cannot end it'));
 
         await act(async () => stopButton()!.click());
 
         expect(toast.error).toHaveBeenCalledWith({
-            message: 'Could not stop Explore agent: The session cannot end it',
+            message: 'Could not stop Find where the price is computed: The session cannot end it',
         });
     });
 
@@ -220,10 +219,10 @@ describe('RunDetail, the message box', () => {
         expect(box()?.placeholder).toBe('Only its parent can write to this sub-agent');
     });
 
-    it('names a sub-agent that runs inside another sub-agent by its type', async () => {
+    it('names a sub-agent that runs inside another sub-agent by what that one was asked to do', async () => {
         await draw({ ...runOf('r-na-02'), canStopAlone: undefined, parentRunId: 'r-na-03' });
 
-        expect(box()?.placeholder).toBe('Runs inside General agent');
+        expect(box()?.placeholder).toBe('Runs inside Update the booking form');
     });
 });
 

@@ -13,6 +13,7 @@ import {
     FIXTURE_WORKSPACE_CHAT_ID,
     type FixtureData,
     withFixtureWorkspace,
+    withFixtureWorktrees,
 } from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { hotkeys, installDispatcher } from '../../hotkeys';
@@ -24,6 +25,7 @@ import { refreshFolderGit } from '../openWith/useFolderGit';
 import { chatListPreferences } from './chatListPreferences';
 import { Screen } from './Screen';
 import { starCardPreferences } from './starCardState';
+import { chatWorktreeKey } from './worktreeCards';
 
 import type { Editor } from '@tiptap/core';
 import type { ReactNode } from 'react';
@@ -420,6 +422,7 @@ describe('grouped by folder', () => {
             'Show finished sub-threads',
             'Expand running agents',
             'Group chats by folder',
+            'Group chats by worktree',
         ]);
         expect(menuItem('Group chats by folder').getAttribute('aria-checked')).toBe('true');
         expect(rowKeys()).toContain(MAIN_GROUP);
@@ -430,6 +433,7 @@ describe('grouped by folder', () => {
             'Show finished sub-threads',
             'Expand running agents',
             'Group chats by folder',
+            'Group chats by worktree',
         ]);
         expect(menuItem('Group chats by folder').getAttribute('aria-checked')).toBe('true');
         expect(rowKeys()).toContain(head(MAIN));
@@ -514,7 +518,7 @@ describe('grouped by folder', () => {
             await press(name(API.id)!);
             expect([ui().draft, ui().chatId]).toEqual([false, FIXTURE_WORKSPACE_CHAT_ID]);
             expect(isSelected(FIXTURE_WORKSPACE_CHAT_ID)).toBe(true);
-            expect(menuItems()).toEqual(['New chat', 'Copy path', 'Open in…', 'Folder settings…']);
+            expect(menuItems()).toEqual(['New chat', 'Copy path', 'Open in…', 'Tidy up…', 'Folder settings…']);
 
             await press(menuItem('New chat'));
             await draw();
@@ -531,6 +535,7 @@ describe('grouped by folder', () => {
                 'Open in Terminal',
                 'Copy path',
                 'Open in…',
+                'Tidy up…',
                 'Folder settings…',
             ]);
 
@@ -594,6 +599,7 @@ describe('grouped by folder', () => {
                 'New chat',
                 'Copy path',
                 'Open in…',
+                'Tidy up…',
                 'Folder settings…',
             ]);
             expect(item('New chat').getAttribute('aria-disabled')).toBe('true');
@@ -1445,6 +1451,8 @@ describe('threads', () => {
             'c-6',
             'c-6a',
             'c-6b',
+            // The sub-agent of the chat itself, made between its threads (it is over, and the finished are listed).
+            'r-na-07',
             'c-6c',
             'c-6e',
             'c-1',
@@ -1464,6 +1472,7 @@ describe('threads', () => {
         await draw();
 
         expect(rowKeys().filter(key => key?.startsWith('c-6'))).toEqual(['c-6']);
+        expect(rowKeys()).not.toContain('r-na-07');
     });
 
     it('opens a fold with the right arrow and closes it with the left one', async () => {
@@ -1499,6 +1508,7 @@ describe('threads', () => {
             'Show finished sub-threads',
             'Expand running agents',
             'Group chats by folder',
+            'Group chats by worktree',
         ]);
         expect(document.body.querySelector('[role="menu"] header')).toBeNull();
 
@@ -1570,6 +1580,8 @@ describe('threads', () => {
             'c-6',
             'c-6a',
             'c-6b',
+            // The sub-agent of the chat itself, made between its threads (it is over, and the finished are listed).
+            'r-na-07',
             'c-6c',
             'c-6e',
             'c-1',
@@ -1835,5 +1847,319 @@ describe('the Star on GitHub card', () => {
         await draw(() => starCardPreferences.dismiss());
 
         expect(card()).toBeNull();
+    });
+});
+
+describe('worktree cards', () => {
+    async function restart(data = withFixtureWorktrees(createFixtureData())) {
+        act(() => reactRoot.unmount());
+        store.dispose();
+        reactRoot = createRoot(container);
+        store = new RootStore(new FixtureTransport({ data }), {
+            storage: memoryStorage(),
+        });
+        await store.load();
+        await draw();
+    }
+    const workspaceKey = () => chatWorktreeKey(project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!)!;
+    const cardRows = () =>
+        [...container.querySelectorAll<HTMLElement>('[data-worktree-card]')].map(row => row.dataset.worktreeCard);
+    const arrow = (key: string, direction: string) =>
+        act(async () => {
+            rowOf(key).dispatchEvent(new KeyboardEvent('keydown', { key: direction, bubbles: true, cancelable: true }));
+        });
+
+    it('keeps flat order when disabled and puts checkout chats before worktree cards when enabled', async () => {
+        await restart();
+        const before = rowKeys();
+        await press(buttonNamed('Filters'));
+        expect(menuItem('Group chats by worktree').getAttribute('aria-checked')).toBe('false');
+        await press(menuItem('Group chats by worktree'));
+        await draw();
+        expect(
+            rowOf('c-1').compareDocumentPosition(rowOf(workspaceKey())) & Node.DOCUMENT_POSITION_FOLLOWING
+        ).toBeTruthy();
+        expect(
+            rowOf(FIXTURE_WORKSPACE_CHAT_ID).closest('[data-worktree-card]')?.getAttribute('data-worktree-card')
+        ).toBe(workspaceKey());
+        await draw(() => ui().setGroupByWorktree(false));
+        expect(rowKeys()).toEqual(before);
+    });
+
+    it('joins the canonical Git path with its workspace card and opens the selected chat', async () => {
+        await restart();
+        const workspace = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
+        const read = store.transport.getProjectWorktrees.bind(store.transport);
+        vi.spyOn(store.transport, 'getProjectWorktrees').mockImplementation(async projectId =>
+            (await read(projectId)).map(folder => ({
+                ...folder,
+                worktrees: folder.worktrees.map(tree =>
+                    tree.workspaceId === workspace.id ? { ...tree, path: '/real/path/to/worktree' } : tree
+                ),
+            }))
+        );
+        await draw(() => {
+            ui().setGroupByWorktree(true);
+            ui().openChat(FIXTURE_WORKSPACE_CHAT_ID);
+        });
+        await draw();
+        expect(cardRows()).toHaveLength(1);
+        expect(
+            rowOf(FIXTURE_WORKSPACE_CHAT_ID).closest('[data-worktree-card]')?.getAttribute('data-worktree-card')
+        ).toContain(encodeURIComponent('/real/path/to/worktree'));
+        expect(isSelected(FIXTURE_WORKSPACE_CHAT_ID)).toBe(true);
+    });
+
+    it('keeps a manually folded card closed until a chat in it is opened from elsewhere', async () => {
+        await restart();
+        await draw(() => {
+            ui().setGroupByWorktree(true);
+            ui().openChat(FIXTURE_WORKSPACE_CHAT_ID);
+        });
+        const key = workspaceKey();
+        await arrow(key, 'ArrowLeft');
+        await draw();
+        expect(rowOf(FIXTURE_WORKSPACE_CHAT_ID)).toBeNull();
+        await draw(() => ui().openChat('c-4'));
+        await draw(() => ui().openChat(FIXTURE_WORKSPACE_CHAT_ID));
+        await draw();
+        expect(isSelected(FIXTURE_WORKSPACE_CHAT_ID)).toBe(true);
+        expect(ui().collapsedWorktrees).not.toContain(key);
+    });
+
+    it('lists unused actual worktrees only when their section is opened, and orders groups through their menu', async () => {
+        await restart();
+        await draw(() => ui().setGroupByWorktree(true));
+        expect(cardRows()).toEqual([workspaceKey()]);
+        await arrow('@unused:fld_car_rental', 'ArrowRight');
+        await draw();
+        const cards = cardRows();
+        expect(cards.length).toBeGreaterThan(2);
+        const secondUnused = cards[2]!;
+        await press(rowOf(secondUnused).querySelector<HTMLElement>('button[aria-label^="Worktree actions:"]')!);
+        await press(menuItem('Move up'));
+        await draw();
+        expect(cardRows().slice(0, 3)).toEqual([cards[0], cards[2], cards[1]]);
+        expect(ui().worktreeOrder.indexOf(cards[2]!)).toBeLessThan(ui().worktreeOrder.indexOf(cards[1]!));
+    });
+
+    it('starts a draft in a worktree with no chats from its own menu', async () => {
+        await restart();
+        await draw(() => ui().setGroupByWorktree(true));
+        await arrow('@unused:fld_car_rental', 'ArrowRight');
+        await draw();
+        const card = cardRows().find(key => key?.includes('search-filters'))!;
+        await press(rowOf(card).querySelector<HTMLElement>('button[aria-label^="Worktree actions:"]')!);
+        expect(menuItem('Open in Files')).toBeUndefined();
+        expect(menuItem('Open in Terminal')).toBeUndefined();
+        await press(menuItem('New chat'));
+        expect([ui().draft, ui().draftWorkspace]).toEqual([
+            true,
+            { mode: 'existing', path: '/Users/dev/worktrees/car-rental/search-filters' },
+        ]);
+    });
+
+    it.each(['card', 'chip'] as const)('removes the selected worktree from the %s menu', async entry => {
+        await restart();
+        window.desktop = {
+            getOpenApps: async () => ({ editors: [], terminals: [], fileManagers: [] }),
+            openPath: async () => undefined,
+        } as never;
+        try {
+            await draw(() => {
+                ui().setGroupByWorktree(entry === 'card');
+                ui().openChat(FIXTURE_WORKSPACE_CHAT_ID);
+            });
+            const button =
+                entry === 'card'
+                    ? rowOf(workspaceKey()).querySelector<HTMLElement>('button[aria-label^="Worktree actions:"]')!
+                    : container.querySelector<HTMLElement>('button[aria-label^="Current place:"]')!;
+            await press(button);
+            await press(menuItem('Remove worktree…'));
+            await vi.waitFor(() => expect(openConfirmModal).toHaveBeenCalled());
+            await act(async () => {
+                await vi.mocked(openConfirmModal).mock.lastCall![0].onConfirm();
+            });
+            await draw();
+            const snapshot = await store.transport.getProjectSnapshot(FIXTURE_PROJECT_ID);
+            expect({
+                archived: snapshot.chats
+                    .filter(chat => ['c-9', 'c-10'].includes(chat.id))
+                    .map(chat => Boolean(chat.archivedAt)),
+                selected: rowOf(FIXTURE_WORKSPACE_CHAT_ID) !== null && isSelected(FIXTURE_WORKSPACE_CHAT_ID),
+                listed: (await store.transport.getProjectWorktrees(FIXTURE_PROJECT_ID))
+                    .flatMap(group => group.worktrees)
+                    .some(row => row.workspaceId === 'wks_ab12cd34'),
+            }).toEqual({ archived: [true, true], selected: false, listed: false });
+        } finally {
+            window.desktop = undefined;
+        }
+    });
+
+    it('archives a card with its linked and outside descendants only once, preserving earlier archive history and the worktree', async () => {
+        const data = withFixtureWorktrees(createFixtureData());
+        const parent = data.chats.find(chat => chat.id === 'c-9')!;
+        const archivedAt = data.chats.find(chat => chat.id === 'c-10')!.archivedAt;
+        data.chats.push(
+            { ...parent, id: 'linked-child', parentChatId: parent.id, orchestratorRunId: undefined },
+            {
+                ...parent,
+                id: 'outside-child',
+                parentChatId: parent.id,
+                workspace: undefined,
+                orchestratorRunId: undefined,
+            }
+        );
+        await restart(data);
+        const command = vi.spyOn(store.transport, 'command');
+        await draw(() => ui().setGroupByWorktree(true));
+        await press(rowOf(workspaceKey()).querySelector<HTMLElement>('button[aria-label^="Worktree actions:"]')!);
+        await press(menuItem('Archive all chats…'));
+        await vi.waitFor(() => expect(openConfirmModal).toHaveBeenCalled());
+        await act(async () => {
+            await vi.mocked(openConfirmModal).mock.lastCall![0].onConfirm();
+        });
+        await draw();
+        const snapshot = await store.transport.getProjectSnapshot(FIXTURE_PROJECT_ID);
+        expect({
+            archived: snapshot.chats
+                .filter(chat => ['c-9', 'linked-child', 'outside-child'].includes(chat.id))
+                .map(chat => [chat.id, Boolean(chat.archivedAt)]),
+            previousArchive: snapshot.chats.find(chat => chat.id === 'c-10')?.archivedAt,
+            commands: command.mock.calls.map(([input]) => input).filter(input => input.type === 'chat.setArchived'),
+            tree: (await store.transport.getProjectWorktrees(FIXTURE_PROJECT_ID))
+                .flatMap(group => group.worktrees)
+                .some(row => row.workspaceId === 'wks_ab12cd34'),
+        }).toEqual({
+            archived: [
+                ['c-9', true],
+                ['linked-child', true],
+                ['outside-child', true],
+            ],
+            previousArchive: archivedAt,
+            commands: [{ type: 'chat.setArchived', chatId: 'c-9', archived: true }],
+            tree: true,
+        });
+    });
+
+    it('does not read the worktree list when grouping is off, and refreshes it on focus and folder Git changes', async () => {
+        await restart();
+        const read = vi.spyOn(store.transport, 'getProjectWorktrees');
+        await act(async () => window.dispatchEvent(new Event('focus')));
+        expect(read).not.toHaveBeenCalled();
+        await draw(() => ui().setGroupByWorktree(true));
+        expect(read).toHaveBeenCalledWith(FIXTURE_PROJECT_ID);
+        read.mockClear();
+        await act(async () => window.dispatchEvent(new Event('focus')));
+        expect(read).toHaveBeenCalledWith(FIXTURE_PROJECT_ID);
+        read.mockClear();
+        await act(async () => refreshFolderGit(FIXTURE_PROJECT_ID, 'fld_car_rental'));
+        expect(read).toHaveBeenCalledWith(FIXTURE_PROJECT_ID);
+    });
+
+    const drag = async (from: string, to: string) => {
+        const transfer = new DataTransfer();
+        const source = rowOf(from).querySelector<HTMLElement>('[draggable="true"]')!;
+        const target = rowOf(to);
+        const event = (type: string) => {
+            const drag = new MouseEvent(type, { bubbles: true, cancelable: true });
+            Object.defineProperty(drag, 'dataTransfer', { value: transfer });
+            return drag;
+        };
+        await act(async () => {
+            source.dispatchEvent(event('dragstart'));
+            target.dispatchEvent(event('dragover'));
+            target.dispatchEvent(event('drop'));
+            source.dispatchEvent(event('dragend'));
+        });
+        await draw();
+    };
+
+    it('refuses a cross-group drop and a drop onto a card header', async () => {
+        await restart();
+        await draw(() => ui().setGroupByWorktree(true));
+        const before = rowKeys();
+        await drag(FIXTURE_WORKSPACE_CHAT_ID, 'c-4');
+        await drag('c-4', workspaceKey());
+        expect(rowKeys()).toEqual(before);
+        expect(ui().chatOrder).toEqual([]);
+    });
+
+    it('moves a card with its entire group by dragging another card', async () => {
+        await restart();
+        await draw(() => ui().setGroupByWorktree(true));
+        await arrow('@unused:fld_car_rental', 'ArrowRight');
+        await draw();
+        const cards = cardRows();
+        await drag(cards[1]!, cards[2]!);
+        expect(cardRows().slice(0, 3)).toEqual([cards[0], cards[2], cards[1]]);
+    });
+
+    it('keeps cross-worktree threads below their root and only shows the place indicator without another status', async () => {
+        await restart();
+        const workspace = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
+        await draw(() => {
+            project().chats.set('c-6', { ...project().chats.get('c-6')!, workspace });
+            ui().setGroupByWorktree(true);
+            ui().toggleChatExpanded('c-6');
+            ui().openChat('c-6b');
+        });
+        await draw();
+        expect(
+            ['c-6', 'c-6a', 'c-6b', 'c-6c'].map(id => [
+                rowOf(id).closest('[data-worktree-card]')?.getAttribute('data-worktree-card'),
+                rowOf(id).querySelector('[aria-label="Different worktree"]') !== null,
+            ])
+        ).toEqual([
+            [workspaceKey(), false],
+            [workspaceKey(), false],
+            [workspaceKey(), true],
+            [workspaceKey(), false],
+        ]);
+    });
+
+    it('marks a cross-worktree grandchild relative to its immediate parent, not to the root', async () => {
+        await restart();
+        const workspace = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
+        await draw(() => {
+            project().chats.set('c-6a', { ...project().chats.get('c-6a')!, workspace });
+            project().chats.set('c-6a1', { ...project().chats.get('c-6a1')!, workspace });
+            ui().setGroupByWorktree(true);
+            ui().openChat('c-6a1');
+        });
+        await draw();
+        expect(rowOf('c-6a1').querySelector('[aria-label="Different worktree"]')).toBeNull();
+        expect(rowOf(workspaceKey()).querySelector('[aria-label="Chats working"]')).not.toBeNull();
+
+        await draw(() => {
+            const { workspace: _, ...chat } = project().chats.get('c-6a1')!;
+            project().chats.set(chat.id, chat);
+        });
+        expect(rowOf('c-6a1').querySelector('[aria-label="Different worktree"]')).not.toBeNull();
+    });
+
+    it('opens the card of a restored thread whose parent remains archived', async () => {
+        await restart();
+        const workspace = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
+        const key = workspaceKey();
+        await draw(() => {
+            project().chats.set('c-6', { ...project().chats.get('c-6')!, archivedAt: 1 });
+            project().chats.set('c-6a', { ...project().chats.get('c-6a')!, workspace });
+            ui().setGroupByWorktree(true);
+            ui().openChat('c-4');
+            ui().toggleWorktreeCollapsed(key);
+        });
+        expect(rowOf('c-6a')).toBeNull();
+        await draw(() => ui().openChat('c-6a1'));
+        await draw();
+        expect(rowOf('c-6a1')).not.toBeNull();
+        expect(ui().collapsedWorktrees).not.toContain(key);
+    });
+
+    it('does not offer a chat move across checkout and worktree boundaries', async () => {
+        await restart();
+        await draw(() => ui().setGroupByWorktree(true));
+        await press(rowOf(FIXTURE_WORKSPACE_CHAT_ID).querySelector<HTMLElement>('button[aria-label="Chat actions"]')!);
+        expect([menuItem('Move up'), menuItem('Move down')]).toEqual([undefined, undefined]);
     });
 });

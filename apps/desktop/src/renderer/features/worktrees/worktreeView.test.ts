@@ -78,7 +78,7 @@ describe('removeHint', () => {
             'Git has it locked: on an external drive'
         );
         expect(removeHint({ blocked: 'locked', locked: '' })).toBe('Git has it locked');
-        expect(removeHint({ blocked: 'chats' })).toBe('A chat works in it');
+        expect(removeHint({ blocked: 'chats' })).toBeUndefined();
     });
 
     it("says the repository's own working tree, which a row that is not the folder's checkout can be, is one git does not remove", () => {

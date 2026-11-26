@@ -6,6 +6,7 @@ import { getRun } from '../db/runs';
 import { requireChat, saveChat } from '../domain/chats';
 import { appendItem } from '../domain/items';
 import { placeQueued, queueOf, settleSteers, userItemOf, withQueue } from '../domain/queue';
+import { assertChatAvailable, chatRemovalReserved } from '../domain/workspaces';
 import { conflict, errorMessage, notFound } from '../errors';
 import { newId } from '../ids';
 import { mergeNotices, noticeContent, noticeSummary } from './notices';
@@ -188,6 +189,7 @@ export class ChatQueue {
      * compacting already, it changes nothing. Call it in the transaction of the command.
      */
     compact(chat: Chat, run: Run, command: string): void {
+        assertChatAvailable(this.deps.store, chat.id);
         const { store, runs, driver } = this.deps;
         const queue = queueOf(chat);
 
@@ -275,6 +277,7 @@ export class ChatQueue {
      * while the orchestrator is busy it keeps its place, and at rest it runs once the orchestrator has finished, and is refused while it waits for background work.
      */
     sendNow(chatId: string, itemId: string): { chatId: string; runId: string } {
+        assertChatAvailable(this.deps.store, chatId);
         const { store, runs, driver } = this.deps;
 
         return store.tx(() => {
@@ -388,7 +391,14 @@ export class ChatQueue {
             const current = getRun(store.db, run.id);
             const queue = chat ? queueOf(chat) : [];
 
-            if (!chat || !current || chat.orchestratorRunId !== run.id || !isAtRest(current) || queue.length === 0) {
+            if (
+                !chat ||
+                chatRemovalReserved(store, chat.id) ||
+                !current ||
+                chat.orchestratorRunId !== run.id ||
+                !isAtRest(current) ||
+                queue.length === 0
+            ) {
                 return;
             }
 

@@ -1077,6 +1077,25 @@ describe('UiStore', () => {
         });
     });
 
+    it('keeps worktree grouping, card order and folds per project across a restart', () => {
+        const storage = memoryStorage();
+        const store = new UiStore(storage);
+        const ui = store.forProject('p1');
+
+        expect(ui.groupByWorktree).toBe(false);
+        ui.setGroupByWorktree(true);
+        ui.setWorktreeOrder(['tree-b', 'tree-a']);
+        ui.toggleWorktreeCollapsed('tree-a');
+        ui.toggleUnusedWorktrees('unused');
+        expect(store.forProject('p2')).toMatchObject({ groupByWorktree: false, worktreeOrder: [] });
+        expect(new UiStore(storage).forProject('p1')).toMatchObject({
+            groupByWorktree: true,
+            worktreeOrder: ['tree-b', 'tree-a'],
+            collapsedWorktrees: ['tree-a'],
+            expandedUnusedWorktrees: ['unused'],
+        });
+    });
+
     it('opens the folded group of a chat opened from elsewhere, and changes nothing when it is open', () => {
         const ui = new UiStore().forProject('p1');
 

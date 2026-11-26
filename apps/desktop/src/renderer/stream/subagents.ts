@@ -25,6 +25,13 @@ export function subagentLabel(name: string | undefined): string | undefined {
     return LABELS[id] ?? id.charAt(0).toUpperCase() + id.slice(1);
 }
 
+/** What a sub-agent was asked to do: the one line its agent gave it (`Run.summary`), on a single line; nothing when it gave none. */
+export function agentPurpose(run: Pick<Run, 'summary'>): string | undefined {
+    const purpose = run.summary.replace(/\s+/g, ' ').trim();
+
+    return purpose === '' ? undefined : purpose;
+}
+
 /** The agent type a sub-agent call asks for, from its input: Claude's `subagent_type` or `name`, Codex's and others' `agent_type`. */
 export function subagentName(input: unknown): string | undefined {
     return firstString(input, ['name', 'subagent_type', 'agent_type', 'agentType']);

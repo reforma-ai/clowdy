@@ -368,7 +368,7 @@ describe('Manage worktrees', () => {
         expect(buttonIn(row(FOUND_WORKTREE), 'New chat in this worktree: search-filters')!.disabled).toBe(false);
     });
 
-    it('shows a chat count beside the changes and previews the chat names on keyboard focus', async () => {
+    it('shows a chat count beside the changes without a preview tooltip', async () => {
         await open();
 
         const worktree = row(CLOWDY_WORKTREE);
@@ -382,10 +382,8 @@ describe('Manage worktrees', () => {
 
         await focusByKeyboard(count);
 
-        const tooltip = await openTooltip();
-
-        expect(tooltip.textContent).toContain('Weekend surcharge in a worktree');
-        expect(tooltip.textContent).toContain('Show the weekend surcharge in the form (archived)');
+        await settle();
+        expect(document.querySelector('[role="tooltip"]')).toBeNull();
     });
 
     it('opens the chat that works in a worktree when it is pressed, and closes the dialog', async () => {
@@ -471,24 +469,23 @@ describe('Manage worktrees', () => {
         expect(document.activeElement).not.toBe(trigger);
     });
 
-    it("draws Remove in the More menu of every worktree but the folder's own checkout, and holds it off for a lock and for a chat that works in the worktree", async () => {
+    it("draws Remove in the More menu of every worktree but the folder's own checkout, and holds it off for a lock", async () => {
         await open();
 
-        for (const path of [FOUND_WORKTREE, MISSING_WORKTREE])
+        for (const path of [FOUND_WORKTREE, MISSING_WORKTREE, CLOWDY_WORKTREE])
             expect(removeOf(await moreMenu(path))?.off, path).toBe(false);
 
-        for (const path of [CLOWDY_WORKTREE, LOCKED_WORKTREE])
-            expect(removeOf(await moreMenu(path))?.off, path).toBe(true);
+        expect(removeOf(await moreMenu(LOCKED_WORKTREE))?.off).toBe(true);
 
         expect(removeOf(await moreMenu('/Users/dev/car-rental'))).toBeUndefined();
         // Remove is not a button of the row any more.
         expect(row(FOUND_WORKTREE).querySelector('button[aria-label^="Remove"]')).toBeNull();
     });
 
-    it('opens no confirmation from a Remove that is off, for a chat or for a lock', async () => {
+    it('opens no confirmation from a Remove that is off for a lock', async () => {
         await open();
 
-        for (const path of [CLOWDY_WORKTREE, LOCKED_WORKTREE]) {
+        for (const path of [LOCKED_WORKTREE]) {
             await openMore(path);
             await click(item('Remove')!);
             await pressEscape();
@@ -505,11 +502,20 @@ describe('Manage worktrees', () => {
         expect(removeOf(await moreMenu(FOUND_WORKTREE))?.text).toBe('Remove…');
     });
 
+    it('offers Remove for a worktree with only archived chats', async () => {
+        const data = withFixtureWorktrees(createFixtureData());
+        data.chats.find(chat => chat.id === FIXTURE_WORKSPACE_CHAT_ID)!.archivedAt = Date.now();
+        await open({ data });
+
+        expect(row(CLOWDY_WORKTREE).textContent).toContain('2 chats');
+        expect(removeOf(await moreMenu(CLOWDY_WORKTREE))?.text).toBe('Remove…');
+    });
+
     it('names, under a Remove that is off, the reason the daemon gave, and under no other', async () => {
         await open();
 
         expect(removeOf(await moreMenu(LOCKED_WORKTREE))?.text).toContain('Git has it locked: on an external drive');
-        expect(removeOf(await moreMenu(CLOWDY_WORKTREE))?.text).toContain('A chat works in it');
+        expect(removeOf(await moreMenu(CLOWDY_WORKTREE))?.off).toBe(false);
         // Nothing stops a worktree that nobody works in and nobody locked: its Remove waits for the confirmation, not for a reason.
         expect(removeOf(await moreMenu(FOUND_WORKTREE))?.text).toBe('Remove…');
     });

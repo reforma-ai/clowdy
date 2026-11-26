@@ -88,10 +88,10 @@ async function draw(calls: ToolBody[], active = true) {
 }
 
 describe("the card of an agent's own sub-agent", () => {
-    it('reads `Ran Explore agent` and Finished once its call is done, and opens the native child the call started', async () => {
+    it('reads what the sub-agent was asked to do and Finished once its call is done, and opens the native child the call started', async () => {
         await draw([fixtureCall('tc-agent-1')]);
 
-        expect(text()).toBe('Ran Explore agentFinished');
+        expect(text()).toBe('Map the booking flowFinished');
         expect(card().getAttribute('aria-busy')).toBeNull();
 
         await act(async () => opener()!.click());
@@ -99,11 +99,23 @@ describe("the card of an agent's own sub-agent", () => {
         expect(ui().runId).toBe('r-na-01');
     });
 
-    it('shimmers its verb while the call runs, with what the child does now as its one live line', async () => {
+    it('shimmers what the sub-agent was asked to do while the call runs, with what the child does now as its one live line', async () => {
+        await draw([fixtureCall('tc-agent-2')]);
+
+        expect(text()).toBe('Find where the price is computedSearching useBookingPrice');
+        expect(card().getAttribute('aria-busy')).toBe('true');
+        expect(opener()!.getAttribute('aria-label')).toBe(
+            'Find where the price is computed. Searching useBookingPrice'
+        );
+    });
+
+    it('shimmers its verb instead when the child was given no purpose', async () => {
+        const runs = store.selectedProject!.runs;
+
+        runInAction(() => runs.set('r-na-02', { ...runs.get('r-na-02')!, summary: '' }));
         await draw([fixtureCall('tc-agent-2')]);
 
         expect(text()).toBe('ExploringSearching useBookingPrice');
-        expect(card().getAttribute('aria-busy')).toBe('true');
         expect(opener()!.getAttribute('aria-label')).toBe('Exploring. Searching useBookingPrice');
     });
 
@@ -170,6 +182,7 @@ describe("the card of an agent's own sub-agent", () => {
                 ...runs.get('r-na-01')!,
                 id: 'r-na-x',
                 name: 'Sub-agent',
+                summary: '',
                 parentToolCallId: 'tc-unnamed',
             })
         );

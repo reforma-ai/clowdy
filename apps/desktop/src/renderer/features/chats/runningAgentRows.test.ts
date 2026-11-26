@@ -52,10 +52,19 @@ describe('runningAgents', () => {
 });
 
 describe("a row's words", () => {
-    it('names a sub-agent by its type', () => {
-        expect(agentRowLabel({ name: 'Explore' })).toBe('Explore agent');
-        expect(agentRowLabel({ name: 'general-purpose' })).toBe('General agent');
-        expect(agentRowLabel({ name: 'Sub-agent' })).toBe('Sub-agent');
+    it('names a sub-agent by what it was asked to do', () => {
+        expect(agentRowLabel({ name: 'general-purpose', summary: 'Review clone route diff' })).toBe(
+            'Review clone route diff'
+        );
+        expect(agentRowLabel({ name: 'Explore', summary: ' Find where\n the price is computed ' })).toBe(
+            'Find where the price is computed'
+        );
+    });
+
+    it('names a sub-agent that was given no purpose by its type', () => {
+        expect(agentRowLabel({ name: 'Explore', summary: '' })).toBe('Explore agent');
+        expect(agentRowLabel({ name: 'general-purpose', summary: '  ' })).toBe('General agent');
+        expect(agentRowLabel({ name: 'Sub-agent', summary: '' })).toBe('Sub-agent');
     });
 });
 

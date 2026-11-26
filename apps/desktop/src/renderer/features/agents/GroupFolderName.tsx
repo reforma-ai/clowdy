@@ -1,6 +1,7 @@
 import { Button } from '@clowdy/components/Button';
 import { MenuTrigger } from '@clowdy/components/List';
 import { Popover } from '@clowdy/components/Popover';
+import { Trash } from '@clowdy/icons/14';
 import { cn } from '@clowdy/lib';
 
 import { tildePath } from '../../shared/displayPath';
@@ -8,6 +9,7 @@ import { homeFolder } from '../../shared/homeFolder';
 import { useProjectState, useRootStore } from '../../stores';
 import { canOpenPaths, type OpenTarget, OpenWithMenu, useFolderGit, useFolderRepair } from '../openWith';
 import { openManageWorktrees } from '../worktrees';
+import { openTidyWorktrees } from '../worktrees/TidyWorktreesDialog';
 import styles from './AgentList.module.css';
 
 import type { ProjectFolder } from '@clowdy/protocol';
@@ -39,6 +41,14 @@ function GroupFolderMenu({
             repair={repair}
             git={git}
             onNewChat={onNewChat}
+            extra={[
+                {
+                    id: 'tidy-worktrees',
+                    label: 'Tidy up…',
+                    icon: <Trash />,
+                    run: () => void openTidyWorktrees({ root, projectId: project.id, folderId: folder.id }),
+                },
+            ]}
             onManageWorktrees={() => openManageWorktrees({ root, projectId: project.id, folderId: folder.id })}
             aria-label="Open folder"
         />

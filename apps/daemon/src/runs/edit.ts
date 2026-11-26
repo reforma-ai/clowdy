@@ -4,6 +4,7 @@ import { getChatLastRun, setChatLastRun, setForkPoint } from '../db/chats';
 import { firstUserItem, itemBefore, listItems, nextSeq } from '../db/items';
 import { firstWords, isFirstWords, requireChat, saveChat } from '../domain/chats';
 import { cutStream, streamItem } from '../domain/items';
+import { assertChatAvailable, beginChatChange } from '../domain/workspaces';
 import { conflict, EngineFailure, invalid, notFound, unavailable } from '../errors';
 import { reasonOf } from './fork';
 import { requireEnabled, sendMessage } from './messages';
@@ -53,6 +54,7 @@ const filesOf = (items: readonly StreamItem[]): string[] =>
 function planEdit(services: Services, chatId: string, itemId: string, input: EditInput): EditPlan {
     const { store, runs, agents, attachments } = services;
     const chat = requireChat(store, chatId);
+    assertChatAvailable(store, chatId);
 
     if (!chat.orchestratorRunId) {
         throw invalid('This chat has no conversation to edit yet');
@@ -135,6 +137,7 @@ export async function prepareEdit(
 
     editing.set(store, busy);
     busy.add(plan.chat.id);
+    const release = beginChatChange(store, chatId);
 
     let sessionId: string | undefined;
 
@@ -143,6 +146,7 @@ export async function prepareEdit(
             sessionId = await driver.forkSession(plan.run.id, plan.ref);
         }
     } catch (error) {
+        release();
         busy.delete(plan.chat.id);
 
         if (error instanceof EngineFailure) {
@@ -153,10 +157,12 @@ export async function prepareEdit(
     }
 
     return () => {
+        release();
         try {
             // The chat may have changed while the agent copied the session: a message sent from the composer, another command, the chat deleted. The copy is then
             // left in the agent's own list, unused.
             const source = requireChat(store, plan.chat.id);
+            assertChatAvailable(store, source.id);
             const run = source.orchestratorRunId === plan.run.id ? runs.require(plan.run.id) : undefined;
             const item = run && streamItem(store, run, plan.item.id);
 

@@ -2,11 +2,13 @@ import { useRef, useState } from 'react';
 
 import { useProjectState, useProjectUi } from '../../stores';
 import { folderById } from './agentTree';
+import { chatWorktreeKey, type WorktreeCard } from './worktreeCards';
 
 import type { Chat, ChatId } from '@clowdy/protocol';
 import type { DragEvent } from 'react';
 
 const CHAT_DRAG_TYPE = 'application/x-clowdy-chat-order';
+const CARD_DRAG_TYPE = 'application/x-clowdy-worktree-order';
 const CHAT_ROW = '[role="row"][data-depth]';
 type Position = 'before' | 'after';
 
@@ -57,7 +59,7 @@ function targetAt(event: DragEvent): DropTarget | null {
     return { targetId, indicatorId: last.dataset.key ?? targetId, position: 'after' };
 }
 
-export function useChatListOrder(chats: readonly Chat[], visibleChatId?: ChatId) {
+export function useChatListOrder(chats: readonly Chat[], visibleChatId?: ChatId, cards: readonly WorktreeCard[] = []) {
     const ui = useProjectUi();
     const project = useProjectState();
     const { folders } = project.project;
@@ -68,11 +70,15 @@ export function useChatListOrder(chats: readonly Chat[], visibleChatId?: ChatId)
         const chat = chats.find(candidate => candidate.id === id);
 
         if (!chat) return [];
-        if (!ui.groupByFolder) return chats;
+        const workspace = ui.groupByWorktree ? chatWorktreeKey(chat, cards) : undefined;
+        if (workspace) return chats.filter(candidate => chatWorktreeKey(candidate, cards) === workspace);
 
         const folderId = folderById(folders, chat.folderId).id;
-
-        return chats.filter(candidate => folderById(folders, candidate.folderId).id === folderId);
+        return chats.filter(
+            candidate =>
+                (!ui.groupByFolder || folderById(folders, candidate.folderId).id === folderId) &&
+                (!ui.groupByWorktree || candidate.workspace === undefined)
+        );
     };
 
     const move = (id: ChatId, targetId: ChatId, position: Position) => {
@@ -80,7 +86,7 @@ export function useChatListOrder(chats: readonly Chat[], visibleChatId?: ChatId)
         const from = siblings.indexOf(id);
         const target = siblings.indexOf(targetId);
 
-        if (target < 0 || from === target) return;
+        if (from < 0 || target < 0 || from === target) return;
 
         const at = target + (position === 'after' ? 1 : 0) - (from < target ? 1 : 0);
 
@@ -107,7 +113,48 @@ export function useChatListOrder(chats: readonly Chat[], visibleChatId?: ChatId)
         );
     };
 
+    const cardSiblings = (id: string) => {
+        const card = cards.find(candidate => candidate.key === id);
+        return card
+            ? cards.filter(
+                  candidate =>
+                      candidate.used === card.used && (!ui.groupByFolder || candidate.folder.id === card.folder.id)
+              )
+            : [];
+    };
+
+    const moveCard = (id: string, targetId: string, position: Position) => {
+        const siblings = cardSiblings(id).map(card => card.key);
+        const from = siblings.indexOf(id);
+        const to = siblings.indexOf(targetId);
+        if (from < 0 || to < 0 || from === to) return;
+        const inGroup = new Set(siblings);
+        siblings.splice(from, 1);
+        siblings.splice(to + (position === 'after' ? 1 : 0) - (from < to ? 1 : 0), 0, id);
+        const known = new Set(ui.worktreeOrder);
+        const slots = [...ui.worktreeOrder, ...cards.map(card => card.key).filter(key => !known.has(key))];
+        let index = 0;
+        ui.setWorktreeOrder(slots.map(key => (inGroup.has(key) ? siblings[index++] : key)));
+    };
+
     const dropFor = (event: DragEvent) => {
+        if (source.current !== null && event.dataTransfer.types.includes(CARD_DRAG_TYPE)) {
+            const card = (event.target as Element).closest<HTMLElement>('[data-worktree-card]');
+            const targetId = card?.dataset.worktreeCard;
+            if (
+                !card ||
+                !targetId ||
+                targetId === source.current ||
+                !cardSiblings(source.current).some(candidate => candidate.key === targetId)
+            )
+                return null;
+            const box = card.getBoundingClientRect();
+            return {
+                targetId,
+                indicatorId: targetId,
+                position: event.clientY < box.top + box.height / 2 ? ('before' as const) : ('after' as const),
+            };
+        }
         if (source.current === null || !event.dataTransfer.types.includes(CHAT_DRAG_TYPE)) return null;
 
         const target = targetAt(event);
@@ -126,6 +173,21 @@ export function useChatListOrder(chats: readonly Chat[], visibleChatId?: ChatId)
 
     return {
         drop,
+        startCard(event: DragEvent<HTMLElement>, key: string) {
+            source.current = key;
+            event.dataTransfer.setData(CARD_DRAG_TYPE, key);
+            event.dataTransfer.effectAllowed = 'move';
+        },
+        cardActions(id: string) {
+            const siblings = cardSiblings(id);
+            const index = siblings.findIndex(card => card.key === id);
+            const before = siblings[index - 1];
+            const after = index < 0 ? undefined : siblings[index + 1];
+            return {
+                onMoveUp: before ? () => moveCard(id, before.key, 'before') : undefined,
+                onMoveDown: after ? () => moveCard(id, after.key, 'after') : undefined,
+            };
+        },
         start(event: DragEvent<HTMLElement>, id: ChatId) {
             source.current = id;
             event.dataTransfer.setData(CHAT_DRAG_TYPE, id);
@@ -164,7 +226,9 @@ export function useChatListOrder(chats: readonly Chat[], visibleChatId?: ChatId)
 
                 if (target && source.current !== null) {
                     event.preventDefault();
-                    move(source.current, target.targetId, target.position);
+                    if (event.dataTransfer.types.includes(CARD_DRAG_TYPE))
+                        moveCard(source.current, target.targetId, target.position);
+                    else move(source.current, target.targetId, target.position);
                 }
 
                 end();

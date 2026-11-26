@@ -70,14 +70,14 @@ export function worktreeMark(
 
 /**
  * Why a worktree has no Remove to press, in a few words, or `undefined` when nothing stops it (the folder's own checkout has no Remove at all). The daemon's `blocked` says
- * which reason holds first; `main` on a row that is not the folder's own checkout is the repository's primary working tree, which git itself never removes.
+ * which reason holds first; `main` on a row that is not the folder's own checkout is protected. Linked chats alone are no longer a blocker: the confirmation checks their runs and offers disposition.
  */
 export function removeHint({ blocked, locked }: Pick<WorktreeInfo, 'blocked' | 'locked'>): string | undefined {
     if (blocked === 'locked') return lockTip(locked ?? '');
 
     if (blocked === 'main') return "The repository's own working tree, which git does not remove";
 
-    return blocked === 'chats' ? 'A chat works in it' : undefined;
+    return undefined;
 }
 
 /** What the branch of a worktree being removed may be deleted with it: its name, whether the box starts ticked, and what is known of its work. */

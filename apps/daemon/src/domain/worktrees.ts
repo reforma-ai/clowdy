@@ -125,13 +125,13 @@ async function isInBase(folder: string, entry: ListedWorktree, base: string): Pr
 
 /**
  * Why Remove is not offered, the first that holds: the folder's own checkout, another folder of the project and the repository's primary working tree (the last git never removes), a
- * lock, and chats that work in the worktree (an archived one included, since it may be picked up again). `workspace.remove` refuses the same worktrees for the same reasons.
+ * lock, and unarchived chats that work in the worktree. `workspace.remove` refuses the same worktrees for the same reasons.
  */
 function blockOf(owner: WorktreeOwner, locked: boolean, chats: readonly WorktreeChat[]): WorktreeBlock | undefined {
     if (owner.main || owner.primary || owner.sibling) return 'main';
     if (locked) return 'locked';
 
-    return chats.length > 0 ? 'chats' : undefined;
+    return chats.some(chat => !chat.archived) ? 'chats' : undefined;
 }
 
 /**
