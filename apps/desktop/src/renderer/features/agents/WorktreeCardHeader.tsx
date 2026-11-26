@@ -40,13 +40,7 @@ export function WorktreeCardHeader({
             path: card.path,
         });
     const title = [showFolder ? card.folderName : undefined, worktreeLabel(card)].filter(Boolean).join(', ');
-    const tooltip = [
-        card.path,
-        card.pending ? 'Worktree not prepared yet' : card.missing ? 'Worktree no longer exists' : undefined,
-        card.used && card.roots.length === 0 ? 'Chats are listed under their parent' : undefined,
-    ]
-        .filter(Boolean)
-        .join('\n');
+    const tooltip = card.pending ? 'Worktree not prepared yet' : card.missing ? 'Worktree no longer exists' : undefined;
     const stop = (event: SyntheticEvent) => event.stopPropagation();
     return (
         <GridListItem
