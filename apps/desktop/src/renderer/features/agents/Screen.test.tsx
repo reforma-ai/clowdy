@@ -2105,6 +2105,42 @@ describe('worktree cards', () => {
         expect(rowOf(FIXTURE_WORKSPACE_CHAT_ID)).toBeNull();
     });
 
+    it('opens the worktree actions on right-clicking its header', async () => {
+        await restart();
+        await draw(() => ui().setGroupByWorktree(true));
+        await act(async () => {
+            rowOf(workspaceKey()).dispatchEvent(
+                new MouseEvent('contextmenu', {
+                    bubbles: true,
+                    cancelable: true,
+                    button: 2,
+                    clientX: 120,
+                    clientY: 120,
+                })
+            );
+        });
+        expect(menuItem('Remove worktree…')).toBeDefined();
+        expect(menuItem('Switch branch')).toBeDefined();
+    });
+
+    it('opens chat actions rather than worktree actions on a chat inside the card', async () => {
+        await restart();
+        await draw(() => ui().setGroupByWorktree(true));
+        await act(async () => {
+            rowOf(FIXTURE_WORKSPACE_CHAT_ID).dispatchEvent(
+                new MouseEvent('contextmenu', {
+                    bubbles: true,
+                    cancelable: true,
+                    button: 2,
+                    clientX: 120,
+                    clientY: 120,
+                })
+            );
+        });
+        expect(menuItem('Rename')).toBeDefined();
+        expect(menuItem('Remove worktree…')).toBeUndefined();
+    });
+
     it('shows unused worktrees in the list when enabled in Display', async () => {
         await restart();
         await draw(() => ui().setGroupByWorktree(true));
@@ -2120,46 +2156,58 @@ describe('worktree cards', () => {
         expect(cardRows()).toEqual([workspaceKey()]);
     });
 
-    it('opens branch selection for the clicked unused worktree without changing the selected chat', async () => {
-        await restart();
-        const original = store.transport.command.bind(store.transport);
-        const command = vi.spyOn(store.transport, 'command').mockImplementation(input =>
-            input.type === 'workspace.open'
-                ? Promise.resolve({
-                      ok: true,
-                      requestId: 'test',
-                      data: {
-                          workspace: {
-                              id: 'wks_ab12cd34',
-                              folderId: input.folderId,
-                              path: input.path,
-                              ready: true,
-                              managed: false,
+    it.each(['button', 'context menu'])(
+        'opens branch selection for the clicked unused worktree via %s without changing the selected chat',
+        async entry => {
+            await restart();
+            const original = store.transport.command.bind(store.transport);
+            const command = vi.spyOn(store.transport, 'command').mockImplementation(input =>
+                input.type === 'workspace.open'
+                    ? Promise.resolve({
+                          ok: true,
+                          requestId: 'test',
+                          data: {
+                              workspace: {
+                                  id: 'wks_ab12cd34',
+                                  folderId: input.folderId,
+                                  path: input.path,
+                                  ready: true,
+                                  managed: false,
+                              },
                           },
-                      },
-                  })
-                : original(input)
-        );
-        await draw(() => {
-            ui().setGroupByWorktree(true);
-            ui().openChat('c-4');
-            chatListPreferences.setShowUnusedWorktrees(true);
-        });
-        await draw();
-        const card = cardRows().find(key => key?.includes('search-filters'))!;
-        await press(rowOf(card).querySelector<HTMLElement>('button[aria-label^="Worktree actions:"]')!);
-        await press(menuItem('Switch branch'));
-        await vi.waitFor(() =>
-            expect(command).toHaveBeenCalledWith({
-                type: 'workspace.open',
-                projectId: FIXTURE_PROJECT_ID,
-                folderId: 'fld_car_rental',
-                path: '/Users/dev/worktrees/car-rental/search-filters',
-            })
-        );
-        expect(ui().chatId).toBe('c-4');
-        await vi.waitFor(() => expect(document.querySelector('input[placeholder="Filter branches"]')).not.toBeNull());
-    });
+                      })
+                    : original(input)
+            );
+            await draw(() => {
+                ui().setGroupByWorktree(true);
+                ui().openChat('c-4');
+                chatListPreferences.setShowUnusedWorktrees(true);
+            });
+            await draw();
+            const card = cardRows().find(key => key?.includes('search-filters'))!;
+            if (entry === 'button')
+                await press(rowOf(card).querySelector<HTMLElement>('button[aria-label^="Worktree actions:"]')!);
+            else
+                await act(async () => {
+                    rowOf(card).dispatchEvent(
+                        new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 })
+                    );
+                });
+            await press(menuItem('Switch branch'));
+            await vi.waitFor(() =>
+                expect(command).toHaveBeenCalledWith({
+                    type: 'workspace.open',
+                    projectId: FIXTURE_PROJECT_ID,
+                    folderId: 'fld_car_rental',
+                    path: '/Users/dev/worktrees/car-rental/search-filters',
+                })
+            );
+            expect(ui().chatId).toBe('c-4');
+            await vi.waitFor(() =>
+                expect(document.querySelector('input[placeholder="Filter branches"]')).not.toBeNull()
+            );
+        }
+    );
 
     it('starts a draft in a worktree with no chats from its own menu', async () => {
         await restart();

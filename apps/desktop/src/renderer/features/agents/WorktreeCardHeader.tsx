@@ -1,6 +1,6 @@
 import { Button } from '@clowdy/components/Button';
 import { GridListItem, listBoxItemDataShow } from '@clowdy/components/List';
-import { Popover, PopoverTrigger } from '@clowdy/components/Popover';
+import { Popover, PopoverTrigger, useContextMenu } from '@clowdy/components/Popover';
 import { toast } from '@clowdy/components/Toast';
 import { ChevronDown, ChevronRight, More, NewChat, Split, Version } from '@clowdy/icons/14';
 import { mainFolder } from '@clowdy/protocol';
@@ -40,6 +40,8 @@ export function WorktreeCardHeader({
     const project = useProjectState();
     const ui = useProjectUi();
     const [menuOpen, setMenuOpen] = useState(false);
+    const contextMenu = useContextMenu();
+    useEffect(() => contextMenu.close, [contextMenu.close]);
     const [switchWorkspace, setSwitchWorkspace] = useState<ChatWorkspace>();
     const request = useRef(0);
     const openingPicker = useRef(false);
@@ -60,9 +62,9 @@ export function WorktreeCardHeader({
         [card.path, card.folder.id, project.id]
     );
     const root = useRootStore();
-    const switchBranch = async () => {
+    const switchBranch = async (fromContext = false) => {
         if (card.missing || card.pending || card.workspace?.ready === false) return;
-        openingPicker.current = true;
+        openingPicker.current = !fromContext;
         const current = ++request.current;
         const result = await root.command({
             type: 'workspace.open',
@@ -130,7 +132,14 @@ export function WorktreeCardHeader({
             plateless
             data-missing={card.missing || undefined}
             data-pending={card.pending || undefined}
-            data-open={menuOpen || undefined}
+            data-open={menuOpen || contextMenu.isOpen || undefined}
+            onContextMenu={event => {
+                event.stopPropagation();
+                openingPicker.current = false;
+                previewGeneration++;
+                closePicker();
+                contextMenu.areaProps.onContextMenu(event);
+            }}
             endAffix={
                 <span className={styles.worktreeActions} onClick={stop} onPointerDown={stop} onKeyDown={stop}>
                     {collapsed && activity && (
@@ -211,6 +220,19 @@ export function WorktreeCardHeader({
                 <span className={styles.title} draggable onDragStart={onDragStart} title={tooltip}>
                     {title}
                 </span>
+                {contextMenu.isOpen && (
+                    <Popover {...contextMenu.popoverProps} placement="bottom start" spacing="xs">
+                        <WorktreeCardMenu
+                            card={card}
+                            onClose={contextMenu.close}
+                            onNewChat={newChat}
+                            onSwitch={() => {
+                                setMenuOpen(true);
+                                void switchBranch(true);
+                            }}
+                        />
+                    </Popover>
+                )}
             </span>
         </GridListItem>
     );
@@ -221,10 +243,12 @@ function WorktreeCardMenu({
     card,
     onNewChat,
     onSwitch,
+    onClose,
 }: {
     card: WorktreeCard;
     onNewChat: () => void;
     onSwitch: () => void;
+    onClose?: () => void;
 }) {
     const root = useRootStore();
     const project = useProjectState();
@@ -257,6 +281,7 @@ function WorktreeCardMenu({
             missing={card.missing || card.pending}
             git={git}
             onNewChat={onNewChat}
+            onClose={onClose}
             extra={[
                 ...(!card.missing && !card.pending && card.workspace?.ready !== false
                     ? [
