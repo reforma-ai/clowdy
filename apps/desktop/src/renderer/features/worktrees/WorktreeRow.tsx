@@ -90,9 +90,9 @@ export function WorktreeRowSummary({
     const badge = mark && (
         <Badge
             size="xs"
-            color={mark.color}
+            color={tidy && mark.label === 'Merged' ? 'accent' : mark.color}
             textValue={mark.label}
-            tooltip={mark.tip}
+            tooltip={tidy ? undefined : mark.tip}
             icon={tidy ? <MarkIcon aria-hidden="true" /> : undefined}
         >
             {mark.label}
