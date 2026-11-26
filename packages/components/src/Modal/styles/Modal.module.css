@@ -148,7 +148,12 @@
 
 .tabsList {
     margin-right: auto;
-    margin-left: calc(var(--modal-tab-padding) / -2);
+}
+
+/* The tab strip sits as far from the window's left edge as from the title's top and bottom: the room the title's height leaves around a tab. */
+.title:has([data-modal-tabs-list]) {
+    padding-top: 0;
+    padding-left: calc((var(--modal-title-height) - 1px - var(--modal-tab-height)) / 2);
 }
 
 /* Same weight as the single window title (heading-6 is 500). Size stays with the tab size. */

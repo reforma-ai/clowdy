@@ -14,10 +14,9 @@
     --modal-content-gap: var(--spacing-12);
 
     --modal-tab-gap: var(--spacing-xs);
-    --modal-tab-padding: var(--spacing-md);
     --modal-tab-active-fade: 1;
     --modal-tab-inactive-fade: 0.57;
-    --modal-tab-height: var(--spacing-36);
+    --modal-tab-height: var(--spacing-30);
     --modal-tab-background: var(--color-secondary-muted);
     --modal-tab-radius: var(--radius-lg);
     --modal-overlay-inset: var(--spacing-xxl);
