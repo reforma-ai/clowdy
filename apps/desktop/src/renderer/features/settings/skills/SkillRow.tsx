@@ -25,7 +25,7 @@ export function SkillRow({ skill, isPending, isDisabled, onToggle }: SkillRowPro
         <SettingsBlock as="li" className={styles.row} data-off={!enabled || undefined}>
             <div className={styles.body}>
                 <div className={styles.titleLine}>
-                    <Text weight="medium" truncate className={styles.name}>
+                    <Text variant="md" weight="medium" truncate className={styles.name}>
                         {name}
                     </Text>
                 </div>

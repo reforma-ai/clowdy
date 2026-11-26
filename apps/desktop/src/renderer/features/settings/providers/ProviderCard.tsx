@@ -37,7 +37,7 @@ export function ProviderCard({ agent }: { agent: AgentInfo }) {
 
                 <div className={styles.who}>
                     <header className={styles.title}>
-                        <Text weight="medium" truncate title={agent.name}>
+                        <Text variant="md" weight="medium" truncate title={agent.name}>
                             {agent.name}
                         </Text>
                         {agent.version && (

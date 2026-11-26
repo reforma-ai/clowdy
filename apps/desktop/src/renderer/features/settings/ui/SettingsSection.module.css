@@ -5,6 +5,12 @@
     min-width: 0;
 }
 
+.caption {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xxs);
+}
+
 .heading {
     display: flex;
     align-items: baseline;
