@@ -107,13 +107,28 @@ describe('RunDetail, the page', () => {
     });
 
     it('has none of the chat banners over its box', async () => {
-        // c-1 has two sub-agents at work: on its own page their rows stand over the box, and here nothing does.
+        // c-1 has two sub-agents at work and tasks: on its own page their plates stand over the box, and here nothing does.
+        const banners = ['Work in progress', 'Chat tasks', 'Changes from the last run'];
+        const { ChatView } = await import('../chats/ChatView');
+        const chat = store.selectedProject!.chats.get('c-1')!;
+
+        await act(async () =>
+            reactRoot.render(
+                <RootStoreProvider value={store}>
+                    <ChatView chat={chat} />
+                </RootStoreProvider>
+            )
+        );
+        await act(async () => {});
+
+        expect(container.querySelector('[role="group"][aria-label="Work in progress"]')).not.toBeNull();
+        expect(container.querySelector('[role="group"][aria-label="Chat tasks"]')).not.toBeNull();
+
         await draw(runOf('r-na-02'));
         await draw(runOf('r-na-02'));
 
+        for (const label of banners) expect(container.querySelector(`[aria-label="${label}"]`)).toBeNull();
         expect(container.querySelector('[aria-label^="Open General agent"]')).toBeNull();
-        expect(container.querySelector('[aria-label^="Open Explore agent"]')).toBeNull();
-        expect(container.querySelector('section[aria-label="Tasks"]')).toBeNull();
     });
 
     it('reads a finished sub-agent without Reply, Fork or Edit under its answer, and keeps Copy', async () => {

@@ -95,6 +95,7 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
                 ref={streamView}
                 run={run}
                 stream={stream}
+                links={links}
                 top={parent && <ThreadCrumb parent={parent} onOpen={() => links.onOpenChat(parent.id)} />}
                 scrollMemory={scrollMemory}
                 // Reply puts a message in the message box as a card, or quotes selected words into the draft; a fork is a conversation to go on in, and an edit sends the

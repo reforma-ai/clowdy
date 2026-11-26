@@ -26,6 +26,7 @@ export function RunDetail({ run }: { run: Run }) {
         <ConversationView
             run={run}
             stream={stream}
+            links={links}
             top={
                 chat && (
                     <ConversationCrumb
