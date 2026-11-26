@@ -38,8 +38,21 @@ export interface PathMenuProps {
     onClose?: () => void;
 }
 
-/** The menu of a path that is not on the disk (an agent named a file it has not made, a file that was deleted or moved): it says so, and keeps the copies of the path and the caller's own items, the things that still work. */
-function AbsentMenu({ target, extra = [], onClose }: Omit<PathMenuProps, 'expectGone'>) {
+export interface AbsentMenuProps {
+    target: OpenTarget;
+    /** The caller's own items, which stay when the path is not on the disk (`Discard changes…` on a deleted file). */
+    extra?: readonly OpenMenuExtra[];
+    /** The project is being searched for a file the path could mean: the menu says so in place of saying that the path is not there. */
+    isLooking?: boolean;
+    /** Called when an item is pressed: a menu that is not in a `MenuTrigger` shuts itself here. */
+    onClose?: () => void;
+}
+
+/**
+ * The menu of a path that is not on the disk (an agent named a file it has not made, a file that was deleted or moved): it says so, and keeps the copies of the path and the
+ * caller's own items, the things that still work. While the project is searched for the file, it says that instead.
+ */
+export function AbsentMenu({ target, extra = [], isLooking = false, onClose }: AbsentMenuProps) {
     return (
         <PopoverScroll>
             <Menu
@@ -55,7 +68,11 @@ function AbsentMenu({ target, extra = [], onClose }: Omit<PathMenuProps, 'expect
                 }}
             >
                 <MenuSection aria-label="Path">
-                    <MenuHeader>{`This ${target.kind === 'directory' ? 'folder' : 'file'} doesn't exist`}</MenuHeader>
+                    <MenuHeader>
+                        {isLooking
+                            ? 'Looking for this file'
+                            : `This ${target.kind === 'directory' ? 'folder' : 'file'} doesn't exist`}
+                    </MenuHeader>
                     <MenuItem id="copyPath" icon={<Copy aria-hidden="true" />} textValue="Copy path">
                         Copy path
                     </MenuItem>

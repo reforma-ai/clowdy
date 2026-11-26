@@ -60,6 +60,54 @@ export const actionIcon = (action: OpenAction): ReactNode => {
     }
 };
 
+/** The item of an action: its own icon and label, off when the disk has nothing for it. */
+export const actionItem = (action: OpenAction): ReactNode => (
+    <MenuItem
+        key={action.id}
+        id={action.id}
+        icon={actionIcon(action)}
+        textValue={action.label}
+        isDisabled={action.isDisabled}
+    >
+        {action.label}
+    </MenuItem>
+);
+
+/** `Open in…`, after a separator: the submenu of what leaves the app (the actions of the `outside` group). Nothing when there are none. */
+export function OpenInSubmenu({
+    actions,
+    onAction,
+}: {
+    actions: readonly OpenAction[];
+    onAction: (key: string) => void;
+}) {
+    if (actions.length === 0) return null;
+
+    return (
+        <>
+            <MenuSeparator />
+            <MenuSection aria-label="Other programs">
+                <SubmenuTrigger>
+                    <MenuItem
+                        id="outside"
+                        icon={<Follow aria-hidden="true" />}
+                        textValue="Open in…"
+                        isDisabled={actions.every(action => action.isDisabled)}
+                        endAffix={<ChevronRight />}
+                    >
+                        Open in…
+                    </MenuItem>
+                    <Popover spacing="xs">
+                        <Menu aria-label="Open in" size="sm" onAction={key => onAction(String(key))}>
+                            <For each={actions}>{actionItem}</For>
+                        </Menu>
+                    </Popover>
+                </SubmenuTrigger>
+            </MenuSection>
+        </>
+    );
+}
+
 /** The section of a menu that holds the caller's own items, under a separator; nothing when there are none. */
 export function ExtraMenuSection({ extra }: { extra: readonly OpenMenuExtra[] }) {
     if (extra.length === 0) return null;
@@ -130,17 +178,6 @@ export function OpenWithMenu({
         else if (key === 'remove') repair?.remove?.();
         else (extra.find(own => own.id === key) ?? actions.find(action => action.id === key))?.run();
     };
-    const item = (action: OpenAction) => (
-        <MenuItem
-            key={action.id}
-            id={action.id}
-            icon={actionIcon(action)}
-            textValue={action.label}
-            isDisabled={action.isDisabled}
-        >
-            {action.label}
-        </MenuItem>
-    );
 
     return (
         <PopoverScroll>
@@ -171,31 +208,9 @@ export function OpenWithMenu({
                             New chat
                         </MenuItem>
                     )}
-                    <For each={here}>{item}</For>
+                    <For each={here}>{actionItem}</For>
                 </MenuSection>
-                {outside.length > 0 && (
-                    <>
-                        <MenuSeparator />
-                        <MenuSection aria-label="Other programs">
-                            <SubmenuTrigger>
-                                <MenuItem
-                                    id="outside"
-                                    icon={<Follow aria-hidden="true" />}
-                                    textValue="Open in…"
-                                    isDisabled={outside.every(action => action.isDisabled)}
-                                    endAffix={<ChevronRight />}
-                                >
-                                    Open in…
-                                </MenuItem>
-                                <Popover spacing="xs">
-                                    <Menu aria-label="Open in" size="sm" onAction={key => run(String(key))}>
-                                        <For each={outside}>{item}</For>
-                                    </Menu>
-                                </Popover>
-                            </SubmenuTrigger>
-                        </MenuSection>
-                    </>
-                )}
+                <OpenInSubmenu actions={outside} onAction={run} />
                 <ExtraMenuSection extra={extra} />
                 {onManageWorktrees && (
                     <>

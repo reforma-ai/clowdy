@@ -69,7 +69,8 @@ export interface OpenEffects {
 }
 
 export interface OpenActionsInput {
-    target: OpenTarget;
+    /** A path outside every folder of the project has no folder and no project: only where it is on the disk, and whether it is a file or a folder. */
+    target: Pick<OpenTarget, 'path' | 'relative' | 'kind'>;
     programs: OpenPrograms;
     git?: FolderGit;
     /** The folder is gone from the disk. */

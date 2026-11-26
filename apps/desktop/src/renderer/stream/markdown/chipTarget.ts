@@ -3,7 +3,8 @@ import { type Place, placePath } from '../../features/sidePanel/currentPlace';
 
 import type { ProjectFolder, ProjectId } from '@clowdy/protocol';
 
-const isAbsolute = (path: string) => path.startsWith('/') || /^[A-Za-z]:\//.test(path);
+/** Whether a chip's path (forward slashes) is a full path on the disk, a drive letter or a leading slash, and not one that is written from the project's folder. */
+export const isAbsolute = (path: string) => path.startsWith('/') || /^[A-Za-z]:\//.test(path);
 
 /** A folder's path as a chip writes paths: forward slashes, no trailing one. */
 const slashed = (path: string) => path.replaceAll('\\', '/').replace(/\/+$/, '');
