@@ -1,5 +1,5 @@
 import { FileIcon } from '@clowdy/components/FileIcon';
-import { Menu, MenuHeader, MenuItem, MenuSection } from '@clowdy/components/List';
+import { Menu, MenuItem } from '@clowdy/components/List';
 import { Popover, PopoverScroll, useContextMenu } from '@clowdy/components/Popover';
 import { Show } from '@clowdy/components/Show';
 import { toast } from '@clowdy/components/Toast';
@@ -7,8 +7,7 @@ import { Copy } from '@clowdy/icons/14';
 import { cn } from '@clowdy/lib';
 
 import { openInFiles } from '../../features/files/openInFiles';
-import { useKindOnDisk } from '../../features/files/useKindOnDisk';
-import { type OpenTarget, OpenWithMenu, openEffects, useFolderGit } from '../../features/openWith';
+import { openEffects, PathMenu } from '../../features/openWith';
 import { currentPlace, isSamePlace, placeOf } from '../../features/sidePanel/currentPlace';
 import chipStyles from '../../shared/Chip.module.css';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
@@ -23,55 +22,6 @@ export interface FileChipProps {
     /** `12` or `12-20`, from a citation of lines. */
     lines?: string;
     className?: string;
-}
-
-/**
- * The menu of a path that is in a folder of the project: the same as everywhere (`OpenWithMenu`), with the git facts of its folder read when it opens. A path
- * written with no trailing slash is taken for a file until the disk says it is a folder (the terminal, `Open in Finder` and the `/tree/` page of GitHub follow).
- * When the disk says the path is not there, nothing in that menu could work on it, so it gives way to `AbsentMenu`.
- */
-function TargetMenu({ target, onClose }: { target: OpenTarget; onClose: () => void }) {
-    const git = useFolderGit(target.projectId, target.folder.id, target.workspace);
-    const kind = useKindOnDisk(target.projectId, target, target.relative);
-
-    if (kind === null) return <AbsentMenu target={target} onClose={onClose} />;
-
-    return (
-        <OpenWithMenu
-            target={kind ? { ...target, kind } : target}
-            git={git}
-            onClose={onClose}
-            aria-label="File actions"
-        />
-    );
-}
-
-/** The menu of a path that is not on the disk (an agent named a file it has not made, or one that was moved): it says so, and keeps the copies of the path, the one thing that still works. */
-function AbsentMenu({ target, onClose }: { target: OpenTarget; onClose: () => void }) {
-    return (
-        <PopoverScroll>
-            <Menu
-                aria-label="File actions"
-                size="sm"
-                onAction={key => {
-                    onClose();
-                    openEffects.copy(key === 'copyRelative' ? target.relative : target.path);
-                }}
-            >
-                <MenuSection aria-label="Path">
-                    <MenuHeader>{`This ${target.kind === 'directory' ? 'folder' : 'file'} doesn't exist`}</MenuHeader>
-                    <MenuItem id="copyPath" icon={<Copy aria-hidden="true" />} textValue="Copy path">
-                        Copy path
-                    </MenuItem>
-                    {target.relative !== '' && (
-                        <MenuItem id="copyRelative" icon={<Copy aria-hidden="true" />} textValue="Copy relative path">
-                            Copy relative path
-                        </MenuItem>
-                    )}
-                </MenuSection>
-            </Menu>
-        </PopoverScroll>
-    );
 }
 
 /** The menu of a path that is in no folder of the project: only what does not need a folder, the copy of the path as it was written. */
@@ -157,7 +107,7 @@ export function FileChip({ path, lines, className }: FileChipProps) {
             <Show when={contextMenu.isOpen}>
                 <Popover {...contextMenu.popoverProps} placement="bottom start" spacing="xs">
                     {target ? (
-                        <TargetMenu target={target} onClose={contextMenu.close} />
+                        <PathMenu target={target} onClose={contextMenu.close} />
                     ) : (
                         <OutsideMenu path={clean} onClose={contextMenu.close} />
                     )}

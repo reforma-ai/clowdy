@@ -17,6 +17,15 @@ import { type FolderGit, type OpenAction, type OpenTarget, openActions } from '.
 import type { ReactNode } from 'react';
 import type { FolderRepair } from './useFolderRepair';
 
+/** An item of the caller's own, which the menu draws under a separator after its own (`Discard changes…` on a changed file). */
+export interface OpenMenuExtra {
+    id: string;
+    label: string;
+    icon: ReactNode;
+    isDanger?: boolean;
+    run: () => void;
+}
+
 export interface OpenWithMenuProps {
     target: OpenTarget;
     /** The folder is gone from the disk: what needs it is off, and the menu says so. */
@@ -26,6 +35,8 @@ export interface OpenWithMenuProps {
     git: FolderGit | undefined;
     /** Offers a new chat in the target's checkout. */
     onNewChat?: () => void;
+    /** The caller's own items, in a section of their own after `Open in…`. */
+    extra?: readonly OpenMenuExtra[];
     /** A last item, under a separator, `Folder settings…`, runs this (it opens the folder's settings and worktrees). Without it there is no such item. */
     onManageWorktrees?: () => void;
     /** Called when an item is pressed, before it runs: a menu that is not in a `MenuTrigger` shuts itself here. */
@@ -49,6 +60,26 @@ export const actionIcon = (action: OpenAction): ReactNode => {
     }
 };
 
+/** The section of a menu that holds the caller's own items, under a separator; nothing when there are none. */
+export function ExtraMenuSection({ extra }: { extra: readonly OpenMenuExtra[] }) {
+    if (extra.length === 0) return null;
+
+    return (
+        <>
+            <MenuSeparator />
+            <MenuSection aria-label="More">
+                <For each={extra}>
+                    {({ id, label, icon, isDanger }) => (
+                        <MenuItem key={id} id={id} icon={icon} textValue={label} isDanger={isDanger}>
+                            {label}
+                        </MenuItem>
+                    )}
+                </For>
+            </MenuSection>
+        </>
+    );
+}
+
 /**
  * The menu of a file or a folder of the project, to go inside a `Popover`. At the top what the app does itself: Open in Files and Open in Terminal (a folder, when
  * the window shows the target's place: its folder, or the worktree of the open chat), and the copies of the path. After a separator, `Open in…`, a submenu of what leaves the app: the editor, the file manager,
@@ -61,6 +92,7 @@ export function OpenWithMenu({
     repair,
     git,
     onNewChat,
+    extra = [],
     onManageWorktrees,
     onClose,
     'aria-label': label,
@@ -96,7 +128,7 @@ export function OpenWithMenu({
         else if (key === 'new-chat') onNewChat?.();
         else if (key === 'locate') repair?.locate();
         else if (key === 'remove') repair?.remove?.();
-        else actions.find(action => action.id === key)?.run();
+        else (extra.find(own => own.id === key) ?? actions.find(action => action.id === key))?.run();
     };
     const item = (action: OpenAction) => (
         <MenuItem
@@ -164,6 +196,7 @@ export function OpenWithMenu({
                         </MenuSection>
                     </>
                 )}
+                <ExtraMenuSection extra={extra} />
                 {onManageWorktrees && (
                     <>
                         <MenuSeparator />

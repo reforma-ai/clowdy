@@ -22,6 +22,7 @@ import { overrideTransport } from '../../daemon/testing';
 import { type Transport, TransportError } from '../../daemon/transport';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { chatFolder } from '../agents/agentTree';
+import { kindOnDisk } from '../files/openInFiles';
 import { chatPlace } from '../sidePanel/currentPlace';
 import ChangesTab from './ChangesTab';
 import { gitFactsOf } from './gitFacts';
@@ -33,6 +34,11 @@ import type { GitChanges, GitFileSides } from '@clowdy/protocol';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+// A path is a file on the disk unless a test says the disk has nothing there.
+vi.mock('../files/openInFiles', async importOriginal => ({
+    ...(await importOriginal<typeof import('../files/openInFiles')>()),
+    kindOnDisk: vi.fn(async () => 'file'),
+}));
 // happy-dom has no layout: the view builds its resizable group once its box has a width, which it is told.
 vi.mock('./useBoxWidth', () => ({
     useBoxWidth: () => [() => undefined, 900],
@@ -547,15 +553,128 @@ describe('the Changes tab of a chat in a worktree', () => {
         expect(label.querySelector('bdo')).toBeNull();
     });
 
-    it('copies the path of a file from its card', async () => {
-        const write = vi.fn().mockResolvedValue(undefined);
+    describe('the menu of a file', () => {
+        const items = () =>
+            [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].map(row => row.textContent);
+        const item = (text: string) =>
+            [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+                row => row.textContent === text
+            )!;
+        const header = (path: string) => card(path).firstElementChild!;
+        const rightClick = (target: Element) =>
+            act(async () => {
+                target.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 }));
+            });
+        // Where the file is on the disk: the chat's worktree.
+        const ABSOLUTE = '/Users/dev/Clowdy/workspaces/car-rental/ab12cd34/car-rental/src/booking/price.ts';
 
-        vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText: write } });
-        await start();
-        await draw();
-        await press(button('Copy the path of src/booking/price.ts'));
+        beforeEach(() => {
+            vi.mocked(kindOnDisk).mockReset();
+            vi.mocked(kindOnDisk).mockResolvedValue('file');
+        });
 
-        expect(write).toHaveBeenCalledExactlyOnceWith('src/booking/price.ts');
+        it('opens from the More button of a card with what the other menus of a path have, and copies the path from it', async () => {
+            const write = vi.fn().mockResolvedValue(undefined);
+
+            vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText: write } });
+            await start();
+            await draw();
+
+            expect(container.querySelector('button[aria-label^="Copy the path of"]')).toBeNull();
+
+            await press(button('More for src/booking/price.ts'));
+            await settle();
+
+            expect(items()).toEqual(['Open in Files', 'Copy path', 'Copy relative path', 'Open in…']);
+            expect(items()).not.toContain('Discard changes…');
+
+            await press(item('Copy path'));
+
+            expect(write).toHaveBeenCalledExactlyOnceWith(ABSOLUTE);
+        });
+
+        it('copies the path inside the folder from its second copy', async () => {
+            const write = vi.fn().mockResolvedValue(undefined);
+
+            vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText: write } });
+            await start();
+            await draw();
+            await press(button('More for src/booking/price.ts'));
+            await settle();
+            await press(item('Copy relative path'));
+
+            expect(write).toHaveBeenCalledExactlyOnceWith('src/booking/price.ts');
+        });
+
+        it('opens at a right-click anywhere on the header, the same menu, and for the file that was clicked', async () => {
+            await start();
+            await draw();
+            await rightClick(header('notes.md'));
+            await settle();
+
+            expect(items()).toEqual(['Open in Files', 'Copy path', 'Copy relative path', 'Open in…']);
+            expect(kindOnDisk).toHaveBeenCalledWith(store, FIXTURE_PROJECT_ID, expect.anything(), 'notes.md');
+        });
+
+        it('says a deleted file is not there at once, and keeps only the copies of its path', async () => {
+            vi.mocked(kindOnDisk).mockReturnValue(new Promise(() => undefined));
+            await start({
+                wrap: base =>
+                    overrideTransport(base, {
+                        getGitChanges: async (project, place, scope) => {
+                            const answer = await base.getGitChanges(project, place, scope);
+
+                            if (!answer.isRepository) return answer;
+
+                            return {
+                                ...answer,
+                                files: answer.files.map(file =>
+                                    file.path === 'notes.md' ? { ...file, kind: 'deleted' as const } : file
+                                ),
+                            };
+                        },
+                    }),
+            });
+            await draw();
+            await rightClick(header('notes.md'));
+
+            // At once, before the disk has answered.
+            expect(items()).toEqual(['Copy path', 'Copy relative path']);
+            expect(document.body.textContent).toContain("This file doesn't exist");
+        });
+
+        it('shows the full menu of a deleted file when the disk says it is there', async () => {
+            await start({
+                wrap: base =>
+                    overrideTransport(base, {
+                        getGitChanges: async (project, place, scope) => {
+                            const answer = await base.getGitChanges(project, place, scope);
+
+                            if (!answer.isRepository) return answer;
+
+                            return {
+                                ...answer,
+                                files: answer.files.map(file =>
+                                    file.path === 'notes.md' ? { ...file, kind: 'deleted' as const } : file
+                                ),
+                            };
+                        },
+                    }),
+            });
+            await draw();
+            await rightClick(header('notes.md'));
+            await settle();
+
+            expect(items()).toEqual(['Open in Files', 'Copy path', 'Copy relative path', 'Open in…']);
+        });
+
+        it('marks the header while its menu is open, so the button stays on show', async () => {
+            await start();
+            await draw();
+            await press(button('More for src/booking/price.ts'));
+
+            expect(header('src/booking/price.ts').hasAttribute('data-menu-open')).toBe(true);
+        });
     });
 
     it('folds individual cards and uses one button to collapse a mixed list or expand a folded list', async () => {

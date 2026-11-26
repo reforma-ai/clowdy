@@ -162,7 +162,7 @@ export function ChangesView({
                 >
                     <ResizablePanel id={`${id}-reading`} className={styles.reading} minSize={CHANGES_READING_MIN_WIDTH}>
                         <ChangesToolbar model={model} end={!open && <SidebarToggle open={false} onPress={toggle} />} />
-                        <ChangesList ref={list} model={model} />
+                        <ChangesList ref={list} model={model} place={place} />
                     </ResizablePanel>
 
                     <Show when={open}>
