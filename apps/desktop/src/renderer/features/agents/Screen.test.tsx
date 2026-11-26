@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+
+import { Modal } from '@clowdy/components/Modal';
 import { openConfirmModal } from '@clowdy/components/modals';
 import { emptyComposerDoc, plainTextToDoc } from '@clowdy/components/RichInput';
 import { runInAction } from 'mobx';
@@ -29,7 +31,7 @@ import { starCardPreferences } from './starCardState';
 import { chatWorktreeKey } from './worktreeCards';
 
 import type { Editor } from '@tiptap/core';
-import type { ReactNode } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import type { KeyValueStorage } from '../../stores/storage';
 
 // `Modal` cannot load under the desktop's Vitest (decorators), and no confirmation is opened here.
@@ -112,7 +114,7 @@ const menuItem = (name: string) => {
 };
 
 /** Opens a submenu the way a keyboard user does, so both the menu and its controls are available. */
-const openProjectSubmenu = async (name: 'Layout' | 'Filter') => {
+const openProjectSubmenu = async (name: 'Layout' | 'Display') => {
     await press(buttonNamed('Project menu'));
     await act(async () => {
         menuItem(name).dispatchEvent(
@@ -140,6 +142,25 @@ afterEach(() => {
     chatListPreferences.setShowFinishedThreads(true);
     chatListPreferences.setExpandRunningAgents(true);
 });
+
+const drag = async (from: string, to: string, before = false) => {
+    const transfer = new DataTransfer();
+    transfer.setDragImage = vi.fn();
+    const source = rowOf(from).querySelector<HTMLElement>('[draggable="true"]')!;
+    const target = rowOf(to);
+    const event = (type: string) => {
+        const drag = new MouseEvent(type, { bubbles: true, cancelable: true, clientY: before ? -1 : 0 });
+        Object.defineProperty(drag, 'dataTransfer', { value: transfer });
+        return drag;
+    };
+    await act(async () => {
+        source.dispatchEvent(event('dragstart'));
+        target.dispatchEvent(event('dragover'));
+        target.dispatchEvent(event('drop'));
+        source.dispatchEvent(event('dragend'));
+    });
+    await draw();
+};
 
 describe('the list', () => {
     it('keeps the chat panel from becoming a scroll container', () => {
@@ -177,8 +198,7 @@ describe('the list', () => {
         const chatKeys = () => rowKeys().filter(key => key?.startsWith('c-'));
 
         expect(chatKeys()).toEqual(['c-4', 'c-5', 'c-3', 'c-6', 'c-1', 'c-2']);
-        await press(rowOf('c-5').querySelector<HTMLElement>('button[aria-label="Chat actions"]')!);
-        await press(menuItem('Move up'));
+        await drag('c-5', 'c-4', true);
         await draw();
         expect(chatKeys()).toEqual(['c-5', 'c-4', 'c-3', 'c-6', 'c-1', 'c-2']);
         expect(isSelected('c-4')).toBe(true);
@@ -191,6 +211,15 @@ describe('the list', () => {
             project().chats.set('c-new', { ...chat, id: 'c-new', createdAt: now, updatedAt: now });
         });
         expect(chatKeys()).toEqual(['c-new', 'c-5', 'c-4', 'c-3', 'c-6', 'c-1', 'c-2']);
+    });
+
+    it('omits move actions from a chat menu while keeping its other actions', async () => {
+        await press(rowOf('c-5').querySelector<HTMLElement>('button[aria-label="Chat actions"]')!);
+        expect(menuItem('Move up')).toBeUndefined();
+        expect(menuItem('Move down')).toBeUndefined();
+        expect(menuItem('Rename')).toBeDefined();
+        expect(menuItem('Archive')).toBeDefined();
+        expect(menuItem('Delete')).toBeDefined();
     });
 
     it('keeps the row of an open `⋯` menu as if hovered, since the pointer is in the menu and not on the row', async () => {
@@ -961,7 +990,7 @@ describe('grouped by folder', () => {
             await restart();
             await draw(() => ui().openChat('c-2'));
 
-            expect(folderLine()?.textContent).toBe('car-rental-api, feature/payments');
+            expect(folderLine()?.textContent).toBe('feature/payments');
             expect(folderLine()?.getAttribute('title')).toBe('~/car-rental-api');
             // Read only: nothing in it opens a list or takes a press.
             expect(folderSelect()).toBeNull();
@@ -970,7 +999,7 @@ describe('grouped by folder', () => {
             // A chat with no folder works in the main one.
             await draw(() => ui().openChat('c-1'));
 
-            expect(folderLine()?.textContent).toBe('car-rental, main');
+            expect(folderLine()?.textContent).toBe('main');
         });
 
         it('is under the message box of the chat the page made, in the folder picked there', async () => {
@@ -990,7 +1019,7 @@ describe('grouped by folder', () => {
 
             expect([...project().chats.keys()].some(id => !before.has(id))).toBe(true);
             expect(folderSelect()).toBeNull();
-            expect(folderLine()?.textContent).toBe('car-rental-api, feature/payments');
+            expect(folderLine()?.textContent).toBe('feature/payments');
         });
 
         it('says when the folder is gone from the disk', async () => {
@@ -1018,15 +1047,17 @@ describe('grouped by folder', () => {
             expect(folderLine()?.hasAttribute('data-missing')).toBe(false);
         });
 
-        it('shows a chat folder only in a project with multiple folders, grouped or flat', async () => {
+        it('shows the folder in a flat list and hides it when grouped by folder or worktree', async () => {
             await restart({ grouping: false });
             await draw(() => ui().openChat('c-2'));
 
             expect(folderLine()?.textContent).toBe('car-rental-api, feature/payments');
 
-            await draw(() => ui().setGroupByFolder(true));
+            await draw(() => ui().setChatListLayout('folder'));
+            expect(folderLine()?.textContent).toBe('feature/payments');
 
-            expect(folderLine()?.textContent).toBe('car-rental-api, feature/payments');
+            await draw(() => ui().setChatListLayout('worktree'));
+            expect(folderLine()?.textContent).toBe('feature/payments');
 
             // The fixture project has one folder.
             act(() => reactRoot.unmount());
@@ -1040,6 +1071,10 @@ describe('grouped by folder', () => {
             });
 
             expect(folderLine()?.textContent).toBe('main');
+
+            await draw(() => ui().setGroupByFolder(false));
+
+            expect(folderLine()?.textContent).toBe('car-rental, main');
         });
     });
 
@@ -1193,8 +1228,7 @@ describe('the archive', () => {
     it('restores a manually positioned chat to its slot after moving other chats', async () => {
         await draw(() => ui().setChatOrder(['c-4', 'c-5', 'c-2', 'c-3', 'c-6', 'c-1']));
         await archive('c-2', true);
-        await press(rowOf('c-5').querySelector<HTMLElement>('button[aria-label="Chat actions"]')!);
-        await press(menuItem('Move up'));
+        await drag('c-5', 'c-4', true);
         await archive('c-2', false);
 
         expect(rowKeys().filter(key => key?.startsWith('c-'))).toEqual(['c-5', 'c-4', 'c-2', 'c-3', 'c-6', 'c-1']);
@@ -1566,7 +1600,7 @@ describe('threads', () => {
 
     it('hides finished threads when their filter is turned off', async () => {
         await draw(() => ['c-6', 'c-6a'].forEach(id => ui().toggleChatExpanded(id)));
-        await openProjectSubmenu('Filter');
+        await openProjectSubmenu('Display');
 
         expect(menuItem('Show completed threads').getAttribute('aria-checked')).toBe('true');
 
@@ -1745,6 +1779,16 @@ describe('a chat that works in a worktree', () => {
                 container.querySelector('[aria-label="Current place: Worktree, branch clowdy/ab12cd34"]')?.textContent
             ).toBe('Worktree clowdy/ab12cd34')
         );
+
+        await draw(() => ui().setChatListLayout('simple'));
+        expect(
+            container.querySelector('[aria-label="Current place: car-rental, Worktree, branch clowdy/ab12cd34"]')
+                ?.textContent
+        ).toBe('car-rental, Worktree clowdy/ab12cd34');
+        await draw(() => ui().setChatListLayout('worktree'));
+        expect(
+            container.querySelector('[aria-label="Current place: Worktree, branch clowdy/ab12cd34"]')?.textContent
+        ).toBe('Worktree clowdy/ab12cd34');
 
         await draw(() => ui().openChat('c-1'));
 
@@ -1985,7 +2029,7 @@ describe('worktree cards', () => {
         expect(ui().collapsedWorktrees).not.toContain(key);
     });
 
-    it('lists unused actual worktrees only when their section is opened, and orders groups through their menu', async () => {
+    it('lists unused actual worktrees only when their section is opened', async () => {
         await restart();
         await draw(() => ui().setGroupByWorktree(true));
         expect(cardRows()).toEqual([workspaceKey()]);
@@ -1993,12 +2037,6 @@ describe('worktree cards', () => {
         await draw();
         const cards = cardRows();
         expect(cards.length).toBeGreaterThan(2);
-        const secondUnused = cards[2]!;
-        await press(rowOf(secondUnused).querySelector<HTMLElement>('button[aria-label^="Worktree actions:"]')!);
-        await press(menuItem('Move up'));
-        await draw();
-        expect(cardRows().slice(0, 3)).toEqual([cards[0], cards[2], cards[1]]);
-        expect(ui().worktreeOrder.indexOf(cards[2]!)).toBeLessThan(ui().worktreeOrder.indexOf(cards[1]!));
     });
 
     it('starts a draft in a worktree with no chats from its own menu', async () => {
@@ -2019,6 +2057,7 @@ describe('worktree cards', () => {
 
     it.each(['card', 'chip'] as const)('removes the selected worktree from the %s menu', async entry => {
         await restart();
+        const dialog = vi.spyOn(Modal, 'create').mockImplementationOnce(() => undefined as never);
         window.desktop = {
             getOpenApps: async () => ({ editors: [], terminals: [], fileManagers: [] }),
             openPath: async () => undefined,
@@ -2034,9 +2073,10 @@ describe('worktree cards', () => {
                     : container.querySelector<HTMLElement>('button[aria-label^="Current place:"]')!;
             await press(button);
             await press(menuItem('Remove worktree…'));
-            await vi.waitFor(() => expect(openConfirmModal).toHaveBeenCalled());
+            await vi.waitFor(() => expect(dialog).toHaveBeenCalled());
+            const content = dialog.mock.calls[0]![0]!.component as ReactElement<{ onConfirm: () => Promise<void> }>;
             await act(async () => {
-                await vi.mocked(openConfirmModal).mock.lastCall![0].onConfirm();
+                await content.props.onConfirm();
             });
             await draw();
             const snapshot = await store.transport.getProjectSnapshot(FIXTURE_PROJECT_ID);
@@ -2050,54 +2090,19 @@ describe('worktree cards', () => {
                     .some(row => row.workspaceId === 'wks_ab12cd34'),
             }).toEqual({ archived: [true, true], selected: false, listed: false });
         } finally {
+            dialog.mockRestore();
             window.desktop = undefined;
         }
     });
 
-    it('archives a card with its linked and outside descendants only once, preserving earlier archive history and the worktree', async () => {
-        const data = withFixtureWorktrees(createFixtureData());
-        const parent = data.chats.find(chat => chat.id === 'c-9')!;
-        const archivedAt = data.chats.find(chat => chat.id === 'c-10')!.archivedAt;
-        data.chats.push(
-            { ...parent, id: 'linked-child', parentChatId: parent.id, orchestratorRunId: undefined },
-            {
-                ...parent,
-                id: 'outside-child',
-                parentChatId: parent.id,
-                workspace: undefined,
-                orchestratorRunId: undefined,
-            }
-        );
-        await restart(data);
-        const command = vi.spyOn(store.transport, 'command');
+    it('omits bulk archive and move actions from worktree menus', async () => {
+        await restart();
         await draw(() => ui().setGroupByWorktree(true));
         await press(rowOf(workspaceKey()).querySelector<HTMLElement>('button[aria-label^="Worktree actions:"]')!);
-        await press(menuItem('Archive all chats…'));
-        await vi.waitFor(() => expect(openConfirmModal).toHaveBeenCalled());
-        await act(async () => {
-            await vi.mocked(openConfirmModal).mock.lastCall![0].onConfirm();
-        });
-        await draw();
-        const snapshot = await store.transport.getProjectSnapshot(FIXTURE_PROJECT_ID);
-        expect({
-            archived: snapshot.chats
-                .filter(chat => ['c-9', 'linked-child', 'outside-child'].includes(chat.id))
-                .map(chat => [chat.id, Boolean(chat.archivedAt)]),
-            previousArchive: snapshot.chats.find(chat => chat.id === 'c-10')?.archivedAt,
-            commands: command.mock.calls.map(([input]) => input).filter(input => input.type === 'chat.setArchived'),
-            tree: (await store.transport.getProjectWorktrees(FIXTURE_PROJECT_ID))
-                .flatMap(group => group.worktrees)
-                .some(row => row.workspaceId === 'wks_ab12cd34'),
-        }).toEqual({
-            archived: [
-                ['c-9', true],
-                ['linked-child', true],
-                ['outside-child', true],
-            ],
-            previousArchive: archivedAt,
-            commands: [{ type: 'chat.setArchived', chatId: 'c-9', archived: true }],
-            tree: true,
-        });
+        expect(menuItem('Archive all chats…')).toBeUndefined();
+        expect(menuItem('Move up')).toBeUndefined();
+        expect(menuItem('Move down')).toBeUndefined();
+        expect(menuItem('Remove worktree…')).toBeDefined();
     });
 
     it('does not read the worktree list when grouping is off, and refreshes it on focus and folder Git changes', async () => {
@@ -2114,24 +2119,6 @@ describe('worktree cards', () => {
         await act(async () => refreshFolderGit(FIXTURE_PROJECT_ID, 'fld_car_rental'));
         expect(read).toHaveBeenCalledWith(FIXTURE_PROJECT_ID);
     });
-
-    const drag = async (from: string, to: string) => {
-        const transfer = new DataTransfer();
-        const source = rowOf(from).querySelector<HTMLElement>('[draggable="true"]')!;
-        const target = rowOf(to);
-        const event = (type: string) => {
-            const drag = new MouseEvent(type, { bubbles: true, cancelable: true });
-            Object.defineProperty(drag, 'dataTransfer', { value: transfer });
-            return drag;
-        };
-        await act(async () => {
-            source.dispatchEvent(event('dragstart'));
-            target.dispatchEvent(event('dragover'));
-            target.dispatchEvent(event('drop'));
-            source.dispatchEvent(event('dragend'));
-        });
-        await draw();
-    };
 
     it('refuses a cross-group drop and a drop onto a card header', async () => {
         await restart();

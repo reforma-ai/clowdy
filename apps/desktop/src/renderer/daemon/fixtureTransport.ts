@@ -2457,6 +2457,8 @@ export class FixtureTransport implements Transport {
 
             case 'run.cancel':
                 return this.#cancelRun(command.runId);
+            case 'run.setArchived':
+                return this.#setRunArchived(command.runId, command.archived);
             case 'run.stopAgents':
                 return this.#stopAgents(command.runId);
             case 'run.stopBackground':
@@ -3306,6 +3308,43 @@ export class FixtureTransport implements Transport {
         }
 
         return ok({ cancelled: [...cancelled] });
+    }
+
+    /**
+     * Like the daemon's `run.setArchived`: only a native sub-agent goes away, and not while it or a sub-agent it started works. Archiving takes the sub-agents it
+     * started along, each before the one that started it; bringing one back brings only that one. What is set already changes nothing and is not announced. A run
+     * that is put away or brought back is no activity: no chat moves.
+     */
+    #setRunArchived(runId: RunId, archived: boolean): Outcome {
+        const { runs } = this.#data;
+        const target = runs.find(candidate => candidate.id === runId);
+
+        if (!target) return fail('not_found', 'No such run');
+
+        if (target.origin !== 'native') return fail('invalid', 'Only a sub-agent can be archived');
+
+        if (archived && target.archivedAt === undefined) {
+            const started = this.#subtree(runId);
+            const subtree = runs.filter(candidate => started.has(candidate.id));
+
+            if (subtree.some(candidate => !isTerminalRunStatus(candidate.status)))
+                return fail('conflict', 'A working sub-agent cannot be archived');
+
+            // The sub-agents it started come first, so no sub-agent is ever listed below one that is away.
+            const now = Date.now();
+
+            for (const away of [...subtree.filter(candidate => candidate !== target).reverse(), target]) {
+                if (away.archivedAt !== undefined) continue;
+
+                away.archivedAt = now;
+                this.#emit(away.projectId, { type: 'run.upserted', run: away });
+            }
+        } else if (!archived && target.archivedAt !== undefined) {
+            delete target.archivedAt;
+            this.#emit(target.projectId, { type: 'run.upserted', run: target });
+        }
+
+        return ok({ run: structuredClone(target) });
     }
 
     /** Like the daemon's `run.stopAgents`: the sub-agents of the orchestrator's session that can stop alone stop; the orchestrator itself goes on, and so does its queue. */

@@ -105,10 +105,13 @@ export function ChatFolder({ name, folder, missing, workspace, showFolder = true
                     }
                     extra={
                         workspace && workspace.ready
-                            ? worktreeMenuExtras(
-                                  { root, projectId: project.id, folderId: folder.id, path, workspaceId: workspace.id },
-                                  true
-                              )
+                            ? worktreeMenuExtras({
+                                  root,
+                                  projectId: project.id,
+                                  folderId: folder.id,
+                                  path,
+                                  workspaceId: workspace.id,
+                              })
                             : undefined
                     }
                     aria-label={workspace ? 'Worktree actions' : 'Open folder'}

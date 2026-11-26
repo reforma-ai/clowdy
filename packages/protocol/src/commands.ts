@@ -359,6 +359,13 @@ export const commandSchema = z.discriminatedUnion('type', [
     /* Runs */
     z.object({ ...base, type: z.literal('run.cancel'), runId: z.string() }),
     /**
+     * Puts a native sub-agent away from the Agents list (`Run.archivedAt`), or brings it back, as `chat.setArchived` does for a chat: nothing is deleted, only its
+     * `archivedAt` is set or cleared. Refused (`invalid`) for a run that is not a native sub-agent, and (`conflict`) while the sub-agent or any sub-agent it started is
+     * active. Archiving takes the sub-agents it started along (all of them are over); bringing one back brings only that one, and the ones it started stay away.
+     * Setting what is set already changes nothing. It is not activity: no chat moves in the order. Answers `{ run: Run }`, the sub-agent as it is now.
+     */
+    z.object({ ...base, type: z.literal('run.setArchived'), runId: z.string(), archived: z.boolean() }),
+    /**
      * Stops the sub-agents of the run `runId` (a chat's orchestrator) and lets the run go on, knowing they were stopped: every sub-agent in its session that
      * can be stopped alone (`Run.canStopAlone`) is asked to stop; the run is not cancelled and its chat's queue is not held. Answers `{ stopped: RunId[] }`,
      * what it asked to stop.

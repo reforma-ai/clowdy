@@ -48,6 +48,17 @@ describe('runningAgents', () => {
         expect(runningAgents(runs, 'orch').map(agent => agent.id)).toEqual(['asking', 'early', 'late', 'grandchild']);
         expect(runningAgents(runs, undefined)).toEqual([]);
     });
+
+    it('leaves out a sub-agent that is in the archive, whatever it does', () => {
+        const runs = [
+            run('orch', 'running', { parentRunId: undefined, origin: undefined, role: 'orchestrator' }),
+            run('away', 'running', { archivedAt: 5 }),
+            run('away-asking', 'waiting_user', { archivedAt: 5 }),
+            run('kept', 'running'),
+        ];
+
+        expect(runningAgents(runs, 'orch').map(agent => agent.id)).toEqual(['kept']);
+    });
 });
 
 describe("a row's words", () => {

@@ -1,7 +1,7 @@
-import { ancestorChats, chatOfRun } from '../agents/agentTree';
+import { ancestorChats, ancestorRuns, chatOfRun } from '../agents/agentTree';
 import { perform } from './commands';
 
-import type { Chat, ChatId, RunId } from '@clowdy/protocol';
+import type { Chat, ChatId, Run, RunId } from '@clowdy/protocol';
 import type { ProjectState, ProjectUi, RootStore } from '../../stores';
 
 /**
@@ -47,12 +47,52 @@ export async function openChat(root: RootStore, project: ProjectState, ui: Proje
     ui.openChat(chatId);
 }
 
-/** Shows the run below its chat in the Agents section, bringing the chat (and the archived chats above it) out of the archive first. */
+/**
+ * Puts the finished sub-agent in the archive, with the sub-agents it started, and tells the person when the daemon refused (it or one of them works). `open` is the
+ * sub-agent whose page is open: when it is the one archived, or one it started, the page moves on to the chat of the sub-agent, since it has no row in the list now.
+ */
+export async function archiveRun(
+    root: RootStore,
+    project: ProjectState,
+    ui: ProjectUi,
+    run: Run,
+    open: Run | undefined
+): Promise<void> {
+    const result = await perform(root, { type: 'run.setArchived', runId: run.id, archived: true });
+
+    if (result.ok && open && (open.id === run.id || ancestorRuns(project.runs, open).some(({ id }) => id === run.id)))
+        ui.openChat(chatOfRun(project.chats.values(), run)?.id ?? null);
+}
+
+/** Brings the sub-agent out of the archive, into the list: only the sub-agent itself, what it started stays put away. False when the daemon refused (the person has been told). */
+async function unarchiveRun(root: RootStore, run: Run): Promise<boolean> {
+    return (await perform(root, { type: 'run.setArchived', runId: run.id, archived: false })).ok;
+}
+
+/** Brings back the sub-agents above a sub-agent that are in the archive, the farthest first, then the sub-agent itself. False when the daemon refused one. */
+async function bringBackRun(root: RootStore, project: ProjectState, run: Run): Promise<boolean> {
+    const path = [...ancestorRuns(project.runs, run).reverse(), run].filter(
+        candidate => candidate.archivedAt !== undefined
+    );
+
+    for (const archived of path) {
+        if (!(await unarchiveRun(root, archived))) return false;
+    }
+
+    return true;
+}
+
+/**
+ * Shows the run below its chat in the Agents section, bringing the chat (and the archived chats above it) out of the archive first, and a sub-agent in the
+ * archive with the archived sub-agents above it: it has no row until then, and the card in its parent's stream, a breadcrumb or a task's link are how it is found.
+ */
 export async function openRun(root: RootStore, project: ProjectState, ui: ProjectUi, runId: RunId): Promise<void> {
     const run = project.runs.get(runId);
     const owner = run ? chatOfRun(project.chats.values(), run) : undefined;
 
     if (owner && !(await bringBack(root, project, owner))) return;
+
+    if (run && !(await bringBackRun(root, project, run))) return;
 
     ui.openRun(runId);
 }

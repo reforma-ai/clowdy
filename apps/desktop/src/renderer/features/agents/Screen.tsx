@@ -50,7 +50,7 @@ export function Screen() {
     const projectInfo = info.get(project.id);
     const missing = new Set(projectInfo?.folders.filter(folder => !folder.exists).map(folder => folder.folderId));
 
-    // Show the folder only when the project has several; the workspace label remains available for every chat.
+    // The sidebar names the folder when its chats are grouped by folder.
     const where = chat ? chatFolder(project.chats, project.project.folders, chat.id) : undefined;
 
     // An agent may have pushed, opened a pull request, or switched its worktree without using the panel.
@@ -104,7 +104,7 @@ export function Screen() {
                                     folder={where.folder}
                                     missing={missing.has(where.folder.id)}
                                     workspace={chat.workspace}
-                                    showFolder={project.project.folders.length > 1}
+                                    showFolder={!ui.groupByFolder}
                                 />
                             )
                         }

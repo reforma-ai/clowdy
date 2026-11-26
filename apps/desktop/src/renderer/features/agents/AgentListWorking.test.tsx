@@ -8,6 +8,7 @@ import { createFixtureData, FIXTURE_PROJECT_ID } from '../../daemon/fixtureData'
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { hotkeys, installDispatcher } from '../../hotkeys';
 import { RootStore, RootStoreProvider } from '../../stores';
+import { openRun } from '../chats/archiveChat';
 import { chatListPreferences } from './chatListPreferences';
 import { Screen } from './Screen';
 
@@ -103,7 +104,7 @@ const key = (target: Element, name: string) =>
 
 const openFilter = async () => {
     await press(container.querySelector<HTMLElement>('button[aria-label="Project menu"]')!);
-    await key(menuItem('Filter'), 'ArrowRight');
+    await key(menuItem('Display'), 'ArrowRight');
 };
 
 beforeEach(async () => {
@@ -356,7 +357,7 @@ describe('the active threads filter', () => {
         expect(menuItem('Expand active threads')).toBeTruthy();
     });
 
-    it('turns active rows off and on without closing the filter submenu', async () => {
+    it('turns active rows off and on without closing the display submenu', async () => {
         await openFilter();
 
         expect(menuItem('Show completed threads').getAttribute('role')).toBe('menuitemcheckbox');
@@ -431,6 +432,149 @@ describe('a sub-agent’s row', () => {
 
         expect(document.body.querySelector('[role="menu"]')).toBeNull();
         expect(document.body.querySelector('input[aria-label="Chat title"]')).toBeNull();
+    });
+
+    describe('that is over', () => {
+        const expandFirstChat = () => draw(() => ui().toggleChatExpanded('c-1'));
+        const archivedRun = (runId: string) =>
+            vi.waitFor(() => expect(project().runs.get(runId)?.archivedAt).toBeDefined());
+        /** The orchestrator of c-1 ends and takes its sub-agents with it, so that all of them are over. */
+        const finishTheFirstChat = async () => {
+            await store.command({ type: 'run.cancel', runId: 'r-orch-1' });
+            await vi.waitFor(() => expect(project().runs.get('r-na-05')?.status).toBe('cancelled'));
+            await draw();
+        };
+
+        it('has an Archive button as a chat has, and a sub-agent that works, or has one working below it, has none', async () => {
+            await expandFirstChat();
+
+            expect(buttonIn('r-na-01', 'Archive')).not.toBeNull();
+            expect(buttonIn('r-na-04', 'Archive')).not.toBeNull();
+            expect(buttonIn('r-na-03', 'Archive')).toBeNull();
+            expect(buttonIn('r-na-02', 'Archive')).toBeNull();
+            expect(buttonIn('r-na-05', 'Archive')).toBeNull();
+            // Only Archive: a sub-agent has nothing to rename, delete or move.
+            expect(buttonIn('r-na-01', 'Chat actions')).toBeNull();
+            expect(rowOf('r-na-01').querySelector('[draggable="true"]')).toBeNull();
+            // The one that works keeps showing its state.
+            expect(rowOf('r-na-03').querySelector('[aria-label="Working"]')).not.toBeNull();
+        });
+
+        it('keeps the dot of a failed one at rest, in the place the Archive button takes on hover', async () => {
+            await expandFirstChat();
+
+            expect(rowOf('r-na-04').querySelector('[aria-label="Failed"]')).not.toBeNull();
+            expect(rowOf('r-na-01').querySelector('[role="img"]')).toBeNull();
+        });
+
+        it('offers Archive on the sub-agent that started one once both are over, and not before', async () => {
+            await expandFirstChat();
+            await store.command({ type: 'run.cancel', runId: 'r-na-02' });
+            await vi.waitFor(() => expect(project().runs.get('r-na-02')?.status).toBe('cancelled'));
+            await draw();
+
+            // r-na-05 below it still works.
+            expect(buttonIn('r-na-02', 'Archive')).toBeNull();
+
+            await finishTheFirstChat();
+
+            expect(buttonIn('r-na-02', 'Archive')).not.toBeNull();
+            expect(buttonIn('r-na-05', 'Archive')).not.toBeNull();
+        });
+
+        it('puts the sub-agent away from its button: its row leaves the list, and the others stay', async () => {
+            await expandFirstChat();
+            await press(buttonIn('r-na-01', 'Archive')!);
+            await archivedRun('r-na-01');
+            await draw();
+
+            expect(shown('r-na-01', 'r-na-04', 'r-na-03')).toEqual(['r-na-04', 'r-na-03']);
+            expect(project().runs.get('r-na-01')).toBeDefined();
+        });
+
+        it('takes the sub-agents it started with it, and the fold of its chat counts what is left', async () => {
+            await expandFirstChat();
+            await finishTheFirstChat();
+            expect(shown('r-na-02', 'r-na-05')).toEqual(['r-na-02', 'r-na-05']);
+
+            await press(buttonIn('r-na-02', 'Archive')!);
+            await archivedRun('r-na-05');
+            await draw();
+
+            expect(shown('r-na-02', 'r-na-05')).toEqual([]);
+            expect(shown('r-na-01', 'r-na-04', 'r-na-03')).toEqual(['r-na-01', 'r-na-04', 'r-na-03']);
+        });
+
+        it('puts the sub-agent away from its context menu, which has only Archive', async () => {
+            await expandFirstChat();
+            await act(async () => {
+                rowOf('r-na-04').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+            });
+
+            const items = [...document.body.querySelectorAll('[role^="menuitem"]')].map(item => item.textContent);
+
+            expect(items).toEqual(['Archive']);
+
+            await press(menuItem('Archive'));
+            await archivedRun('r-na-04');
+            await draw();
+
+            expect(shown('r-na-04')).toEqual([]);
+        });
+
+        it('has no context menu while the sub-agent works', async () => {
+            await expandFirstChat();
+            await act(async () => {
+                rowOf('r-na-03').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+            });
+
+            expect(document.body.querySelector('[role="menu"]')).toBeNull();
+        });
+
+        it('moves the page on to its chat when it is the open page, as archiving the open chat does', async () => {
+            await expandFirstChat();
+            await press(rowOf('r-na-01'));
+            await draw();
+
+            expect(container.querySelector('[data-testid="run"]')?.getAttribute('data-run-id')).toBe('r-na-01');
+
+            await press(buttonIn('r-na-01', 'Archive')!);
+            await archivedRun('r-na-01');
+            await draw();
+
+            expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe('c-1');
+            expect(container.querySelector('[data-testid="run"]')).toBeNull();
+            expect(ui().runId).toBeNull();
+            expect(isSelected('c-1')).toBe(true);
+        });
+
+        it('keeps the page on another sub-agent when this one is archived', async () => {
+            await expandFirstChat();
+            await press(rowOf('r-na-04'));
+            await draw();
+            await press(buttonIn('r-na-01', 'Archive')!);
+            await archivedRun('r-na-01');
+            await draw();
+
+            expect(ui().runId).toBe('r-na-04');
+            expect(isSelected('r-na-04')).toBe(true);
+        });
+
+        it('comes back with its row when it is opened from elsewhere, as the card of its parent does', async () => {
+            await expandFirstChat();
+            await press(buttonIn('r-na-01', 'Archive')!);
+            await archivedRun('r-na-01');
+            await draw();
+
+            expect(shown('r-na-01')).toEqual([]);
+
+            await act(async () => void (await openRun(store, project(), ui(), 'r-na-01')));
+            await vi.waitFor(() => expect(project().runs.get('r-na-01')?.archivedAt).toBeUndefined());
+            await draw();
+
+            expect(shown('r-na-01')).toEqual(['r-na-01']);
+            expect(isSelected('r-na-01')).toBe(true);
+        });
     });
 
     it('stays out of the guards and the dot of its chat: a chat at rest with a sub-agent that works can be put away', async () => {

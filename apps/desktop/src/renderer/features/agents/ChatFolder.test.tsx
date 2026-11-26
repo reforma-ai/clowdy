@@ -667,7 +667,6 @@ describe('the folder of a chat that works in a worktree', () => {
             'Open in Terminal',
             'Copy path',
             'Open in…',
-            'Archive all chats…',
             'Remove worktree…',
         ]);
 
@@ -696,13 +695,7 @@ describe('the folder of a chat that works in a worktree', () => {
         await press(pill()!);
 
         // No chat is open: the tabs show the folder's own checkout, not this worktree.
-        expect(items().map(row => row.textContent)).toEqual([
-            'New chat',
-            'Copy path',
-            'Open in…',
-            'Archive all chats…',
-            'Remove worktree…',
-        ]);
+        expect(items().map(row => row.textContent)).toEqual(['New chat', 'Copy path', 'Open in…', 'Remove worktree…']);
 
         await press(item('Copy path'));
         store.ui.forProject(FIXTURE_PROJECT_ID).openChat(FIXTURE_WORKSPACE_CHAT_ID);

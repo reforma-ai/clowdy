@@ -100,8 +100,10 @@
     height: var(--spacing-6);
 }
 
-/* Keep hidden tooltip anchors measurable while freeing the title's space. */
-.chatRow:not(:is(:hover, :focus-visible, :has(.rowAction:focus), [data-hovered], [data-open], [data-renaming])) {
+/* Keep hidden tooltip anchors measurable while freeing the title's space. A sub-agent that can be archived has the same end as a chat's row. */
+:is(.chatRow, .archivable):not(
+    :is(:hover, :focus-visible, :has(.rowAction:focus), [data-hovered], [data-open], [data-renaming])
+) {
     & .rowAction {
         visibility: hidden;
         pointer-events: none;
@@ -122,7 +124,7 @@
     }
 }
 
-.chatRow:is(:hover, :focus-visible, :has(.rowAction:focus), [data-hovered], [data-open])
+:is(.chatRow, .archivable):is(:hover, :focus-visible, :has(.rowAction:focus), [data-hovered], [data-open])
     :is(.archiveStatus, .pullRequests) {
     display: none;
 }
@@ -166,8 +168,8 @@
 }
 
 /*
- * A sub-agent's row has no actions, so its dot stays where it is on hover, in the room the chat's dot takes at rest (24px, the dot itself 6px) and as far
- * from the row's edge (a chat's row has a button at its end, which sets that inset: `ListBox.module.css`).
+ * The row of a sub-agent that works has no actions, so its dot stays where it is on hover, in the room the chat's dot takes at rest (24px, the dot itself 6px) and as far
+ * from the row's edge (a chat's row has a button at its end, which sets that inset: `ListBox.module.css`). One that is over has its Archive button there (`.archivable`).
  */
 .agentStatus {
     display: grid;
@@ -187,7 +189,7 @@
     height: var(--spacing-6);
 }
 
-.agentRow {
+.agentRow:not(.archivable) {
     padding-inline-end: calc((var(--clowdy-listbox-item-height) - var(--spacing-24)) / 2);
 }
 

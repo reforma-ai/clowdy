@@ -178,16 +178,6 @@ export function useChatListOrder(chats: readonly Chat[], visibleChatId?: ChatId,
             event.dataTransfer.setData(CARD_DRAG_TYPE, key);
             event.dataTransfer.effectAllowed = 'move';
         },
-        cardActions(id: string) {
-            const siblings = cardSiblings(id);
-            const index = siblings.findIndex(card => card.key === id);
-            const before = siblings[index - 1];
-            const after = index < 0 ? undefined : siblings[index + 1];
-            return {
-                onMoveUp: before ? () => moveCard(id, before.key, 'before') : undefined,
-                onMoveDown: after ? () => moveCard(id, after.key, 'after') : undefined,
-            };
-        },
         start(event: DragEvent<HTMLElement>, id: ChatId) {
             source.current = id;
             event.dataTransfer.setData(CHAT_DRAG_TYPE, id);
@@ -234,17 +224,6 @@ export function useChatListOrder(chats: readonly Chat[], visibleChatId?: ChatId,
                 end();
             },
             onDragEnd: end,
-        },
-        actions(id: ChatId) {
-            const siblings = siblingsOf(id);
-            const index = siblings.findIndex(chat => chat.id === id);
-            const before = siblings[index - 1];
-            const after = index < 0 ? undefined : siblings[index + 1];
-
-            return {
-                onMoveUp: before ? () => move(id, before.id, 'before') : undefined,
-                onMoveDown: after ? () => move(id, after.id, 'after') : undefined,
-            };
         },
     };
 }

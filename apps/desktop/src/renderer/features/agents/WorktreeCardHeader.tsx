@@ -1,7 +1,7 @@
 import { Button } from '@clowdy/components/Button';
 import { GridListItem } from '@clowdy/components/List';
 import { Popover, PopoverTrigger } from '@clowdy/components/Popover';
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, More, Split } from '@clowdy/icons/14';
+import { ChevronDown, ChevronRight, More, Split } from '@clowdy/icons/14';
 import { mainFolder } from '@clowdy/protocol';
 
 import { StatusDot } from '../../shared';
@@ -15,11 +15,6 @@ import type { DragEvent, SyntheticEvent } from 'react';
 import type { ThreadsActivity } from './agentTree';
 import type { WorktreeCard } from './worktreeCards';
 
-interface MoveActions {
-    onMoveUp?: () => void;
-    onMoveDown?: () => void;
-}
-
 export function WorktreeCardHeader({
     card,
     collapsed,
@@ -27,7 +22,6 @@ export function WorktreeCardHeader({
     showFolder,
     onToggle,
     onDragStart,
-    move,
 }: {
     card: WorktreeCard;
     collapsed: boolean;
@@ -35,7 +29,6 @@ export function WorktreeCardHeader({
     showFolder: boolean;
     onToggle: () => void;
     onDragStart: (event: DragEvent<HTMLElement>) => void;
-    move: MoveActions;
 }) {
     const title = [showFolder ? card.folderName : undefined, worktreeLabel(card)].filter(Boolean).join(', ');
     const tooltip = [
@@ -74,7 +67,7 @@ export function WorktreeCardHeader({
                             <More />
                         </Button>
                         <Popover placement="bottom end" spacing="xs">
-                            <WorktreeCardMenu card={card} move={move} />
+                            <WorktreeCardMenu card={card} />
                         </Popover>
                     </PopoverTrigger>
                 </span>
@@ -105,8 +98,8 @@ export function WorktreeCardHeader({
     );
 }
 
-/** Shared path menu with card-specific ordering and guarded worktree actions. */
-function WorktreeCardMenu({ card, move }: { card: WorktreeCard; move: MoveActions }) {
+/** Shared path menu with guarded worktree actions. */
+function WorktreeCardMenu({ card }: { card: WorktreeCard }) {
     const root = useRootStore();
     const project = useProjectState();
     const ui = useProjectUi();
@@ -144,21 +137,14 @@ function WorktreeCardMenu({ card, move }: { card: WorktreeCard; move: MoveAction
                 })
             }
             extra={[
-                ...(move.onMoveUp ? [{ id: 'move-up', label: 'Move up', icon: <ArrowUp />, run: move.onMoveUp }] : []),
-                ...(move.onMoveDown
-                    ? [{ id: 'move-down', label: 'Move down', icon: <ArrowDown />, run: move.onMoveDown }]
-                    : []),
                 ...(!card.pending
-                    ? worktreeMenuExtras(
-                          {
-                              root,
-                              projectId: project.id,
-                              folderId: card.folder.id,
-                              path: card.path,
-                              workspaceId: card.actual?.workspaceId ?? card.workspace?.id,
-                          },
-                          card.used
-                      )
+                    ? worktreeMenuExtras({
+                          root,
+                          projectId: project.id,
+                          folderId: card.folder.id,
+                          path: card.path,
+                          workspaceId: card.actual?.workspaceId ?? card.workspace?.id,
+                      })
                     : []),
             ]}
             aria-label="Worktree actions"
