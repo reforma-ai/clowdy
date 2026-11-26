@@ -38,10 +38,11 @@ vi.mock('./RunDetail', () => ({
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 /*
- * The agents that work, in the Agents list of the fixture project. The chat c-1 (orchestrator r-orch-1, at work) has the native sub-agents, oldest first: r-na-04
- * (failed), r-na-01 (done), r-na-03 (General agent, works), r-na-02 (Explore agent, works) with r-na-05 below it (Explore agent, rests for background work).
- * The chat c-6 has the thread c-6a (works, with its finished thread c-6a1), c-6b (done), c-6c (failed) and c-6e (rests for background work). The test build has
- * no MobX observer plugin, so the screen is drawn again by hand after a change, as the observer does in the app.
+ * The agents that work, and the finished ones, in the Agents list of the fixture project. The chat c-1 (orchestrator r-orch-1, at work) has the native
+ * sub-agents, oldest first: r-na-01 (Explore agent, done), r-na-04 (General agent, failed), r-na-03 (General agent, works), r-na-02 (Explore agent, works) with
+ * r-na-05 below it (Explore agent, rests for background work). The chat c-6 has the threads c-6a (works, with its finished thread c-6a1), c-6b (done), c-6c
+ * (failed) and c-6e (rests for background work), and between c-6b and c-6c its own sub-agent r-na-07 (General agent, done). The test build has no MobX
+ * observer plugin, so the screen is drawn again by hand after a change, as the observer does in the app.
  */
 
 const memoryStorage = (): KeyValueStorage => {
@@ -302,10 +303,23 @@ describe('finished sub-agents', () => {
         ]);
     });
 
-    it('are only listed under a folded chat when they are open, or have one that works below them', async () => {
+    it('are only listed under a folded chat when they are open', async () => {
         await draw(() => ui().openRun('r-na-04'));
         await draw();
 
+        expect(ui().expandedChats).toEqual([]);
+        expect(shown('r-na-01', 'r-na-04')).toEqual(['r-na-04']);
+        expect(isSelected('r-na-04')).toBe(true);
+    });
+
+    it('opened from elsewhere in a chat whose folder is folded, open the folder and leave the chat folded', async () => {
+        await draw(() => {
+            ui().toggleFolderCollapsed('fld_car_rental');
+            ui().openRun('r-na-04');
+        });
+        await draw();
+
+        expect(ui().collapsedFolders).toEqual([]);
         expect(ui().expandedChats).toEqual([]);
         expect(shown('r-na-01', 'r-na-04')).toEqual(['r-na-04']);
         expect(isSelected('r-na-04')).toBe(true);

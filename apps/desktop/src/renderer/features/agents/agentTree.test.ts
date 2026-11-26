@@ -629,6 +629,14 @@ describe('agentRows, with sub-agents', () => {
             ]);
         });
 
+        it('puts a thread and a sub-agent made at the same time in the order of their ids, every time', () => {
+            const same = [...list, thread('a0', 'root', 5)];
+            const lines = shape(open, [...baseRuns, run('run-a0', 'succeeded', { createdAt: 5 })], same);
+
+            // The sub-agent `a` sorts before the thread `a0`.
+            expect(lines.slice(4, 8)).toEqual(['  a', '    a1', '  a0', '  b']);
+        });
+
         it('mixes a thread in among the sub-agents by the time it was made', () => {
             const between = [...list, thread('t3', 'root', 6.5)];
 
@@ -680,6 +688,16 @@ describe('agentRows, with sub-agents', () => {
 
             // e is over and has nothing below it; b is over, but d works below it.
             expect(lines).toEqual(['root -', '  t1 +', '    s1', '  a', '    a1', '  b', '    d', '  c', 'root2']);
+        });
+
+        it('keeps a finished thread that has a sub-agent working, with the finished left out', () => {
+            const stale = baseRuns.map(candidate =>
+                candidate.id === 'run-t2' ? { ...candidate, status: 'succeeded' as const } : candidate
+            );
+            const withAgent = [...stale, native('s2', 'run-t2', 'running', 'run-t2', 12)];
+
+            expect(shape({ ...open, showFinished: false }, withAgent)).toContain('  t2 +');
+            expect(shape({ ...open, showFinished: false }, stale)).not.toContain('  t2');
         });
 
         it('is left out with all it started when they are over too', () => {
@@ -774,6 +792,30 @@ describe('agentRows, with sub-agents', () => {
             ]);
         });
 
+        it('lists the sub-agents of a thread that is open, below a folded chat, and the thread at the place it was made', () => {
+            expect(shape({ expanded: new Set(['t1']) })).toEqual([
+                'root +',
+                '  t1 -',
+                '    s1',
+                '  a',
+                '    a1',
+                '  b',
+                '    d',
+                '  c',
+                'root2',
+            ]);
+        });
+
+        it('keeps the open sub-agent and the finished one it is below, with the finished left out and the setting off', () => {
+            expect(shape({ expandRunning: false, showFinished: false, openRunId: 'd', openChatId: 'root' })).toEqual([
+                'root +',
+                '  b',
+                '    d',
+                '  c',
+                'root2',
+            ]);
+        });
+
         it('lists what works in a chat that rests, and a chat with nothing at work has none', () => {
             const resting = baseRuns.map(candidate =>
                 candidate.rootRunId === 'run-root' || candidate.id === 'run-root'
@@ -819,10 +861,27 @@ describe('agentRows, with sub-agents', () => {
             expect(rows.at(-2)).toMatchObject({ id: 'f299' });
         });
 
-        it('is built in one pass: each chat asks for its threads and its sub-agents once, and 300 take a moment', () => {
+        it('is built in one pass: each chat asks for its threads and its sub-agents once, and the runs are never walked', () => {
             const byRoot = nativeAgentsByRoot(crowd);
-            const asked = { threads: 0, agents: 0 };
-            const started = performance.now();
+            const asked = { threads: 0, agents: 0, walked: 0 };
+            // The runs are read by id, for the chats' own orchestrators only: any walk over them is a scan per row.
+            const runs = new Map(crowd.map(candidate => [candidate.id, candidate]));
+            const guarded = new Proxy(runs, {
+                get(target, key) {
+                    if (
+                        key === 'values' ||
+                        key === 'entries' ||
+                        key === 'keys' ||
+                        key === 'forEach' ||
+                        key === Symbol.iterator
+                    )
+                        asked.walked++;
+
+                    const value = Reflect.get(target, key, target);
+
+                    return typeof value === 'function' ? value.bind(target) : value;
+                },
+            });
             const rows = agentRows({
                 roots: list.filter(candidate => !candidate.parentChatId),
                 threadsOf: chatId => {
@@ -830,7 +889,7 @@ describe('agentRows, with sub-agents', () => {
 
                     return list.filter(candidate => candidate.parentChatId === chatId);
                 },
-                runs: new Map(crowd.map(candidate => [candidate.id, candidate])),
+                runs: guarded,
                 agentsOf: candidate => {
                     asked.agents++;
 
@@ -840,11 +899,29 @@ describe('agentRows, with sub-agents', () => {
                 showFinished: true,
                 expandRunning: true,
             });
-            const elapsed = performance.now() - started;
 
             expect(rows).toHaveLength(rowsWith({ expanded: new Set(['root', 't1']) }).length + 300);
             // The four chats (root, root2, t1, t2) each once, however many sub-agents they have.
-            expect(asked).toEqual({ threads: 4, agents: 4 });
+            expect(asked).toEqual({ threads: 4, agents: 4, walked: 0 });
+        });
+
+        it('takes a moment for twenty thousand, which a pass per row would not', () => {
+            const many = Array.from({ length: 20000 }, (_, index) =>
+                native(
+                    `g${index}`,
+                    index % 20 === 0 ? 'run-root' : `g${index - (index % 20)}`,
+                    'succeeded',
+                    'run-root',
+                    20 + index
+                )
+            );
+            const all = [...baseRuns, ...many];
+            const started = performance.now();
+            const rows = rowsWith(open, all);
+            const elapsed = performance.now() - started;
+
+            // The index and the map of the runs are in that time too (about ten milliseconds on a laptop).
+            expect(rows).toHaveLength(rowsWith(open).length + 20000);
             expect(elapsed).toBeLessThan(500);
         });
     });
@@ -869,11 +946,27 @@ describe('agentRows, with sub-agents', () => {
                 'root -',
                 '  t1',
                 '  t2',
-                '  z',
                 '  x',
                 '    y',
+                '  z',
                 'root2',
             ]);
+        });
+
+        it('loses no row when the sub-agents come in no order', () => {
+            const byRoot = nativeAgentsByRoot(baseRuns);
+            const shuffled = (chat: Chat) =>
+                [...((chat.orchestratorRunId && byRoot.get(chat.orchestratorRunId)) || [])].reverse();
+            const rows = agentRows({
+                roots: [list[0]],
+                threadsOf: chatId => list.filter(candidate => candidate.parentChatId === chatId),
+                runs: new Map(baseRuns.map(candidate => [candidate.id, candidate])),
+                agentsOf: shuffled,
+                expanded: new Set(['root']),
+                showFinished: true,
+            });
+
+            expect(rows.map(row => row.id).sort()).toEqual(['a', 'a1', 'b', 'c', 'd', 'e', 'root', 't1', 't2'].sort());
         });
 
         it('is today’s list for a caller that knows no sub-agents', () => {

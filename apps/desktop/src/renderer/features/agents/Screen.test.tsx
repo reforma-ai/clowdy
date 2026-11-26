@@ -1466,6 +1466,7 @@ describe('threads', () => {
         await draw();
 
         expect(rowKeys().filter(key => key?.startsWith('c-6'))).toEqual(['c-6']);
+        expect(rowKeys()).not.toContain('r-na-07');
     });
 
     it('opens a fold with the right arrow and closes it with the left one', async () => {

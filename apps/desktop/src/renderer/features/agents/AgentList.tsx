@@ -18,6 +18,7 @@ import {
     type CSSProperties,
     type KeyboardEvent,
     type MouseEvent,
+    memo,
     type ReactNode,
     type SyntheticEvent,
     useEffect,
@@ -215,7 +216,7 @@ export function AgentList({
           })
         : rowsOf(chats).map(row => ({ kind: 'row', row }));
     // The new-chat row is the open one on every new-chat page, whatever folder it is for: the folder is told by the select under the message box.
-    // A sub-agent that is not listed (its chat or its folder's group is folded) leaves its chat's row as the open one, so the list never shows nothing open.
+    // A sub-agent that has no row (its chat's folder group is folded, or it is no native sub-agent) leaves its chat's row as the open one, so the list never shows nothing open.
     const selectedId = selection.draft
         ? NEW_CHAT_ROW
         : openRun && entries.some(entry => entry.kind === 'row' && entry.row.id === openRun.id)
@@ -233,20 +234,14 @@ export function AgentList({
         }
     );
 
-    // A thread or a sub-agent opened from elsewhere (a chip, a card, back and forward, the keyboard) may sit below a fold: open the folds above it, and the
-    // folded group of the chat it belongs to. For a sub-agent that is its chat, when its row is not listed already (a working one is, under a folded chat, and so
-    // is the open one that is over). When the open page changes, and when the list turns grouped; not on other changes, so the person can still fold the chat
-    // or the group it sits in.
+    // A thread opened from elsewhere (a chip, a card, back and forward, the keyboard) may sit below a fold: open the folds above it, and the folded group of
+    // the chat it belongs to. A sub-agent needs no fold of its chat opened: its row stands below a folded chat while it is the open page. When the open page
+    // changes, and when the list turns grouped; not on other changes, so the person can still fold the chat or the group it sits in.
     const openRunId = openRun?.id;
-    const openRunListed = useRef(false);
-    openRunListed.current = openRunId !== undefined && selectedId === openRunId;
     useEffect(() => {
         if (openChatId === undefined) return;
 
-        ui.expandChats([
-            ...ancestorChats(project.chats, openChatId).map(chat => chat.id),
-            ...(openRunId === undefined || openRunListed.current ? [] : [openChatId]),
-        ]);
+        ui.expandChats(ancestorChats(project.chats, openChatId).map(chat => chat.id));
 
         const folderId = grouped ? groupFolderOf(project.chats, project.project.folders, openChatId) : undefined;
 
@@ -427,31 +422,15 @@ export function AgentList({
 
     // A sub-agent is the page of its parent's work, not a chat of its own: nothing to rename, archive, delete, move or drag, and the parent's guards
     // and unread mark do not read it. Its row opens the page and shows the state it is in.
-    const renderSubagent = ({ run, depth, id }: SubagentRow) => {
-        const label = runLabel(run);
-
-        return (
-            <GridListItem
-                key={id}
-                id={id}
-                text={label}
-                icon={<Robot />}
-                endAffix={
-                    <span className={styles.agentStatus}>
-                        <ChatStatus run={run} />
-                    </span>
-                }
-                className={styles.agentRow}
-                style={{ '--depth': depth } as CSSProperties}
-                data-depth={depth}
-                data-drop-position={order.drop?.indicatorId === id ? order.drop.position : undefined}
-            >
-                <span className={styles.title} title={run.summary || undefined}>
-                    {label}
-                </span>
-            </GridListItem>
-        );
-    };
+    const renderSubagent = ({ run, depth, id }: SubagentRow) => (
+        <SubagentItem
+            key={id}
+            run={run}
+            label={runLabel(run)}
+            depth={depth}
+            drop={order.drop?.indicatorId === id ? order.drop.position : undefined}
+        />
+    );
 
     const renderRow = (row: ChatRow) => {
         const { chat } = row;
@@ -680,6 +659,43 @@ function FilterMenu() {
         </PopoverTrigger>
     );
 }
+
+/**
+ * A sub-agent's row. A component of its own that the list draws again only when its run, its place or its drop mark changes, since a chat that ran a workflow lists
+ * hundreds of them and every change to any run draws the list again.
+ */
+const SubagentItem = memo(function SubagentItem({
+    run,
+    label,
+    depth,
+    drop,
+}: {
+    run: Run;
+    label: string;
+    depth: number;
+    drop: 'before' | 'after' | undefined;
+}) {
+    return (
+        <GridListItem
+            id={run.id}
+            text={label}
+            icon={<Robot />}
+            endAffix={
+                <span className={styles.agentStatus}>
+                    <ChatStatus run={run} />
+                </span>
+            }
+            className={styles.agentRow}
+            style={{ '--depth': depth } as CSSProperties}
+            data-depth={depth}
+            data-drop-position={drop}
+        >
+            <span className={styles.title} title={run.summary || undefined}>
+                {label}
+            </span>
+        </GridListItem>
+    );
+});
 
 /** The icon of a row that has lines below it (threads, sub-agents): on hover the chevron that folds them takes its place, in the same room. */
 function Fold({

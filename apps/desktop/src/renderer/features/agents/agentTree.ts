@@ -160,7 +160,13 @@ export function agentRows({
 
             const below = listedThreads(thread.id);
 
-            return showFinished || thread.id === openChatId || below.length > 0 || !isFinishedThread(thread, runs);
+            return (
+                showFinished ||
+                thread.id === openChatId ||
+                below.length > 0 ||
+                agentsOfChat(thread).all.length > 0 ||
+                !isFinishedThread(thread, runs)
+            );
         });
 
         visiting.delete(chatId);
@@ -207,7 +213,10 @@ export function agentRows({
 
             return showFinished || works(run) || run.id === openRunId || children.length > 0 ? [{ run, children }] : [];
         };
-        const all = [...(startedBy.get(undefined) ?? []), ...agents].flatMap(build);
+        // The roots come oldest first; a parent cycle, in corrupt data, is met after them, so the whole is put in order again (it is sorted already but for that).
+        const all = [...(startedBy.get(undefined) ?? []), ...agents]
+            .flatMap(build)
+            .sort((a, b) => a.run.createdAt - b.run.createdAt || a.run.id.localeCompare(b.run.id));
 
         known = { all, folded: surfaceAgents(all) };
         listedAgents.set(chat.id, known);
