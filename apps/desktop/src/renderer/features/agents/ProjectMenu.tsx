@@ -82,9 +82,9 @@ export const ProjectMenu = observer(function ProjectMenu() {
                         </Popover>
                     </SubmenuTrigger>
                     <SubmenuTrigger>
-                        <MenuItem id="filter" text="Filter" endAffix={<ChevronRight />} />
+                        <MenuItem id="display" text="Display" endAffix={<ChevronRight />} />
                         <Popover spacing="xs" width={260}>
-                            <Menu aria-label="Filter" size="sm">
+                            <Menu aria-label="Display" size="sm">
                                 <MenuSection
                                     selectionMode="multiple"
                                     selectedKeys={filters}
@@ -95,6 +95,7 @@ export const ProjectMenu = observer(function ProjectMenu() {
                                     }}
                                 >
                                     <MenuItem
+                                        className={styles.displayItem}
                                         id="completed"
                                         text="Show completed threads"
                                         shouldCloseOnSelect={false}
@@ -110,6 +111,7 @@ export const ProjectMenu = observer(function ProjectMenu() {
                                         }
                                     />
                                     <MenuItem
+                                        className={styles.displayItem}
                                         id="active"
                                         text="Expand active threads"
                                         shouldCloseOnSelect={false}

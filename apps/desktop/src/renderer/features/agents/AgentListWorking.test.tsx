@@ -103,7 +103,7 @@ const key = (target: Element, name: string) =>
 
 const openFilter = async () => {
     await press(container.querySelector<HTMLElement>('button[aria-label="Project menu"]')!);
-    await key(menuItem('Filter'), 'ArrowRight');
+    await key(menuItem('Display'), 'ArrowRight');
 };
 
 beforeEach(async () => {
@@ -356,7 +356,7 @@ describe('the active threads filter', () => {
         expect(menuItem('Expand active threads')).toBeTruthy();
     });
 
-    it('turns active rows off and on without closing the filter submenu', async () => {
+    it('turns active rows off and on without closing the display submenu', async () => {
         await openFilter();
 
         expect(menuItem('Show completed threads').getAttribute('role')).toBe('menuitemcheckbox');

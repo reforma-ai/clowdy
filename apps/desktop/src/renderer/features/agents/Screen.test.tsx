@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+
+import { Modal } from '@clowdy/components/Modal';
 import { openConfirmModal } from '@clowdy/components/modals';
 import { emptyComposerDoc, plainTextToDoc } from '@clowdy/components/RichInput';
 import { runInAction } from 'mobx';
@@ -29,7 +31,7 @@ import { starCardPreferences } from './starCardState';
 import { chatWorktreeKey } from './worktreeCards';
 
 import type { Editor } from '@tiptap/core';
-import type { ReactNode } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import type { KeyValueStorage } from '../../stores/storage';
 
 // `Modal` cannot load under the desktop's Vitest (decorators), and no confirmation is opened here.
@@ -112,7 +114,7 @@ const menuItem = (name: string) => {
 };
 
 /** Opens a submenu the way a keyboard user does, so both the menu and its controls are available. */
-const openProjectSubmenu = async (name: 'Layout' | 'Filter') => {
+const openProjectSubmenu = async (name: 'Layout' | 'Display') => {
     await press(buttonNamed('Project menu'));
     await act(async () => {
         menuItem(name).dispatchEvent(
@@ -1566,7 +1568,7 @@ describe('threads', () => {
 
     it('hides finished threads when their filter is turned off', async () => {
         await draw(() => ['c-6', 'c-6a'].forEach(id => ui().toggleChatExpanded(id)));
-        await openProjectSubmenu('Filter');
+        await openProjectSubmenu('Display');
 
         expect(menuItem('Show completed threads').getAttribute('aria-checked')).toBe('true');
 
@@ -2019,6 +2021,7 @@ describe('worktree cards', () => {
 
     it.each(['card', 'chip'] as const)('removes the selected worktree from the %s menu', async entry => {
         await restart();
+        const dialog = vi.spyOn(Modal, 'create').mockImplementationOnce(() => undefined as never);
         window.desktop = {
             getOpenApps: async () => ({ editors: [], terminals: [], fileManagers: [] }),
             openPath: async () => undefined,
@@ -2034,9 +2037,10 @@ describe('worktree cards', () => {
                     : container.querySelector<HTMLElement>('button[aria-label^="Current place:"]')!;
             await press(button);
             await press(menuItem('Remove worktree…'));
-            await vi.waitFor(() => expect(openConfirmModal).toHaveBeenCalled());
+            await vi.waitFor(() => expect(dialog).toHaveBeenCalled());
+            const content = dialog.mock.calls[0]![0]!.component as ReactElement<{ onConfirm: () => Promise<void> }>;
             await act(async () => {
-                await vi.mocked(openConfirmModal).mock.lastCall![0].onConfirm();
+                await content.props.onConfirm();
             });
             await draw();
             const snapshot = await store.transport.getProjectSnapshot(FIXTURE_PROJECT_ID);
@@ -2050,6 +2054,7 @@ describe('worktree cards', () => {
                     .some(row => row.workspaceId === 'wks_ab12cd34'),
             }).toEqual({ archived: [true, true], selected: false, listed: false });
         } finally {
+            dialog.mockRestore();
             window.desktop = undefined;
         }
     });
