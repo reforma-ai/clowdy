@@ -46,6 +46,7 @@ import type {
     ProjectSnapshot,
     RootSnapshot,
     RunId,
+    RunPromptSuggestion,
     SkillCatalog,
     SleepMode,
     StreamItem,
@@ -315,6 +316,7 @@ export interface Transport {
      * daemon acts once. A command the daemon refused resolves with `ok: false`; a daemon out of reach rejects.
      */
     command: (command: CommandInput) => Promise<CommandResult>;
+    getPromptSuggestion: (runId: string) => Promise<RunPromptSuggestion | null>;
     getItems: (target: StreamTarget, afterSeq?: number) => Promise<StreamItem[]>;
     getTaskDetail: (taskId: TaskId) => Promise<TaskDetail>;
     /**

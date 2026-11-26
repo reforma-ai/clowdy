@@ -66,6 +66,7 @@ import type {
     ProjectInfo,
     ProjectSnapshot,
     RootSnapshot,
+    RunPromptSuggestion,
     SkillCatalog,
     SleepMode,
     StreamItem,
@@ -448,6 +449,10 @@ export class HttpTransport implements Transport {
 
     getProjectSnapshot(projectId: ProjectId): Promise<ProjectSnapshot> {
         return this.#get(ROUTES.projectSnapshot(projectId));
+    }
+
+    getPromptSuggestion(runId: string): Promise<RunPromptSuggestion | null> {
+        return this.#get(ROUTES.runPromptSuggestion(runId));
     }
 
     getItems(target: StreamTarget, afterSeq = 0): Promise<StreamItem[]> {

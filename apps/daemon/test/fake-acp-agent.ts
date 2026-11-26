@@ -752,6 +752,24 @@ const app = agent({ name: 'fake-acp-agent' })
             session.prompting = false;
         }
 
+        if (
+            process.env.FAKE_ACP_PREDICTION &&
+            (clientCapabilities as { session?: { promptSuggestions?: object } })?.session?.promptSuggestions
+        ) {
+            setTimeout(
+                () =>
+                    void send({
+                        sessionUpdate: 'prompt_suggestions_update',
+                        suggestions: [
+                            { prompt: [{ type: 'text', text: '   ' }] },
+                            { prompt: [{ type: 'text', text: 'Check the result' }] },
+                            { prompt: [{ type: 'text', text: 'Another prediction' }] },
+                        ],
+                    }),
+                20
+            );
+        }
+
         // What an agent gives once the prompt is answered: its first message as the title, then a name of its own a moment later.
         if (session.title === undefined) {
             if (echoed) {

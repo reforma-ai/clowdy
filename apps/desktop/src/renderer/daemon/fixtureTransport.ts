@@ -1357,6 +1357,10 @@ export class FixtureTransport implements Transport {
             : { ok: false, requestId, error: outcome.error };
     }
 
+    async getPromptSuggestion(): Promise<null> {
+        return null;
+    }
+
     async getItems(target: StreamTarget, afterSeq = 0): Promise<StreamItem[]> {
         const runId =
             'runId' in target

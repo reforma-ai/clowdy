@@ -450,8 +450,8 @@ function fixtureAgents(now: number): AgentInfo[] {
             status: 'ready',
             path: '/Users/dev/.local/bin/claude',
             version: '2.1.322',
-            launch: 'bun x --bun @agentclientprotocol/claude-agent-acp@0.107.0',
-            fetches: '@agentclientprotocol/claude-agent-acp@0.107.0',
+            launch: 'bun x --bun @agentclientprotocol/claude-agent-acp@0.109.0',
+            fetches: '@agentclientprotocol/claude-agent-acp@0.109.0',
             login: 'claude auth login',
             canSignIn: true,
             canCompact: true,
@@ -466,6 +466,14 @@ function fixtureAgents(now: number): AgentInfo[] {
                 ],
             },
             settings: [
+                {
+                    id: 'promptSuggestions',
+                    label: 'Suggest next messages',
+                    description:
+                        'Let the agent predict your next message when supported. Applies to new sessions and may use an additional model request.',
+                    value: true,
+                    default: true,
+                },
                 {
                     id: 'memory',
                     label: 'Memory',
@@ -533,8 +541,16 @@ function fixtureAgents(now: number): AgentInfo[] {
                     { id: 'codex:secondary', label: 'Week', usedPercent: 17, resetsAt: inMinutes(24 * 60) },
                 ],
             },
-            // The only switch the fixture's Codex has: on, so the Changes tab shows its Generate button.
+            // Commit messages are on, so the Changes tab shows its Generate button.
             settings: [
+                {
+                    id: 'promptSuggestions',
+                    label: 'Suggest next messages',
+                    description:
+                        'Let the agent predict your next message when supported. Applies to new sessions and may use an additional model request.',
+                    value: true,
+                    default: true,
+                },
                 {
                     id: COMMIT_MESSAGE_SETTING_ID,
                     label: 'Commit messages',
@@ -567,7 +583,16 @@ function fixtureAgents(now: number): AgentInfo[] {
                 fetchedAt: now,
                 windows: [{ id: 'plan', label: 'Plan usage', usedPercent: 5, resetsAt: inMinutes(26 * 24 * 60) }],
             },
-            settings: [],
+            settings: [
+                {
+                    id: 'promptSuggestions',
+                    label: 'Suggest next messages',
+                    description:
+                        'Let the agent predict your next message when supported. Applies to new sessions and may use an additional model request.',
+                    value: true,
+                    default: true,
+                },
+            ],
             permissions: clientPresets(),
         },
     ];

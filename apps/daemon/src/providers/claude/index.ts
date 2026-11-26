@@ -20,7 +20,7 @@ export const claude: Provider = {
         elicitation: true,
         launch: {
             kind: 'package',
-            package: '@agentclientprotocol/claude-agent-acp@0.107.0',
+            package: '@agentclientprotocol/claude-agent-acp@0.109.0',
             pathEnv: 'CLAUDE_CODE_EXECUTABLE',
         },
         // ACP v2: background commands, sub-agents and workflows are told as `state_update`s, and the agent's own turns come on the same session.
@@ -90,6 +90,14 @@ export const claude: Provider = {
             },
             chatTitleSetting('Claude Code'),
             commitMessageSetting('Claude Code'),
+            {
+                id: 'promptSuggestions',
+                label: 'Suggest next messages',
+                description:
+                    'Let Claude Code predict your next message using its native suggestions. Applies to new sessions.',
+                default: true,
+                effect: on => ({ env: { CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION: on ? null : 'false' } }),
+            },
         ],
         // A stray key in the daemon's environment would move billing off the user's subscription; a key the user wants goes in the agent's `env`.
         scrub: [/^ANTHROPIC_API_KEY$/, /^ANTHROPIC_AUTH_TOKEN$/, /^CLAUDE_CODE_OAUTH_TOKEN$/],

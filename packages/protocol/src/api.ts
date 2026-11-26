@@ -6,6 +6,12 @@ export const PROTOCOL_VERSION = 1;
 
 export const PROTOCOL_HEADER = 'x-clowdy-protocol';
 
+/** A volatile prediction for the successful completion of one run. Never part of its stream or event log. */
+export interface RunPromptSuggestion {
+    finishedAt: number;
+    text: string;
+}
+
 /**
  * HTTP surface, loopback only, `Authorization: Bearer <token>` on everything but `/v1/health`.
  *
@@ -26,6 +32,7 @@ export const PROTOCOL_HEADER = 'x-clowdy-protocol';
  *                                            limits it to one project. 410 when the cursor is ahead of the log (the log is not pruned
  *                                            yet, so a cursor is never too old): fetch a snapshot and resume from its cursor.
  * POST /v1/commands                       -> body Command, answers CommandResult
+ * GET  /v1/runs/:id/prompt-suggestion    -> RunPromptSuggestion | null (volatile, only for its current successful completion)
  * GET  /v1/runs/:id/items?after=SEQ       -> StreamItem[] (a run's stream, also an orchestrator's chat)
  * GET  /v1/chats/:id/items?after=SEQ      -> StreamItem[] (the chat's orchestrator stream)
  * GET  /v1/chats/:id/workspace            -> ChatWorkspaceRemoval (whether the chat's worktree can be removed together with the chat, which is what `chat.delete`'s
@@ -128,6 +135,7 @@ export const ROUTES = {
     projectSnapshot: (projectId: string) => `/v1/projects/${encodeURIComponent(projectId)}/snapshot`,
     events: '/v1/events',
     commands: '/v1/commands',
+    runPromptSuggestion: (runId: string) => `/v1/runs/${encodeURIComponent(runId)}/prompt-suggestion`,
     runItems: (runId: string) => `/v1/runs/${encodeURIComponent(runId)}/items`,
     chatItems: (chatId: string) => `/v1/chats/${encodeURIComponent(chatId)}/items`,
     chatWorkspace: (chatId: string) => `/v1/chats/${encodeURIComponent(chatId)}/workspace`,

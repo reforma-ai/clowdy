@@ -1,5 +1,5 @@
 import type { Database } from 'bun:sqlite';
-import type { ClowdyEvent, CommandResult, EngineId, EventData } from '@clowdy/protocol';
+import type { ClowdyEvent, CommandResult, EngineId, EventData, RunPromptSuggestion } from '@clowdy/protocol';
 
 export type EventListener = (events: ClowdyEvent[]) => void;
 
@@ -29,6 +29,17 @@ export class Store {
     private pending: ClowdyEvent[] = [];
     private callbacks: (() => void)[] = [];
     private listeners = new Set<EventListener>();
+    /** Predictions are not persisted or replayed with the transcript or the event log. */
+    readonly promptSuggestions = new Map<string, RunPromptSuggestion>();
+
+    rememberPromptSuggestion(runId: string, finishedAt: number, text: string): void {
+        this.promptSuggestions.delete(runId);
+        this.promptSuggestions.set(runId, { finishedAt, text });
+        if (this.promptSuggestions.size > 128) {
+            const oldest = this.promptSuggestions.keys().next().value;
+            if (oldest !== undefined) this.promptSuggestions.delete(oldest);
+        }
+    }
 
     /**
      * Whether the engine `id` can fork its sessions at rewind points (`AgentEngine.canFork`). The daemon sets it once its engines exist; until then, and in a

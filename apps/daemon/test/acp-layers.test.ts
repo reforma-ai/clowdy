@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { Discovery } from '../src/engine/acp/discovery';
 import { AgentRegistry } from '../src/engine/acp/registry';
 import { PROVIDERS } from '../src/providers/builtin';
-import { alive, collect, FAKE_AGENT, rig, textOf, tool, types, until } from './acp-helpers';
+import { alive, collect, FAKE_AGENT, PROTOCOLS, rig, textOf, tool, types, until } from './acp-helpers';
 
 import type { EngineEvent } from '../src/engine/types';
 import type { Rig } from './acp-helpers';
@@ -158,6 +158,55 @@ describe('the protocol of an agent', () => {
         await session.close();
 
         expect(JSON.parse(textOf(events))).toEqual({ _meta: meta });
+    });
+});
+
+describe('native prompt suggestions', () => {
+    test.each(PROTOCOLS)('%s negotiates and picks one late text prediction', async protocol => {
+        const { session } = (current = rig({ protocol, agentEnv: { FAKE_ACP_PREDICTION: '1' } })).start('say Done', {
+            promptSuggestions: true,
+        });
+        const events = await collect(session);
+        await session.close();
+        expect(events.at(-1)).toEqual({ type: 'done', result: 'Done', promptSuggestion: 'Check the result' });
+    });
+
+    test('v2 accepts a prediction delivered just before successful idle', async () => {
+        const { session } = (current = rig({ protocol: 'v2', agentEnv: { FAKE_ACP_PREDICTION: 'before' } })).start(
+            'say Done',
+            { promptSuggestions: true }
+        );
+        const events = await collect(session);
+        await session.close();
+        expect(events.at(-1)).toEqual({ type: 'done', result: 'Done', promptSuggestion: 'Check the result' });
+    });
+
+    test('v2 still succeeds when the agent exits after idle without a prediction', async () => {
+        const { session } = (current = rig({ protocol: 'v2', agentEnv: { FAKE_ACP_PREDICTION: 'exit' } })).start(
+            'say Done',
+            { promptSuggestions: true }
+        );
+        const events = await collect(session);
+        await session.close();
+        expect(events.at(-1)).toEqual({ type: 'done', result: 'Done' });
+    });
+
+    test.each(PROTOCOLS)('%s omits the capability when disabled', async protocol => {
+        const { session } = (current = rig({ protocol, agentEnv: { FAKE_ACP_PREDICTION: '1' } })).start(
+            'capabilities',
+            {
+                promptSuggestions: false,
+            }
+        );
+        const events = await collect(session);
+        await session.close();
+        expect({
+            capability: JSON.parse(textOf(events)).session?.promptSuggestions,
+            suggestion: events.at(-1),
+        }).toEqual({
+            capability: undefined,
+            suggestion: { type: 'done', result: textOf(events) },
+        });
     });
 });
 

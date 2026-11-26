@@ -17,6 +17,7 @@ import {
 } from './conversation';
 import { classifyThrown, failureEvent, processEnded } from './failure';
 import { UpdateMapper } from './mapper';
+import { bestPromptSuggestion, SUGGESTION_WAIT_MS } from './promptSuggestions';
 
 import type {
     ClientCapabilities,
@@ -33,7 +34,11 @@ import type { LayerHost, ProtocolLayer } from './layer';
 import type { ResolvedAgent } from './registry';
 
 /** What the client tells an agent it can do in `initialize`. The probe sends the same, so it shows the options a run gets. */
-export const clientCapabilities = (agent: Pick<ResolvedAgent, 'clientMeta' | 'elicitation'>): ClientCapabilities => ({
+export const clientCapabilities = (
+    agent: Pick<ResolvedAgent, 'clientMeta' | 'elicitation'>,
+    suggestions = false
+): ClientCapabilities => ({
+    ...(suggestions && { session: { promptSuggestions: {} } }),
     fs: { readTextFile: false, writeTextFile: false },
     terminal: false,
     ...(agent.elicitation && { elicitation: { form: {} } }),
@@ -45,7 +50,8 @@ type Item =
     | { kind: 'stop'; response: PromptResponse }
     | { kind: 'failed'; error: unknown }
     | { kind: 'exited' }
-    | { kind: 'aborted' };
+    | { kind: 'aborted' }
+    | { kind: 'suggestionTimeout' };
 
 /**
  * Why an agent spoken to over ACP v1 cannot be forked: v1 has no fork that cuts a session at a message, and none of the agents that speak v1 is known to
@@ -150,6 +156,10 @@ export class V1Layer implements ProtocolLayer {
         const channel = new Channel<Item>();
         let current: string | undefined;
         let replaying = false;
+        const suggestions = Boolean(agent.promptSuggestions && options.promptSuggestions);
+        let suggestion: string | undefined;
+        let prompting = false;
+        let suggestionTimer: ReturnType<typeof setTimeout> | undefined;
 
         const app = client({ name: 'clowdy' })
             .onNotification(methods.client.session.update, ({ params }) => {
@@ -161,7 +171,10 @@ export class V1Layer implements ProtocolLayer {
                         host.offerTitle(params.update.title);
                     }
 
-                    channel.push({ kind: 'update', update: params.update });
+                    // Updates from loading/setting up the session are not predictions for this prompt.
+                    if (params.update.sessionUpdate !== 'prompt_suggestions_update' || prompting) {
+                        channel.push({ kind: 'update', update: params.update });
+                    }
                 }
             })
             .onRequest(methods.client.session.requestPermission, async ({ params, signal }) => {
@@ -192,7 +205,7 @@ export class V1Layer implements ProtocolLayer {
                 request(
                     connection.agent.request(methods.agent.initialize, {
                         protocolVersion: PROTOCOL_VERSION,
-                        clientCapabilities: clientCapabilities(agent),
+                        clientCapabilities: clientCapabilities(agent, suggestions),
                         clientInfo: { name: 'clowdy', title: 'Clowdy', version: deps.clientVersion },
                     })
                 ),
@@ -327,6 +340,7 @@ export class V1Layer implements ProtocolLayer {
                 log: deps.log,
             });
 
+            prompting = true;
             void connection.agent
                 .request(methods.agent.session.prompt, {
                     sessionId: id,
@@ -346,7 +360,11 @@ export class V1Layer implements ProtocolLayer {
                 }
 
                 if (item.kind === 'update') {
-                    yield* mapper.update(item.update);
+                    if (suggestions && item.update.sessionUpdate === 'prompt_suggestions_update') {
+                        suggestion = bestPromptSuggestion(item.update.suggestions);
+                    } else {
+                        yield* mapper.update(item.update);
+                    }
                     continue;
                 }
 
@@ -368,6 +386,8 @@ export class V1Layer implements ProtocolLayer {
                     return;
                 }
 
+                if (item.kind !== 'stop') return;
+
                 yield* mapper.stop(item.response);
 
                 if (mapper.cost !== undefined) {
@@ -377,7 +397,23 @@ export class V1Layer implements ProtocolLayer {
                 const failure = stopFailure(item.response.stopReason, agent.name);
 
                 this.answered = !failure;
-                yield failure ?? { type: 'done', result: mapper.result() };
+                if (!failure && item.response.stopReason === 'end_turn' && suggestions && !suggestion) {
+                    suggestionTimer = setTimeout(() => channel.push({ kind: 'suggestionTimeout' }), SUGGESTION_WAIT_MS);
+                    while (!signal.aborted) {
+                        const next = await channel.next();
+                        if (next.kind !== 'update') break;
+                        if (next.update.sessionUpdate === 'prompt_suggestions_update') {
+                            suggestion = bestPromptSuggestion(next.update.suggestions);
+                            break;
+                        }
+                    }
+                }
+                if (!signal.aborted)
+                    yield failure ?? {
+                        type: 'done',
+                        result: mapper.result(),
+                        ...(item.response.stopReason === 'end_turn' && suggestion && { promptSuggestion: suggestion }),
+                    };
 
                 return;
             }
@@ -395,6 +431,8 @@ export class V1Layer implements ProtocolLayer {
             }
 
             yield failureEvent(classifyThrown(error, context, await stderrOf(proc)));
+        } finally {
+            clearTimeout(suggestionTimer);
         }
     }
 }

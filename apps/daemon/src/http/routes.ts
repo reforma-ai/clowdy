@@ -383,6 +383,23 @@ export function createRoutes(context: RouteContext): Route[] {
         },
         {
             method: 'GET',
+            pattern: /^\/v1\/runs\/([^/]+)\/prompt-suggestion$/,
+            handle: (_request, _url, [id]) => {
+                const run = getRun(store.db, id);
+                if (run && services.agents.setting(run.engine, 'promptSuggestions') === false) {
+                    store.promptSuggestions.delete(id);
+                    return json(null);
+                }
+                const prediction = store.promptSuggestions.get(id);
+                return json(
+                    run?.status === 'succeeded' && prediction?.finishedAt === run.finishedAt
+                        ? (prediction ?? null)
+                        : null
+                );
+            },
+        },
+        {
+            method: 'GET',
             pattern: /^\/v1\/runs\/([^/]+)\/items$/,
             handle: (_request, url, [id]) => {
                 if (!getRun(store.db, id)) {

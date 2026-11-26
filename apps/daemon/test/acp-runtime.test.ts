@@ -55,6 +55,32 @@ async function setup(agentEnv: Record<string, string> = {}, taskTools?: 'cli' | 
     return { h, project, chat, say, texts };
 }
 
+describe('ephemeral prompt predictions', () => {
+    test('offers the prediction from a successful turn without writing it to the event log or transcript', async () => {
+        const { h, say, chat } = await setup({ FAKE_ACP_PREDICTION: '1' });
+        const runId = say('say Done');
+        await waitFor(() => h.run(runId).status === 'succeeded', 'prediction', 15_000);
+        const route = `/v1/runs/${runId}/prompt-suggestion`;
+        const prediction = await (await h.fetch(route)).json();
+        expect({
+            prediction,
+            inStream: JSON.stringify(listItems(h.store.db, runId, 0)).includes('Check the result'),
+            inEvents: JSON.stringify(h.events()).includes('Check the result'),
+        }).toEqual({
+            prediction: { finishedAt: h.run(runId).finishedAt, text: 'Check the result' },
+            inStream: false,
+            inEvents: false,
+        });
+
+        h.ok('agent.update', { id: 'fake-acp', settings: { promptSuggestions: false } });
+        expect(await (await h.fetch(route)).json()).toBeNull();
+        h.ok('chat.send', { chatId: chat.id, text: 'sleep 200\nsay New turn' });
+        expect(await (await h.fetch(route)).json()).toBeNull();
+        await waitFor(() => h.run(runId).status === 'succeeded', 'disabled prediction', 15_000);
+        expect(await (await h.fetch(route)).json()).toBeNull();
+    });
+});
+
 describe('a message while an ACP agent works', () => {
     /** Starts a turn that says `first`, sleeps, and says `last`, and sends `say steered` as a steer once `first` is in the stream. */
     async function steerDuringTurn(agentEnv: Record<string, string>) {
@@ -366,11 +392,11 @@ describe('a chat on an ACP v2 agent that works in the background, through the re
     });
 
     /** A whole daemon whose only engine is the v2 fake agent, with a handoff guard of a fraction of a second. */
-    async function setupV2() {
+    async function setupV2(env?: Record<string, string>) {
         const config = testConfig({ engine: 'fake-acp' });
         const agents = testAgents(config);
 
-        agents.add({ id: 'fake-acp', name: 'Fake ACP', command: process.execPath, args: [FAKE_AGENT_V2] });
+        agents.add({ id: 'fake-acp', name: 'Fake ACP', command: process.execPath, args: [FAKE_AGENT_V2], env });
 
         // A custom agent speaks v1; this one is set to v2, as the built-in ones are once the real adapters pass their checks.
         const resolve = agents.resolve.bind(agents);
@@ -413,6 +439,16 @@ describe('a chat on an ACP v2 agent that works in the background, through the re
 
         return { h, chat, say, pid, stream };
     }
+
+    test('does not offer a prediction from a turn that has background work or its autonomous report', async () => {
+        const { h, say } = await setupV2({ FAKE_ACP_PREDICTION: '1' });
+        const runId = say('say started\nbackground terminal 1000 sleep 60\nreport say finished');
+        const route = `/v1/runs/${runId}/prompt-suggestion`;
+        await waitFor(() => h.run(runId).status === 'waiting_background', 'the background command', 15_000);
+        expect(await (await h.fetch(route)).json()).toBeNull();
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the report turn', 15_000);
+        expect(await (await h.fetch(route)).json()).toBeNull();
+    });
 
     test('a turn that starts a command leaves the run waiting, the report turn is a message with no `user` item before it, and the run settles when nothing is open', async () => {
         const { h, say, pid, stream } = await setupV2();

@@ -80,6 +80,19 @@
         font: inherit;
         line-height: inherit;
     }
+
+    /* The prediction is optional UI, not an editable line. Keep long/multiline predictions from
+     * spilling over the card or moving the caret; Tab still inserts the entire text. */
+    .root[data-rich-input-suggestion] .editor :global(p.is-editor-empty:first-child::before) {
+        position: absolute;
+        inset-inline: 0;
+        top: 0;
+        height: auto;
+        float: none;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+    }
 }
 
 /*
