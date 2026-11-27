@@ -250,9 +250,7 @@ export function AgentList({
     const mainCards: WorktreeCard[] = groupedByWorktree
         ? agentGroups(chats, folders).flatMap(group => {
               const roots = group.roots.filter(chat => !chat.workspace);
-              const hasDraft = draftItems.some(draft => !draft.workspace && draftFolder(draft) === group.folder.id);
-              if ((!roots.length && !hasDraft) || !shownAdditional.some(card => card.folder.id === group.folder.id))
-                  return [];
+              if (!shownAdditional.some(card => card.folder.id === group.folder.id)) return [];
               return [
                   {
                       key: worktreeKey(group.folder.id, group.folder.path),
