@@ -80,8 +80,26 @@ export function affectedChats(
     };
 }
 
-export function affectedSummary(count: number, outside: number): string {
-    return `${count} ${count === 1 ? 'chat' : 'chats'} affected${outside ? `, including ${outside} ${outside === 1 ? 'thread' : 'threads'} outside this worktree` : ''}`;
+/** The archive outcome for the chats shown in a removal preview. */
+export function archiveConsequence(chats: readonly Chat[]): string {
+    const unarchived = chats.filter(chat => chat.archivedAt === undefined).length;
+    const archived = chats.length - unarchived;
+    const parts = [
+        ...(unarchived ? [`${unarchived} ${unarchived === 1 ? 'chat' : 'chats'} will be archived`] : []),
+        ...(archived ? [`${archived} already archived`] : []),
+    ];
+    return parts.join('; ');
+}
+
+/** A confirmation names chats and shows their archive state, which may change without changing their IDs. */
+export function chatPreviewChanged(shown: readonly Chat[], current: readonly Chat[]): boolean {
+    const byId = new Map(current.map(chat => [chat.id, chat]));
+    return shown.some(chat => {
+        const now = byId.get(chat.id);
+        return (
+            !!now && (now.title !== chat.title || (now.archivedAt === undefined) !== (chat.archivedAt === undefined))
+        );
+    });
 }
 
 export async function refreshWorktreeTarget(target: Omit<WorktreeTarget, 'path'>, affected: readonly Chat[] = []) {
@@ -145,20 +163,21 @@ export async function removeWorktree(
     if (deleteBranch && (!worktree.branch || !worktree.headOid)) throw new Error('Could not verify the branch commit');
     const discard = plan.kind === 'discard';
     const noChats = chats.ids.size === 0;
-    if (noChats || deleteBranch || discard) {
-        try {
-            const current = await readWorktree(target);
-            const linkedNow = noChats ? affectedChats(current.worktree, current.snapshot, target.folderId).ids.size : 0;
-            const drift = confirmedRemovalDrift(worktree, current.worktree, linkedNow, {
-                deleteBranch,
-                discard,
-                noChats,
-            });
-            if (drift) throw new Error(drift);
-        } catch (error) {
-            await refreshWorktreeTarget(target);
-            throw error;
-        }
+    try {
+        const current = await readWorktree(target);
+        const currentChats = affectedChats(current.worktree, current.snapshot, target.folderId);
+        if (chatPreviewChanged(chats.affected, currentChats.affected))
+            throw new Error('The linked chats changed. Try again');
+        const linkedNow = noChats ? currentChats.ids.size : 0;
+        const drift = confirmedRemovalDrift(worktree, current.worktree, linkedNow, {
+            deleteBranch,
+            discard,
+            noChats,
+        });
+        if (drift) throw new Error(drift);
+    } catch (error) {
+        await refreshWorktreeTarget(target);
+        throw error;
     }
     const result = await target.root.command({
         type: 'workspace.remove',

@@ -34,13 +34,17 @@ interface WorktreeRowProps extends WorktreeRowActions {
     worktree: WorktreeInfo;
 }
 
-function WorktreeChats({ chats, onOpenChat }: { chats: WorktreeChat[]; onOpenChat: (chat: WorktreeChat) => void }) {
+function chatCount(chats: WorktreeChat[]): string {
     const count = chats.length;
+    const archived = chats.filter(chat => chat.archived).length;
+    return `${count} ${count === 1 ? 'chat' : 'chats'}${archived ? ` (${archived} archived)` : ''}`;
+}
 
+function WorktreeChats({ chats, onOpenChat }: { chats: WorktreeChat[]; onOpenChat: (chat: WorktreeChat) => void }) {
     return (
         <MenuTrigger>
             <Button variant="inline" className={styles.chatCount}>
-                {`${count} ${count === 1 ? 'chat' : 'chats'}`}
+                {chatCount(chats)}
             </Button>
             <Popover placement="bottom start" spacing="xs" width={280}>
                 <PopoverScroll maxHeight={280}>
@@ -132,7 +136,7 @@ export function WorktreeRowSummary({
                                 {onOpenChat ? (
                                     <WorktreeChats chats={worktree.chats} onOpenChat={onOpenChat} />
                                 ) : (
-                                    `${worktree.chats.length} ${worktree.chats.length === 1 ? 'chat' : 'chats'}`
+                                    chatCount(worktree.chats)
                                 )}
                             </Text>
                         )}

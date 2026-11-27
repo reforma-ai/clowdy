@@ -128,7 +128,7 @@ async function openMore(path: string) {
 }
 
 async function openChats() {
-    await click(textButton(row(CLOWDY_WORKTREE), '2 chats')!);
+    await click(textButton(row(CLOWDY_WORKTREE), '2 chats (1 archived)')!);
     await settle();
 }
 
@@ -344,7 +344,7 @@ describe('Manage worktrees', () => {
         await open();
 
         const worktree = row(CLOWDY_WORKTREE);
-        const count = textButton(worktree, '2 chats')!;
+        const count = textButton(worktree, '2 chats (1 archived)')!;
 
         expect(worktree.textContent).toContain('3 changes');
         expect(worktree.textContent).toContain('2 chats');

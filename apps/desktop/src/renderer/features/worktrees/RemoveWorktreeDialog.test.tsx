@@ -685,18 +685,59 @@ describe('Remove in Manage worktrees', () => {
             expect(removals()).toEqual([]);
         });
 
+        it('identifies an already archived linked thread and describes both removal choices', async () => {
+            const data = dataWithKinds();
+            const archived = data.chats.find(chat => chat.id === 'c-10')!;
+            archived.workspace = {
+                id: 'archived-only',
+                path: CLEAN_MERGED,
+                folderId: 'fld_car_rental',
+                ready: true,
+                managed: false,
+            };
+            await open({ data });
+            await askToRemove(CLEAN_MERGED);
+            expect(confirmation().textContent).toContain(archived.title);
+            expect(confirmation().textContent).toContain('Already archived');
+            expect(confirmation().textContent).not.toContain('will be archived');
+            await click(deleteChats()!);
+            expect(confirmation().textContent).toContain('permanently deleted');
+        });
+
+        it.each(['unarchive', 'rename'] as const)(
+            'refuses removal when an archived linked chat changes after confirmation: %s',
+            async change => {
+                const data = dataWithKinds();
+                const archived = data.chats.find(chat => chat.id === 'c-10')!;
+                archived.workspace = {
+                    id: 'archived-only',
+                    path: CLEAN_MERGED,
+                    folderId: 'fld_car_rental',
+                    ready: true,
+                    managed: false,
+                };
+                await open({ data });
+                await askToRemove(CLEAN_MERGED);
+                if (change === 'unarchive') archived.archivedAt = undefined;
+                else archived.title = 'Renamed chat';
+                await confirm('Remove worktree');
+                expect(removals()).toEqual([]);
+                expect(confirmation().textContent).toContain('The linked chats changed');
+            }
+        );
+
         it('explains that linked chats will be archived, and updates that consequence when deletion is chosen', async () => {
             await open();
             await askToRemove(CLOWDY_WORKTREE);
 
-            expect(confirmation().textContent).toContain('2 linked chats will be archived');
+            expect(confirmation().textContent).toContain('1 chat will be archived; 1 already archived');
             expect(deleteChats()!.checked).toBe(false);
             expect(deleteChats()!.getAttribute('role')).toBe('switch');
             await click(deleteChats()!);
-            expect(confirmation().textContent).toContain('2 linked chats will be permanently deleted');
+            expect(confirmation().textContent).toContain('All linked chats will be permanently deleted');
             expect(deleteChats()!.checked).toBe(true);
             await click(deleteChats()!);
-            expect(confirmation().textContent).toContain('2 linked chats will be archived');
+            expect(confirmation().textContent).toContain('1 chat will be archived; 1 already archived');
         });
 
         it.each(['archive', 'delete'] as const)(
@@ -999,9 +1040,7 @@ describe('Remove in Manage worktrees', () => {
         await click(linked);
         await click(textButton(confirmation(), 'Remove 1 worktree…')!);
         await settle();
-        expect(confirmation().textContent).toContain(
-            '2 chats affected, including 1 thread outside this worktree will be archived'
-        );
+        expect(confirmation().textContent).toContain('1 thread in other worktrees');
         await confirm('Remove 1 worktree');
         expect(removals()).toEqual([
             expect.objectContaining({
@@ -1016,6 +1055,55 @@ describe('Remove in Manage worktrees', () => {
                 .filter(item => item.id === chat.id || item.id === thread.id)
                 .every(item => item.archivedAt !== undefined)
         ).toBe(true);
+    });
+
+    it('removes two selected worktrees when the first archives a thread linked to the second', async () => {
+        const data = dataWithKinds();
+        const chat = data.chats.find(item => item.id === 'c-10')!;
+        chat.archivedAt = undefined;
+        chat.workspace = {
+            id: 'linked-parent',
+            path: CLEAN_MERGED,
+            folderId: 'fld_car_rental',
+            ready: true,
+            managed: false,
+        };
+        const thread = {
+            ...chat,
+            id: 'linked-thread',
+            parentChatId: chat.id,
+            workspace: {
+                id: 'linked-child',
+                path: CLEAN_UNMERGED,
+                folderId: 'fld_car_rental',
+                ready: true,
+                managed: false,
+            },
+            orchestratorRunId: undefined,
+        };
+        data.chats.push(thread);
+        await open({ data });
+        await click(textButton(confirmation(), 'Tidy up…')!);
+        await settle();
+        const choices = [
+            ...confirmation().querySelectorAll<HTMLInputElement>(
+                'input[type="checkbox"][aria-label^="Remove "]:checked'
+            ),
+        ];
+        for (const choice of choices) await click(choice);
+        await click(
+            confirmation().querySelector<HTMLInputElement>(`input[aria-label="Remove feature/done: ${CLEAN_MERGED}"]`)!
+        );
+        await click(
+            confirmation().querySelector<HTMLInputElement>(`input[aria-label="Remove wip/pricing: ${CLEAN_UNMERGED}"]`)!
+        );
+        await click(textButton(confirmation(), 'Remove 2 worktrees…')!);
+        await settle();
+        await confirm('Remove 2 worktrees');
+        expect(removals()).toEqual([
+            expect.objectContaining({ path: CLEAN_MERGED, chatDisposition: 'archive' }),
+            expect.objectContaining({ path: CLEAN_UNMERGED, chatDisposition: 'archive' }),
+        ]);
     });
 
     it('refuses a selected worktree while a linked chat is working', async () => {
@@ -1094,6 +1182,34 @@ describe('Remove in Manage worktrees', () => {
         await confirm('Remove 1 worktree');
         expect(removals()).toEqual([]);
         expect(confirmation().textContent).toContain(ONE_CHANGE);
+    });
+
+    it('explains that already archived chats stay archived during safe cleanup', async () => {
+        const data = dataWithKinds();
+        const archived = data.chats.find(chat => chat.id === 'c-10')!;
+        archived.workspace = {
+            id: 'archived-only',
+            path: CLEAN_MERGED,
+            folderId: 'fld_car_rental',
+            ready: true,
+            managed: false,
+        };
+        data.worktrees!['/Users/dev/car-rental-api'] = [];
+        await open({ data });
+        await click(textButton(confirmation(), 'Tidy up…')!);
+        await settle();
+        expect(
+            confirmation().querySelector<HTMLInputElement>(`input[aria-label="Remove feature/done: ${CLEAN_MERGED}"]`)
+                ?.checked
+        ).toBe(true);
+        await click(textButton(confirmation(), 'Remove 1 worktree…')!);
+        await settle();
+        expect(confirmation().textContent).toContain(archived.title);
+        expect(confirmation().textContent).toContain('Already archived');
+        expect(confirmation().textContent).toContain('Linked chats and threads stay as they are');
+        await confirm('Remove 1 worktree');
+        const snapshot = await store.transport.getProjectSnapshot(FIXTURE_PROJECT_ID);
+        expect(snapshot.chats.find(chat => chat.id === archived.id)?.archivedAt).toBe(archived.archivedAt);
     });
 
     it('does not remove anything when the selection is cleared', async () => {
