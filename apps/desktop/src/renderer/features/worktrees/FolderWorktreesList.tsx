@@ -148,7 +148,7 @@ export function FolderWorktreesList({
     return (
         <DialogLayout
             title="Worktrees"
-            description="Worktrees are separate folders for the same Git repository, so chats can make changes independently without affecting your original project files"
+            description="Worktrees are separate folders for the same Git repository, so you can make changes independently without affecting your original project files"
         >
             <div className={styles.groups}>
                 <div className={`${styles.groups} ${styles.worktreeRows}`}>
