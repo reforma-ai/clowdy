@@ -311,17 +311,19 @@ describe('Add to chat from the tree', () => {
             await openMenu(rowFor('README.md'));
             expect(menuItems()[0]).toBe(menuItem());
             await press(menuItem()!);
-            expect(mention).toHaveBeenLastCalledWith([
-                { path: `${FIXTURE_WORKTREE_PATH}/README.md`, name: 'README.md', kind: 'file' },
-            ]);
+            expect(mention).toHaveBeenLastCalledWith(
+                [{ path: `${FIXTURE_WORKTREE_PATH}/README.md`, name: 'README.md', kind: 'file' }],
+                undefined
+            );
             expect(ui().sidePanelOpen).toBe(false);
 
             await openMenu(rowFor('src'));
             expect(menuItems()[0]).toBe(menuItem());
             await press(menuItem()!);
-            expect(mention).toHaveBeenLastCalledWith([
-                { path: `${FIXTURE_WORKTREE_PATH}/src`, name: 'src', kind: 'directory' },
-            ]);
+            expect(mention).toHaveBeenLastCalledWith(
+                [{ path: `${FIXTURE_WORKTREE_PATH}/src`, name: 'src', kind: 'directory' }],
+                undefined
+            );
             expect(mention).toHaveBeenCalledTimes(2);
         } finally {
             await act(async () => unregister());
