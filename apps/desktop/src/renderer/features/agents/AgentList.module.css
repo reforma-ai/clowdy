@@ -269,6 +269,7 @@
 }
 
 .worktreeActions {
+    position: relative;
     display: flex;
     align-items: center;
     gap: var(--spacing-xs);
@@ -282,13 +283,19 @@
 }
 
 .worktreeActionButtons {
-    display: none;
+    display: inline-flex;
     align-items: center;
     gap: var(--spacing-xs);
 }
 
-.worktreeCard:is(:hover, :focus-within, :has(.worktreeHeader[data-open])) .worktreeActionButtons {
-    display: inline-flex;
+/* Keep tooltip anchors measurable while the actions are hidden. */
+.worktreeCard:not(:is(:hover, :focus-within, :has(.worktreeHeader[data-open]))) .worktreeActionButtons {
+    position: absolute;
+    inset-inline-end: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    visibility: hidden;
+    pointer-events: none;
 }
 
 .worktreeCard:is(:hover, :focus-within, :has(.worktreeHeader[data-open])) .worktreeStatus {
