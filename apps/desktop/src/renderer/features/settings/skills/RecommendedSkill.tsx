@@ -1,14 +1,12 @@
 import { Button } from '@clowdy/components/Button';
 import { openConfirmModal } from '@clowdy/components/modals';
+import { SettingsLayout } from '@clowdy/components/SettingsLayout';
 import { Badge } from '@clowdy/components/Tag';
 import { Text } from '@clowdy/components/Text';
 import { useCallback, useEffect, useState } from 'react';
 
 import { TransportError } from '../../../daemon/transport';
 import { useRootStore } from '../../../stores';
-import { SettingsBlock } from '../ui/SettingsBlock';
-import { SettingsCard } from '../ui/SettingsCard';
-import { SettingsSection } from '../ui/SettingsSection';
 import styles from './RecommendedSkill.module.css';
 
 type Status = { copies: { exists: boolean; installed: boolean }[]; fingerprint: string };
@@ -117,9 +115,9 @@ export function RecommendedSkill({ onInstalled, revision }: { onInstalled: () =>
                   : 'Not installed';
 
     return (
-        <SettingsSection title="Recommended skills">
-            <SettingsCard>
-                <SettingsBlock className={styles.row}>
+        <SettingsLayout.Section title="Recommended skills">
+            <SettingsLayout.Card>
+                <SettingsLayout.Block className={styles.row}>
                     <div className={styles.body}>
                         <div className={styles.heading}>
                             <Text weight="medium">Briefback</Text>
@@ -183,8 +181,8 @@ export function RecommendedSkill({ onInstalled, revision }: { onInstalled: () =>
                             {installing ? (installed ? 'Updating…' : 'Installing…') : installed ? 'Update' : 'Install'}
                         </Button>
                     ) : null}
-                </SettingsBlock>
-            </SettingsCard>
-        </SettingsSection>
+                </SettingsLayout.Block>
+            </SettingsLayout.Card>
+        </SettingsLayout.Section>
     );
 }

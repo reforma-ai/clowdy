@@ -1,12 +1,10 @@
 import { ListBoxItem } from '@clowdy/components/List';
 import { Select } from '@clowdy/components/Select';
+import { SettingsLayout } from '@clowdy/components/SettingsLayout';
 import { toast } from '@clowdy/components/Toast';
 import { useEffect, useState } from 'react';
 
 import { useRootStore } from '../../stores';
-import { SettingsCard } from './ui/SettingsCard';
-import { SettingsRow } from './ui/SettingsRow';
-import { SettingsSection } from './ui/SettingsSection';
 
 import type { SleepMode } from '@clowdy/protocol';
 
@@ -49,9 +47,9 @@ export function SleepSettings() {
     }
 
     return (
-        <SettingsSection title="Sleep">
-            <SettingsCard>
-                <SettingsRow
+        <SettingsLayout.Section title="Sleep">
+            <SettingsLayout.Card>
+                <SettingsLayout.Row
                     title="Sleep mode"
                     description={
                         error
@@ -60,7 +58,6 @@ export function SleepSettings() {
                     }
                 >
                     <Select
-                        aria-label="Sleep mode"
                         aria-busy={(!mode && !error) || saving || undefined}
                         size="sm"
                         isDisabled={!mode || saving}
@@ -73,8 +70,8 @@ export function SleepSettings() {
                     >
                         {option => <ListBoxItem id={option.id} text={option.label} />}
                     </Select>
-                </SettingsRow>
-            </SettingsCard>
-        </SettingsSection>
+                </SettingsLayout.Row>
+            </SettingsLayout.Card>
+        </SettingsLayout.Section>
     );
 }

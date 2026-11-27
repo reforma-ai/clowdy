@@ -1,6 +1,7 @@
 import { Button } from '@clowdy/components/Button';
 import { ListBoxItem } from '@clowdy/components/List';
 import { Select } from '@clowdy/components/Select';
+import { SettingsLayout } from '@clowdy/components/SettingsLayout';
 import { Switch } from '@clowdy/components/Switch';
 import { toast } from '@clowdy/components/Toast';
 import { COMMIT_MESSAGE_PROVIDERS, commitMessageAgent, writesCommitMessages } from '@clowdy/protocol';
@@ -10,16 +11,9 @@ import { useState } from 'react';
 import { useAgents, useRootStore } from '../../stores';
 import { sourceControlPreferences } from '../changes/sourceControlPreferences';
 import { BranchPrefixRow } from './BranchPrefixRow';
-import { SettingsCard } from './ui/SettingsCard';
-import { SettingsPage } from './ui/SettingsPage';
-import { SettingsRow } from './ui/SettingsRow';
-import { SettingsSection } from './ui/SettingsSection';
 
 import type { CommitMessageProvider } from '@clowdy/protocol';
 
-const COLLAPSE_DIFFS_LABEL = 'Collapse diffs by default';
-const AUTO_SYNC_LABEL = 'Sync after commit and merge';
-const PROVIDER_LABEL = 'Commit message provider';
 const PROVIDER_NAMES: Record<CommitMessageProvider, string> = { codex: 'Codex', claude: 'Claude Code' };
 const PROVIDER_OPTIONS = [
     { id: 'off', label: 'Off', provider: null },
@@ -43,11 +37,11 @@ export const SourceControlPage = observer(function SourceControlPage() {
     }
 
     return (
-        <SettingsPage>
-            <SettingsSection title="Commits">
-                <SettingsCard>
-                    <SettingsRow
-                        title={PROVIDER_LABEL}
+        <SettingsLayout.Page>
+            <SettingsLayout.Section title="Commits">
+                <SettingsLayout.Card>
+                    <SettingsLayout.Row
+                        title="Commit message provider"
                         description="Generate sends selected changes to this provider"
                         footer={
                             selected &&
@@ -64,7 +58,6 @@ export const SourceControlPage = observer(function SourceControlPage() {
                         }
                     >
                         <Select
-                            aria-label={PROVIDER_LABEL}
                             aria-busy={saving || undefined}
                             size="sm"
                             isDisabled={saving || status !== 'ready'}
@@ -78,41 +71,42 @@ export const SourceControlPage = observer(function SourceControlPage() {
                         >
                             {option => <ListBoxItem id={option.id} text={option.label} />}
                         </Select>
-                    </SettingsRow>
-                </SettingsCard>
-            </SettingsSection>
-            <SettingsSection title="Sync">
-                <SettingsCard>
-                    <SettingsRow
-                        title={AUTO_SYNC_LABEL}
+                    </SettingsLayout.Row>
+                </SettingsLayout.Card>
+            </SettingsLayout.Section>
+            <SettingsLayout.Section title="Sync">
+                <SettingsLayout.Card>
+                    <SettingsLayout.Row
+                        title="Sync after commit and merge"
                         description="Bring in new commits from origin and send yours after committing or merging branches"
                     >
                         <Switch
                             size="sm"
-                            aria-label={AUTO_SYNC_LABEL}
                             isSelected={sourceControlPreferences.autoSync}
                             onChange={enabled => sourceControlPreferences.setAutoSync(enabled)}
                         />
-                    </SettingsRow>
-                </SettingsCard>
-            </SettingsSection>
-            <SettingsSection title="New worktrees">
-                <SettingsCard>
+                    </SettingsLayout.Row>
+                </SettingsLayout.Card>
+            </SettingsLayout.Section>
+            <SettingsLayout.Section title="New worktrees">
+                <SettingsLayout.Card>
                     <BranchPrefixRow />
-                </SettingsCard>
-            </SettingsSection>
-            <SettingsSection title="Diffs">
-                <SettingsCard>
-                    <SettingsRow title={COLLAPSE_DIFFS_LABEL} description="Show file headers when you open Changes">
+                </SettingsLayout.Card>
+            </SettingsLayout.Section>
+            <SettingsLayout.Section title="Diffs">
+                <SettingsLayout.Card>
+                    <SettingsLayout.Row
+                        title="Collapse diffs by default"
+                        description="Show file headers when you open Changes"
+                    >
                         <Switch
                             size="sm"
-                            aria-label={COLLAPSE_DIFFS_LABEL}
                             isSelected={sourceControlPreferences.collapseDiffs}
                             onChange={collapse => sourceControlPreferences.setCollapseDiffs(collapse)}
                         />
-                    </SettingsRow>
-                </SettingsCard>
-            </SettingsSection>
-        </SettingsPage>
+                    </SettingsLayout.Row>
+                </SettingsLayout.Card>
+            </SettingsLayout.Section>
+        </SettingsLayout.Page>
     );
 });

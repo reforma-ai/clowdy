@@ -7,6 +7,7 @@ import { createFixtureData } from '../../../daemon/fixtureData';
 import { FixtureTransport } from '../../../daemon/fixtureTransport';
 import { overrideTransport } from '../../../daemon/testing';
 import { RootStore, RootStoreProvider } from '../../../stores';
+import { named } from '../accessibleName';
 import { ProvidersPage } from './ProvidersPage';
 
 import type { AgentInfo } from '@clowdy/protocol';
@@ -53,8 +54,7 @@ const button = (within: ParentNode, label: string) =>
         element => element.textContent?.trim() === label || element.getAttribute('aria-label') === label
     );
 const press = (element: HTMLElement | undefined) => act(async () => element!.click());
-const switchOf = (within: ParentNode, label: string) =>
-    within.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!;
+const switchOf = (within: ParentNode, label: string) => named<HTMLInputElement>(within, 'input', label)!;
 
 /** The permission radios of a card, in the order drawn, with what each says. */
 const presetsOf = (within: ParentNode) =>
@@ -122,8 +122,8 @@ describe('the cards', () => {
 
         expect(switchOf(card('Claude Code'), 'Memory').checked).toBe(false);
         expect(switchOf(card('Claude Code'), '1M context window').checked).toBe(true);
-        expect(card('Claude Code').querySelector('[aria-label="Commit messages"]')).toBeNull();
-        expect(card('Codex').querySelector('[aria-label="Commit messages"]')).toBeNull();
+        expect(named(card('Claude Code'), 'input', 'Commit messages')).toBeNull();
+        expect(named(card('Codex'), 'input', 'Commit messages')).toBeNull();
         expect(switchOf(card('Cursor'), 'Suggest next messages').checked).toBe(true);
     });
 

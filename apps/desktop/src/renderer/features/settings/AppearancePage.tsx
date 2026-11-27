@@ -1,5 +1,6 @@
 import { Box } from '@clowdy/components/Box';
 import { Card } from '@clowdy/components/Card';
+import { SettingsLayout } from '@clowdy/components/SettingsLayout';
 import { Text } from '@clowdy/components/Text';
 import { cn } from '@clowdy/lib';
 import { useState } from 'react';
@@ -8,10 +9,6 @@ import { getTheme, setTheme } from '../../theme';
 import styles from './AppearancePage.module.css';
 import { PanelOrderSettings } from './PanelOrderSettings';
 import { ThemePreview } from './ThemePreview';
-import { SettingsCard } from './ui/SettingsCard';
-import { SettingsPage } from './ui/SettingsPage';
-import { SettingsRow } from './ui/SettingsRow';
-import { SettingsSection } from './ui/SettingsSection';
 
 import type { Theme } from '@clowdy/constants';
 
@@ -43,10 +40,10 @@ export function AppearancePage() {
     const [theme, setThemeState] = useState(getTheme);
 
     return (
-        <SettingsPage description="How Clowdy looks on this computer">
-            <SettingsSection title="Theme">
-                <SettingsCard>
-                    <SettingsRow title="Color theme" description="Choose your preferred color theme">
+        <SettingsLayout.Page description="How Clowdy looks on this computer">
+            <SettingsLayout.Section title="Theme">
+                <SettingsLayout.Card>
+                    <SettingsLayout.Row title="Color theme" description="Choose your preferred color theme">
                         <Box direction="row" gap="lg" role="group" aria-label="Theme">
                             {THEME_CARDS.map(({ id, label }) => (
                                 <ThemeCard
@@ -61,11 +58,11 @@ export function AppearancePage() {
                                 />
                             ))}
                         </Box>
-                    </SettingsRow>
-                </SettingsCard>
-            </SettingsSection>
+                    </SettingsLayout.Row>
+                </SettingsLayout.Card>
+            </SettingsLayout.Section>
             <PanelOrderSettings />
-        </SettingsPage>
+        </SettingsLayout.Page>
     );
 }
 

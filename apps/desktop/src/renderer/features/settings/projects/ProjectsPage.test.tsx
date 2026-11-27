@@ -18,6 +18,7 @@ import { overrideTransport } from '../../../daemon/testing';
 import { hotkeys } from '../../../hotkeys';
 import { shellCommands } from '../../../shell/shellCommands';
 import { RootStore, RootStoreProvider } from '../../../stores';
+import { named as labelled } from '../accessibleName';
 import { SettingsWindow } from '../SettingsWindow';
 
 import type { OpenConfirmModalOptions } from '@clowdy/components/modals';
@@ -268,7 +269,7 @@ describe('ProjectsPage list', () => {
         await click(row(FIXTURE_EMPTY_PROJECT_ID)!);
 
         expect(store.ui.settingsProjectId).toBe(FIXTURE_EMPTY_PROJECT_ID);
-        expect(container.querySelector('input[aria-label="Project name"]')).not.toBeNull();
+        expect(labelled(container, 'input', 'Name')).not.toBeNull();
 
         await click(named('Projects'));
 
@@ -395,7 +396,7 @@ describe('ProjectsPage project', () => {
     it('renames on blur, and puts the name back on Escape', async () => {
         await open(FIXTURE_EMPTY_PROJECT_ID);
 
-        const input = container.querySelector<HTMLInputElement>('input[aria-label="Project name"]')!;
+        const input = labelled<HTMLInputElement>(container, 'input', 'Name')!;
 
         type(input, 'Escaped');
         await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
@@ -406,15 +407,13 @@ describe('ProjectsPage project', () => {
         await flush();
 
         expect(store.projects.find(project => project.id === FIXTURE_EMPTY_PROJECT_ID)?.name).toBe('Clowdy Desktop');
-        expect(container.querySelector<HTMLInputElement>('input[aria-label="Project name"]')?.value).toBe(
-            'Clowdy Desktop'
-        );
+        expect(labelled<HTMLInputElement>(container, 'input', 'Name')?.value).toBe('Clowdy Desktop');
     });
 
     it('does not rename to nothing', async () => {
         await open(FIXTURE_EMPTY_PROJECT_ID);
 
-        const input = container.querySelector<HTMLInputElement>('input[aria-label="Project name"]')!;
+        const input = labelled<HTMLInputElement>(container, 'input', 'Name')!;
 
         type(input, '   ');
         await act(async () => input.blur());
@@ -429,35 +428,36 @@ describe('ProjectsPage project', () => {
 
         const settings = () => store.projects.find(project => project.id === FIXTURE_EMPTY_PROJECT_ID)!.settings;
         const radio = (group: string, label: string) =>
-            [...container.querySelectorAll<HTMLElement>(`[aria-label="${group}"] [role="radio"]`)].find(
+            [...labelled(container, '[aria-labelledby]', group)!.querySelectorAll<HTMLElement>('[role="radio"]')].find(
                 item => item.textContent === label
             )!;
         const checked = (group: string) =>
-            container.querySelector(`[aria-label="${group}"] [role="radio"][aria-checked="true"]`)?.textContent;
+            labelled(container, '[aria-labelledby]', group)?.querySelector('[role="radio"][aria-checked="true"]')
+                ?.textContent;
 
         // Nothing saved is Default, for the agent and for the mode: the project follows Settings > Chat.
-        expect([checked('Agent for new chats'), checked('Mode for new chats')]).toEqual(['Default', 'Default']);
+        expect([checked('Agent'), checked('Mode')]).toEqual(['Default', 'Default']);
 
-        await click(radio('Agent for new chats', 'Codex'));
+        await click(radio('Agent', 'Codex'));
         await flush();
         expect(settings().engine).toBe('codex');
 
-        await click(radio('Mode for new chats', 'Hands-on'));
+        await click(radio('Mode', 'Hands-on'));
         await flush();
         expect(settings().chatMode).toBe('semi');
 
-        await click(radio('Agent for new chats', 'Last used'));
+        await click(radio('Agent', 'Last used'));
         await flush();
         expect(settings().engine).toBe(LAST_USED);
         expect(settings().chatMode).toBe('semi');
 
-        await click(radio('Mode for new chats', 'Last used'));
+        await click(radio('Mode', 'Last used'));
         await flush();
         expect(settings().chatMode).toBe(LAST_USED);
-        expect([checked('Agent for new chats'), checked('Mode for new chats')]).toEqual(['Last used', 'Last used']);
+        expect([checked('Agent'), checked('Mode')]).toEqual(['Last used', 'Last used']);
 
-        await click(radio('Agent for new chats', 'Default'));
-        await click(radio('Mode for new chats', 'Default'));
+        await click(radio('Agent', 'Default'));
+        await click(radio('Mode', 'Default'));
         await flush();
         expect(settings()).not.toHaveProperty('engine');
         expect(settings()).not.toHaveProperty('chatMode');
@@ -839,14 +839,14 @@ describe('ProjectsPage project', () => {
     it('shows the personal space with its one folder, read only, and new-chat settings only', async () => {
         await open(FIXTURE_PERSONAL_PROJECT_ID);
 
-        expect(container.querySelector('input[aria-label="Project name"]')).toBeNull();
+        expect(labelled(container, 'input', 'Name')).toBeNull();
         expect(rowPaths()).toEqual(['/Users/dev/Clowdy/Personal']);
         expect(marked()).toEqual([]);
         expect(container.querySelector('button[aria-label^="Remove "]')).toBeNull();
         expect(container.textContent).not.toContain('Add folders');
         expect(container.textContent).not.toContain('Remove project');
         expect(container.textContent).not.toContain('Upload');
-        expect(container.querySelector('[aria-label="Agent for new chats"]')).not.toBeNull();
+        expect(labelled(container, '[aria-labelledby]', 'Agent')).not.toBeNull();
     });
 
     it('says so when the folders could not be checked', async () => {
