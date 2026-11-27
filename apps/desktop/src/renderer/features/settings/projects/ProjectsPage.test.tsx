@@ -31,7 +31,10 @@ const toasts = vi.hoisted(() => ({ info: vi.fn(), error: vi.fn(), success: vi.fn
 
 const square = vi.hoisted(() => vi.fn<(file: Blob) => Promise<string>>());
 
-vi.mock('@clowdy/components/modals', () => ({ openConfirmModal: confirm }));
+vi.mock('@clowdy/components/modals', async importOriginal => ({
+    ...(await importOriginal<typeof import('@clowdy/components/modals')>()),
+    openConfirmModal: confirm,
+}));
 vi.mock('@clowdy/components/Toast', () => ({ toast: toasts }));
 // happy-dom draws no pictures: the tests say what drawing a picture small gives.
 vi.mock('./squareIcon', async importOriginal => ({
