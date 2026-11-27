@@ -31,6 +31,7 @@ import { placeChanges, placeFile } from '../git/changes';
 import { projectFolderGit } from '../git/state';
 import { placeStatus } from '../git/status';
 import { checkRevision, checkViewedPath, viewedScopeKey } from '../git/viewed';
+import { briefbackStatus, checkBriefbackUpdate, installBriefback } from '../skills/briefback';
 import { BodyTooLarge, declaredLength, JSON_BODY_LIMIT, readJson, readText } from './body';
 import { commandResponse, failure, json } from './responses';
 import { eventStream, gitCloneStream, gitSyncStream } from './sse';
@@ -934,6 +935,37 @@ export function createRoutes(context: RouteContext): Route[] {
                 }
 
                 return json(await services.models.get(id!));
+            },
+        },
+        {
+            method: 'GET',
+            pattern: /^\/v1\/skills\/briefback$/,
+            handle: () => {
+                const roots = services.config.userSkillRoots ?? [];
+                if (roots.length !== 2) throw unavailable('Two user skill folders are required');
+                return json(briefbackStatus(roots));
+            },
+        },
+        {
+            method: 'GET',
+            pattern: /^\/v1\/skills\/briefback\/update$/,
+            handle: async (_request, url) => {
+                const roots = services.config.userSkillRoots ?? [];
+                if (roots.length !== 2) throw unavailable('Two user skill folders are required');
+                const fingerprint = url.searchParams.get('fingerprint');
+                if (!fingerprint || !/^[a-f0-9]{64}$/.test(fingerprint))
+                    throw invalid('Invalid skill folder fingerprint');
+                return json(await checkBriefbackUpdate(roots, fingerprint));
+            },
+        },
+        {
+            method: 'POST',
+            pattern: /^\/v1\/skills\/briefback$/,
+            handle: async request => {
+                const roots = services.config.userSkillRoots ?? [];
+                if (roots.length !== 2) throw unavailable('Two user skill folders are required');
+                const { fingerprint } = await readJson(request, z.object({ fingerprint: z.string().min(1).max(4096) }));
+                return json(await installBriefback(roots, fingerprint));
             },
         },
         {
