@@ -192,6 +192,9 @@ function FormFieldRoot({
         isInvalid: isInvalid || undefined,
         'aria-describedby': describedBy,
     };
+    // RAC's TextArea is a bare `<textarea>` that spreads its context onto the DOM, so it gets only DOM props; `Textarea` reads the
+    // disabled and invalid state from the SlotContext below.
+    const textAreaProps = { id: controlId, 'aria-describedby': describedBy };
     const slotProps = {
         isDisabled: isDisabled || undefined,
         isInvalid: isInvalid || undefined,
@@ -204,7 +207,7 @@ function FormFieldRoot({
                 values={[
                     [SlotContext, { slots: { [DEFAULT_SLOT]: slotProps, description: { id: descriptionId } } }],
                     [TextFieldContext, fieldProps],
-                    [TextAreaContext, fieldProps],
+                    [TextAreaContext, textAreaProps],
                     [SelectContext, fieldProps],
                     [SwitchContext, fieldProps],
                 ]}

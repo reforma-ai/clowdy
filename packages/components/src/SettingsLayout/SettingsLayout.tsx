@@ -18,6 +18,8 @@ import { Show } from '../Show';
 import { Text } from '../Text';
 import { toast } from '../Toast';
 import { layerRest, paneTransition, SLIDE_IN } from './motion';
+import { Block, Card, Row, Section } from './SettingsKit';
+import kitStyles from './SettingsKit.module.css';
 import styles from './SettingsLayout.module.css';
 
 import type { ReactNode, RefObject } from 'react';
@@ -457,6 +459,16 @@ function Intro({ className, children }: { className?: string; children: ReactNod
     return slot && active ? createPortal(text, slot) : null;
 }
 
+/** The body of a settings page, as it scrolls under the window's title: what the page is for (drawn under the title, as `Intro`), then its sections, 24px apart. */
+function Page({ description, children }: { description?: ReactNode; children?: ReactNode }) {
+    return (
+        <div className={kitStyles.page}>
+            {description && <Intro>{description}</Intro>}
+            {children}
+        </div>
+    );
+}
+
 function Empty({ children }: { children: ReactNode }) {
     return (
         <Box align="center" justify="center" gap="lg" grow fullWidth fullHeight>
@@ -747,6 +759,11 @@ export const SettingsLayout = Object.assign(SettingsLayoutRoot, {
     Pane,
     Empty,
     Intro,
+    Page,
+    Section,
+    Card,
+    Block,
+    Row,
 });
 
 SettingsLayoutRoot.displayName = 'SettingsLayout';
@@ -754,3 +771,4 @@ Sidebar.displayName = 'SettingsLayout.Sidebar';
 Content.displayName = 'SettingsLayout.Content';
 Pane.displayName = 'SettingsLayout.Pane';
 Empty.displayName = 'SettingsLayout.Empty';
+Page.displayName = 'SettingsLayout.Page';
