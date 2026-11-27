@@ -9,10 +9,9 @@ import { StatusDot } from '../../shared';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { BranchPicker } from '../changes/BranchPicker';
 import { gitFactsOf } from '../changes/gitFacts';
-import { OpenWithMenu, useFolderGit } from '../openWith';
+import { OpenWithMenu, useFolderGit, useFolderRepair } from '../openWith';
 import { worktreeMenuExtras } from '../worktrees/worktreeMenuExtras';
 import styles from './AgentList.module.css';
-import { GroupFolderName } from './GroupFolderName';
 import { GroupHeader } from './GroupHeader';
 import { samePath, worktreeGroupLabel } from './workspaceChoice';
 
@@ -30,20 +29,24 @@ export function WorktreeCardHeader({
     activity,
     onToggle,
     onDragStart,
+    id,
+    onNewChat,
 }: {
     card: WorktreeCard;
     pullRequestStatus?: ReactNode;
     collapsed: boolean;
     activity?: ThreadsActivity;
     onToggle: () => void;
-    onDragStart: (event: DragEvent<HTMLElement>) => void;
+    onDragStart?: (event: DragEvent<HTMLElement>) => void;
+    id?: string;
+    onNewChat?: () => void;
 }) {
     const project = useProjectState();
     const ui = useProjectUi();
     const [menuOpen, setMenuOpen] = useState(false);
     const contextMenu = useContextMenu();
     useEffect(() => contextMenu.close, [contextMenu.close]);
-    const [switchWorkspace, setSwitchWorkspace] = useState<ChatWorkspace>();
+    const [switchWorkspace, setSwitchWorkspace] = useState<ChatWorkspace | null>();
     const request = useRef(0);
     const openingPicker = useRef(false);
     const beginPreview = useCallback(() => {
@@ -66,6 +69,10 @@ export function WorktreeCardHeader({
     const switchBranch = async (fromContext = false) => {
         if (card.missing || card.pending || card.workspace?.ready === false) return;
         openingPicker.current = !fromContext;
+        if (card.main) {
+            setSwitchWorkspace(null);
+            return;
+        }
         const current = ++request.current;
         const result = await root.command({
             type: 'workspace.open',
@@ -85,12 +92,14 @@ export function WorktreeCardHeader({
         }
         setSwitchWorkspace(workspace);
     };
-    const newChat = () =>
-        ui.openDraft(
-            [],
-            card.folder.id === mainFolder(project.project).id ? null : card.folder.id,
-            card.main ? null : { mode: 'existing', path: card.path }
-        );
+    const newChat =
+        onNewChat ??
+        (() =>
+            ui.openDraft(
+                [],
+                card.folder.id === mainFolder(project.project).id ? null : card.folder.id,
+                card.main ? null : { mode: 'existing', path: card.path }
+            ));
     const title = card.main ? card.folderName : worktreeGroupLabel(card.folderName, card);
     const tooltip = card.pending ? 'Worktree not prepared yet' : card.missing ? 'Worktree no longer exists' : undefined;
     const openContextMenu = (event: MouseEvent) => {
@@ -102,26 +111,22 @@ export function WorktreeCardHeader({
     };
     return (
         <GroupHeader
-            id={card.key}
+            id={id ?? card.key}
             text={title}
             collapsed={collapsed}
             onToggle={onToggle}
             name={
-                card.main ? (
-                    <GroupFolderName name={title} folder={card.folder} missing={card.missing} onNewChat={newChat} />
-                ) : (
-                    <span
-                        className={styles.worktreeTitle}
-                        draggable
-                        onDragStart={onDragStart}
-                        onContextMenu={openContextMenu}
-                        title={tooltip}
-                    >
-                        <Split aria-hidden="true" />
-                        <span className={styles.title}>{title}</span>
-                    </span>
-                )
+                <span
+                    className={styles.worktreeTitle}
+                    draggable={!!onDragStart && !card.main}
+                    onDragStart={card.main ? undefined : onDragStart}
+                    title={tooltip}
+                >
+                    {!card.main && <Split aria-hidden="true" />}
+                    <span className={styles.title}>{title}</span>
+                </span>
             }
+            data-collapsed={collapsed || undefined}
             className={styles.worktreeHeader}
             data-missing={card.missing || undefined}
             data-pending={card.pending || undefined}
@@ -177,13 +182,14 @@ export function WorktreeCardHeader({
                             <Popover
                                 placement="bottom end"
                                 spacing="xs"
-                                width={switchWorkspace ? 288 : undefined}
+                                width={switchWorkspace !== undefined ? 288 : undefined}
                                 shouldCloseOnInteractOutside={element => !element.closest('[data-branch-context-menu]')}
                             >
-                                {switchWorkspace ? (
+                                {switchWorkspace !== undefined ? (
                                     <WorktreeBranchPicker
                                         projectId={project.id}
-                                        workspace={switchWorkspace}
+                                        folderId={card.folder.id}
+                                        workspace={switchWorkspace ?? undefined}
                                         label={title}
                                         onClose={closePicker}
                                         beginPreview={beginPreview}
@@ -220,6 +226,7 @@ function WorktreeCardMenu({
     const project = useProjectState();
     const ui = useProjectUi();
     const folderGit = useFolderGit(project.id, card.folder.id);
+    const repair = useFolderRepair(card.folder, !!card.main && card.missing);
     // OpenWithMenu only offers in-app Files/Terminal when the target's workspace ID equals the current
     // place. A never-opened external tree has no record: the card key is only a nonmatching identity,
     // never a workspace ID sent to the daemon. A real draft row or recorded workspace can be opened here.
@@ -245,12 +252,16 @@ function WorktreeCardMenu({
                 workspace: card.main ? undefined : workspace,
             }}
             missing={card.missing}
-            notReady={card.pending}
+            repair={repair}
+            notReady={card.pending || card.workspace?.ready === false}
             git={git}
             onNewChat={onNewChat}
             onClose={onClose}
             extra={[
-                ...(!card.main && !card.missing && !card.pending && card.workspace?.ready !== false
+                ...(!card.missing &&
+                !card.pending &&
+                card.workspace?.ready !== false &&
+                (card.main ? !!(folderGit?.branch || folderGit?.detached) : true)
                     ? [
                           {
                               id: 'switch-branch',
@@ -280,20 +291,22 @@ function WorktreeCardMenu({
 function WorktreeBranchPicker({
     projectId,
     workspace,
+    folderId,
     label,
     onClose,
     beginPreview,
 }: {
     projectId: string;
-    workspace: ChatWorkspace;
+    workspace?: ChatWorkspace;
+    folderId: string;
     label: string;
     onClose: () => void;
     beginPreview: () => () => boolean;
 }) {
     const { transport } = useRootStore();
     const store = gitFactsOf(transport);
-    const key = { projectId, folderId: workspace.folderId, workspaceId: workspace.id };
+    const key = { projectId, folderId, workspaceId: workspace?.id };
     const facts = store.of(key);
-    useEffect(() => store.observe(key), [store, projectId, workspace.folderId, workspace.id]);
+    useEffect(() => store.observe(key), [store, projectId, folderId, workspace?.id]);
     return <BranchPicker facts={facts} label={label} embeddedClose={onClose} beginPreview={beginPreview} />;
 }

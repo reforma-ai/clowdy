@@ -1,5 +1,6 @@
-import { GridListItem, listBoxItemDataShow, RowControls } from '@clowdy/components/List';
-import { FoldButton } from '@clowdy/components/Panel';
+import { Button } from '@clowdy/components/Button';
+import { GridListItem, RowControls } from '@clowdy/components/List';
+import { ChevronDown, ChevronRight } from '@clowdy/icons/8';
 
 import styles from './AgentList.module.css';
 
@@ -19,17 +20,21 @@ export function GroupHeader({ name, collapsed, onToggle, text, className, ...pro
             className={className ? `${styles.group} ${className}` : styles.group}
             plateless
         >
-            <span className={styles.groupTitle}>
-                <RowControls className={styles.groupNameBox}>{name}</RowControls>
-                <RowControls className={styles.groupFold}>
-                    <FoldButton
-                        label={`${collapsed ? 'Expand' : 'Collapse'} ${text}`}
-                        isExpanded={!collapsed}
-                        data-show={collapsed ? undefined : listBoxItemDataShow.itemBoth}
-                        onToggle={onToggle}
-                    />
-                </RowControls>
-            </span>
+            <RowControls className={styles.groupTitle}>
+                <Button
+                    variant="filling"
+                    color="inherit"
+                    size="xs"
+                    truncate
+                    className={styles.groupToggle}
+                    aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${text}`}
+                    aria-expanded={!collapsed}
+                    onPress={onToggle}
+                >
+                    {name}
+                    {collapsed ? <ChevronRight aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
+                </Button>
+            </RowControls>
         </GridListItem>
     );
 }
