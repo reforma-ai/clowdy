@@ -412,7 +412,10 @@ describe("the branch of the Changes sidebar, for the folder's own checkout", () 
         expect(popover()?.textContent).not.toMatch(/Default|Local|Remote/);
         expect(popover()?.textContent).toMatch(/main.*Recent.*dev.*Other branches.*origin\/feature\/search/s);
         expect(row('main').querySelector('[aria-label="Current"]')).not.toBeNull();
+        expect(row('main').hasAttribute('data-highlighted')).toBe(true);
+        expect(row('main').getAttribute('aria-label')).toBe('main, current');
         expect(row('dev').querySelector('[aria-label="Current"]')).toBeNull();
+        expect(row('dev').hasAttribute('data-highlighted')).toBe(false);
         expect(buttonOf('New branch…')).toBeDefined();
     });
 

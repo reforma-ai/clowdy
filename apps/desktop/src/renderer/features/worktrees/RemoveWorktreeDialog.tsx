@@ -125,7 +125,7 @@ function RemoveMessage({ worktree, plan, choice, count, outside, onConfirm }: Re
                     )}
                     <Show when={plan.branch}>
                         {branch => (
-                            <Box gap="xs">
+                            <Box gap="xl">
                                 <Switch
                                     size="sm"
                                     isDisabled={pending}

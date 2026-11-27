@@ -6,6 +6,7 @@ import { Separator } from '@clowdy/components/Separator';
 import { Spinner } from '@clowdy/components/Spinner';
 import { Text } from '@clowdy/components/Text';
 import { toast } from '@clowdy/components/Toast';
+import { ChevronDown } from '@clowdy/icons/8';
 import { Copy, Plus, Trash } from '@clowdy/icons/14';
 import { type KeyboardEvent, type MouseEvent, useEffect, useMemo, useState } from 'react';
 
@@ -108,6 +109,7 @@ export function BranchList({
                 <PickerList
                     options={visibleOptions}
                     selectedIds={current === undefined ? [] : [current]}
+                    highlightSelected
                     aria-label="Branches"
                     placeholder="Filter branches"
                     onQueryChange={setQuery}
@@ -122,7 +124,15 @@ export function BranchList({
                 </div>
             )}
             {hasUnavailable && !showUnavailable && !query.trim() && (
-                <Button variant="ghost" color="secondary" size="xs" fullWidth onPress={() => setShowUnavailable(true)}>
+                <Button
+                    variant="filling"
+                    color="secondary"
+                    size="xs"
+                    fullWidth
+                    contentClassName={styles.revealContent}
+                    onPress={() => setShowUnavailable(true)}
+                >
+                    <ChevronDown aria-hidden="true" />
                     Show unavailable branches
                 </Button>
             )}
