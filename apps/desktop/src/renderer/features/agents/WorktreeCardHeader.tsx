@@ -15,7 +15,7 @@ import { openInTerminal } from '../terminal/openInTerminal';
 import { worktreeMenuExtras } from '../worktrees/worktreeMenuExtras';
 import styles from './AgentList.module.css';
 import { GroupHeader } from './GroupHeader';
-import { samePath, worktreeGroupLabel } from './workspaceChoice';
+import { samePath, worktreeLabel } from './workspaceChoice';
 
 import type { ChatWorkspace } from '@clowdy/protocol';
 import type { DragEvent, MouseEvent, ReactNode } from 'react';
@@ -103,8 +103,14 @@ export function WorktreeCardHeader({
                 card.folder.id === mainFolder(project.project).id ? null : card.folder.id,
                 card.main ? null : { mode: 'existing', path: card.path }
             ));
-    const title = card.main ? card.folderName : worktreeGroupLabel(card.folderName, card);
-    const tooltip = card.pending ? 'Worktree not prepared yet' : card.missing ? 'Worktree no longer exists' : undefined;
+    const branch = card.main
+        ? undefined
+        : (card.pending || card.missing) && !card.branch && !card.head
+          ? 'Worktree'
+          : worktreeLabel(card);
+    const title = branch ? `${card.folderName}, ${branch}` : card.folderName;
+    const status = card.pending ? 'Worktree not prepared yet' : card.missing ? 'Worktree no longer exists' : undefined;
+    const tooltip = status ? `${title} — ${status}` : title;
     const openContextMenu = (event: MouseEvent) => {
         event.stopPropagation();
         openingPicker.current = false;
@@ -126,7 +132,13 @@ export function WorktreeCardHeader({
                     title={tooltip}
                 >
                     {!card.main && <Split aria-hidden="true" />}
-                    <span className={styles.title}>{title}</span>
+                    <span className={`${styles.title} ${styles.worktreeFolder}`}>{card.folderName}</span>
+                    {branch && (
+                        <>
+                            <span className={styles.worktreeDivider} aria-hidden="true" />
+                            <span className={`${styles.title} ${styles.worktreeBranch}`}>{branch}</span>
+                        </>
+                    )}
                 </span>
             }
             data-collapsed={collapsed || undefined}
