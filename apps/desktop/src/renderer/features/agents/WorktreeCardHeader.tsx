@@ -16,7 +16,7 @@ import { RowFold } from './RowFold';
 import { samePath, worktreeLabel } from './workspaceChoice';
 
 import type { ChatWorkspace } from '@clowdy/protocol';
-import type { DragEvent, ReactNode, SyntheticEvent } from 'react';
+import type { DragEvent, ReactNode } from 'react';
 import type { ThreadsActivity } from './agentTree';
 import type { WorktreeCard } from './worktreeCards';
 

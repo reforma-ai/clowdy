@@ -46,6 +46,13 @@
     animation: spin 0.9s linear infinite;
 }
 
+/* A CSS module names its keyframes locally, so the global `spin` is out of reach. */
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 @media (prefers-reduced-motion: reduce) {
     /* Nothing turns, so the icon is faded for as long as the read lasts. */
     .spin {
