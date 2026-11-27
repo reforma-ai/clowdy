@@ -30,8 +30,8 @@ describe('the summary of a list', () => {
     it('is the files and the lines of the whole list, with a real minus sign', () => {
         expect(summaryOf(changes(), files)).toEqual({
             files: '3 files',
-            additions: '+135',
-            deletions: '−18',
+            additions: 135,
+            deletions: 18,
             incomplete: false,
             notes: [],
         });
@@ -43,16 +43,16 @@ describe('the summary of a list', () => {
     it('counts the files of the filter against all of them, and the lines of the ones it shows', () => {
         expect(summaryOf(changes(), [files[0]!, files[2]!])).toMatchObject({
             files: '2 of 3 files',
-            additions: '+105',
-            deletions: '−10',
+            additions: 105,
+            deletions: 10,
         });
-        expect(summaryOf(changes(), [])).toMatchObject({ files: '0 of 3 files', additions: '+0', deletions: '−0' });
+        expect(summaryOf(changes(), [])).toMatchObject({ files: '0 of 3 files', additions: 0, deletions: 0 });
     });
 
     it('takes the totals of the daemon for a list it cut, and says it shows only the first files', () => {
         const cut = summaryOf(changes({ fileCount: 731, additions: 4100, deletions: 880, truncated: true }), files);
 
-        expect(cut).toMatchObject({ files: '731 files', additions: '+4100', deletions: '−880' });
+        expect(cut).toMatchObject({ files: '731 files', additions: 4100, deletions: 880 });
         expect(cut.notes).toEqual(['Showing the first 3 files']);
     });
 

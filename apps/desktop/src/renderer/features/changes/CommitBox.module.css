@@ -73,42 +73,16 @@
     }
 }
 
-/* The row's label: the letter, the name, strong, and the folder after it, dimmed; the folder is cut before the name is. */
+/* The row's label: the letter, then the path, cut at its start so the name stays. */
 .fileName {
     display: flex;
     align-items: baseline;
     gap: var(--spacing-sm);
-}
-
-/* The letter that says what happened to the file: a box of its own, so the names start at one place whichever letter it is. */
-.glyph {
-    display: inline-flex;
-    flex-shrink: 0;
-    align-items: center;
-    justify-content: center;
-    width: var(--spacing-14);
-}
-
-.name {
-    flex-shrink: 0;
-    max-width: 100%;
-}
-
-.folderHint {
-    flex: 0 1 auto;
     min-width: 0;
 }
 
-.counts {
-    display: inline-flex;
-    flex-shrink: 0;
-    gap: var(--spacing-xs);
-    white-space: nowrap;
-}
-
-/* In a sidebar dragged to its narrowest the folders and the counts go, and the names stay. */
+/* In a sidebar dragged to its narrowest the counts go, and the names stay. */
 @container (max-width: 12rem) {
-    .folderHint,
     .counts {
         display: none;
     }

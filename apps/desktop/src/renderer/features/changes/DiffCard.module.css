@@ -70,15 +70,6 @@
     color: var(--color-secondary-muted-text);
 }
 
-/* The letter that says what happened to the file: a box of its own, so the paths start at one place whichever letter it is. */
-.kind {
-    display: inline-flex;
-    flex-shrink: 0;
-    align-items: center;
-    justify-content: center;
-    width: var(--spacing-14);
-}
-
 /* The path, and under it the old path of a renamed file; both give way to the counts. */
 .title {
     display: flex;
@@ -88,31 +79,14 @@
     min-width: 0;
 }
 
-/*
- * The path is cut at its start, which is why it is set right to left: the ellipsis goes where the text is cut, and the name at the end stays. The `bdi` inside is its own left to
- * right run, so a path that starts or ends with a dot, a bracket or a slash keeps them where they are, and a name in a right to left script still reads right (a `bdo`, which
- * forces every character left to right, would turn it round).
- */
-.path {
-    display: block;
-    max-width: 100%;
-    overflow: hidden;
-    text-align: left;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
 .from {
     max-width: 100%;
 }
 
+/* The counts and the divider go to the end of the header. */
 .counts {
-    display: inline-flex;
-    flex-shrink: 0;
-    gap: var(--spacing-4);
     margin-inline-start: auto;
     padding-inline-start: var(--spacing-8);
-    white-space: nowrap;
 }
 
 .divider {

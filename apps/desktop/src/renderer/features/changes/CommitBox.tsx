@@ -1,7 +1,9 @@
 import { Button } from '@clowdy/components/Button';
 import { Checkbox } from '@clowdy/components/Checkbox';
+import { DiffStat } from '@clowdy/components/DiffStat';
 import { For } from '@clowdy/components/For';
 import { GridList, GridListItem, Menu, MenuItem, MenuTrigger } from '@clowdy/components/List';
+import { PathText } from '@clowdy/components/PathText';
 import { Popover, useContextMenu } from '@clowdy/components/Popover';
 import { Scrollable } from '@clowdy/components/Scrollable';
 import { Spinner } from '@clowdy/components/Spinner';
@@ -15,6 +17,7 @@ import { Unavailable } from '../../shared/Unavailable';
 import { useAgents, useProjectUi, useRootStore } from '../../stores';
 import { quoteIntoComposer } from '../chats/composerBridge';
 import { PathMenu, placeTarget } from '../openWith';
+import { ChangeKindGlyph } from './ChangeKindGlyph';
 import styles from './CommitBox.module.css';
 import { commitDraftOf } from './CommitDraft';
 import { commitLabel, commitTarget, isFetchFirst, SYNC_WORDS } from './changesActions';
@@ -23,7 +26,6 @@ import { openDiscardDialog } from './DiscardDialog';
 import { discardChanges } from './discardChanges';
 import { discardableFiles } from './discardRules';
 import { gitFactsOf } from './gitFacts';
-import { CHANGE_KIND_VIEW, splitPath } from './gitSummary';
 import { useRemoteActions } from './useRemoteActions';
 
 import type { GitChangedFile, GitStatusEntry } from '@clowdy/protocol';
@@ -103,9 +105,6 @@ function CommitFileRow({
     draft: CommitDraft;
     mergeGroup?: 'conflicts' | 'staged';
 }) {
-    const kind = CHANGE_KIND_VIEW[file.kind];
-    const { folder, name } = splitPath(file.path);
-
     return (
         <GridListItem
             id={file.path}
@@ -124,25 +123,13 @@ function CommitFileRow({
             }
             endAffix={
                 file.additions !== undefined && file.deletions !== undefined ? (
-                    <span className={styles.counts}>
-                        <Text variant="sm" color="success">{`+${file.additions}`}</Text>
-                        <Text variant="sm" color="danger">{`−${file.deletions}`}</Text>
-                    </span>
+                    <DiffStat added={file.additions} removed={file.deletions} className={styles.counts} />
                 ) : undefined
             }
         >
-            <Text slot="label" className={styles.fileName} title={file.path}>
-                <Text weight="medium" color={kind.color} className={styles.glyph} title={kind.label} aria-hidden="true">
-                    {kind.glyph}
-                </Text>
-                <Text weight="medium" truncate className={styles.name}>
-                    {name}
-                </Text>
-                {folder && (
-                    <Text color="secondary" truncate className={styles.folderHint}>
-                        {folder.slice(0, -1)}
-                    </Text>
-                )}
+            <Text slot="label" className={styles.fileName}>
+                <ChangeKindGlyph kind={file.kind} />
+                <PathText path={file.path} />
             </Text>
         </GridListItem>
     );
