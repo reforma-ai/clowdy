@@ -4,14 +4,13 @@ import { folderNames } from '@clowdy/protocol';
 
 import { getProject, listProjects } from '../db/projects';
 import { invalid, notFound } from '../errors';
-import { buildCatalog, mergeUserSkills } from './catalog';
+import { buildCatalog, mergeUserSkills, USER_PLUGIN_NAME } from './catalog';
 import {
     defaultSystemSkillsSource,
     materializeSystemSkills,
     SYSTEM_PLUGIN_NAME,
     snapshotSystemSkills,
 } from './materialize';
-import { buildUserMirror, USER_PLUGIN_NAME } from './mirror';
 import { SkillScanner } from './scan';
 import { SkillSettings } from './settings';
 import { FolderWatchers } from './watch';
@@ -34,10 +33,9 @@ const skillDirs = (project: Project) =>
 const fingerprintOf = (scans: readonly { scan: RootScan }[]) => scans.map(({ scan }) => scan.fingerprint).join('|');
 
 /**
- * What the engines get as skills. Owns the system skills copy, the catalog the API serves, which user skills are
- * on, and the `user` plugin that carries the enabled ones; keeps the last two in `config` for the engines
- * (`systemSkillsDir`, `extraPluginDirs`) and announces `skills.changed` when a skill folder changes.
- * Project skills are not mirrored: Claude reads them through `settingSources: ['project']`, Codex from the repository.
+ * The skills side of the daemon. Owns the system skills copy (named in `config.systemSkillsDir` for the engines), the
+ * catalog the API serves and which user skills are on, and announces `skills.changed` when a skill folder or a switch
+ * changes. The engines find the user's and the project's own skills by themselves.
  */
 export class SkillsService {
     private scanner = new SkillScanner();
@@ -49,7 +47,7 @@ export class SkillsService {
     private userFingerprint?: string;
     private projectFingerprints = new Map<string, string>();
 
-    /** Materializes the system skills and builds the user plugin; throws when the system skills are missing. */
+    /** Materializes the system skills and fingerprints the user folders; throws when the system skills are missing. */
     constructor(
         private store: Store,
         private config: Config
@@ -87,7 +85,7 @@ export class SkillsService {
     catalog(project?: Project): SkillCatalog {
         this.watchUser();
 
-        // A folder that did not exist at start had no watcher, so nothing told the `user` plugin about the skills it holds now.
+        // A folder that did not exist at start had no watcher, so nothing has announced the skills it holds now.
         if (this.syncUser()) {
             this.announce(listProjects(this.store.db));
         }
@@ -142,7 +140,6 @@ export class SkillsService {
         }
 
         if (this.settings.setEnabled(folder, enabled)) {
-            this.rebuildMirror();
             this.announce(listProjects(this.store.db));
         }
     }
@@ -180,7 +177,7 @@ export class SkillsService {
         );
     }
 
-    /** Rebuilds the `user` plugin when the folders changed since the last look. Returns whether they did. */
+    /** Takes the user folders' fingerprint. Returns whether they changed since the last look. */
     private syncUser(): boolean {
         const fingerprint = fingerprintOf(this.userScans());
 
@@ -189,17 +186,8 @@ export class SkillsService {
         }
 
         this.userFingerprint = fingerprint;
-        this.rebuildMirror();
 
         return true;
-    }
-
-    private rebuildMirror(): void {
-        const { disabled } = this.settings.read();
-        const enabled = mergeUserSkills(this.userScans()).skills.filter(skill => !disabled.has(skill.folder));
-        const dir = buildUserMirror(this.config.dataDir, enabled);
-
-        this.config.extraPluginDirs = dir ? [dir] : [];
     }
 
     private watchUser(): void {
