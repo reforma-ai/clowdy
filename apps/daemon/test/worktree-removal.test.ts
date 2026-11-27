@@ -200,16 +200,16 @@ describe('workspace.remove', () => {
             [
                 '#!/bin/sh',
                 'if [ "$1" = update-ref ] && [ "$2" = --no-deref ]; then',
-                '  touch "$CLOWDY_REMOVAL_TEST_GATE/ready"',
-                '  while [ ! -f "$CLOWDY_REMOVAL_TEST_GATE/go" ]; do sleep 0.02; done',
+                '  touch "$REMOVAL_TEST_GATE/ready"',
+                '  while [ ! -f "$REMOVAL_TEST_GATE/go" ]; do sleep 0.02; done',
                 'fi',
-                'exec "$CLOWDY_REMOVAL_TEST_GIT" "$@"',
+                'exec "$REMOVAL_TEST_GIT" "$@"',
             ].join('\n'),
             { mode: 0o755 }
         );
         const previousPath = process.env.PATH;
-        process.env.CLOWDY_REMOVAL_TEST_GIT = Bun.which('git')!;
-        process.env.CLOWDY_REMOVAL_TEST_GATE = bin;
+        process.env.REMOVAL_TEST_GIT = Bun.which('git')!;
+        process.env.REMOVAL_TEST_GATE = bin;
         process.env.PATH = `${bin}:${previousPath}`;
         const removing = remove(path, { deleteBranch: true, expectedBranch: { name: 'late', commit: tip } });
         try {
@@ -219,8 +219,8 @@ describe('workspace.remove', () => {
             writeFileSync(join(bin, 'go'), '');
             await removing;
             process.env.PATH = previousPath;
-            delete process.env.CLOWDY_REMOVAL_TEST_GIT;
-            delete process.env.CLOWDY_REMOVAL_TEST_GATE;
+            delete process.env.REMOVAL_TEST_GIT;
+            delete process.env.REMOVAL_TEST_GATE;
         }
         expect(await removing).toMatchObject({
             ok: false,
@@ -1185,16 +1185,16 @@ describe('explicit worktree disposition', () => {
             [
                 '#!/bin/sh',
                 'if [ "$3" = worktree ] && [ "$4" = remove ]; then',
-                '  touch "$CLOWDY_REMOVAL_TEST_GATE/ready"',
-                '  while [ ! -f "$CLOWDY_REMOVAL_TEST_GATE/go" ]; do sleep 0.02; done',
+                '  touch "$REMOVAL_TEST_GATE/ready"',
+                '  while [ ! -f "$REMOVAL_TEST_GATE/go" ]; do sleep 0.02; done',
                 'fi',
-                'exec "$CLOWDY_REMOVAL_TEST_GIT" "$@"',
+                'exec "$REMOVAL_TEST_GIT" "$@"',
             ].join('\n'),
             { mode: 0o755 }
         );
         const environment = { ...process.env };
-        process.env.CLOWDY_REMOVAL_TEST_GIT = Bun.which('git')!;
-        process.env.CLOWDY_REMOVAL_TEST_GATE = bin;
+        process.env.REMOVAL_TEST_GIT = Bun.which('git')!;
+        process.env.REMOVAL_TEST_GATE = bin;
         process.env.PATH = `${bin}:${environment.PATH}`;
 
         const removing = remove(path, { chatDisposition: 'archive' });
@@ -1223,8 +1223,8 @@ describe('explicit worktree disposition', () => {
             writeFileSync(join(bin, 'go'), '');
             await removing;
             process.env.PATH = environment.PATH;
-            delete process.env.CLOWDY_REMOVAL_TEST_GIT;
-            delete process.env.CLOWDY_REMOVAL_TEST_GATE;
+            delete process.env.REMOVAL_TEST_GIT;
+            delete process.env.REMOVAL_TEST_GATE;
             activeParent.release();
         }
         expect(await removing).toMatchObject({ ok: true });

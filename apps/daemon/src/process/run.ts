@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 
-import { killProcessGroup, processGroupAlive } from '../engine/process';
+import { killTree, processGroupAlive } from './kill';
 
 /** What a program printed, and how it ended. */
 export interface RunResult {
@@ -135,10 +135,15 @@ export function runProgram(
         };
         const killGroup = (name: NodeJS.Signals = 'SIGKILL') => {
             if (child.pid !== undefined) {
-                killProcessGroup(child.pid, name);
+                killTree(child.pid, name);
             } else {
                 child.kill(name);
             }
+        };
+        // What the program left in its group once it has exited. Windows has no groups, and the tree of a pid that is gone is not worth a `taskkill`: the pid may be
+        // another process's by now. A program that was stopped there had its tree ended by the stop.
+        const killLeftovers = () => {
+            if (process.platform !== 'win32') killGroup();
         };
         let grace: ReturnType<typeof setTimeout> | undefined;
         /** Ends the program with the signal the caller chose; one that was only asked to stop is killed if it is still there after the grace. */
@@ -191,7 +196,7 @@ export function runProgram(
         // (the deadline, the daemon stopping) is not spared: it was told to go, and what it left goes with it as before.
         child.once('exit', code => {
             if (!spare || settled || aborted || timedOut) {
-                killGroup();
+                killLeftovers();
 
                 // A program that was stopped and is waited for (`untilGone`) may have a descendant that left the group and holds the pipes: it is not waited for past the grace.
                 if (!settled && (aborted || timedOut)) {
@@ -217,7 +222,7 @@ export function runProgram(
 
             // With a grace, what is left in the group is killed at the end of it; when nothing is left (the common case), there is nothing to wait for and the timer goes.
             if (leftover === undefined) {
-                killGroup();
+                killLeftovers();
             } else if (child.pid === undefined || !processGroupAlive(child.pid)) {
                 clearTimeout(leftover);
             }

@@ -2,10 +2,10 @@ import { readFileSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import { MAX_GIT_COMMITS, MAX_GIT_STATUS_ENTRIES } from '@clowdy/protocol';
 
-import { gitLine, gitRead, gitRecords } from '../domain/git';
+import { gitAnswer, gitRead, gitRecords } from '../domain/git';
 import { unavailable } from '../errors';
 import { lastFetchedAt } from './lastFetch';
-import { baseOf, rebaseUnderWay, workingTreeRoot } from './state';
+import { baseOf, rebaseUnderWay, STATUS_TIMEOUT_MS, workingTreeRoot } from './state';
 
 import type {
     GitBase,
@@ -18,9 +18,6 @@ import type {
 } from '@clowdy/protocol';
 import type { Place } from '../domain/places';
 
-/** A `status` of a large tree may take a while; past this it is given up (`unavailable`). */
-const STATUS_TIMEOUT_MS = 15_000;
-
 /** How many records of `status -z` are read: the branch's four header lines and, for each entry, its record and the second one a rename has, plus one entry to know it was cut. */
 const STATUS_RECORDS = 4 + 2 * (MAX_GIT_STATUS_ENTRIES + 1);
 
@@ -30,9 +27,12 @@ export interface BaseOptions {
     base?: string;
 }
 
-/** The commit a ref or a hash is at, nothing when it is not there. `ref` is a full ref name or a hash: a revision expression (`main~1`, `@{u}`) is never passed. */
+/**
+ * The commit a ref or a hash is at, nothing when it is not there; `unavailable` when git did not answer, which is never taken for "not there" (an unborn HEAD, a missing
+ * base). `ref` is a full ref name or a hash: a revision expression (`main~1`, `@{u}`) is never passed.
+ */
 export async function commitAt(cwd: string, ref: string): Promise<string | undefined> {
-    return gitLine(cwd, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]);
+    return gitAnswer(cwd, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]);
 }
 
 /** Whether `ancestor` is `descendant` or one of the commits it is built on. */
@@ -142,7 +142,7 @@ export async function mergeBaseOf(place: Place, options: BaseOptions = {}): Prom
         }
     }
 
-    const mergeBase = await gitLine(cwd, ['merge-base', base.commit, head]);
+    const mergeBase = await gitAnswer(cwd, ['merge-base', base.commit, head]);
 
     return mergeBase
         ? { state: 'ready', name: base.name, commit: base.commit, mergeBase, head }
@@ -183,7 +183,7 @@ export async function readBase(place: Place, options: BaseOptions = {}): Promise
     const { name, commit, mergeBase, head } = merged;
     const cwd = place.path;
     const [counts, log] = await Promise.all([
-        gitLine(cwd, ['rev-list', '--left-right', '--count', `${commit}...${head}`]),
+        gitAnswer(cwd, ['rev-list', '--left-right', '--count', `${commit}...${head}`]),
         gitRead(
             cwd,
             [

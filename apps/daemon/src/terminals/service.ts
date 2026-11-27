@@ -4,7 +4,7 @@ import { isTerminalSize, MAX_TERMINALS } from '@clowdy/protocol';
 
 import { ownsPlace } from '../domain/places';
 import { CommandError, conflict, errorMessage, invalid, notFound, unavailable } from '../errors';
-import { isInside, normalizeFsPath, outside } from '../fs/paths';
+import { isBelow, normalizeFsPath, outside } from '../fs/paths';
 import { newId } from '../ids';
 import { spawnPty } from './pty';
 import { TerminalSession } from './session';
@@ -232,7 +232,7 @@ function directoryIn(root: string, path = '', what: 'folder' | 'worktree' = 'fol
         throw new CommandError('not_found', `${path} does not exist`, { path });
     }
 
-    if (!isInside(base, real)) {
+    if (!isBelow(base, real, { allowSelf: true })) {
         throw outside('The path leads out of the folder');
     }
 

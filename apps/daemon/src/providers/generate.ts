@@ -2,9 +2,9 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { runProgram } from './exec';
+import { runProgram } from '../process/run';
 
-import type { RunResult } from './exec';
+import type { RunResult } from '../process/run';
 
 /** Why a run that was asked for gave no text: it failed (the program, the login, the model, an answer that is not one) or did not end in time. */
 export class GenerateFailure extends Error {

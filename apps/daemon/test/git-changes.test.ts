@@ -599,6 +599,28 @@ describe('placeStatus', () => {
 });
 
 describe('the base', () => {
+    onPosix('is unavailable when git does not answer for HEAD, never an unborn branch', async () => {
+        const repo = makeRepo(tempDir('git-changes'));
+        const bin = tempDir('git-changes-bin');
+        const path = process.env.PATH;
+
+        // A git that dies without an answer when it is asked for a commit, as one that is killed for the time does.
+        writeFileSync(
+            join(bin, 'git'),
+            `#!/bin/sh\ncase "$1" in rev-parse) kill -9 $$ ;; esac\nexec ${Bun.which('git')} "$@"\n`
+        );
+        chmodSync(join(bin, 'git'), 0o755);
+        process.env.PATH = `${bin}:${path}`;
+
+        try {
+            expect(await mergeBaseOf(placeAt(repo)).catch((error: unknown) => error)).toMatchObject({
+                code: 'unavailable',
+            });
+        } finally {
+            process.env.PATH = path;
+        }
+    });
+
     test("is origin's branch when the local one is equal to it, behind it or not there, and the local one when it is ahead or has diverged", async () => {
         const { work: path, seed } = clone();
         const origin = git(path, 'rev-parse', 'origin/main');

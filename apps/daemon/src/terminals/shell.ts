@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs';
 import { basename, win32 } from 'node:path';
 
-import { NEVER_INHERITED } from '../engine/acp/env';
 import { unavailable } from '../errors';
+import { inheritedEnv } from '../process/env';
 
 /** The program a terminal runs: what to execute, with which arguments, and the name a tab can be given. */
 export interface Shell {
@@ -67,13 +67,5 @@ export function resolveShell({
  * draws colors.
  */
 export function terminalEnvironment(env: Record<string, string | undefined> = process.env): Record<string, string> {
-    const result: Record<string, string> = {};
-
-    for (const [name, value] of Object.entries(env)) {
-        if (value !== undefined && !NEVER_INHERITED.some(pattern => pattern.test(name))) {
-            result[name] = value;
-        }
-    }
-
-    return { ...result, TERM: 'xterm-256color', COLORTERM: 'truecolor', TERM_PROGRAM: 'Clowdy' };
+    return { ...inheritedEnv(env), TERM: 'xterm-256color', COLORTERM: 'truecolor', TERM_PROGRAM: 'Clowdy' };
 }

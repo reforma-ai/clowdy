@@ -2,6 +2,8 @@ import { execFile } from 'node:child_process';
 import { readdir } from 'node:fs/promises';
 import { promisify } from 'node:util';
 
+import { inheritedEnv } from '../process/env';
+
 const run = promisify(execFile);
 
 /** `git ls-files` prints this much for the biggest repositories; a larger answer is a sign something else is wrong. */
@@ -18,6 +20,7 @@ const NEVER_WALKED = new Set(['.git', 'node_modules', OWN_FOLDER]);
 async function git(cwd: string, ...args: string[]): Promise<string[]> {
     const { stdout } = await run('git', ['ls-files', '-z', ...args], {
         cwd,
+        env: inheritedEnv(),
         maxBuffer: MAX_GIT_OUTPUT,
         timeout: GIT_TIMEOUT_MS,
         windowsHide: true,

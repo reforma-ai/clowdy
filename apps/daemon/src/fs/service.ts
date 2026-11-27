@@ -13,7 +13,7 @@ import {
     writeFileAtomically,
 } from './content';
 import { matchPaths } from './find';
-import { exists, fsFailure, locate, missing, normalizeFsPath, versionOf } from './paths';
+import { exists, fsFailure, locate, missing, normalizeFsPath, refuseGitPath, versionOf } from './paths';
 import { ContentSearch } from './search';
 import { watchStream } from './stream';
 import { MAX_LIST_ENTRIES, walkTree } from './walk';
@@ -185,6 +185,9 @@ export class FsService {
     ): Promise<{ version: string }> {
         const { root } = await this.open(project, at);
         const rel = normalizeFsPath(path);
+
+        refuseGitPath(rel);
+
         const bytes = await readBody(body, options.declaredLength, rel, this.maxFileBytes);
 
         return this.exclusive(root, async () => {
@@ -220,6 +223,7 @@ export class FsService {
         const { root } = await this.open(project, at);
         const rel = normalizeFsPath(path);
 
+        refuseGitPath(rel);
         await this.exclusive(root, () => makeFolder(root, rel));
     }
 
@@ -238,6 +242,7 @@ export class FsService {
 
         const targets = paths.map(normalizeFsPath);
 
+        targets.forEach(refuseGitPath);
         await this.exclusive(root, () => remove(root, targets));
     }
 
@@ -302,6 +307,11 @@ export class FsService {
         this.limit(items);
 
         const transfers = items.map(({ from, to }) => ({ from: normalizeFsPath(from), to: normalizeFsPath(to) }));
+
+        for (const { from, to } of transfers) {
+            refuseGitPath(from);
+            refuseGitPath(to);
+        }
 
         await this.exclusive(root, () => transfer(root, mode, transfers, overwrite));
     }
