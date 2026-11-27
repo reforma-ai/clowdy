@@ -2801,6 +2801,12 @@
                     "fingerprint": "2b3aafce19e3c51bac40f9132eef99740c3835d5e99e1fb0d17fe2fde4dbdcd0",
                     "name": "worktree-folder",
                     "sourceHash": "ed9c376bef8e16ff6c3c947073880d76e51c93fda6776c58892425762c275b64"
+                },
+                "16767:134433": {
+                    "file": "git-folder.svg",
+                    "fingerprint": "1b5a704840d519ac8b600d9751e8da859bf746110767f9c1583eb694c3545855",
+                    "name": "git-folder",
+                    "sourceHash": "14e525c69bed061f860e0c176498269242d79187325c67ba03f58d70b209504d"
                 }
             },
             "nodeId": "12522:118247"

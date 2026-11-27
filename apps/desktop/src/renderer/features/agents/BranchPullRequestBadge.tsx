@@ -47,10 +47,28 @@ export function BranchPullRequestBadge({
             return count ? [`${count} ${state}`] : [];
         })
         .join(', ');
-    const label = `${crossWorktree ? 'Thread works in a different worktree; ' : ''}${pullRequests.length} pull request${pullRequests.length === 1 ? '' : 's'}: ${detail}${fact?.stale ? ' (last known)' : ''}`;
+    const first = pullRequests[0]!;
+    const summary =
+        pullRequests.length === 1
+            ? `${first.state === 'open' ? 'Open' : first.state === 'draft' ? 'Draft' : 'Merged'} pull request #${first.number}`
+            : detail;
+    const prLabel = `${summary}${fact?.stale ? ' (last known)' : ''}`;
+    const label = crossWorktree ? `Thread works in a different worktree\n${prLabel}` : prLabel;
 
     return (
-        <Tooltip content={label}>
+        <Tooltip
+            content={
+                crossWorktree ? (
+                    <>
+                        Thread works in a different worktree
+                        <br />
+                        {prLabel}
+                    </>
+                ) : (
+                    prLabel
+                )
+            }
+        >
             <span
                 className={className}
                 data-hover-only={hoverOnly || undefined}

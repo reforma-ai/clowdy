@@ -78,6 +78,7 @@ const press = async (target: HTMLElement) =>
 
 /** The control's pill: the only one of its kind on the page. */
 const chip = () => container.querySelector<HTMLButtonElement>('button[aria-label^="Where it runs"]');
+const folderChip = () => container.querySelector<HTMLButtonElement>('button[aria-label^="Folder:"]');
 /** The base of the row of a new worktree, in the open menu: a press target of its own at the row's end. */
 const baseButton = () =>
     document.body.querySelector<HTMLButtonElement>('[role="menu"] button[aria-label^="Start from"]');
@@ -739,7 +740,7 @@ describe('Folder settings…', () => {
         await start({ data: twoFolders() });
         const before = new Set(store.selectedProject!.chats.keys());
         ui().setWorktreeOrder(['main-second', 'main-first', 'api-older']);
-        await press(chip()!);
+        await press(folderChip()!);
         await press(menuItem('car-rental-api'));
         await settle();
         await chooseMode('New worktree');
@@ -806,12 +807,8 @@ describe('Folder settings…', () => {
 
     it('opens it for the other folder when that is the folder of the page', async () => {
         await start({ transport: new FixtureTransport({ data: twoFolders() }) });
-        await press(chip()!);
-        await press(
-            [...document.body.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find(
-                row => row.textContent === 'car-rental-api'
-            )!
-        );
+        await press(folderChip()!);
+        await press(menuItem('car-rental-api'));
         await settle();
         await press(chip()!);
         await press(menuItem('Folder settings'));
@@ -1323,20 +1320,25 @@ describe('the folder of the page', () => {
         return data;
     };
 
-    it('exposes the selected folder and workspace independently', async () => {
+    it('exposes separate menus for the folder and workspace choices', async () => {
         await start({ data: twoFolders() });
-        await press(chip()!);
+        expect(folderChip()?.textContent).toBe('car-rental');
+        expect(chip()?.textContent).toBe('main');
 
+        await press(folderChip()!);
         expect(menuItem('car-rental').getAttribute('aria-checked')).toBe('true');
         expect(menuItem('car-rental-api').getAttribute('aria-checked')).toBe('false');
+        expect(menuItems().some(row => row.textContent?.includes('Main worktree'))).toBe(false);
+        await press(menuItem('car-rental'));
+        await settle();
+
+        await press(chip()!);
         expect(menuItem('Main worktree').getAttribute('aria-checked')).toBe('true');
         expect(menuItem('New worktree').getAttribute('aria-checked')).toBe('false');
-
+        expect(menuItems().some(row => row.textContent?.includes('car-rental-api'))).toBe(false);
         await press(menuItem('New worktree'));
-        await press(chip()!);
-        expect(menuItem('car-rental').getAttribute('aria-checked')).toBe('true');
-        expect(menuItem('Main worktree').getAttribute('aria-checked')).toBe('false');
-        expect(menuItem('New worktree').getAttribute('aria-checked')).toBe('true');
+        expect(folderChip()?.textContent).toBe('car-rental');
+        expect(ui().draftWorkspace).toEqual({ mode: 'new' });
     });
 
     it('takes the chips along: the lists are read for the folder that is picked, and the choice goes back to Project checkout', async () => {
@@ -1349,18 +1351,15 @@ describe('the folder of the page', () => {
         expect(ui().draftWorkspace).toEqual({ mode: 'new', base: 'dev' });
         expect(read).toHaveBeenCalledExactlyOnceWith(FIXTURE_PROJECT_ID, 'fld_car_rental');
 
-        await press(chip()!);
-        await press(
-            [...document.body.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find(
-                row => row.textContent === 'car-rental-api'
-            )!
-        );
+        await press(folderChip()!);
+        await press(menuItem('car-rental-api'));
         await settle();
 
         expect(read).toHaveBeenLastCalledWith(FIXTURE_PROJECT_ID, API.id);
         expect(ui().draftWorkspace).toBeNull();
         // The branch the pill says is the other folder's.
-        expect(chip()?.textContent).toBe('car-rental-apifeature/payments');
+        expect(folderChip()?.textContent).toBe('car-rental-api');
+        expect(chip()?.textContent).toBe('feature/payments');
     });
 
     it('keeps folder selection available while the new folder is loading, without showing the old workspace', async () => {
@@ -1371,8 +1370,10 @@ describe('the folder of the page', () => {
         vi.spyOn(transport, 'getFolderGit').mockReturnValue(new Promise<FolderGit>(() => undefined));
         await draw(() => ui().setDraftFolder(API.id));
 
-        expect(chip()?.textContent).toBe('car-rental-apiReading Git…');
-        await press(chip()!);
+        expect(folderChip()?.textContent).toBe('car-rental-api');
+        expect(line()).toContain('Reading Git…');
+        expect(chip()).toBeNull();
+        await press(folderChip()!);
         expect(menuItem('car-rental')).toBeDefined();
         expect(menuItems().some(row => row.hasAttribute('data-new-worktree'))).toBe(false);
     });
@@ -1390,8 +1391,9 @@ describe('the folder of the page', () => {
         else read.mockResolvedValue({ isRepository: false });
         await draw(() => ui().setDraftFolder(API.id));
         await settle();
-        expect(chip()?.textContent).toBe(`car-rental-api${label}`);
-        await press(chip()!);
+        expect(folderChip()?.textContent).toBe('car-rental-api');
+        expect(line()).toContain(label);
+        await press(folderChip()!);
         expect(menuItem('car-rental-api').getAttribute('aria-checked')).toBe('true');
         expect(menuItem('car-rental').getAttribute('aria-checked')).toBe('false');
         expect(menuItems().some(row => row.hasAttribute('data-new-worktree'))).toBe(false);
@@ -1401,13 +1403,25 @@ describe('the folder of the page', () => {
         await start({ data: twoFolders() });
         missingFolders.add(API.id);
         await draw();
-        await press(chip()!);
+        await press(folderChip()!);
         const row = menuItem('car-rental-api');
 
         expect(row.getAttribute('aria-disabled')).toBe('true');
         expect(row.textContent).toContain('This folder no longer exists');
         await press(row);
         expect(ui().draftFolderId).toBeNull();
+    });
+
+    it('warns on the folder control when the selected folder disappears', async () => {
+        await start({ data: twoFolders() });
+        await press(folderChip()!);
+        await press(menuItem('car-rental-api'));
+        await settle();
+        missingFolders.add(API.id);
+        await draw();
+
+        expect(folderChip()?.textContent).toBe('car-rental-api');
+        expect(folderChip()?.hasAttribute('data-missing')).toBe(true);
     });
 
     it('returns focus to the control while the selected folder loads and when it answers', async () => {
@@ -1421,19 +1435,19 @@ describe('the folder of the page', () => {
                 answer = resolve;
             })
         );
-        await press(chip()!);
+        await press(folderChip()!);
         await press(menuItem('car-rental-api'));
         await settle();
         await act(async () => {
             await new Promise(resolve => setTimeout(resolve, 30));
         });
-        expect(document.activeElement).toBe(chip());
+        expect(document.activeElement).toBe(folderChip());
         await act(async () => answer(git));
         await settle();
         await act(async () => {
             await new Promise(resolve => setTimeout(resolve, 30));
         });
-        expect(document.activeElement).toBe(chip());
+        expect(document.activeElement).toBe(folderChip());
     });
 
     it('keeps the choice with the page through another chat, back and forward', async () => {
