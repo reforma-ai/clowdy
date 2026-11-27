@@ -37,7 +37,7 @@ function SettingsButton({
             size="xs"
             iconOnly
             aria-label={`${project.name} settings`}
-            tooltip="Project settings"
+            tooltip="Space settings"
             excludeFromTabOrder
             data-show={listBoxItemDataShow.itemHover}
             onPressStart={() => void (held.current = true)}
@@ -79,16 +79,16 @@ export function ProjectSelect() {
 
     return (
         <MenuTrigger isOpen={isOpen} onOpenChange={setIsOpen}>
-            <Button variant="filling" size="sm" className={styles.trigger} aria-label="Project">
+            <Button variant="filling" size="sm" className={styles.trigger} aria-label="Space">
                 {selected ? <ProjectIcon project={selected} /> : <Folder />}
                 <Text variant={SCREEN_TITLE} truncate>
-                    {selected?.name ?? 'No project'}
+                    {selected?.name ?? 'No space'}
                 </Text>
                 <ChevronDown />
             </Button>
             <Popover placement="bottom start" width={280}>
                 <Menu
-                    aria-label="Projects"
+                    aria-label="Spaces"
                     size="md"
                     onAction={key => {
                         // The press was the settings button's, which has done its own work.
@@ -106,7 +106,7 @@ export function ProjectSelect() {
                     }}
                 >
                     <MenuSection
-                        aria-label="Projects"
+                        aria-label="Spaces"
                         selectionMode="single"
                         selectedKeys={selected ? [selected.id] : []}
                         disallowEmptySelection
@@ -115,7 +115,7 @@ export function ProjectSelect() {
                             <MenuItem
                                 id={personal.id}
                                 text={personal.name}
-                                description="Chats without a project"
+                                description="For personal work"
                                 icon={<Home />}
                                 stacked
                                 data-align="center"
@@ -139,7 +139,7 @@ export function ProjectSelect() {
                         ))}
                     </MenuSection>
                     {root.projects.length > 0 && <MenuSeparator />}
-                    <MenuItem id={MANAGE} text="Manage projects…" icon={<Sliders />} />
+                    <MenuItem id={MANAGE} text="Manage spaces…" icon={<Sliders />} />
                 </Menu>
                 {cardRow && cardProject && (
                     <ProjectCard project={cardProject} slot={slotOfProject(root.projects, cardProject)} row={cardRow} />

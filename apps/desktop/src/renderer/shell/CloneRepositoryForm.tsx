@@ -42,7 +42,7 @@ const TARGET_DELAY_MS = 250;
 /** What the daemon answered for an address and a folder, and for which: an answer for an older pair is not shown as the answer for this one. */
 interface TargetAnswer {
     key: string;
-    /** The folder was one the person chose, not the projects folder: the words of the answer depend on it. */
+    /** The folder was one the person chose, not the default folder: the words of the answer depend on it. */
     chosen: boolean;
     target?: GitCloneTarget;
     error?: string;
@@ -99,7 +99,7 @@ export function CloneRepositoryForm({ transport, onAdd }: CloneRepositoryProps) 
     const [url, setUrl] = useState('');
     const [folder, setFolder] = useState('');
     const [answer, setAnswer] = useState<TargetAnswer>();
-    // The projects folder as the daemon last named it, which says where an unchosen folder is while the address changes.
+    // The default folder as the daemon last named it, which says where an unchosen folder is while the address changes.
     const [known, setKnown] = useState<string>();
     // Bumped when a clone failed, so the daemon is asked again where it would go: what it said before the clone may be out of date.
     const [refresh, setRefresh] = useState(0);
@@ -140,7 +140,7 @@ export function CloneRepositoryForm({ transport, onAdd }: CloneRepositoryProps) 
                         setAnswer({ key, chosen: chosen !== '', error: reasonOf(error).message });
                 }
             );
-        // The first answer names the projects folder, which the form shows before anything is typed, and one asked again for the same address and folder is not waited for either.
+        // The first answer names the default folder, which the form shows before anything is typed, and one asked again for the same address and folder is not waited for either.
         const timer = setTimeout(ask, asked.current === undefined || asked.current === inputs ? 0 : TARGET_DELAY_MS);
 
         asked.current = inputs;
@@ -278,7 +278,7 @@ interface FolderChoiceProps {
     chosen: string;
     /** What is in the folder field as it was typed: a space at its end is a space the person is still typing past. */
     typed: string;
-    /** The projects folder as the daemon last named it. */
+    /** The default folder as the daemon last named it. */
     shown: string | undefined;
     isLocked: boolean;
     /** Opens the system dialog; absent in a plain browser, which has a field instead. */
@@ -299,7 +299,7 @@ function FolderChoice({ chosen, typed, shown, isLocked, onPick, onType, onReset,
         return (
             <FormField layout="vertical">
                 <FormField.Label>Folder</FormField.Label>
-                <FormField.Description>Left empty, the Clowdy projects folder is used</FormField.Description>
+                <FormField.Description>Left empty, the Clowdy default folder is used</FormField.Description>
                 <Input
                     type="text"
                     aria-label="Folder"
@@ -318,7 +318,7 @@ function FolderChoice({ chosen, typed, shown, isLocked, onPick, onType, onReset,
             <div className={styles.folder}>
                 <div className={styles.where}>
                     <Text variant="sm" color="secondary">
-                        {chosen ? 'The folder you chose' : 'Clowdy projects folder'}
+                        {chosen ? 'The folder you chose' : 'Clowdy default folder'}
                     </Text>
                     {where ? (
                         <Text variant="sm" className={styles.value} title={where}>
@@ -333,7 +333,7 @@ function FolderChoice({ chosen, typed, shown, isLocked, onPick, onType, onReset,
                 <div className={styles.buttons}>
                     {chosen && (
                         <Button variant="ghost" size="sm" isDisabled={isLocked} onPress={onReset}>
-                            Use projects folder
+                            Use default folder
                         </Button>
                     )}
                     <Button ref={chooseRef} variant="bordered" size="sm" isDisabled={isLocked} onPress={onPick}>
@@ -354,14 +354,14 @@ interface SaveToProps {
 
 /**
  * The whole path the repository will be cloned into, and in words which of the two cases it is: the folder itself, or a new folder inside it. The path is written in full (the home folder as
- * `~`, never shortened in the middle): it is what the person decides by. The projects folder is where repositories go, so a repository there always gets a folder of its own, and the words
+ * `~`, never shortened in the middle): it is what the person decides by. The default folder is where repositories go, so a repository there always gets a folder of its own, and the words
  * do not claim the folder has files, which the daemon did not say. A refused target says why in the danger colour, with the path when there is one.
  */
 function SaveTo({ answer, isStale }: SaveToProps) {
     const target = answer?.target;
     const path = target?.path;
     const parts = target && path ? targetParts({ ...target, path }) : undefined;
-    const subject = answer?.chosen ? 'The folder' : 'The projects folder';
+    const subject = answer?.chosen ? 'The folder' : 'The default folder';
 
     return (
         <div className={styles.target} aria-live="polite" aria-busy={isStale} data-stale={isStale || undefined}>
@@ -390,7 +390,7 @@ function SaveTo({ answer, isStale }: SaveToProps) {
                             <Text variant="sm" bold>
                                 {parts.name}
                             </Text>
-                            {answer?.chosen ? ' will be made inside it' : ' will be made in the projects folder'}
+                            {answer?.chosen ? ' will be made inside it' : ' will be made in the default folder'}
                         </Text>
                     ) : parts ? (
                         <Text variant="sm" color="secondary">

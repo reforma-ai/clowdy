@@ -912,7 +912,7 @@ export function AgentList({
 
             <StarCard />
 
-            <nav className={styles.projectDots} aria-label="Switch project">
+            <nav className={styles.projectDots} aria-label="Switch space">
                 {[
                     ...root.projects.filter(candidate => candidate.personal),
                     ...root.projects.filter(candidate => !candidate.personal),

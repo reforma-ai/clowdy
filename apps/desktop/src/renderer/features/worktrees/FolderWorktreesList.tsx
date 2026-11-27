@@ -182,7 +182,7 @@ export function FolderWorktreesList({
                     <div className={styles.groups}>
                         {groups === undefined && !failed && <WorktreesSkeleton />}
                         {groups && groups.length === 0 && (
-                            <PanelEmptyState fill={false} label="No git repositories in this project" />
+                            <PanelEmptyState fill={false} label="No git repositories in this space" />
                         )}
                         <For each={groups ?? []}>
                             {({ group, folder }) => (

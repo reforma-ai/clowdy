@@ -141,7 +141,7 @@ describe('folderViews', () => {
 describe('missingFolderNote', () => {
     it('says the agents cannot work without the main folder, and that another one is left out', () => {
         expect(missingFolderNote({}, true)).toBe(
-            'This folder no longer exists, so the agents of this project cannot work. If it moved, locate its new place.'
+            'This folder no longer exists, so the agents of this space cannot work. If it moved, locate its new place.'
         );
         expect(missingFolderNote({}, false)).toBe('This folder no longer exists, so the agents leave it out');
         expect(missingFolderNote({ personal: true }, true)).toContain('Clowdy makes it again');
@@ -157,7 +157,7 @@ describe('newMainMessage', () => {
 
     it('says that a removed main folder leaves the project and stays on disk', () => {
         expect(newMainMessage('Car Rental', '/work/api', '/work/app')).toBe(
-            'Car Rental will work in /work/api from now on, and /work/app leaves the project. Nothing is moved, copied or deleted. An agent that worked in the old main folder starts a new conversation, so what it remembered may not carry over.'
+            'Car Rental will work in /work/api from now on, and /work/app leaves the space. Nothing is moved, copied or deleted. An agent that worked in the old main folder starts a new conversation, so what it remembered may not carry over.'
         );
     });
 });

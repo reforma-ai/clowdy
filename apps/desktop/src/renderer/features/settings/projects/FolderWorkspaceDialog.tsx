@@ -174,7 +174,7 @@ function FolderWorkspaceForm({ root, projectId, folderId, name, draft }: FolderT
                 <>
                     <FormField layout="vertical">
                         <FormField.Label>Folder name</FormField.Label>
-                        <FormField.Description>Optional name shown in this project</FormField.Description>
+                        <FormField.Description>Optional name shown in this space</FormField.Description>
                         <Input
                             type="text"
                             aria-label="Folder name"
@@ -250,7 +250,7 @@ function FolderWorkspaceForm({ root, projectId, folderId, name, draft }: FolderT
                             <AlertIcon>
                                 <AttentionCircle />
                             </AlertIcon>
-                            <AlertDescription>This folder is no longer in the project</AlertDescription>
+                            <AlertDescription>This folder is no longer in the space</AlertDescription>
                         </Alert>
                     )}
                 </>

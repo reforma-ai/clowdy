@@ -125,10 +125,10 @@ describe('a task inside a task', () => {
         expect(failure(h.send('task.update', { taskId: task.id, parentId: 'tsk_nope' })).code).toBe('not_found');
         expect(
             failure(h.send('task.create', { projectId: project.id, title: 'x', parentId: foreign.id }))
-        ).toMatchObject({ code: 'invalid', message: 'Task OTH-1 belongs to another project' });
+        ).toMatchObject({ code: 'invalid', message: 'Task OTH-1 belongs to another space' });
         expect(failure(h.send('task.update', { taskId: task.id, parentId: foreign.id }))).toMatchObject({
             code: 'invalid',
-            message: 'Task OTH-1 belongs to another project',
+            message: 'Task OTH-1 belongs to another space',
         });
         // A refused create leaves no task behind.
         expect(

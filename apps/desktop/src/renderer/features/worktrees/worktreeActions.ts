@@ -146,7 +146,7 @@ export async function readRemoval(target: WorktreeTarget, preview: RemovalPrevie
     if (!samePath(worktree.path, target.path))
         throw new Error('The worktree location changed. Close and reopen this dialog');
     const chats = affectedChats(worktree, snapshot, target.folderId);
-    const hint = worktree.main ? 'This is the project checkout' : (removeHint(worktree) ?? chats.blocker);
+    const hint = worktree.main ? 'This is the folder checkout' : (removeHint(worktree) ?? chats.blocker);
     if (hint) throw new Error(hint);
     return { worktree, plan: removalPlan(worktree), chats, drift: removalDrift(preview, worktree, chats) };
 }

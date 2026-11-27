@@ -30,7 +30,7 @@ describe('worktreeMark', () => {
 
     it("gives the one badge that matters most: the folder's own checkout, then gone from the disk, then locked, then the work in the base", () => {
         expect(worktreeMark({ ...plain, main: true, locked: '', missing: true })).toMatchObject({
-            label: 'Project checkout',
+            label: 'Folder checkout',
         });
         expect(worktreeMark({ ...plain, missing: true, locked: 'on a drive' })).toEqual({
             label: 'Missing on disk',

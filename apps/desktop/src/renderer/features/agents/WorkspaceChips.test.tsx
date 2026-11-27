@@ -209,7 +209,7 @@ describe('the control', () => {
     });
 
     it.each([
-        ['main checkout', undefined, 'Working in project folder~/car-rental'],
+        ['main checkout', undefined, 'Working in space folder~/car-rental'],
         [
             'existing worktree',
             'clowdy/ab12cd34',
@@ -229,7 +229,7 @@ describe('the control', () => {
         await press(chip()!);
 
         expect(textsOf(menuItems())).toEqual([
-            'Main worktreeUse the project foldermain',
+            'Main worktreeUse the space foldermain',
             'New worktreeUse a new folder and branchFrom origin/main',
             'clowdy/ab12cd34Worktree',
             'Folder settings…',
@@ -415,7 +415,7 @@ describe('the control', () => {
         await press(chip()!);
 
         expect(textsOf(menuItems())).toEqual([
-            'Main worktreeUse the project foldermain',
+            'Main worktreeUse the space foldermain',
             'New worktreeUse a new folder and branchFrom origin/main',
             'Folder settings…',
         ]);
@@ -451,7 +451,7 @@ describe('the control', () => {
 
         await press(chip()!);
 
-        expect(menuItem('Main worktree').textContent).toBe('Main worktreeUse the project folder5c4d3e2');
+        expect(menuItem('Main worktree').textContent).toBe('Main worktreeUse the space folder5c4d3e2');
     });
 });
 
@@ -1150,7 +1150,7 @@ describe('a folder that offers no worktree', () => {
         expect(made(before)[0]?.workspace?.managed).toBe(true);
     });
 
-    it('holds nothing back while the read is on its way and Project checkout is what was chosen', async () => {
+    it('holds nothing back while the read is on its way and Folder checkout is what was chosen', async () => {
         const transport = new FixtureTransport();
 
         vi.spyOn(transport, 'getFolderGit').mockReturnValue(new Promise<FolderGit>(() => undefined));
@@ -1249,7 +1249,7 @@ describe('the first message', () => {
         expect(made(known)[0]?.workspace?.path).toBe(path);
     });
 
-    it('makes a chat in the folder itself when Project checkout is on', async () => {
+    it('makes a chat in the folder itself when Folder checkout is on', async () => {
         const before = new Set(store.selectedProject!.chats.keys());
 
         await send('Fix the price');
@@ -1377,7 +1377,7 @@ describe('the first message', () => {
         expect(ui().worktreeOrder).toEqual([]);
     });
 
-    it('shows the chat that was made, and the page that made it starts over in Project checkout', async () => {
+    it('shows the chat that was made, and the page that made it starts over in Folder checkout', async () => {
         await chooseMode('New worktree');
         await send('Fix the price');
 
@@ -1495,7 +1495,7 @@ describe('the folder of the page', () => {
         expect(ui().draftWorkspace).toEqual({ mode: 'new' });
     });
 
-    it('takes the chips along: the lists are read for the folder that is picked, and the choice goes back to Project checkout', async () => {
+    it('takes the chips along: the lists are read for the folder that is picked, and the choice goes back to Folder checkout', async () => {
         const transport = new FixtureTransport({ data: twoFolders() });
         const read = vi.spyOn(transport, 'getFolderGit');
 
@@ -1621,7 +1621,7 @@ describe('the place of the page', () => {
     const pickWorktree = () => chooseWorktree('clowdy/ab12cd34');
     const placeOfPage = () => currentPlace(store.selectedProject!, ui());
 
-    it("is the folder's own checkout in Project checkout and for a new worktree, which the first message makes", async () => {
+    it("is the folder's own checkout in Folder checkout and for a new worktree, which the first message makes", async () => {
         expect(placeOfPage().workspace).toBeUndefined();
 
         await chooseMode('New worktree');

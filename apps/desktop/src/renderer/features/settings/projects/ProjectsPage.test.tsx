@@ -274,7 +274,7 @@ describe('ProjectsPage list', () => {
         expect(store.ui.settingsProjectId).toBe(FIXTURE_EMPTY_PROJECT_ID);
         expect(labelled(container, 'input', 'Name')).not.toBeNull();
 
-        await click(named('Projects'));
+        await click(named('Spaces'));
 
         expect(store.ui.settingsProjectId).toBeNull();
         expect(row(FIXTURE_EMPTY_PROJECT_ID)).not.toBeNull();
@@ -297,7 +297,7 @@ describe('ProjectsPage list', () => {
         await click(button('Clowdy actions'));
         await click(
             [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
-                item => item.textContent === 'Open project'
+                item => item.textContent === 'Open space'
             )!
         );
 
@@ -310,7 +310,7 @@ describe('ProjectsPage list', () => {
         await click(button('Clowdy actions'));
         await click(
             [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
-                item => item.textContent === 'Open project'
+                item => item.textContent === 'Open space'
             )!
         );
 
@@ -328,7 +328,7 @@ describe('ProjectsPage list', () => {
 
         expect([...document.body.querySelectorAll('[role="menuitem"]')].map(item => item.textContent)).toEqual([
             'Configure',
-            'Open project',
+            'Open space',
         ]);
     });
 
@@ -350,16 +350,16 @@ describe('ProjectsPage list', () => {
         expect(store.projects.map(project => project.name)).toEqual(['Personal', 'Car Rental']);
     });
 
-    it('opens the Add project form from the one Add project… button, with no menu between', async () => {
+    it('opens the Add space form from the one Add space… button, with no menu between', async () => {
         await open();
-        await click(named('Add project…'));
+        await click(named('Add space…'));
         await act(async () => {
             await new Promise(resolve => setTimeout(resolve, 60));
         });
 
         expect(document.body.querySelectorAll('[role="menuitem"]')).toHaveLength(0);
         expect(document.body.querySelector('form')?.textContent).toContain(
-            'Without folders, Clowdy creates one named after the project'
+            'Without folders, Clowdy creates one named after the space'
         );
     });
 
@@ -469,11 +469,11 @@ describe('ProjectsPage project', () => {
 
     it('confirms with the counts before removing, and leaves the page when the project is gone', async () => {
         await open(FIXTURE_EMPTY_PROJECT_ID);
-        await click(named('Remove project'));
+        await click(named('Remove space'));
 
         expect(lastConfirm()).toMatchObject({
             title: 'Remove Clowdy?',
-            confirmLabel: 'Remove project',
+            confirmLabel: 'Remove space',
             destructive: true,
         });
 
@@ -672,7 +672,7 @@ describe('ProjectsPage project', () => {
 
         expect(lastConfirm()).toMatchObject({ title: 'Remove clowdy?', confirmLabel: 'Remove folder' });
         expect(lastConfirm().message).toContain(
-            'Clowdy will work in /Users/dev/car-rental-api from now on, and /Users/dev/clowdy leaves the project'
+            'Clowdy will work in /Users/dev/car-rental-api from now on, and /Users/dev/clowdy leaves the space'
         );
         expect(folderPaths(FIXTURE_EMPTY_PROJECT_ID)).toHaveLength(2);
 
@@ -764,7 +764,7 @@ describe('ProjectsPage project', () => {
             requestId: 'r',
             error: {
                 code: 'conflict' as const,
-                message: 'The agents of this project are still working. Stop them first.',
+                message: 'The agents of this space are still working. Stop them first.',
             },
         };
 
@@ -782,7 +782,7 @@ describe('ProjectsPage project', () => {
         await move(2, 1);
 
         expect(toasts.error).toHaveBeenCalledWith({
-            message: 'The agents of this project are still working. Stop them first.',
+            message: 'The agents of this space are still working. Stop them first.',
         });
         // The order goes back to the daemon's.
         expect(rowPaths()).toEqual(['/Users/dev/clowdy', '/Users/dev/car-rental-api', '/Users/dev/notes']);
@@ -799,7 +799,7 @@ describe('ProjectsPage project', () => {
         expect(button('Remove car-rental').disabled).toBe(true);
         expect(button('Remove car-rental-api').disabled).toBe(false);
         expect(container.textContent).toContain(
-            'Agents are working in this project. Stop them before changing the main folder.'
+            'Agents are working in this space. Stop them before changing the main folder.'
         );
 
         // A drag neither moves the main folder nor puts another above it; the others change places.
@@ -847,11 +847,11 @@ describe('ProjectsPage project', () => {
         expect(toasts.error).not.toHaveBeenCalled();
     });
 
-    it('keeps Remove project off while agents work, and says why', async () => {
+    it('keeps Remove space off while agents work, and says why', async () => {
         await open(FIXTURE_PROJECT_ID);
 
-        expect(named('Remove project').disabled).toBe(true);
-        expect(container.textContent).toContain('Agents are working in this project');
+        expect(named('Remove space').disabled).toBe(true);
+        expect(container.textContent).toContain('Agents are working in this space');
     });
 
     it('shows the personal space with its one folder, read only, and new-chat settings only', async () => {
@@ -862,7 +862,7 @@ describe('ProjectsPage project', () => {
         expect(marked()).toEqual([]);
         expect(container.querySelector('button[aria-label^="Remove "]')).toBeNull();
         expect(container.textContent).not.toContain('Add folders');
-        expect(container.textContent).not.toContain('Remove project');
+        expect(container.textContent).not.toContain('Remove space');
         expect(container.textContent).not.toContain('Upload');
         expect(labelled(container, '[aria-labelledby]', 'Agent')).not.toBeNull();
     });
@@ -893,7 +893,7 @@ describe('ProjectsPage project', () => {
         );
 
         expect(rows()[0]!.textContent).toContain(
-            'This folder no longer exists, so the agents of this project cannot work.'
+            'This folder no longer exists, so the agents of this space cannot work.'
         );
         expect(rows()[1]!.textContent).toContain('This folder no longer exists, so the agents leave it out');
         expect(rows()[2]!.textContent).not.toContain('no longer exists');
@@ -1308,7 +1308,7 @@ describe('ProjectsPage workspace', () => {
         // The form is drawn again with the next change to a field.
         typeInto(baseBranch(), 'dev');
 
-        expect(form()!.textContent).toContain('This folder is no longer in the project');
+        expect(form()!.textContent).toContain('This folder is no longer in the space');
         expect(save().disabled).toBe(true);
         await act(async () => form()!.requestSubmit());
         expect(sent).toEqual([

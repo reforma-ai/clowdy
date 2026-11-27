@@ -1137,7 +1137,7 @@ export class FixtureTransport implements Transport {
     #createWorktree(command: Extract<CommandInput, { type: 'workspace.create' }>): Outcome {
         const project = this.#data.projects.find(candidate => candidate.id === command.projectId);
 
-        if (!project) return fail('not_found', `Project ${command.projectId} does not exist`);
+        if (!project) return fail('not_found', `Space ${command.projectId} does not exist`);
 
         const problem = branchPrefixProblem(command.branchPrefix) ?? branchNameProblem(command.branchName);
 
@@ -1145,7 +1145,7 @@ export class FixtureTransport implements Transport {
 
         const folder = project.folders.find(candidate => candidate.id === command.folderId);
 
-        if (!folder) return fail('invalid', `Folder ${command.folderId} does not belong to project ${project.id}`);
+        if (!folder) return fail('invalid', `Folder ${command.folderId} does not belong to space ${project.id}`);
 
         const group = fixtureProjectWorktrees(project, this.#data).find(candidate => candidate.folderId === folder.id);
         const edits = this.#worktreeEdits(folder.path);
@@ -1185,12 +1185,11 @@ export class FixtureTransport implements Transport {
         const data = this.#data;
         const project = data.projects.find(candidate => candidate.id === command.projectId);
 
-        if (!project) return fail('not_found', `Project ${command.projectId} does not exist`);
+        if (!project) return fail('not_found', `Space ${command.projectId} does not exist`);
 
         const folder = project.folders.find(candidate => candidate.id === command.folderId);
 
-        if (!folder)
-            return fail('invalid', `Folder ${command.folderId} does not belong to project ${command.projectId}`);
+        if (!folder) return fail('invalid', `Folder ${command.folderId} does not belong to space ${command.projectId}`);
 
         if (!command.path.startsWith('/')) return fail('invalid', 'The path of a worktree must be absolute');
 
@@ -1254,10 +1253,10 @@ export class FixtureTransport implements Transport {
                 )
             )
         ) {
-            return fail('conflict', 'That is another folder of the project');
+            return fail('conflict', 'That is another folder of the space');
         }
         if (data.chats.some(chat => chat.projectId !== project.id && chat.workspace?.path === worktree.path)) {
-            return fail('conflict', 'Another project or folder has chats in this worktree');
+            return fail('conflict', 'Another space or folder has chats in this worktree');
         }
         if (
             command.deleteBranch &&
@@ -1395,7 +1394,7 @@ export class FixtureTransport implements Transport {
     async #createOnBranch(command: Extract<CommandInput, { type: 'chat.create' }>, branch: string): Promise<Outcome> {
         const project = this.#data.projects.find(candidate => candidate.id === command.projectId);
 
-        if (!project) return fail('not_found', `Project ${command.projectId} does not exist`);
+        if (!project) return fail('not_found', `Space ${command.projectId} does not exist`);
 
         const refused = this.#refuseEngine(command.engine);
 
@@ -1406,8 +1405,7 @@ export class FixtureTransport implements Transport {
                 ? mainFolder(project)
                 : project.folders.find(candidate => candidate.id === command.folderId);
 
-        if (!folder)
-            return fail('invalid', `Folder ${command.folderId} does not belong to project ${command.projectId}`);
+        if (!folder) return fail('invalid', `Folder ${command.folderId} does not belong to space ${command.projectId}`);
 
         let warning: string | undefined;
 
@@ -1717,7 +1715,7 @@ export class FixtureTransport implements Transport {
     #project(projectId: ProjectId): Project {
         const project = this.#data.projects.find(candidate => candidate.id === projectId);
 
-        if (!project) throw new TransportError(`No such project: ${projectId}`, 404);
+        if (!project) throw new TransportError(`No such space: ${projectId}`, 404);
 
         return project;
     }
@@ -2010,7 +2008,7 @@ export class FixtureTransport implements Transport {
                 const paths = command.folders ?? [];
 
                 if (paths.length === 0 && command.name === undefined)
-                    return fail('invalid', 'A project without folders needs a name: its new folder is named after it');
+                    return fail('invalid', 'A space without folders needs a name: its new folder is named after it');
 
                 if (new Set(paths).size !== paths.length) return fail('invalid', 'A folder is listed twice');
 
@@ -2024,7 +2022,7 @@ export class FixtureTransport implements Transport {
 
                 if (known) return ok({ project: structuredClone(known), existing: true });
 
-                const name = command.name ?? paths[0]?.split(/[\\/]/).filter(Boolean).at(-1) ?? 'Project';
+                const name = command.name ?? paths[0]?.split(/[\\/]/).filter(Boolean).at(-1) ?? (paths[0] || 'Space');
 
                 return this.#addProject(
                     name,
@@ -2034,9 +2032,9 @@ export class FixtureTransport implements Transport {
             case 'project.update': {
                 const project = data.projects.find(candidate => candidate.id === command.projectId);
 
-                if (!project) return fail('not_found', 'No such project');
+                if (!project) return fail('not_found', 'No such space');
 
-                if (command.folders?.length === 0) return fail('invalid', 'A project needs at least one folder');
+                if (command.folders?.length === 0) return fail('invalid', 'A space needs at least one folder');
 
                 // `{ id }` keeps a folder, `{ id, path }` keeps it at another place (its chats stay with it), `{ path }` adds one.
                 const folders = command.folders?.map(entry => {
@@ -2054,7 +2052,7 @@ export class FixtureTransport implements Transport {
                 });
 
                 if (folders?.some(folder => folder === undefined))
-                    return fail('invalid', "A folder is not one of the project's");
+                    return fail('invalid', "A folder is not one of the space's");
 
                 const nextFolders = (folders as Project['folders'] | undefined) ?? project.folders;
 
@@ -2077,7 +2075,7 @@ export class FixtureTransport implements Transport {
                         mainFolder({ folders: nextFolders }).path !== mainFolder(project).path) &&
                     this.#activeRuns(project.id) > 0
                 )
-                    return fail('conflict', 'The agents of this project are still working. Stop them first.');
+                    return fail('conflict', 'The agents of this space are still working. Stop them first.');
 
                 const settings: Project['settings'] = { ...project.settings };
 
@@ -2129,12 +2127,12 @@ export class FixtureTransport implements Transport {
             case 'project.delete': {
                 const project = data.projects.find(candidate => candidate.id === command.projectId);
 
-                if (!project) return fail('not_found', 'No such project');
+                if (!project) return fail('not_found', 'No such space');
 
                 if (project.personal) return fail('conflict', 'The personal space cannot be removed');
 
                 if (this.#activeRuns(project.id) > 0)
-                    return fail('conflict', 'The agents of this project are still working. Stop them first.');
+                    return fail('conflict', 'The agents of this space are still working. Stop them first.');
 
                 const runIds = new Set(data.runs.filter(run => run.projectId === project.id).map(run => run.id));
 
@@ -2157,7 +2155,7 @@ export class FixtureTransport implements Transport {
             case 'project.reorder': {
                 const unknown = command.projectIds.find(id => !data.projects.some(project => project.id === id));
 
-                if (unknown !== undefined) return fail('invalid', `No such project: ${unknown}`);
+                if (unknown !== undefined) return fail('invalid', `No such space: ${unknown}`);
 
                 const named = [...new Set(command.projectIds)].flatMap(
                     id => data.projects.find(project => project.id === id && !project.personal) ?? []
@@ -2183,17 +2181,14 @@ export class FixtureTransport implements Transport {
             case 'workspace.open': {
                 const project = data.projects.find(candidate => candidate.id === command.projectId);
 
-                if (!project) return fail('not_found', `Project ${command.projectId} does not exist`);
+                if (!project) return fail('not_found', `Space ${command.projectId} does not exist`);
 
                 const folder =
                     project.folders.find(candidate => candidate.id === command.folderId) ??
                     (command.folderId === undefined ? mainFolder(project) : undefined);
 
                 if (!folder)
-                    return fail(
-                        'invalid',
-                        `Folder ${command.folderId} does not belong to project ${command.projectId}`
-                    );
+                    return fail('invalid', `Folder ${command.folderId} does not belong to space ${command.projectId}`);
 
                 const known = [
                     ...data.chats.flatMap(chat => (chat.workspace ? [chat.workspace] : [])),
@@ -2238,10 +2233,7 @@ export class FixtureTransport implements Transport {
                         .find(candidate => candidate.id === command.projectId)
                         ?.folders.some(folder => folder.id === command.folderId)
                 ) {
-                    return fail(
-                        'invalid',
-                        `Folder ${command.folderId} does not belong to project ${command.projectId}`
-                    );
+                    return fail('invalid', `Folder ${command.folderId} does not belong to space ${command.projectId}`);
                 }
 
                 const project = data.projects.find(candidate => candidate.id === command.projectId);

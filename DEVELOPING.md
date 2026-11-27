@@ -4,7 +4,7 @@ See the [README](./README.md) for an overview of the product and the source setu
 
 ## Architecture
 
-- **Daemon** (`apps/daemon`, Bun + SQLite) owns projects, chats, tasks, agent runs and documents. It runs independently of the desktop app and serves an HTTP + SSE API on loopback (`packages/protocol`).
+- **Daemon** (`apps/daemon`, Bun + SQLite) owns spaces, chats, tasks, agent runs and documents. It runs independently of the desktop app and serves an HTTP + SSE API on loopback (`packages/protocol`).
 - **Desktop app** (`apps/desktop`, Electron + React + Vite) starts or attaches to the daemon on launch.
 - **Engine** (`apps/daemon/src/engine`) connects to installed agents over ACP, using adapters for Claude Code and Codex and native ACP where supported.
 - **System skills** (`packages/system-skills`) teach agents the delivery loop, scaffolding, thread coordination and Hands-off and Hands-on modes.
@@ -24,7 +24,7 @@ bun install
 Use a separate worktree when developing changes that should not affect the checkout running the app until they are ready.
 
 1. Start the app from the checkout you want to run: `./clowdy dev`.
-2. Select the Clowdy project. If it is missing, use the project selector to add this repository as a project folder.
+2. Select the Clowdy space. If it is missing, use the space selector to add this repository as a folder in a space.
 3. In a new chat, select **New worktree** or pick an existing worktree from the composer.
 4. Describe the change. Pick **Hands-on** if you want the agent to ask about significant decisions. Follow Tasks, Agents and Docs (`.clowdy/docs/`).
 5. Merge the worktree's branch into the checkout the app runs from, following [GITFLOW.md](./GITFLOW.md). The renderer rebuilds and the window reloads a few seconds later. A change under `apps/desktop/src/main` restarts the window but not the daemon. A daemon or protocol change replaces the daemon when no run is in progress; the window reconnects.

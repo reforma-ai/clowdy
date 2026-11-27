@@ -287,7 +287,7 @@ describe('Manage worktrees', () => {
 
         expect(main.dataset.main).toBe('true');
         expect(main.textContent).toContain('main');
-        expect(main.textContent).toContain('Project checkout');
+        expect(main.textContent).toContain('Folder checkout');
         expect(main.textContent).not.toContain('No local changes');
         // The base is no place to compare the folder's own checkout with.
         expect(main.textContent).not.toContain('merged');
@@ -340,7 +340,7 @@ describe('Manage worktrees', () => {
             // A badge is a design-system chip, which carries its shape.
             [...row(path).querySelectorAll<HTMLElement>('[data-shape]')].map(badge => badge.textContent);
 
-        expect(badges('/Users/dev/car-rental')).toEqual(['Project checkout']);
+        expect(badges('/Users/dev/car-rental')).toEqual(['Folder checkout']);
         // Merged into the base, and locked: the lock is what to know.
         expect(badges(LOCKED_WORKTREE)).toEqual(['Locked']);
         expect(badges(MISSING_WORKTREE)).toEqual(['Missing on disk']);

@@ -41,7 +41,7 @@ export function ProjectsPage() {
                     </>
                 )}
             </SettingsLayout.Pane>
-            <SettingsLayout.Page description="A project can hold several folders, so keep the repos that belong together in one">
+            <SettingsLayout.Page description="A space can hold several folders, so keep the repos that belong together in one">
                 <div className={styles.list}>
                     {personal && (
                         <ProjectRow
@@ -56,11 +56,11 @@ export function ProjectsPage() {
                     {own.length === 0 ? (
                         <PanelEmptyState
                             fill={false}
-                            label="No projects yet. Add the folders you work in, or start one in a new folder."
+                            label="No spaces yet. Add the folders you work in, or start one in a new folder."
                         />
                     ) : (
                         <SortableList
-                            aria-label="Projects"
+                            aria-label="Spaces"
                             items={own}
                             getKey={project => project.id}
                             getTextValue={project => project.name}
@@ -92,7 +92,7 @@ export function AddProjectButton() {
     return (
         <Button variant="filled" color="contrast" size="sm" onPress={() => openAddProject(root)}>
             <Plus />
-            Add project…
+            Add space…
         </Button>
     );
 }

@@ -127,7 +127,7 @@ export function chatFolder(project: Project, folderId: string | undefined): Proj
     const folder = project.folders.find(candidate => candidate.id === folderId);
 
     if (!folder) {
-        throw invalid(`Folder ${folderId} does not belong to project ${project.id}`);
+        throw invalid(`Folder ${folderId} does not belong to space ${project.id}`);
     }
 
     return folder;

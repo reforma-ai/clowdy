@@ -16,7 +16,7 @@ I wanted a workspace where agents could work independently and I could still see
 
 ### Plans become tasks
 
-When an agent plans a feature, that plan can become a parent task with subtasks, checklists and dependencies on the project's board. Agents and people create, edit and track the same tasks. There is no separate plan to copy from the chat into a tracker.
+When an agent plans a feature, that plan can become a parent task with subtasks, checklists and dependencies on the space's board. Agents and people create, edit and track the same tasks. There is no separate plan to copy from the chat into a tracker.
 
 Start an agent directly from a task, or let an orchestrator create tasks and assign them to child threads. Independent stages can run in parallel, and threads assigned to blocked tasks wait for their dependencies. The board shows where work is happening, what needs review and how much is left.
 
@@ -24,11 +24,11 @@ Use the list or Kanban view to manage work, drill into a parent task, and jump f
 
 <!-- Add a screenshot of the task board and task detail panel. -->
 
-### Projects are workspaces
+### Spaces group your work
 
-A project in Clowdy is a workspace for an area of work. It could be your entire company, a product, a new idea or a personal project. Inside it are the folders and repositories that belong to that context. They don't need to live under one directory or share a Git history.
+A space in Clowdy groups an area of work. It could be your entire company, a product, a new idea or a personal project. Inside it are the folders and repositories that belong to that context. They don't need to live under one directory or share a Git history.
 
-For example, a company workspace might contain separate repositories for its frontend, API, mobile app and website, plus an ordinary folder for product documents. You can work across them with one set of chats, tasks and project settings. Switch projects to switch the whole working context. There's also a personal space for work that doesn't belong to a repository.
+For example, a company workspace might contain separate repositories for its frontend, API, mobile app and website, plus an ordinary folder for product documents. You can work across them with one set of chats, tasks and space settings. Switch spaces to switch the whole working context. There's also a personal space for work that doesn't belong to a repository.
 
 Each Git repository keeps its own branches and worktrees. Start a chat in the main checkout, reuse a worktree or create one from a branch of your choice. New chats can inherit the current worktree. Manage worktrees from the app, remove them with or without their branches, and access the same files and changes as the agent.
 
@@ -53,11 +53,11 @@ The same controls work across agent providers, including child threads.
 
 ### Files, documents and terminals
 
-Browse, edit and manage the project's files in a side panel that expands when you need more room. The Docs tab brings Markdown specifications, plans, research and decisions together from Clowdy's own document directory (`.clowdy/docs/`), Spec Kit, OpenSpec and Kiro.
+Browse, edit and manage the space's files in a side panel that expands when you need more room. The Docs tab brings Markdown specifications, plans, research and decisions together from Clowdy's own document directory (`.clowdy/docs/`), Spec Kit, OpenSpec and Kiro.
 
 Open a terminal in the chat's worktree to run a test or inspect the agent's work yourself. Shells keep running when you switch chats or reload the window. Select output from a terminal, or code from a file, and send it straight to the chat.
 
-Quick Search finds chats, files, documents and matching lines of code in the current project context. Use keyboard shortcuts to move between them, and attach files, images or `@` references to your prompts.
+Quick Search finds chats, files, documents and matching lines of code in the current space. Use keyboard shortcuts to move between them, and attach files, images or `@` references to your prompts.
 
 ### Git, without switching apps
 
@@ -98,7 +98,7 @@ Clowdy discovers system, user and project skills and exposes them in Settings, i
 
 ## Current status
 
-Clowdy is in active development for macOS and Windows, with macOS as the primary development platform. Agents run locally in a daemon that keeps your projects, chats and tasks on your machine, and it can keep working when you close the desktop window. Your prompts and code still go to the provider of whichever agent you choose.
+Clowdy is in active development for macOS and Windows, with macOS as the primary development platform. Agents run locally in a daemon that keeps your spaces, chats and tasks on your machine, and it can keep working when you close the desktop window. Your prompts and code still go to the provider of whichever agent you choose.
 
 ## Roadmap
 
@@ -130,7 +130,7 @@ The script downloads the latest release, checks it against the checksum the rele
 
 ### First steps
 
-Clowdy works with agents you already have installed and signed in. Add a project with one or more local folders, choose an agent and start a chat. Select a worktree and a Hands-on or Hands-off mode in the composer.
+Clowdy works with agents you already have installed and signed in. Add a space with one or more local folders, choose an agent and start a chat. Select a worktree and a Hands-on or Hands-off mode in the composer.
 
 ### Run from source
 

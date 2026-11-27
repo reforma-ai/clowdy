@@ -32,7 +32,7 @@ const statusField = z
     .string()
     .optional()
     .describe(
-        `A status: its id, its name ("In progress") or its category (${CATEGORIES}). task_list shows the project's statuses`
+        `A status: its id, its name ("In progress") or its category (${CATEGORIES}). task_list shows the space's statuses`
     );
 
 /** Looks a status up by id, then by name, then by category (case-insensitive); the error lists what exists. */
@@ -177,7 +177,7 @@ function readTaskTools(deps: ToolDeps, run: Run): ToolDefinition[] {
 
         defineTool(
             'task_list',
-            `Lists the project's tasks, one short row each (key, title, status, the task it is inside, dependencies, what blocks it, how many tasks are inside it by category, its checklist count, whether a run works on it); task_get has the description. parent, under and roots each list one part of the tree (give only one of them), and the counts then describe that part. By default it shows the work in flight (todo, active and review), not the backlog and not closed (done, canceled) work: the counts of every category come with the answer, so ask for the rest when you need it. A text query searches every task, closed ones too: use it to find tasks about one thing before you create duplicates. Archived tasks are in none of these: archived lists only them, whatever their status (query, status and the tree filters narrow that listing), and the answer's archived is how many the project has in its archive. Pages hold ${DEFAULT_LIMIT} rows unless limit says otherwise (at most ${MAX_LIMIT}); the answer carries nextCursor while more are left. Newest change first. The first page also lists the project's statuses with their ids.`,
+            `Lists the space's tasks, one short row each (key, title, status, the task it is inside, dependencies, what blocks it, how many tasks are inside it by category, its checklist count, whether a run works on it); task_get has the description. parent, under and roots each list one part of the tree (give only one of them), and the counts then describe that part. By default it shows the work in flight (todo, active and review), not the backlog and not closed (done, canceled) work: the counts of every category come with the answer, so ask for the rest when you need it. A text query searches every task, closed ones too: use it to find tasks about one thing before you create duplicates. Archived tasks are in none of these: archived lists only them, whatever their status (query, status and the tree filters narrow that listing), and the answer's archived is how many the space has in its archive. Pages hold ${DEFAULT_LIMIT} rows unless limit says otherwise (at most ${MAX_LIMIT}); the answer carries nextCursor while more are left. Newest change first. The first page also lists the space's statuses with their ids.`,
             z.strictObject({
                 query: z
                     .string()
@@ -350,7 +350,7 @@ export function orchestratorTaskTools(deps: ToolDeps, run: Run): ToolDefinition[
 
         defineTool(
             'task_create',
-            'Creates a task in the project, linked to this chat. Create the tasks it depends on first. It can also make existing tasks wait for the new one, and put the new task inside another one. Without a status the task starts in To do.',
+            'Creates a task in the space, linked to this chat. Create the tasks it depends on first. It can also make existing tasks wait for the new one, and put the new task inside another one. Without a status the task starts in To do.',
             z.strictObject({
                 title: z.string().min(1).describe('The outcome in a few words'),
                 description: z.string().optional().describe('Outcome, Owns, Needs, Check, Out of scope'),

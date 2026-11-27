@@ -45,7 +45,7 @@ describe('the repository of a folder', () => {
 });
 
 describe('what a new chat is sent with', () => {
-    it('is Project checkout, which sends nothing, for no choice', () => {
+    it('is Folder checkout, which sends nothing, for no choice', () => {
         expect(effectiveChoice(null, ready(git))).toBeUndefined();
     });
 

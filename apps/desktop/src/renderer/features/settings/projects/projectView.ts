@@ -108,7 +108,7 @@ export function missingFolderNote(project: Pick<Project, 'personal'>, isMain: bo
     if (project.personal) return 'This folder no longer exists. Clowdy makes it again the next time it starts.';
 
     return isMain
-        ? 'This folder no longer exists, so the agents of this project cannot work. If it moved, locate its new place.'
+        ? 'This folder no longer exists, so the agents of this space cannot work. If it moved, locate its new place.'
         : 'This folder no longer exists, so the agents leave it out';
 }
 
@@ -118,7 +118,7 @@ export function missingFolderNote(project: Pick<Project, 'personal'>, isMain: bo
  */
 export function newMainMessage(projectName: string, next: string, removed?: string): string {
     const move = removed
-        ? `${projectName} will work in ${next} from now on, and ${removed} leaves the project.`
+        ? `${projectName} will work in ${next} from now on, and ${removed} leaves the space.`
         : `${projectName} will work in ${next} from now on.`;
     const disk = removed ? 'Nothing is moved, copied or deleted.' : 'Nothing is moved or copied.';
 

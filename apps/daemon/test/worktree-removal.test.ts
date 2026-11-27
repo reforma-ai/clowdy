@@ -527,7 +527,7 @@ describe('workspace.remove', () => {
 
             expect(refusal(await remove(second, { discard: true, deleteBranch: true }))).toEqual({
                 code: 'conflict',
-                message: 'That is another folder of the project',
+                message: 'That is another folder of the space',
             });
             expect(existsSync(second)).toBe(true);
             expect(hasBranch('second-folder')).toBe(true);
@@ -539,7 +539,7 @@ describe('workspace.remove', () => {
             const inner = join(outer, 'inner');
             const nested = {
                 code: 'conflict',
-                message: 'Another worktree or a folder of the project is inside this one',
+                message: 'Another worktree or a folder of the space is inside this one',
             };
 
             writeFileSync(join(outer, '.gitignore'), 'inner/\n');
@@ -579,7 +579,7 @@ describe('workspace.remove', () => {
             expect(git(outer, 'status', '--porcelain')).toBe('');
             expect(refusal(await remove(outer, { discard: true }))).toEqual({
                 code: 'conflict',
-                message: 'Another worktree or a folder of the project is inside this one',
+                message: 'Another worktree or a folder of the space is inside this one',
             });
             expect(existsSync(join(outer, 'vendor', 'library', 'README.md'))).toBe(true);
         });
@@ -695,7 +695,7 @@ describe('workspace.remove', () => {
             });
             expect(refusal(await remove(path, {}, 'fld_nowhere'))).toEqual({
                 code: 'invalid',
-                message: `Folder fld_nowhere does not belong to project ${project.id}`,
+                message: `Folder fld_nowhere does not belong to space ${project.id}`,
             });
             expect(
                 refusal(await h.sendAsync('workspace.remove', { projectId: 'prj_missing', folderId: 'f', path }))?.code

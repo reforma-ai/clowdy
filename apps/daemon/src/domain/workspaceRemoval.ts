@@ -200,7 +200,7 @@ async function checkWorkspaceRemoval(store: Store, target: Target, choices: Choi
     }
 
     if (target.siblings.some(sibling => samePlace(entry.path, sibling))) {
-        return no('That is another folder of the project');
+        return no('That is another folder of the space');
     }
 
     // The first entry git prints is the repository's primary working tree, which the folder is when it is not a linked worktree.
@@ -226,7 +226,7 @@ async function checkWorkspaceRemoval(store: Store, target: Target, choices: Choi
     ];
 
     if (!missing && inside.some(inner => isBelow(placeOf(entry.path), placeOf(inner)))) {
-        return no('Another worktree or a folder of the project is inside this one');
+        return no('Another worktree or a folder of the space is inside this one');
     }
 
     const name = choices.branch?.(entry);
@@ -558,14 +558,14 @@ export async function removeChatWorkspace(
             const busy = busyChat(store, { record, allowed });
             if (busy !== undefined) throw conflict(busy);
             if (otherWorkspaceChatUse(store, record.path, record.id)) {
-                throw conflict('Another project or folder has chats in this worktree');
+                throw conflict('Another space or folder has chats in this worktree');
             }
             if (
                 otherProjectFolders(store, record.projectId, record.folderId).some(
                     path => samePlace(path, record.path) || isBelow(placeOf(record.path), placeOf(path))
                 )
             ) {
-                throw conflict('The project folders changed. Try again');
+                throw conflict('The space folders changed. Try again');
             }
             if (activeRunInWorktree(store, record.path)) {
                 throw conflict('A run is still working in this worktree');
@@ -706,7 +706,7 @@ export async function removeWorktree(
     const folder = project.folders.find(candidate => candidate.id === request.folderId);
 
     if (!folder) {
-        throw invalid(`Folder ${request.folderId} does not belong to project ${project.id}`);
+        throw invalid(`Folder ${request.folderId} does not belong to space ${project.id}`);
     }
 
     if (!isAbsolute(request.path)) {
@@ -803,7 +803,7 @@ export async function removeWorktree(
 
             // Other projects may use the same physical directory; their chats are not in this command's preview.
             if (otherWorkspaceChatUse(store, request.path, current.record?.id)) {
-                throw conflict('Another project or folder has chats in this worktree');
+                throw conflict('Another space or folder has chats in this worktree');
             }
             const latest = getProject(store.db, project.id)?.folders.find(candidate => candidate.id === folder.id);
             if (
@@ -814,7 +814,7 @@ export async function removeWorktree(
                     path => samePlace(path, request.path) || isBelow(placeOf(request.path), placeOf(path))
                 )
             ) {
-                throw conflict('The project folders or base changed. Try again');
+                throw conflict('The space folders or base changed. Try again');
             }
 
             if (activeRunInWorktree(store, request.path)) {

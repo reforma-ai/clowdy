@@ -175,7 +175,7 @@ describe('FixtureTransport.getArchivedTasks', () => {
         expect(await transport.getArchivedTasks(FIXTURE_EMPTY_PROJECT_ID)).toEqual({ tasks: [], total: 0 });
         await expect(transport.getArchivedTasks('p-missing')).rejects.toMatchObject({
             status: 404,
-            message: 'Project p-missing does not exist',
+            message: 'Space p-missing does not exist',
         });
     });
 

@@ -103,7 +103,7 @@ const key = (target: Element, name: string) =>
     });
 
 const openFilter = async () => {
-    await press(container.querySelector<HTMLElement>('button[aria-label="Project menu"]')!);
+    await press(container.querySelector<HTMLElement>('button[aria-label="Space menu"]')!);
     await key(menuItem('Display'), 'ArrowRight');
 };
 

@@ -20,7 +20,7 @@ export function applyFolderSettings(
     folderId: string,
     patch: FolderSettingsPatch
 ): Outcome {
-    if (!project) return fail('not_found', 'No such project');
+    if (!project) return fail('not_found', 'No such space');
 
     if (project.personal) return fail('conflict', 'The personal space has no worktrees to set up');
 

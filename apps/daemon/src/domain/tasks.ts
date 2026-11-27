@@ -45,7 +45,7 @@ export function resolveTask(store: Store, projectId: string, reference: string):
 
     if (byId) {
         if (byId.projectId !== projectId) {
-            throw invalid(`Task ${reference} belongs to another project`);
+            throw invalid(`Task ${reference} belongs to another space`);
         }
 
         return byId;
@@ -101,7 +101,7 @@ function checkDependencies(store: Store, projectId: string, taskId: string, refe
         const dependency = requireTask(store, id);
 
         if (dependency.projectId !== projectId) {
-            throw invalid(`Task ${dependency.key} belongs to another project`);
+            throw invalid(`Task ${dependency.key} belongs to another space`);
         }
 
         if (createsCycle(store, taskId, [id])) {
@@ -128,7 +128,7 @@ function checkParent(
     const parent = requireTask(store, parentId);
 
     if (parent.projectId !== task.projectId) {
-        throw invalid(`Task ${parent.key} belongs to another project`);
+        throw invalid(`Task ${parent.key} belongs to another space`);
     }
 
     if (parent.id === task.id) {
@@ -188,7 +188,7 @@ export function createTask(store: Store, input: NewTask): Task {
         const chat = input.chatId ? requireChat(store, input.chatId) : undefined;
 
         if (chat && chat.projectId !== project.id) {
-            throw invalid('The chat belongs to another project');
+            throw invalid('The chat belongs to another space');
         }
 
         const status = input.statusId

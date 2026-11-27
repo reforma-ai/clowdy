@@ -29,7 +29,7 @@ export class FilesService {
 
         if (!existsSync(rootOf(main))) {
             throw unavailable(
-                `The ${rootOf(main) === main.path ? 'project folder' : 'worktree'} ${rootOf(main)} is missing`
+                `The ${rootOf(main) === main.path ? 'space folder' : 'worktree'} ${rootOf(main)} is missing`
             );
         }
 

@@ -103,7 +103,7 @@ afterEach(async () => {
 });
 
 describe('Clone repository', () => {
-    it('opens with the address field focused and Clone off, naming the projects folder before anything is typed', async () => {
+    it('opens with the address field focused and Clone off, naming the default folder before anything is typed', async () => {
         await open();
         await settle(200);
 
@@ -116,14 +116,14 @@ describe('Clone repository', () => {
         expect(saveTo()).toContain('Enter a repository address');
     });
 
-    it('says the repository is made inside the projects folder when no folder was chosen, with the whole path', async () => {
+    it('says the repository is made inside the default folder when no folder was chosen, with the whole path', async () => {
         await open({}, { chooseDirectories: async () => [] });
         await aim(REPOSITORY);
 
-        expect(document.body.textContent).toContain('Clowdy projects folder');
+        expect(document.body.textContent).toContain('Clowdy default folder');
         expect(saveTo()).toContain('~/Clowdy/Projects/booking-api');
-        // The daemon puts a repository in a folder of its own in the projects folder, whether or not it holds anything: the words do not say it does.
-        expect(saveTo()).toContain('A folder named booking-api will be made in the projects folder');
+        // The daemon puts a repository in a folder of its own in the default folder, whether or not it holds anything: the words do not say it does.
+        expect(saveTo()).toContain('A folder named booking-api will be made in the default folder');
         expect(saveTo()).not.toContain('has files');
         expect(button('Clone')!.disabled).toBe(false);
     });
@@ -171,7 +171,7 @@ describe('Clone repository', () => {
         expect(button('Clone')!.disabled).toBe(false);
     });
 
-    it('takes the folder from the system dialog in the desktop app, and goes back to the projects folder on request', async () => {
+    it('takes the folder from the system dialog in the desktop app, and goes back to the default folder on request', async () => {
         const chooseDirectories = vi.fn(async () => ['/Users/dev/empty']);
 
         await open({}, { chooseDirectories });
@@ -185,10 +185,10 @@ describe('Clone repository', () => {
         expect(document.body.textContent).toContain('The folder you chose');
         expect(saveTo()).toContain('so the repository will be the folder itself');
 
-        await press(button('Use projects folder'));
+        await press(button('Use default folder'));
         await afterDelay();
 
-        expect(document.body.textContent).toContain('Clowdy projects folder');
+        expect(document.body.textContent).toContain('Clowdy default folder');
         expect(saveTo()).toContain('~/Clowdy/Projects/booking-api');
     });
 
@@ -198,7 +198,7 @@ describe('Clone repository', () => {
         await press(button('Choose folder…'));
         await afterDelay();
 
-        expect(document.body.textContent).toContain('Clowdy projects folder');
+        expect(document.body.textContent).toContain('Clowdy default folder');
     });
 
     it('gives no folder for an address that names no repository, and leaves Clone off', async () => {
@@ -459,9 +459,9 @@ describe('Clone repository', () => {
         expect(button('Clone')!.disabled).toBe(true);
     });
 
-    it('names the projects folder again after a folder is reset, not the one that was chosen', async () => {
+    it('names the default folder again after a folder is reset, not the one that was chosen', async () => {
         const where = () =>
-            [...document.body.querySelectorAll('span')].find(span => span.textContent === 'Clowdy projects folder')
+            [...document.body.querySelectorAll('span')].find(span => span.textContent === 'Clowdy default folder')
                 ?.parentElement?.textContent;
 
         await open({}, { chooseDirectories: async () => ['/Users/dev/empty'] });
@@ -470,9 +470,9 @@ describe('Clone repository', () => {
         await afterDelay();
         expect(document.body.textContent).toContain('The folder you chose');
 
-        await press(button('Use projects folder'));
+        await press(button('Use default folder'));
 
-        // At once, before the daemon answers for the reset: the folder it named for the projects folder, not the one just left.
+        // At once, before the daemon answers for the reset: the folder it named for the default folder, not the one just left.
         expect(where()).toContain('~/Clowdy/Projects');
         expect(where()).not.toContain('empty');
         // The button that was pressed is gone with the folder: the focus is in the window, on the way to choose another.
@@ -532,7 +532,7 @@ describe('Clone repository', () => {
         await press(button('Choose folder…'));
 
         expect(alertText()).toBe('Choose one folder');
-        expect(document.body.textContent).toContain('Clowdy projects folder');
+        expect(document.body.textContent).toContain('Clowdy default folder');
         expect(button('Clone')!.disabled).toBe(false);
     });
 

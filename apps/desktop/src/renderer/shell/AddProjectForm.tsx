@@ -71,7 +71,7 @@ export function AddProjectForm({ root }: { root: RootStore }) {
 
     return (
         <form className={styles.form} onSubmit={event => void submit(event)}>
-            <Text variant="heading-3">Add project</Text>
+            <Text variant="heading-3">Add space</Text>
 
             <FormField layout="vertical">
                 <FormField.Label>Name</FormField.Label>
@@ -99,7 +99,7 @@ export function AddProjectForm({ root }: { root: RootStore }) {
                     onReorder={next => changeFolders(() => next.map(entry => entry.path))}
                     onAdd={added => changeFolders(current => withFolders(current, added))}
                     transport={root.transport}
-                    empty="Without folders, Clowdy creates one named after the project"
+                    empty="Without folders, Clowdy creates one named after the space"
                 />
             </div>
 
@@ -111,7 +111,7 @@ export function AddProjectForm({ root }: { root: RootStore }) {
 
             {/* No Cancel: the window's close button, Escape and a click outside already close it. */}
             <Button type="submit" color="primary" fullWidth isDisabled={!canSubmit} isPending={isPending}>
-                Add project
+                Add space
             </Button>
         </form>
     );

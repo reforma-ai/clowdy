@@ -71,7 +71,7 @@ describe('Settings', () => {
             'Files',
             'Source Control',
             'Shortcuts',
-            'Projects',
+            'Spaces',
             'Providers',
             'Delegation',
             'Skills',
@@ -82,10 +82,10 @@ describe('Settings', () => {
         const text = container.querySelector('[aria-label="Settings pages"]')!.textContent!;
 
         expect(
-            ['General', 'Appearance', 'Workspace', 'Projects', 'Agents', 'Providers'].map(word => text.indexOf(word))
+            ['General', 'Appearance', 'Workspace', 'Spaces', 'Agents', 'Providers'].map(word => text.indexOf(word))
         ).toEqual([...Array(6)].map((_, index, all) => expect.any(Number)));
         expect(text.indexOf('General')).toBeLessThan(text.indexOf('Appearance'));
-        expect(text.indexOf('Workspace')).toBeLessThan(text.indexOf('Projects'));
+        expect(text.indexOf('Workspace')).toBeLessThan(text.indexOf('Spaces'));
         expect(text.indexOf('Agents')).toBeLessThan(text.indexOf('Providers'));
         // About has a group of its own, after the last page of Agents.
         expect(text.indexOf('Skills')).toBeLessThan(text.indexOf('Clowdy'));
@@ -198,9 +198,9 @@ describe('Settings', () => {
         expect(commitMessageAgent(await store.transport.getAgents())).toBeUndefined();
     });
 
-    it('has Add project… at the end of the title of Projects, and not on another page', async () => {
+    it('has Add space… at the end of the title of Projects, and not on another page', async () => {
         const addProject = () =>
-            [...container.querySelectorAll('button')].find(button => button.textContent === 'Add project…');
+            [...container.querySelectorAll('button')].find(button => button.textContent === 'Add space…');
 
         store.ui.openSettings('appearance');
         await draw();
@@ -213,7 +213,7 @@ describe('Settings', () => {
         expect(addProject()).toBeDefined();
     });
 
-    it('shows the page of a project as a path over Projects, which leads back to the list, and takes Add project… away while it is open', async () => {
+    it('shows the page of a project as a path over Projects, which leads back to the list, and takes Add space… away while it is open', async () => {
         const project = store.projects.find(candidate => !candidate.personal)!;
 
         store.ui.openProjectSettings(project.id);
@@ -221,8 +221,8 @@ describe('Settings', () => {
         await draw();
 
         expect(titleOf()).toBe(project.name);
-        expect(path()?.querySelector('button')?.textContent).toBe('Projects');
-        expect([...container.querySelectorAll('button')].some(button => button.textContent === 'Add project…')).toBe(
+        expect(path()?.querySelector('button')?.textContent).toBe('Spaces');
+        expect([...container.querySelectorAll('button')].some(button => button.textContent === 'Add space…')).toBe(
             false
         );
 
@@ -231,6 +231,6 @@ describe('Settings', () => {
 
         expect(store.ui.settingsProjectId).toBeNull();
         expect(store.ui.settingsPage).toBe('projects');
-        expect(titleOf()).toBe('Projects');
+        expect(titleOf()).toBe('Spaces');
     });
 });

@@ -98,7 +98,7 @@ describe('a chat and its folder', () => {
     test('a turn is handed the terminal logs when that folder is there, and is told the path either way', async () => {
         const { h, make, say, project, web, api, notes } = await setup();
         const logs = join(h.config.dataDir, 'terminals', project.id);
-        const told = `The app's terminal logs for this project are in ${logs}, one plain file per shell.`;
+        const told = `The app's terminal logs for this space are in ${logs}, one plain file per shell.`;
         const before = await say(make(), 'Before any terminal');
 
         expect(before.additionalDirectories).not.toContain(logs);

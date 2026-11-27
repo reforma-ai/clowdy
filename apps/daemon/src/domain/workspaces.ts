@@ -136,7 +136,7 @@ export function assertProjectChatsAvailable(store: Store, projectId: string): vo
     const reservations = removalReservations.get(store);
     if (!reservations?.size) return;
     if ([...reservations].some(reservation => reservation.projectId === projectId)) {
-        throw conflict('A worktree of this project is being removed');
+        throw conflict('A worktree of this space is being removed');
     }
     for (const chat of listChats(store.db, projectId)) assertChatAvailable(store, chat.id);
 }
@@ -460,7 +460,7 @@ export async function createStandaloneWorktree(
 
     const folder = project.folders.find(candidate => candidate.id === request.folderId);
 
-    if (!folder) throw invalid(`Folder ${request.folderId} does not belong to project ${project.id}`);
+    if (!folder) throw invalid(`Folder ${request.folderId} does not belong to space ${project.id}`);
 
     const root = await workingTreeRoot(folder.path);
 
@@ -602,7 +602,7 @@ function repositoryFolder(project: Project, folderId: string | undefined, reposi
         folderId === undefined ? mainFolder(project) : project.folders.find(candidate => candidate.id === folderId);
 
     if (!folder) {
-        throw invalid(`Folder ${folderId} does not belong to project ${project.id}`);
+        throw invalid(`Folder ${folderId} does not belong to space ${project.id}`);
     }
 
     if (!existsSync(folder.path)) {
@@ -858,7 +858,7 @@ export function nameWorkspaceBranch(
     const folder = project.folders.find(candidate => candidate.id === workspace.folderId);
 
     if (!folder) {
-        throw invalid('The folder of your worktree is no longer part of the project');
+        throw invalid('The folder of your worktree is no longer part of the space');
     }
 
     const slug = branchSlug(words);
@@ -1052,7 +1052,7 @@ export function threadBase(
     const folder = project.folders.find(candidate => candidate.id === workspace.folderId);
 
     if (!folder) {
-        throw invalid('The folder of your worktree is no longer part of the project');
+        throw invalid('The folder of your worktree is no longer part of the space');
     }
 
     if (repository.path !== folder.path) {
@@ -1543,7 +1543,7 @@ export async function prepareWorkspace(store: Store, workspaceId: string, option
 
         try {
             if (!folder) {
-                throw new WorkspaceError('The folder of this worktree is no longer part of the project');
+                throw new WorkspaceError('The folder of this worktree is no longer part of the space');
             }
 
             if (!existsSync(folder.path)) {
