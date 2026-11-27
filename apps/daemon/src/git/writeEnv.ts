@@ -2,7 +2,7 @@ import { homedir, tmpdir } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 
 import { gitLine } from '../domain/git';
-import { NEVER_INHERITED } from '../engine/acp/env';
+import { inheritedEnv } from '../process/env';
 import { runProgram } from '../process/run';
 
 type Env = Record<string, string | undefined>;
@@ -38,16 +38,6 @@ export interface WriteEnvironmentOptions {
     home?: string;
     sshTimeoutMs?: number;
     shellTimeoutMs?: number;
-}
-
-/** The environment without what is unset and without what the daemon keeps to itself (`NEVER_INHERITED`): a repository's hooks run in it. */
-function inherited(env: Env): Record<string, string> {
-    return Object.fromEntries(
-        Object.entries(env).filter(
-            (entry): entry is [string, string] =>
-                entry[1] !== undefined && !NEVER_INHERITED.some(pattern => pattern.test(entry[0]))
-        )
-    );
 }
 
 /**
@@ -106,7 +96,8 @@ export class WriteEnvironment {
 
     /** The environment a git write in `cwd` runs in. `address` is the remote the write talks to when `cwd` has no `origin` to tell it (a clone, which has no repository yet). */
     async of(cwd: string, address?: string): Promise<Record<string, string>> {
-        const base = inherited(this.#env());
+        // A repository's hooks run in it.
+        const base = inheritedEnv(this.#env());
         const env = { ...base, GIT_TERMINAL_PROMPT: '0', LANGUAGE: 'C' };
 
         // Windows' OpenSSH keeps its agent on a named pipe that git finds by itself.
