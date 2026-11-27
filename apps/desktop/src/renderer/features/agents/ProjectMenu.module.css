@@ -27,3 +27,8 @@
 .displayItem[data-selected]:is(:hover, [data-focus-visible], [data-hovered])::before {
     background-color: var(--clowdy-listbox-item-bg--hover);
 }
+
+.description {
+    display: block;
+    white-space: normal;
+}

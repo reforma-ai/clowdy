@@ -115,13 +115,19 @@ export function ProjectMenu() {
                                     <MenuItem
                                         className={styles.displayItem}
                                         id="active"
-                                        text="Expand active threads"
+                                        text="Expand working threads"
+                                        stacked
+                                        description={
+                                            <span className={styles.description}>
+                                                Shows ongoing delegated work under collapsed chats
+                                            </span>
+                                        }
                                         shouldCloseOnSelect={false}
                                         endAffix={
                                             <span inert aria-hidden className={styles.switch}>
                                                 <Switch
                                                     size="sm"
-                                                    aria-label="Expand active threads"
+                                                    aria-label="Expand working threads"
                                                     isReadOnly
                                                     isSelected={expandRunningAgents}
                                                 />

@@ -134,7 +134,7 @@ interface ChatActions {
 
 /**
  * The project's agents: the row that starts a chat, then the chats in use in the person's order, each with what works for it below: the native sub-agents it
- * started and the threads its agents started in one list, oldest first, folded until the person opens them, except what works (with Expand active threads on)
+ * started and the threads its agents started in one list, oldest first, folded until the person opens them, except what works (with Expand working threads on)
  * or waits for the person. Archived chats are not here, they are in the archive's list (the button
  * in the heading, beside the project menu), and take their threads with them. `missing` are the folders gone from the disk (`Screen` reads them once for the list and the new-chat page): their group is marked and its button is off. With the menu's folder layout (the default), the
  * chats stand in a group for the folder they work in, under a heading that folds the group. Its title folds the group, and its actions offer a new chat in that folder.

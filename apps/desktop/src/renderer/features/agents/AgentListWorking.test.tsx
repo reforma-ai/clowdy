@@ -140,7 +140,7 @@ describe('the agent icon of a chat with agents inside', () => {
         expect(insideOf('c-4')).toBeNull();
     });
 
-    it('is on the row folded or not, with Expand active threads on or off', async () => {
+    it('is on the row folded or not, with Expand working threads on or off', async () => {
         await draw(() => chatListPreferences.setExpandRunningAgents(false));
 
         expect(shown('c-6a', 'c-6e', 'r-na-03')).toEqual([]);
@@ -434,16 +434,16 @@ describe('the active threads filter', () => {
 
         expect(chatListPreferences.showFinishedThreads).toBe(false);
         expect(menuItem('Show completed threads').getAttribute('aria-checked')).toBe('false');
-        expect(menuItem('Expand active threads')).toBeTruthy();
+        expect(menuItem('Expand working threads')).toBeTruthy();
     });
 
     it('turns active rows off and on without closing the display submenu', async () => {
         await openFilter();
 
         expect(menuItem('Show completed threads').getAttribute('role')).toBe('menuitemcheckbox');
-        expect(menuItem('Expand active threads').getAttribute('aria-checked')).toBe('true');
+        expect(menuItem('Expand working threads').getAttribute('aria-checked')).toBe('true');
 
-        await press(menuItem('Expand active threads'));
+        await press(menuItem('Expand working threads'));
         await draw();
 
         expect(chatListPreferences.expandRunningAgents).toBe(false);
@@ -451,9 +451,9 @@ describe('the active threads filter', () => {
         // The other setting and layout are unchanged.
         expect(chatListPreferences.showFinishedThreads).toBe(true);
         expect(ui().groupByFolder).toBe(true);
-        expect(menuItem('Expand active threads')).toBeTruthy();
+        expect(menuItem('Expand working threads')).toBeTruthy();
 
-        await press(menuItem('Expand active threads'));
+        await press(menuItem('Expand working threads'));
         await draw();
 
         expect(chatListPreferences.expandRunningAgents).toBe(true);
