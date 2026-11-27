@@ -24,6 +24,7 @@ export function chatWorktreeKey(chat: Chat, cards: readonly WorktreeCard[] = [])
 
 export interface WorktreeCard {
     key: string;
+    main?: boolean;
     folder: ProjectFolder;
     folderName: string;
     path: string;

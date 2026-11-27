@@ -106,8 +106,15 @@ export function useChatListOrder(
         const chat = chats.find(candidate => candidate.id === id);
 
         if (!chat) return [];
-        const workspace = ui.groupByWorktree ? chatWorktreeKey(chat, cards) : undefined;
-        if (workspace) return chats.filter(candidate => chatWorktreeKey(candidate, cards) === workspace);
+        const workspace = ui.groupByWorktree
+            ? (chatWorktreeKey(chat, cards) ?? cards.find(card => card.main && card.roots.includes(chat))?.key)
+            : undefined;
+        if (workspace)
+            return chats.filter(
+                candidate =>
+                    (chatWorktreeKey(candidate, cards) ??
+                        cards.find(card => card.main && card.roots.includes(candidate))?.key) === workspace
+            );
 
         const folderId = folderById(folders, chat.folderId).id;
         return chats.filter(
