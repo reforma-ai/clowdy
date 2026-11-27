@@ -62,6 +62,8 @@ interface CardFrameProps {
     icon: ReactNode;
     /** The header's words (a press, a link, a shimmer). */
     title: ReactNode;
+    /** Additional information aligned to the right of the header. */
+    trailing?: ReactNode;
     /** How it ended, for the colour of its mark. */
     outcome?: ThreadOutcome;
     pressable?: boolean;
@@ -73,7 +75,7 @@ interface CardFrameProps {
 }
 
 /** The one frame of every card of other work in a stream, built as an answered question is: the plate, a header that holds the icon, and under a rule the rows of the body. */
-function CardFrame({ slot, icon, title, outcome, pressable, busy, turn, children }: CardFrameProps) {
+function CardFrame({ slot, icon, title, trailing, outcome, pressable, busy, turn, children }: CardFrameProps) {
     return (
         <div
             className={styles.card}
@@ -88,6 +90,7 @@ function CardFrame({ slot, icon, title, outcome, pressable, busy, turn, children
                     {icon}
                 </span>
                 <span className={styles.title}>{title}</span>
+                {trailing}
             </div>
             {Children.toArray(children).length > 0 && <div className={styles.body}>{children}</div>}
         </div>
@@ -137,6 +140,13 @@ export function AgentCard({ name, outcome, activity, report, open = [], onOpen }
                     title
                 )
             }
+            trailing={
+                open.length > 0 && (
+                    <Text variant="sm" color="secondary" className={styles.open}>
+                        {`Still running: ${open.join(', ')}`}
+                    </Text>
+                )
+            }
             outcome={outcome}
             pressable={onOpen !== undefined}
             busy={running}
@@ -157,13 +167,6 @@ export function AgentCard({ name, outcome, activity, report, open = [], onOpen }
                         <Markdown text={text} />
                     </Clamp>
                 </div>
-            )}
-            {open.length > 0 && (
-                <Text
-                    variant="sm"
-                    color="secondary"
-                    className={styles.open}
-                >{`Still running: ${open.join(', ')}`}</Text>
             )}
         </CardFrame>
     );
