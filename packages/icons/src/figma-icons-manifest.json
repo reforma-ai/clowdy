@@ -2084,9 +2084,9 @@
                 },
                 "16707:129124": {
                     "file": "mop.svg",
-                    "fingerprint": "cd9a6e14bb70ba6696b00f43b8426728f264a461777f66a7272e9f4a08c94284",
+                    "fingerprint": "3741563347a1756667621dedf90d67579474c6ceebbaaf88f03830ebd1dc3517",
                     "name": "mop",
-                    "sourceHash": "615950d0ffa9589eed7584ecf6acc84a2d162eb9dc94f366cbf0e94051eba0ee"
+                    "sourceHash": "a31c3afd20cb4fd7157fe9b5e6595dd27b1f47f413d94fb42b81ae4a68bb7816"
                 },
                 "4298:58141": {
                     "file": "mail.svg",
@@ -2729,6 +2729,18 @@
                     "fingerprint": "62da25a0735c77f7ae78ca028dd0e9cf01a5b0fd95a1758385e467bec37cf970",
                     "name": "robot",
                     "sourceHash": "5f4afc4f5e28bc3e83cb4ac8b82a1f77b334a132102389876c5835a8f688333a"
+                },
+                "16740:129174": {
+                    "file": "robot2.svg",
+                    "fingerprint": "fce5e0b9f944ece698a4d14c8a36c73ff4ef3d853d7ebdeccae4538de70868ca",
+                    "name": "robot2",
+                    "sourceHash": "ef58d8c83424b73de158dca38a8d574fdc972c4199ee84b6fa912760f107831b"
+                },
+                "16740:129188": {
+                    "file": "robot-done.svg",
+                    "fingerprint": "365bcf90fb9890cb8d52d457d4d429f8507a9d183afabeb82f2f4fad803a4843",
+                    "name": "robot-done",
+                    "sourceHash": "e00252c041960a9e60f8eb6091d1b84ca5f6cc61c74adfe2ab560a35cea5ef2b"
                 },
                 "15811:3427": {
                     "file": "tokens.svg",
