@@ -12,15 +12,16 @@ type Props = Omit<ComponentProps<typeof GridListItem>, 'children'> & {
     onToggle: () => void;
 };
 
-export function GroupHeader({ name, collapsed, onToggle, text, className, ...props }: Props) {
+export function GroupHeader({ name, collapsed, onToggle, text, className, onContextMenu, ...props }: Props) {
     return (
         <GridListItem
             {...props}
             text={text}
             className={className ? `${styles.group} ${className}` : styles.group}
             plateless
+            onContextMenu={onContextMenu}
         >
-            <RowControls className={styles.groupTitle}>
+            <RowControls className={styles.groupTitle} onContextMenu={onContextMenu}>
                 <Button
                     variant="filling"
                     color="inherit"
