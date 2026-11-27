@@ -24,7 +24,7 @@ import { hotkeys, installDispatcher } from '../../hotkeys';
 import { NEW_CHAT_COMMAND, shellCommands } from '../../shell/shellCommands';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { branchPullRequestsOf } from '../changes/branchPullRequests';
-import { saveDraft } from '../chats/composerDrafts';
+import { dropDraft, newChatDraftKey, saveDraft } from '../chats/composerDrafts';
 import { setFiles } from '../chats/composerFiles';
 import { refreshFolderGit } from '../openWith/useFolderGit';
 import { chatListPreferences } from './chatListPreferences';
@@ -148,6 +148,9 @@ beforeEach(async () => {
 
 afterEach(() => {
     act(() => reactRoot.unmount());
+    for (const id of [FIXTURE_PROJECT_ID, FIXTURE_EMPTY_PROJECT_ID, FIXTURE_PERSONAL_PROJECT_ID]) {
+        dropDraft(newChatDraftKey(id));
+    }
     container.remove();
     store.dispose();
     chatListPreferences.setShowUnusedWorktrees(false);
