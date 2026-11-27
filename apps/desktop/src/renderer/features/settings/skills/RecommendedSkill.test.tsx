@@ -156,6 +156,10 @@ describe('Briefback recommendation', () => {
         await act(async () => root.render(<RecommendedSkill onInstalled={onInstalled} revision={1} />));
         await settle();
         expect(container.querySelector('[role="alert"]')?.textContent).toContain('/tmp/briefback');
+        transport.getBriefbackStatus.mockResolvedValue(missing);
+        await act(async () => root.render(<RecommendedSkill onInstalled={onInstalled} revision={2} />));
+        await settle();
+        expect(container.querySelector('[role="alert"]')?.textContent).toContain('/tmp/briefback');
     });
 
     it('offers an update only after it has checked that one exists', async () => {

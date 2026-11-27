@@ -14,7 +14,7 @@ import styles from './RecommendedSkill.module.css';
 type Status = { copies: { exists: boolean; installed: boolean }[]; fingerprint: string };
 type State =
     | { kind: 'loading' }
-    | { kind: 'failed'; message?: string }
+    | { kind: 'failed'; message?: string; installationError?: boolean }
     | { kind: 'ready'; status: Status; error?: string };
 
 export function RecommendedSkill({ onInstalled, revision }: { onInstalled: () => void; revision: number }) {
@@ -43,12 +43,21 @@ export function RecommendedSkill({ onInstalled, revision }: { onInstalled: () =>
                     setState(previous =>
                         previous.kind === 'ready' && previous.status.fingerprint === status.fingerprint
                             ? previous
-                            : { kind: 'ready', status }
+                            : {
+                                  kind: 'ready',
+                                  status,
+                                  error:
+                                      previous.kind === 'ready'
+                                          ? previous.error
+                                          : previous.kind === 'failed' && previous.installationError
+                                            ? previous.message
+                                            : undefined,
+                              }
                     ),
                 error =>
                     current &&
                     setState(previous =>
-                        previous.kind === 'ready' || previous.kind === 'failed'
+                        previous.kind === 'ready' || (previous.kind === 'failed' && previous.installationError)
                             ? previous
                             : {
                                   kind: 'failed',
@@ -107,7 +116,7 @@ export function RecommendedSkill({ onInstalled, revision }: { onInstalled: () =>
                         const next = await transport.getBriefbackStatus();
                         setState({ kind: 'ready', status: next, error: message });
                     } catch {
-                        setState({ kind: 'failed', message });
+                        setState({ kind: 'failed', message, installationError: true });
                     }
                 } finally {
                     setInstalling(false);
