@@ -7,7 +7,7 @@
         --popover-origin: top center;
         --popover-from: 0 calc(-1 * var(--spacing-sm));
         --popover-ease: cubic-bezier(0.22, 1.2, 0.28, 1);
-        --popover-shadow: 0 var(--spacing-16) var(--spacing-32) 0 var(--color-dark-a10);
+        --popover-shadow: var(--shadow-float);
         --popover-shadow-enter: 0 var(--spacing-8) var(--spacing-16) 0 var(--color-dark-a5);
 
         display: flex;
@@ -34,7 +34,6 @@
     }
 
     :global(.dark) .popover {
-        --popover-shadow: 0 var(--spacing-16) var(--spacing-32) 0 var(--color-black-a50);
         --popover-shadow-enter: 0 var(--spacing-8) var(--spacing-16) 0 var(--color-black-a30);
         border-color: color-mix(in srgb, var(--color-white) 12%, transparent);
     }

@@ -86,7 +86,7 @@
     }
 
     .root:focus-visible .box {
-        outline: var(--spacing-4) solid var(--color-primary-muted-border);
+        outline: var(--spacing-4) solid var(--color-focus-ring);
         outline-offset: 0;
     }
 

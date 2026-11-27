@@ -15,30 +15,17 @@ This package provides a flexible icon system that:
 
 ## Usage
 
-### Basic Usage
+Import icons from their pack, by subpath. Each pack is a folder of `src/` and a subpath of the package; the component name is the file name in PascalCase (`add-folder.svg` → `AddFolder`), with no `Icon` suffix.
 
 ```tsx
-import { Icon } from '@clowdy/icons';
-import '@clowdy/icons/styles.css'; // Import base styles
+import { ChevronDown } from '@clowdy/icons/8';
+import { Close, Plus } from '@clowdy/icons/14';
 
-// Using the Icon component with pack specification
-<Icon pack="16" name="add" className="text-primary" title="Add item" />
-
-// Without pack (uses default pack '16')
-<Icon name="close" />
+<Plus className="text-primary" />
+<Close size={20} />
 ```
 
-### Direct Icon Import
-
-You can also import individual icons directly:
-
-```tsx
-import { AddIcon } from '@clowdy/icons/16';
-import { CloseIcon } from '@clowdy/icons/14';
-
-<AddIcon className="text-primary" title="Add" />
-<CloseIcon size={20} />
-```
+Every icon takes the SVG props plus `size` (sets `width` and `height`). The root `@clowdy/icons` exports every pack and `IconWrapper`, the wrapper the generated components use; there is no `Icon` component that takes a pack and a name. The base styles are `@clowdy/icons/styles.css`.
 
 ## Package Structure
 
@@ -50,7 +37,7 @@ packages/icons/
 │   └── styles.css         # Base icon styles
 ├── dist/                  # Built output
 │   ├── [pack]/            # Generated React components per pack
-│   └── index.ts           # Main entry point
+│   └── index.js           # Main entry point: every pack and IconWrapper
 └── scripts/
     ├── build.js           # Build script that generates components
     ├── sync-icons.js      # Pulls the icon packs from Figma into src/
@@ -119,7 +106,7 @@ When you run `bun run build`, the following happens:
 3. **Generate Components** — Creates:
    - React components for each icon (one per file)
    - Index files for each pack (barrel exports)
-   - Main index.ts that exports all packs
+   - The main `index.js` (with its `.d.ts`), which exports every pack
    - Updates `package.json` exports for each pack
 4. **Copy Assets** — Copies `styles.css` to `dist/`
 
@@ -191,28 +178,8 @@ The styles ensure:
 
 ## TypeScript Types
 
-The package provides the following types:
-
-- `IconPack` — Union type of all pack names
-- `IconName` — Union type of all icon names across all packs
-- `IconCollection` — Object type mapping packs to their icon names:
-  ```typescript
-  type IconCollection = {
-    'pack1': 'close' | 'code' | ...;
-    'pack2': 'H' | 'W' | ...;
-    'pack3': 'add' | 'arrow-left' | ...;
-  };
-  ```
-- `IconSize` — Union type of numeric pack sizes (for backward compatibility)
-- `IconComponent` — Type for individual icon components
+Each generated icon has a `.d.ts` beside it, typed with `IconProps` from `src/IconBase.tsx` (`React.SVGProps<SVGSVGElement>` plus `title` and `size`). There are no pack-wide name types (`IconPack`, `IconName` and the like): an icon that does not exist is a missing named export, which TypeScript reports.
 
 ## Accessibility
 
-The `Icon` component handles accessibility automatically:
-
-- **With `title` prop**: Renders `role="img"` and `aria-label` with the title, plus a `<title>` element inside SVG
-- **Without `title` prop**: Renders `aria-hidden="true"` to hide from assistive technologies
-
-## Fallback Behavior
-
-If an icon is not found in the specified pack, the `Icon` component returns `null`. There is no automatic fallback to other packs — TypeScript will catch these errors at compile time when using strict typing.
+An icon without `title` gets `aria-hidden="true"`, which is right for an icon beside its words or inside a named button. `title` does not name it: `IconWrapper` passes it on as an attribute of the `<svg>`, which assistive technology does not read as a name, and it drops `aria-hidden`. For an icon that carries meaning alone, name the control around it (`aria-label` on the button) or pass `role="img"` and `aria-label` to the icon.

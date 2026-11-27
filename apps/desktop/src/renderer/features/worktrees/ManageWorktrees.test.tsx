@@ -375,9 +375,8 @@ describe('Manage worktrees', () => {
         await open();
 
         const badges = (path: string) =>
-            [...row(path).querySelectorAll<HTMLElement>('[aria-label="Tags"] [role="row"]')].map(
-                badge => badge.textContent
-            );
+            // A badge is a design-system chip, which carries its shape.
+            [...row(path).querySelectorAll<HTMLElement>('[data-shape]')].map(badge => badge.textContent);
 
         expect(badges('/Users/dev/car-rental')).toEqual(['Project checkout']);
         // Merged into the base, and locked: the lock is what to know.
