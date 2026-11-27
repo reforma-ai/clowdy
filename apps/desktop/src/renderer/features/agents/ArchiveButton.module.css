@@ -28,3 +28,14 @@
     display: block;
     padding: var(--spacing-md) var(--spacing-lg);
 }
+
+.trigger {
+    justify-content: flex-start;
+    width: 100%;
+    font: inherit;
+    color: inherit;
+}
+
+.triggerContent {
+    justify-content: flex-start;
+}

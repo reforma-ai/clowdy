@@ -46,7 +46,7 @@ import { deleteChat } from '../chats/deleteChat';
 import { isDraftSending } from '../chats/draftSending';
 import { workspaceHead } from '../openWith/workspaceHead';
 import styles from './AgentList.module.css';
-import { ArchiveButton } from './ArchiveButton';
+import { ArchiveButton, WorktreeArchiveButton } from './ArchiveButton';
 import { AGENTS_SCOPE, agentCommands } from './agentCommands';
 import {
     type AgentGroup,
@@ -89,6 +89,7 @@ const NO_RUNS: readonly Run[] = [];
 const GROUP_PREFIX = '@folder:';
 const EMPTY_PREFIX = '@empty:';
 const LINKED_THREAD_PREFIX = '@linked-thread:';
+const ARCHIVE_PREFIX = '@archive:';
 const groupKey = (folderId: FolderId) => `${GROUP_PREFIX}${folderId}`;
 
 /** What a line of the list is: a chat (or a thread) or a sub-agent of one; the heading of a folder's group, or the note of a group that has no chat. */
@@ -158,6 +159,7 @@ export function AgentList({
     const project = useProjectState();
     const ui = useProjectUi();
     const runLabel = useRunLabel();
+    const [archiveOpenKey, setArchiveOpenKey] = useState<string | null>(null);
     const [renamingId, setRenamingId] = useState<ChatId | null>(null);
     const saveRename = useRef<() => void>(() => {});
     const [menuChat, setMenuChat] = useState<Chat | null>(null);
@@ -512,7 +514,8 @@ export function AgentList({
     const select = (id: string) => {
         const row = visibleRows.get(id);
 
-        if (id.startsWith(LINKED_THREAD_PREFIX)) ui.openChat(id.slice(LINKED_THREAD_PREFIX.length));
+        if (id.startsWith(ARCHIVE_PREFIX)) setArchiveOpenKey(id.slice(ARCHIVE_PREFIX.length));
+        else if (id.startsWith(LINKED_THREAD_PREFIX)) ui.openChat(id.slice(LINKED_THREAD_PREFIX.length));
         else if (id.startsWith('@draft:')) ui.openDraftId(id.slice('@draft:'.length));
         else if (row?.kind === 'subagent') ui.openRun(row.id);
         // A heading is a label, not a page: only its chevron, and Right and Left on it, fold the group.
@@ -601,13 +604,27 @@ export function AgentList({
         );
     };
 
-    const archivedCounts = new Map<string, number>();
+    const archivedByCard = new Map<string, (Chat & { archivedAt: number })[]>();
     for (const chat of project.chats.values()) {
         if (chat.archivedAt === undefined) continue;
         const folder = folderById(folders, chat.folderId);
         const key = chat.workspace ? chatWorktreeKey(chat, cards) : worktreeKey(folder.id, folder.path);
-        if (key) archivedCounts.set(key, (archivedCounts.get(key) ?? 0) + 1);
+        if (!key) continue;
+        const list = archivedByCard.get(key) ?? [];
+        list.push(chat as Chat & { archivedAt: number });
+        archivedByCard.set(key, list);
     }
+    for (const list of archivedByCard.values()) list.sort((a, b) => b.archivedAt - a.archivedAt);
+    useEffect(() => {
+        if (
+            archiveOpenKey &&
+            (!groupedByWorktree ||
+                !archivedByCard.has(archiveOpenKey) ||
+                !shownCards.some(card => card.key === archiveOpenKey) ||
+                ui.collapsedWorktrees.includes(archiveOpenKey))
+        )
+            setArchiveOpenKey(null);
+    });
 
     const renderEntry = (entry: ListEntry) => {
         switch (entry.kind) {
@@ -618,10 +635,16 @@ export function AgentList({
             case 'group':
                 return renderGroup(entry.group, entry.isCollapsed);
             case 'worktree': {
-                const archivedCount = archivedCounts.get(entry.card.key) ?? 0;
-                const emptyLabel = archivedCount
-                    ? `${archivedCount} archived ${archivedCount === 1 ? 'chat' : 'chats'}`
-                    : 'No chats';
+                const archived = archivedByCard.get(entry.card.key) ?? [];
+                const chatCount = archived.filter(chat => !chat.parentChatId).length;
+                const threadCount = archived.length - chatCount;
+                const emptyLabel =
+                    [
+                        chatCount ? `${chatCount} archived ${chatCount === 1 ? 'chat' : 'chats'}` : '',
+                        threadCount ? `${threadCount} archived ${threadCount === 1 ? 'thread' : 'threads'}` : '',
+                    ]
+                        .filter(Boolean)
+                        .join(', ') || 'No chats';
                 return (
                     <GridListSection
                         key={entry.card.key}
@@ -663,18 +686,27 @@ export function AgentList({
                             </GridListItem>
                         ))}
                         {!entry.isCollapsed &&
-                            (archivedCount > 0 ||
+                            (archived.length > 0 ||
                                 (entry.rows.length === 0 &&
                                     entry.drafts.length === 0 &&
                                     entry.linkedThreads.length === 0)) && (
                                 <GridListItem
-                                    id={`${EMPTY_PREFIX}${entry.card.key}`}
+                                    id={`${archived.length ? ARCHIVE_PREFIX : EMPTY_PREFIX}${entry.card.key}`}
                                     text={emptyLabel}
-                                    icon={archivedCount ? <Archive /> : <Message />}
+                                    icon={archived.length ? <Archive /> : <Message />}
                                     className={styles.empty}
-                                    isDisabled
+                                    isDisabled={archived.length === 0}
                                 >
-                                    <span className={styles.title}>{emptyLabel}</span>
+                                    {archived.length ? (
+                                        <WorktreeArchiveButton
+                                            chats={archived}
+                                            label={emptyLabel}
+                                            isOpen={archiveOpenKey === entry.card.key}
+                                            onOpenChange={open => setArchiveOpenKey(open ? entry.card.key : null)}
+                                        />
+                                    ) : (
+                                        <span className={styles.title}>{emptyLabel}</span>
+                                    )}
                                 </GridListItem>
                             )}
                     </GridListSection>
