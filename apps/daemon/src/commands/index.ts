@@ -1,3 +1,4 @@
+import { writeBranchPrefix } from '../db/appSettings';
 import { CommandError, errorMessage } from '../errors';
 import { agentsHandlers } from './agents';
 import { chatAsyncHandlers, chatHandlers } from './chat';
@@ -14,6 +15,7 @@ import type { AsyncHandlers, CommandOf, Handlers, Services, SometimesAsyncComman
 export type { Services } from './context';
 
 const handlers: Handlers = {
+    'settings.setBranchPrefix': ({ store }, { prefix }) => ({ prefix: writeBranchPrefix(store.db, prefix) }),
     ...projectHandlers,
     ...chatHandlers,
     ...taskHandlers,

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { BranchPrefixPreference } from './branchPrefix';
 
@@ -19,6 +19,62 @@ describe('The branch prefix of a new worktree', () => {
         expect(new BranchPrefixPreference(storage).setValue(' max ')).toBeUndefined();
         expect(storage.getItem('clowdy:branch-prefix')).toBe('"max"');
         expect(new BranchPrefixPreference(storage).value).toBe('max');
+    });
+
+    it('migrates the saved setting and retries an offline change on reconnect', async () => {
+        const storage = memory();
+        storage.setItem('clowdy:branch-prefix', '"team/alice"');
+        const preference = new BranchPrefixPreference(storage);
+        const sent: string[] = [];
+        await preference.connect(undefined, async prefix => {
+            sent.push(prefix);
+            return true;
+        });
+        expect(sent).toEqual(['team/alice']);
+        await preference.connect('team/alice', async prefix => {
+            sent.push(prefix);
+            return false;
+        });
+        preference.setValue('team/bob');
+        await preference.flush();
+        const reopened = new BranchPrefixPreference(storage);
+        await reopened.connect('team/alice', async prefix => {
+            sent.push(prefix);
+            return true;
+        });
+        expect(reopened.value).toBe('team/bob');
+        expect(sent.at(-1)).toBe('team/bob');
+    });
+
+    it('retries a failed delivery while the connection remains open', async () => {
+        vi.useFakeTimers();
+        try {
+            const preference = new BranchPrefixPreference(memory());
+            const send = vi.fn().mockResolvedValueOnce(false).mockResolvedValue(true);
+            preference.setValue('team/alice');
+            await preference.connect(undefined, send);
+            expect(send).toHaveBeenCalledTimes(1);
+            await vi.advanceTimersByTimeAsync(2000);
+            expect(send).toHaveBeenLastCalledWith('team/alice');
+            expect(send).toHaveBeenCalledTimes(2);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('keeps a newer edit when an older snapshot arrives', async () => {
+        const preference = new BranchPrefixPreference(memory());
+        let daemon = 'alpha';
+        const send = async (prefix: string) => {
+            daemon = prefix;
+            return true;
+        };
+        await preference.connect('alpha', send);
+        const revision = preference.revision;
+        preference.setValue('beta');
+        await preference.connect('alpha', send, revision);
+        expect(preference.value).toBe('beta');
+        expect(daemon).toBe('beta');
     });
 
     it('takes an empty text as the default again', () => {

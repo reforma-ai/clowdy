@@ -2503,6 +2503,8 @@ export class FixtureTransport implements Transport {
                 return fail('unavailable', 'The demo data cannot add or remove agents');
             case 'agent.update':
                 return this.#updateAgent(command);
+            case 'settings.setBranchPrefix':
+                return ok({ prefix: branchPrefixOf(command.prefix) });
             case 'agents.setCommitMessageProvider': {
                 for (const agent of data.agents) {
                     const setting = agent.settings?.find(candidate => candidate.id === COMMIT_MESSAGE_SETTING_ID);
