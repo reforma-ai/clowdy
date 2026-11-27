@@ -301,6 +301,8 @@ function WorktreeCardMenu({
                           folderId: card.folder.id,
                           path: card.path,
                           workspaceId: card.actual?.workspaceId ?? card.workspace?.id,
+                          preview: card.actual,
+                          previewLabel: card.branch,
                       })
                     : []),
             ]}
