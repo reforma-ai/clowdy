@@ -178,8 +178,7 @@ jobs:
                       apps/desktop/release/*.blockmap
                       apps/desktop/release/latest-mac.yml
 
-    # CI tests on Linux only, so a release runs the desktop tests on Windows. They have a job of their own beside the packaging, not a step before it:
-    # the release takes as long as the longer of the two, and `publish` still waits for both.
+    # Test the shell and release scripts on Windows alongside packaging. Renderer tests are not part of this release.
     windows-test:
         needs: decide
         if: needs.decide.outputs.decision == 'build'
@@ -195,8 +194,8 @@ jobs:
                   bun-version-file: package.json
             - run: bun install --frozen-lockfile
             # Through turbo, which builds the workspace packages the tests import.
-            - name: Test the desktop app
-              run: bunx turbo run test --filter=@clowdy/desktop
+            - name: Test the desktop shell
+              run: bunx turbo run test --filter=@clowdy/desktop -- src/main src/shared scripts
 
     # Unsigned for now, so no secret.
     windows:
