@@ -5,6 +5,7 @@ import { createInterface } from 'node:readline';
 import { MAX_FS_SEARCH_LINES_PER_FILE } from '@clowdy/protocol';
 
 import { invalid, unavailable } from '../errors';
+import { isBelow } from './paths';
 import { MAX_SEARCHED_BYTES } from './search-rules';
 
 import type { Collector, LineRange } from './search-collect';
@@ -195,9 +196,7 @@ function runProgram(
 
 /** The path as a result names it: relative to the folder, `/` separators. */
 function relativePath(root: string, path: string): string | undefined {
-    const rel = relative(root, path);
-
-    return rel === '' || rel.startsWith('..') ? undefined : rel.split(sep).join('/');
+    return isBelow(root, path) ? relative(root, path).split(sep).join('/') : undefined;
 }
 
 /** Ripgrep's byte offsets into a line as offsets into its string. Matches come in order, so each decodes only the bytes since the previous one: a minified line can hold thousands. */

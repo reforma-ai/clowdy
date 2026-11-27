@@ -1,5 +1,5 @@
 import { lstat, realpath } from 'node:fs/promises';
-import { join, sep } from 'node:path';
+import { isAbsolute, join, relative, sep } from 'node:path';
 
 import { CommandError, conflict, invalid, unavailable } from '../errors';
 
@@ -68,9 +68,17 @@ export const isListed = (name: string) => isAddressable(name) && !TRANSIENT_NAME
 export const isWithin = (path: string, ancestor: string) =>
     ancestor === '' || path === ancestor || path.startsWith(`${ancestor}/`);
 
-/** Whether the absolute path `path` is `root` or below it. */
-export const isInside = (root: string, path: string) =>
-    path === root || path.startsWith(root.endsWith(sep) ? root : root + sep);
+/**
+ * Whether the absolute path `path` lies below the folder `root`, or is it with `allowSelf`. It asks `relative()`, so the platform decides what is the same path (case does not
+ * matter on Windows) and a name that only starts with `..` (`..env`) is below.
+ */
+export function isBelow(root: string, path: string, { allowSelf = false }: { allowSelf?: boolean } = {}): boolean {
+    const rel = relative(root, path);
+
+    if (rel === '') return allowSelf;
+
+    return rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
+}
 
 /** Whether a path of the folder is one of, or below, a folder that nothing is listed, watched or searched under. */
 export const underCutoff = (path: string) =>
@@ -170,7 +178,7 @@ export async function followLink(
         throw error;
     }
 
-    if (!isInside(root, real)) {
+    if (!isBelow(root, real, { allowSelf: true })) {
         throw outside(`${rel} runs through a symbolic link that leaves the folder`);
     }
 

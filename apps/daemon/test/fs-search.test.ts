@@ -245,6 +245,12 @@ function engineSuite(engine: Engine) {
         expect(count(exact)).toBe(MAX_FS_SEARCH_MATCHES);
     });
 
+    test('finds text in files and folders whose names start with two dots', async () => {
+        const root = folder({ '..env': 'needle\n', '..cache/notes.txt': 'needle\n' });
+
+        expect(paths(await find(root, { query: 'needle' }))).toEqual(['..cache/notes.txt', '..env']);
+    });
+
     test('never looks in .git, node_modules, .clowdy, lock files, minified files and source maps; it does in dotfiles', async () => {
         const root = folder(
             Object.fromEntries(

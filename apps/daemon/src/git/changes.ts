@@ -1,5 +1,5 @@
 import { lstat, readFile, readlink, realpath } from 'node:fs/promises';
-import { isAbsolute, join, relative, sep } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import {
     GIT_COMMIT_SCOPE_PREFIX,
     MAX_GIT_CHANGED_FILES,
@@ -10,6 +10,7 @@ import {
 
 import { gitLine, gitRead, gitRecords } from '../domain/git';
 import { invalid, notFound, unavailable } from '../errors';
+import { isBelow } from '../fs/paths';
 import { workingTreeRoot } from './state';
 import { commitAt, headCommit, kindOf, mergeBaseOf } from './status';
 
@@ -696,16 +697,7 @@ async function workingText(cwd: string, path: string, fact: WorkingFact): Promis
 
     const [root, real] = await Promise.all([realpath(cwd), realpath(join(cwd, path)).catch(() => undefined)]);
 
-    const inside = real === undefined ? undefined : relative(root, real);
-
-    if (
-        real === undefined ||
-        inside === undefined ||
-        inside === '..' ||
-        inside.startsWith(`..${sep}`) ||
-        isAbsolute(inside)
-    )
-        throw notFound('File', path);
+    if (real === undefined || !isBelow(root, real, { allowSelf: true })) throw notFound('File', path);
 
     return (await readFile(real).catch(() => undefined))?.toString('utf8') ?? null;
 }
