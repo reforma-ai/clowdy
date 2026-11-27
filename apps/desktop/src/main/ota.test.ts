@@ -52,7 +52,12 @@ interface Publish {
 }
 
 /** One machine: the updates folder, the feed it checks, and the app's own copy. */
-function machine({ ownVersion = 100, shellVersion = '0.2.0', catchUpMs = { manifest: 3000, install: 60_000 } } = {}) {
+function machine({
+    ownVersion = 100,
+    shellVersion = '0.2.0',
+    catchUpMs = { manifest: 3000, install: 60_000 },
+    backgroundInstallMs = 5 * 60_000,
+} = {}) {
     const updates = path.join(base, 'updates');
     const dataDir = path.join(base, 'daemon');
     const feed = new Map<string, Uint8Array>();
@@ -102,6 +107,7 @@ function machine({ ownVersion = 100, shellVersion = '0.2.0', catchUpMs = { manif
                 onInstalled,
                 readyTimeoutMs: 20,
                 catchUpMs,
+                backgroundInstallMs,
             });
 
             return { ota, bundle: await ota.choose() };
@@ -350,7 +356,7 @@ describe('check', () => {
 describe('shell upgrade with a cached bundle', () => {
     async function upgraded() {
         await installAndConfirm(machine({ ownVersion: 0, shellVersion: '0.1.2' }), 101);
-        const app = machine({ ownVersion: 0, shellVersion: '0.1.3' });
+        const app = machine({ ownVersion: 0, shellVersion: '0.1.3', backgroundInstallMs: 100 });
         app.publish(101);
         app.publish(102, { source: BOOTSTRAP });
         return app;
@@ -394,6 +400,101 @@ describe('shell upgrade with a cached bundle', () => {
         );
         const { ota } = await app.launch();
         await expect(ota.check()).resolves.toBe(103);
+    });
+
+    test.each(['response', 'body'] as const)(
+        'falls back and allows another check when a real HTTP archive stalls at the %s',
+        async stall => {
+            const app = await upgraded();
+            app.publish(103);
+            const serve = app.fetch.getMockImplementation()!;
+            let stalled = true;
+            const server = createServer(async (request, response) => {
+                if (stalled && request.url === '/ota/bundle-103.tar.gz') {
+                    if (stall === 'body') {
+                        response.writeHead(200);
+                        response.write('partial');
+                    }
+                    return;
+                }
+                const result = await serve(`https://feed.test${request.url}`);
+                response.writeHead(result.status);
+                response.end(Buffer.from(await result.arrayBuffer()));
+            });
+            await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+            const address = server.address();
+            if (!address || typeof address === 'string') throw new Error('No HTTP address');
+            app.fetch.mockImplementation((url, init) =>
+                globalThis.fetch(url.replace('https://feed.test', `http://127.0.0.1:${address.port}`), init)
+            );
+            try {
+                const { ota, bundle } = await app.launch();
+                expect(bundle.version).toBe(101);
+                await expect(ota.check()).resolves.toBe(102);
+                expect(await app.state()).toMatchObject({ current: 102, previous: 101, unconfirmed: true });
+                expect(await readFile(path.join(app.updates, 'bundles/101/renderer/index.html'), 'utf8')).toBe(
+                    'page 101'
+                );
+                stalled = false;
+                await expect(ota.check()).resolves.toBe(103);
+                expect(await app.state()).toMatchObject({ current: 103, previous: 101, unconfirmed: true });
+            } finally {
+                server.closeAllConnections();
+                await new Promise<void>((resolve, reject) =>
+                    server.close(error => (error ? reject(error) : resolve()))
+                );
+            }
+        }
+    );
+
+    test('a check can be retried when a stalled fetch ignores cancellation and no fallback exists', async () => {
+        const app = await upgraded();
+        app.publish(103);
+        const serve = app.fetch.getMockImplementation()!;
+        app.fetch.mockImplementation((url, init) => {
+            if (url.startsWith(BOOTSTRAP)) return Promise.resolve(new Response(null, { status: 404 }));
+            if (url.endsWith('bundle-103.tar.gz')) return new Promise<Response>(() => undefined);
+            return serve(url, init);
+        });
+        const { ota, bundle } = await app.launch();
+        expect(bundle.version).toBe(101);
+        await expect(ota.check()).rejects.toThrow(/timed out/);
+        expect((await app.launch()).bundle.version).toBe(101);
+        app.fetch.mockImplementation(serve);
+        await expect(ota.check()).resolves.toBe(103);
+    });
+
+    test('cancels a response that arrives after its fetch ignored the timeout', async () => {
+        const app = await upgraded();
+        app.publish(103);
+        const serve = app.fetch.getMockImplementation()!;
+        let finish!: (response: Response) => void;
+        const late = new Promise<Response>(resolve => {
+            finish = resolve;
+        });
+        app.fetch.mockImplementation((url, init) => (url.endsWith('bundle-103.tar.gz') ? late : serve(url, init)));
+        const { ota } = await app.launch();
+        await expect(ota.check()).resolves.toBe(102);
+        const cancel = vi.fn();
+        finish(new Response(new ReadableStream({ cancel })));
+        await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce());
+        expect(await app.state()).toMatchObject({ current: 102, previous: 101 });
+    });
+
+    test('cancels a stalled body even if the fetch ignores the abort signal', async () => {
+        const app = await upgraded();
+        app.publish(103);
+        const serve = app.fetch.getMockImplementation()!;
+        const cancel = vi.fn();
+        app.fetch.mockImplementation((url, init) =>
+            url.endsWith('bundle-103.tar.gz')
+                ? Promise.resolve(new Response(new ReadableStream({ cancel })))
+                : serve(url, init)
+        );
+        const { ota } = await app.launch();
+        await expect(ota.check()).resolves.toBe(102);
+        expect(cancel).toHaveBeenCalledOnce();
+        expect(await app.state()).toMatchObject({ current: 102, previous: 101 });
     });
 
     test('reports no update when the current OTA is healthy and bootstrap is inaccessible', async () => {
