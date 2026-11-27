@@ -3196,7 +3196,7 @@ describe('worktree cards', () => {
         ]);
         expect(
             rowOf('c-6b').querySelector('[aria-label="Thread works in a different worktree"]')?.getAttribute('title')
-        ).toBe('Thread works in a different worktree');
+        ).toBeNull();
     });
 
     it('shows a thread’s pull request from its own folder inside its ancestor’s worktree card', async () => {
@@ -3237,8 +3237,8 @@ describe('worktree cards', () => {
             expect(rowOf('c-6b').querySelector('[data-pr-state]')?.getAttribute('data-pr-state')).toBe('open')
         );
         const badge = rowOf('c-6b').querySelector('[data-pr-state]')!;
-        expect(badge.getAttribute('title')).toBe('Thread works in a different worktree; 1 pull request: 1 open');
-        expect(badge.getAttribute('aria-label')).toBe(badge.getAttribute('title'));
+        expect(badge.getAttribute('title')).toBeNull();
+        expect(badge.getAttribute('aria-label')).toBe('Thread works in a different worktree; 1 pull request: 1 open');
         expect(rowOf('c-6b').closest('[data-worktree-card]')?.getAttribute('data-worktree-card')).toBe(workspaceKey());
     });
 

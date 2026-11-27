@@ -1,5 +1,5 @@
 import { Button } from '@clowdy/components/Button';
-import { Split } from '@clowdy/icons/14';
+import { WorktreeFolder } from '@clowdy/icons/14';
 
 import { useProjectState, useRootStore } from '../../stores';
 import { openManageWorktrees } from '../worktrees';
@@ -20,7 +20,7 @@ export function ManageWorktreesButton() {
             tooltip="Manage worktrees"
             onPress={() => openManageWorktrees({ root, projectId: project.id })}
         >
-            <Split />
+            <WorktreeFolder />
         </Button>
     );
 }

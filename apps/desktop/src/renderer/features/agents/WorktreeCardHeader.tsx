@@ -1,7 +1,7 @@
 import { RowActionButton, RowControls } from '@clowdy/components/List';
 import { Popover, PopoverTrigger, useContextMenu } from '@clowdy/components/Popover';
 import { toast } from '@clowdy/components/Toast';
-import { More, NewChat, Split, Version } from '@clowdy/icons/14';
+import { More, NewChat, Version, WorktreeFolder } from '@clowdy/icons/14';
 import { mainFolder } from '@clowdy/protocol';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -131,7 +131,7 @@ export function WorktreeCardHeader({
                     onDragStart={card.main ? undefined : onDragStart}
                     title={tooltip}
                 >
-                    {!card.main && <Split aria-hidden="true" />}
+                    {!card.main && <WorktreeFolder aria-hidden="true" />}
                     <span className={`${styles.title} ${styles.worktreeFolder}`}>{card.folderName}</span>
                     {branch && (
                         <>

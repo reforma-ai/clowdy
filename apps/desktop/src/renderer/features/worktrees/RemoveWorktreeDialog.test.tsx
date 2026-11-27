@@ -953,6 +953,19 @@ describe('Remove in Manage worktrees', () => {
         expect({ commands: removals(), present: Boolean(row(ONE_CHANGE)) }).toEqual({ commands: [], present: true });
     });
 
+    it('keeps the existing rows and data when entering and leaving cleanup', async () => {
+        await open({ data: dataWithKinds() });
+        const existing = row(CLEAN_MERGED);
+        const before = getProjectWorktrees.mock.calls.length;
+        await click(textButton(confirmation(), 'Tidy up…')!);
+        expect(row(CLEAN_MERGED)).toBe(existing);
+        expect(existing?.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked).toBe(true);
+        await click(confirmation().querySelector<HTMLButtonElement>('button[aria-label="Back to worktrees"]')!);
+        expect(row(CLEAN_MERGED)).toBe(existing);
+        expect(existing?.querySelector('input[type="checkbox"]')).toBeNull();
+        expect(getProjectWorktrees.mock.calls.length).toBe(before);
+    });
+
     it('cleans eligible selections across folders and reports a worktree that changed', async () => {
         const data = dataWithKinds();
         await open({ data });
@@ -1210,6 +1223,45 @@ describe('Remove in Manage worktrees', () => {
         await confirm('Remove 1 worktree');
         const snapshot = await store.transport.getProjectSnapshot(FIXTURE_PROJECT_ID);
         expect(snapshot.chats.find(chat => chat.id === archived.id)?.archivedAt).toBe(archived.archivedAt);
+    });
+
+    it('locks the branch choice for the duration of bulk removal', async () => {
+        const data = dataWithKinds();
+        data.worktrees!['/Users/dev/car-rental-api'] = [];
+        let release!: () => void;
+        const gate = new Promise<void>(resolve => {
+            release = resolve;
+        });
+        const delayed = vi.fn<Transport['command']>(async input => {
+            await gate;
+            return { ok: false, requestId: 'refused', error: { code: 'conflict', message: 'Refused' } };
+        });
+        await open({ data, overrides: { command: delayed } });
+        await click(textButton(confirmation(), 'Tidy up…')!);
+        await click(textButton(confirmation(), 'Remove 1 worktree…')!);
+        await settle();
+        const branch = [...confirmation().querySelectorAll<HTMLInputElement>('input[type="checkbox"]')][0]!;
+        await click(branch);
+        expect(branch.checked).toBe(false);
+        act(() => textButton(confirmation(), 'Remove 1 worktree')!.click());
+        await settle();
+        expect(branch.disabled).toBe(true);
+        await click(branch);
+        expect(branch.checked).toBe(false);
+        await act(async () => release());
+        await settle();
+        expect(delayed).toHaveBeenCalledWith(expect.not.objectContaining({ deleteBranch: true }));
+    });
+
+    it('clears cleanup selection after an individual removal', async () => {
+        await open();
+        await click(textButton(confirmation(), 'Tidy up…')!);
+        expect(confirmation().querySelector('input[aria-label^="Remove "]')).not.toBeNull();
+        await askToRemove(ONE_CHANGE);
+        await confirm('Remove worktree');
+        expect(row(ONE_CHANGE)).toBeNull();
+        expect(confirmation().querySelector('input[aria-label^="Remove "]')).toBeNull();
+        expect(textButton(confirmation(), 'Tidy up…')).toBeDefined();
     });
 
     it('does not remove anything when the selection is cleared', async () => {

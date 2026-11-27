@@ -965,7 +965,7 @@ const SubagentItem = memo(function SubagentItem({
     );
 });
 
-/** The activity indicator takes the archive shortcut's place while the chat or its threads are active. */
+/** Chat actions appear to the left of the status indicators. */
 function RowEnd({
     chat,
     actions,
@@ -991,22 +991,6 @@ function RowEnd({
 
     return (
         <RowControls className={styles.chatActions}>
-            <BranchPullRequestBadge
-                className={styles.pullRequests}
-                branchKey={branchKey}
-                visible
-                hoverOnly={!showPullRequests}
-                crossWorktree={crossWorktree}
-            />
-            {status}
-            {!busy && (
-                <RowActionButton
-                    className={cn(styles.rowAction, styles.archiveAction)}
-                    icon={<Archive />}
-                    label="Archive"
-                    onPress={() => actions.archive(chat)}
-                />
-            )}
             <PopoverTrigger isOpen={isOpen} onOpenChange={onOpenChange}>
                 <RowActionButton className={styles.rowAction} icon={<More />} label="Chat actions" tooltip={null} />
                 <Popover placement="bottom end" spacing="xs">
@@ -1019,6 +1003,22 @@ function RowEnd({
                     />
                 </Popover>
             </PopoverTrigger>
+            {!busy && (
+                <RowActionButton
+                    className={cn(styles.rowAction, styles.archiveAction)}
+                    icon={<Archive />}
+                    label="Archive"
+                    onPress={() => actions.archive(chat)}
+                />
+            )}
+            <BranchPullRequestBadge
+                className={styles.pullRequests}
+                branchKey={branchKey}
+                visible
+                hoverOnly={!showPullRequests}
+                crossWorktree={crossWorktree}
+            />
+            {status}
         </RowControls>
     );
 }

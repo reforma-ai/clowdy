@@ -1,7 +1,7 @@
 import { MenuTrigger } from '@clowdy/components/List';
 import { Popover } from '@clowdy/components/Popover';
 import { Text } from '@clowdy/components/Text';
-import { Folder, Split, Version } from '@clowdy/icons/14';
+import { Folder, Version, WorktreeFolder } from '@clowdy/icons/14';
 import { mainFolder } from '@clowdy/protocol';
 
 import { tildePath } from '../../shared/displayPath';
@@ -48,7 +48,7 @@ export function ChatFolder({ name, folder, missing, workspace, showFolder = true
         .filter(Boolean)
         .join('\n');
     const icon = workspace ? (
-        <Split aria-hidden="true" />
+        <WorktreeFolder aria-hidden="true" />
     ) : branch ? (
         <Version aria-hidden="true" />
     ) : (

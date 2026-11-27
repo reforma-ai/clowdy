@@ -2,11 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useRootStore } from '../../stores';
 
-import type { FolderWorktrees, ProjectId } from '@clowdy/protocol';
+import type { FolderWorktrees, ProjectId, ProjectSnapshot } from '@clowdy/protocol';
 
 interface Read {
     projectId: ProjectId;
     folders: FolderWorktrees[] | undefined;
+    snapshot?: ProjectSnapshot;
     failed: boolean;
 }
 
@@ -14,6 +15,7 @@ export interface ProjectWorktrees {
     /** The worktrees of every folder of the project, in the project's order: `undefined` until the first read answers (never another project's). */
     folders: FolderWorktrees[] | undefined;
     /** The last read failed: the folders, when there are any, are from an earlier read and may be out of date. */
+    snapshot?: ProjectSnapshot;
     failed: boolean;
     /** Reads again, for what changes the worktrees (a removal) and for a retry. Settles once the answer is in; never rejects. */
     reload: () => Promise<void>;
@@ -33,18 +35,27 @@ export function useProjectWorktrees(projectId: ProjectId): ProjectWorktrees {
     const reload = useCallback(async () => {
         const request = ++latest.current;
 
-        try {
-            const folders = await root.transport.getProjectWorktrees(projectId);
-
-            if (request === latest.current) setRead({ projectId, folders, failed: false });
-        } catch {
-            if (request === latest.current)
-                setRead(current => ({
-                    projectId,
-                    folders: current?.projectId === projectId ? current.folders : undefined,
-                    failed: true,
-                }));
-        }
+        const [folderResult, snapshotResult] = await Promise.allSettled([
+            root.transport.getProjectWorktrees(projectId),
+            root.transport.getProjectSnapshot(projectId),
+        ]);
+        if (request !== latest.current) return;
+        setRead(current => ({
+            projectId,
+            folders:
+                folderResult.status === 'fulfilled'
+                    ? folderResult.value
+                    : current?.projectId === projectId
+                      ? current.folders
+                      : undefined,
+            snapshot:
+                snapshotResult.status === 'fulfilled'
+                    ? snapshotResult.value
+                    : current?.projectId === projectId
+                      ? current.snapshot
+                      : undefined,
+            failed: folderResult.status === 'rejected' || snapshotResult.status === 'rejected',
+        }));
     }, [root, projectId]);
 
     useEffect(() => {
@@ -61,5 +72,5 @@ export function useProjectWorktrees(projectId: ProjectId): ProjectWorktrees {
 
     const current = read?.projectId === projectId ? read : undefined;
 
-    return { folders: current?.folders, failed: current?.failed ?? false, reload };
+    return { folders: current?.folders, snapshot: current?.snapshot, failed: current?.failed ?? false, reload };
 }

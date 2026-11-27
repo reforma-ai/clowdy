@@ -107,7 +107,7 @@
 
 .row {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     gap: var(--spacing-md);
     min-width: 0;
     box-sizing: border-box;
@@ -121,7 +121,7 @@
 }
 
 .row:hover .actions,
-.row:focus-within .actions,
+.row:has(.actions :focus) .actions,
 .row[data-open] .actions {
     opacity: 1;
     pointer-events: auto;
@@ -133,12 +133,13 @@
     opacity: var(--opacity-inactive);
 }
 
-/* The mark stands on the first line of the text: as tall as the branch's line. */
+/* Both modes reserve exactly the same leading space. */
 .icon {
     display: inline-flex;
     flex-shrink: 0;
     align-items: center;
     justify-content: center;
+    width: var(--spacing-16);
     height: var(--leading-md);
     color: var(--color-secondary-muted-text);
 }
@@ -179,7 +180,8 @@
 .chatCount {
     text-decoration: underline dotted;
     text-underline-offset: 0.15em;
-    white-space: nowrap;
+    white-space: normal;
+    text-align: start;
 }
 
 /* Shown on hover, on focus inside the row and while a menu of the row is open, as the lists' row actions are; always where nothing hovers (a touch screen). */
@@ -194,10 +196,45 @@
     align-self: center;
 }
 
+/* The status and actions share a fixed slot even while they swap. */
+.trailing {
+    position: relative;
+    display: grid;
+    min-width: calc(var(--spacing-30) * 2 + var(--spacing-xs));
+    flex-shrink: 0;
+    align-items: center;
+    justify-items: end;
+}
+
+.trailing > * {
+    grid-area: 1 / 1;
+}
+
+.trailing > .actions {
+    position: absolute;
+    inset-inline-end: 0;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.mark {
+    display: flex;
+}
+
+.row:hover .mark,
+.row:has(.actions :focus) .mark,
+.row[data-open] .mark {
+    visibility: hidden;
+}
+
 @media (hover: none) {
-    .actions {
+    .row .actions {
         opacity: 1;
         pointer-events: auto;
+    }
+
+    .row .mark {
+        visibility: hidden;
     }
 }
 
@@ -213,41 +250,12 @@
     gap: var(--spacing-sm);
 }
 
-/* Cleanup choices and status sit at the vertical center of each row. */
-.tidyRows {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-xxl);
-    min-width: 0;
-    max-height: min(60vh, 540px);
-    overflow-y: auto;
-}
-
-.tidyCheck {
-    display: flex;
-    align-items: center;
-    width: 100%;
-}
-
-.tidyCheck > span:last-child {
-    flex: 1;
-    min-width: 0;
-}
-
-.tidySummary {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-md);
-    width: 100%;
-    min-width: 0;
-}
-
-.tidyMark {
-    flex-shrink: 0;
-    align-self: center;
-}
-
-.tidyMarkIcon {
+.markIcon {
     width: var(--spacing-12);
     height: var(--spacing-12);
+}
+
+.add:disabled {
+    opacity: var(--opacity-disabled);
+    cursor: default;
 }

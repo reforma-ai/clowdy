@@ -1,4 +1,5 @@
 import { Button } from '@clowdy/components/Button';
+import { Checkbox } from '@clowdy/components/Checkbox';
 import { For } from '@clowdy/components/For';
 import { Menu, MenuItem, MenuTrigger } from '@clowdy/components/List';
 import { Popover, PopoverScroll, useContextMenu } from '@clowdy/components/Popover';
@@ -12,6 +13,7 @@ import { useId, useState } from 'react';
 import { tildePath } from '../../shared/displayPath';
 import { homeFolder } from '../../shared/homeFolder';
 import { worktreeLabel } from '../agents/workspaceChoice';
+import { canRemove } from './confirmTidyWorktrees';
 import styles from './ManageWorktrees.module.css';
 import { WorktreeMenu } from './WorktreeMenu';
 import { changesLabel, worktreeMark } from './worktreeView';
@@ -27,7 +29,13 @@ export interface WorktreeRowActions {
     onRemove: (group: FolderWorktrees, worktree: WorktreeInfo) => void;
 }
 
+interface WorktreeSelection {
+    isSelected: (row: WorktreeInfo) => boolean;
+    onChange: (row: WorktreeInfo, checked: boolean) => void;
+}
+
 interface WorktreeRowProps extends WorktreeRowActions {
+    selection?: WorktreeSelection;
     projectId: ProjectId;
     group: FolderWorktrees;
     folder: ProjectFolder;
@@ -35,9 +43,14 @@ interface WorktreeRowProps extends WorktreeRowActions {
 }
 
 function chatCount(chats: WorktreeChat[]): string {
-    const count = chats.length;
     const archived = chats.filter(chat => chat.archived).length;
-    return `${count} ${count === 1 ? 'chat' : 'chats'}${archived ? ` (${archived} archived)` : ''}`;
+    const active = chats.length - archived;
+    return [
+        active && `${active} ${active === 1 ? 'chat' : 'chats'}`,
+        archived && `${archived} archived ${archived === 1 ? 'chat' : 'chats'}`,
+    ]
+        .filter(Boolean)
+        .join(' + ');
 }
 
 function WorktreeChats({ chats, onOpenChat }: { chats: WorktreeChat[]; onOpenChat: (chat: WorktreeChat) => void }) {
@@ -70,97 +83,75 @@ function WorktreeChats({ chats, onOpenChat }: { chats: WorktreeChat[]; onOpenCha
     );
 }
 
-/** Shared branch, status and facts for the folder settings list and the cleanup preview. */
-export function WorktreeRowSummary({
+/** Branch and facts shared by both modes. */
+function WorktreeRowSummary({
     worktree,
     onOpenChat,
-    tidy = false,
 }: {
     worktree: WorktreeInfo;
-    onOpenChat?: (chat: WorktreeChat) => void;
-    tidy?: boolean;
+    onOpenChat: (chat: WorktreeChat) => void;
 }) {
     const label = worktreeLabel(worktree);
-    const mark = worktreeMark(worktree);
     const path = tildePath(worktree.path, homeFolder.path);
-    const title = (
-        <Text variant="md" weight="medium" truncate title={onOpenChat ? undefined : path}>
-            {label}
-        </Text>
+    return (
+        <span className={styles.text}>
+            <span className={styles.title}>
+                <Tooltip content={path} placement="top start" wrapTrigger>
+                    <Text variant="md" weight="medium" truncate>
+                        {label}
+                    </Text>
+                </Tooltip>
+            </span>
+            {(worktree.changes > 0 || worktree.chats.length > 0) && (
+                <span className={styles.facts}>
+                    {!worktree.missing && worktree.changes > 0 && (
+                        <Text variant="sm" color="secondary">
+                            {changesLabel(worktree.changes)}
+                        </Text>
+                    )}
+                    {worktree.chats.length > 0 && (
+                        <Text as="span" variant="sm" color="secondary" className={styles.chatFact}>
+                            <WorktreeChats chats={worktree.chats} onOpenChat={onOpenChat} />
+                        </Text>
+                    )}
+                </span>
+            )}
+        </span>
     );
+}
 
+function WorktreeStatus({ worktree }: { worktree: WorktreeInfo }) {
+    const mark = worktreeMark(worktree);
+    if (!mark) return null;
     const MarkIcon = worktree.merged ? Merge : MergeCancel;
-    const badge = mark && (
+    return (
         <Badge
             size="xs"
-            color={tidy && mark.label === 'Merged' ? 'accent' : mark.color}
+            color={mark.label === 'Merged' ? 'accent' : mark.color}
             textValue={mark.label}
-            tooltip={tidy ? undefined : mark.tip}
+            tooltip={mark.tip}
             icon={
-                tidy && (mark.label === 'Merged' || mark.label === 'Not merged') ? (
-                    <MarkIcon className={styles.tidyMarkIcon} aria-hidden="true" />
+                mark.label === 'Merged' || mark.label === 'Not merged' ? (
+                    <MarkIcon className={styles.markIcon} aria-hidden="true" />
                 ) : undefined
             }
         >
             {mark.label}
         </Badge>
     );
-
-    return (
-        <>
-            {!tidy && (
-                <span className={styles.icon}>
-                    {worktree.main ? <Folder aria-hidden="true" /> : <Version aria-hidden="true" />}
-                </span>
-            )}
-            <span className={styles.text}>
-                <span className={styles.title}>
-                    {onOpenChat ? (
-                        <Tooltip content={path} placement="top start" wrapTrigger>
-                            {title}
-                        </Tooltip>
-                    ) : (
-                        title
-                    )}
-                    {!tidy && badge}
-                </span>
-                {(!tidy || worktree.changes > 0 || worktree.chats.length > 0) && (
-                    <span className={styles.facts}>
-                        {!worktree.missing && (!tidy || worktree.changes > 0) && (
-                            <Text variant="sm" color="secondary">
-                                {changesLabel(worktree.changes)}
-                            </Text>
-                        )}
-                        {worktree.chats.length > 0 && (
-                            <Text as="span" variant="sm" color="secondary" className={styles.chatFact}>
-                                {onOpenChat ? (
-                                    <WorktreeChats chats={worktree.chats} onOpenChat={onOpenChat} />
-                                ) : (
-                                    chatCount(worktree.chats)
-                                )}
-                            </Text>
-                        )}
-                    </span>
-                )}
-            </span>
-            {tidy && <span className={styles.tidyMark}>{badge}</span>}
-        </>
-    );
 }
 
-/**
- * One worktree of a folder, as git lists it: its branch (or the commit it is on), the one badge that matters most (`worktreeMark`: the folder's own checkout, gone from the disk, locked, or whether its work is in the base), how
- * many files are changed, and a count of chats with a menu for opening them. At the end: a new
- * chat in it, and More (`WorktreeMenu`: the same new chat, the copy of the path, the programs that open it, and Remove, which the folder's own checkout does not have). A
- * worktree whose folder is gone has no chat to start in it.
- *
- * Sizes are the app's list row, as `ProjectRow` has it: the title is body (`md`) medium, the facts `sm` and dim, the marks `xs`; a bare `Text` would take the page's 16px,
- * which this window shows far larger than the lists around it. The branch is one line cut with an ellipsis, so it never pushes the actions. The path is not a line of the
- * row: it is the tooltip of the branch (in the home folder's `~` form), and the reason a Remove is off (`removeHint`) is the line under it in the menu. A right-click anywhere on
- * the row opens the same menu at the pointer (and a long touch, which is a right-click to the app), so the strip is as good as the button. The buttons show on hover, on focus
- * inside the row and while its actions menu is open, and always on a touch screen.
- */
-export function WorktreeRow({ projectId, group, folder, worktree, onNewChat, onOpenChat, onRemove }: WorktreeRowProps) {
+/** One stable row in either management or selection mode. */
+export function WorktreeRow({
+    projectId,
+    group,
+    folder,
+    worktree,
+    onNewChat,
+    onOpenChat,
+    onRemove,
+    selection,
+}: WorktreeRowProps) {
     const label = worktreeLabel(worktree);
     const newChat = worktree.main ? 'New chat in this folder' : 'New chat in this worktree';
     const contextMenu = useContextMenu();
@@ -174,45 +165,66 @@ export function WorktreeRow({ projectId, group, folder, worktree, onNewChat, onO
                 data-main={worktree.main || undefined}
                 data-missing={worktree.missing || undefined}
                 data-open={isMenuOpen || contextMenu.isOpen || undefined}
+                data-tidy={selection ? true : undefined}
                 {...contextMenu.areaProps}
             >
+                <span className={styles.icon}>
+                    {selection ? (
+                        <Checkbox
+                            size="sm"
+                            isDisabled={!canRemove(worktree)}
+                            isSelected={selection.isSelected(worktree)}
+                            aria-label={`Remove ${label}: ${worktree.path}`}
+                            onChange={checked => selection.onChange(worktree, checked)}
+                        />
+                    ) : worktree.main ? (
+                        <Folder aria-hidden="true" />
+                    ) : (
+                        <Version aria-hidden="true" />
+                    )}
+                </span>
                 <WorktreeRowSummary worktree={worktree} onOpenChat={onOpenChat} />
-                <span className={styles.actions}>
-                    <Button
-                        variant="filling"
-                        color="secondary"
-                        size="sm"
-                        iconOnly
-                        aria-label={`${newChat}: ${label}`}
-                        tooltip={worktree.missing ? undefined : newChat}
-                        isDisabled={worktree.missing}
-                        disabledReason={worktree.missing ? 'Its folder is gone from the disk' : undefined}
-                        onPress={() => onNewChat(folder, worktree)}
-                    >
-                        <NewChat />
-                    </Button>
-                    <MenuTrigger isOpen={isMenuOpen} onOpenChange={setIsMenuOpen}>
+                <span className={styles.trailing}>
+                    <span className={styles.mark}>
+                        <WorktreeStatus worktree={worktree} />
+                    </span>
+                    <span className={styles.actions}>
                         <Button
                             variant="filling"
                             color="secondary"
                             size="sm"
                             iconOnly
-                            aria-label={`More for ${label}`}
-                            tooltip="More"
+                            aria-label={`${newChat}: ${label}`}
+                            tooltip={worktree.missing ? undefined : newChat}
+                            isDisabled={worktree.missing}
+                            disabledReason={worktree.missing ? 'Its folder is gone from the disk' : undefined}
+                            onPress={() => onNewChat(folder, worktree)}
                         >
-                            <More />
+                            <NewChat />
                         </Button>
-                        <Popover placement="bottom end" spacing="xs" width={260}>
-                            <WorktreeMenu
-                                projectId={projectId}
-                                group={group}
-                                folder={folder}
-                                worktree={worktree}
-                                onNewChat={onNewChat}
-                                onRemove={onRemove}
-                            />
-                        </Popover>
-                    </MenuTrigger>
+                        <MenuTrigger isOpen={isMenuOpen} onOpenChange={setIsMenuOpen}>
+                            <Button
+                                variant="filling"
+                                color="secondary"
+                                size="sm"
+                                iconOnly
+                                aria-label={`More for ${label}`}
+                                tooltip="More"
+                            >
+                                <More />
+                            </Button>
+                            <Popover placement="bottom end" spacing="xs" width={260}>
+                                <WorktreeMenu
+                                    projectId={projectId}
+                                    group={group}
+                                    folder={folder}
+                                    worktree={worktree}
+                                    onNewChat={onNewChat}
+                                    onRemove={onRemove}
+                                />
+                            </Popover>
+                        </MenuTrigger>
+                    </span>
                 </span>
             </li>
             <Show when={contextMenu.isOpen}>
@@ -238,9 +250,9 @@ export function WorktreeGroup({
     group,
     folder,
     onCreate,
-    createDisabled = false,
+    selection,
     ...actions
-}: Omit<WorktreeRowProps, 'worktree'> & { onCreate: () => void; createDisabled?: boolean }) {
+}: Omit<WorktreeRowProps, 'worktree'> & { onCreate: () => void }) {
     const headingId = useId();
 
     return (
@@ -262,12 +274,13 @@ export function WorktreeGroup({
                                 group={group}
                                 folder={folder}
                                 worktree={worktree}
+                                selection={selection}
                                 {...actions}
                             />
                         )}
                     </For>
                     <li>
-                        <button type="button" className={styles.add} onClick={onCreate} disabled={createDisabled}>
+                        <button type="button" className={styles.add} onClick={onCreate}>
                             <Plus aria-hidden="true" />
                             New worktree
                         </button>

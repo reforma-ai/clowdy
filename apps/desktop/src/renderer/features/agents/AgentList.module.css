@@ -117,16 +117,15 @@
 
     & .chatActions:has(.archiveStatus, .pullRequests) .rowAction {
         position: absolute;
-        inset-inline-end: 0;
+        inset-inline-end: calc(100% + var(--spacing-xs));
     }
 
-    & .chatActions:has(.archiveStatus, .pullRequests) .archiveAction {
-        inset-inline-end: calc(var(--spacing-24) + var(--spacing-xs));
+    & .chatActions:has(.archiveStatus, .pullRequests) .rowAction:not(.archiveAction) {
+        inset-inline-end: calc(100% + var(--spacing-24) + 2 * var(--spacing-xs));
     }
 }
 
-:is(.chatRow, .archivable):is(:hover, :focus-visible, :has(.rowAction:focus), [data-hovered], [data-open])
-    .archiveStatus {
+.archivable:is(:hover, :focus-visible, :has(.rowAction:focus), [data-hovered], [data-open]) .archiveStatus {
     display: none;
 }
 
