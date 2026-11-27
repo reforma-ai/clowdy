@@ -2,15 +2,6 @@
     color: var(--color-success);
 }
 
-/* The done robot is drawn in strokes, which the icon's own `#000` would keep black and its default fill would close: it takes the mark's colour for the stroke and has no fill. */
-.mark[data-outcome='finished'] {
-    fill: none;
-}
-
-.mark[data-outcome='finished'] path {
-    stroke: currentColor;
-}
-
 .mark[data-outcome='failed'] {
     color: var(--color-danger);
 }

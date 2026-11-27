@@ -13,6 +13,7 @@ import {
     Merge,
     Message,
     More,
+    NewChat,
     Plus,
     Robot2,
     Split,
@@ -539,7 +540,7 @@ export function AgentList({
                             data-show={listBoxItemDataShow.itemBoth}
                             onPress={startChat}
                         >
-                            <Plus />
+                            <NewChat />
                         </Button>
                     </span>
                 }
