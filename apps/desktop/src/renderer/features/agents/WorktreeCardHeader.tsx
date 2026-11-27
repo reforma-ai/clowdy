@@ -14,7 +14,7 @@ import { worktreeMenuExtras } from '../worktrees/worktreeMenuExtras';
 import styles from './AgentList.module.css';
 import { GroupFolderName } from './GroupFolderName';
 import { GroupHeader } from './GroupHeader';
-import { samePath, worktreeLabel } from './workspaceChoice';
+import { samePath, worktreeGroupLabel } from './workspaceChoice';
 
 import type { ChatWorkspace } from '@clowdy/protocol';
 import type { DragEvent, MouseEvent, ReactNode } from 'react';
@@ -91,7 +91,7 @@ export function WorktreeCardHeader({
             card.folder.id === mainFolder(project.project).id ? null : card.folder.id,
             card.main ? null : { mode: 'existing', path: card.path }
         );
-    const title = card.main ? card.folderName : `${card.folderName}/${worktreeLabel(card)}`;
+    const title = card.main ? card.folderName : worktreeGroupLabel(card.folderName, card);
     const tooltip = card.pending ? 'Worktree not prepared yet' : card.missing ? 'Worktree no longer exists' : undefined;
     const openContextMenu = (event: MouseEvent) => {
         event.stopPropagation();
