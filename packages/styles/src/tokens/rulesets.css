@@ -4,3 +4,4 @@
 */
 @import 'local/breakpoints.css';
 @import './styles/typography.css';
+@import './styles/a11y.css';

@@ -5,7 +5,7 @@ import { gitAnswer, gitRead } from '../domain/git';
 import { chatsWorkingIn } from '../domain/places';
 import { exclusive, pathKey } from '../domain/workspaces';
 import { CommandError, conflict, errorMessage, invalid, unavailable } from '../errors';
-import { LEFTOVER_GRACE_MS, runProgram } from '../providers/exec';
+import { LEFTOVER_GRACE_MS, runProgram } from '../process/run';
 import { failureLine, printedLines, shownLine, writeLine } from './commit';
 import {
     baseOf,

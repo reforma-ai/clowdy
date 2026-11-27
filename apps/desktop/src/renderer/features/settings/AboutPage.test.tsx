@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { AboutPage } from './AboutPage';
+import { nameOf } from './accessibleName';
 
 import type { DesktopBridge, UpdateStatus } from '../../../shared/bridge';
 
@@ -26,8 +27,7 @@ const draw = () =>
         );
     });
 
-const sections = () =>
-    [...container.querySelectorAll('section[aria-label]')].map(section => section.getAttribute('aria-label'));
+const sections = () => [...container.querySelectorAll('section')].map(nameOf).filter(Boolean);
 const link = (name: string) =>
     [...container.querySelectorAll<HTMLAnchorElement>('a')].find(anchor => anchor.textContent?.trim() === name)!;
 const daemon = () => container.querySelector('[role="status"]')?.textContent;

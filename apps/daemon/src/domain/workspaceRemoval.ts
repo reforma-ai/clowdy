@@ -1,5 +1,5 @@
 import { rmdir } from 'node:fs/promises';
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { isTerminalRunStatus } from '@clowdy/protocol';
 
 import { getChat, listChatDescendants, runsOfChat } from '../db/chats';
@@ -13,6 +13,7 @@ import {
     updateWorkspace,
 } from '../db/workspaces';
 import { conflict, invalid } from '../errors';
+import { isBelow } from '../fs/paths';
 import {
     baseOf,
     commitOf,
@@ -338,13 +339,6 @@ export async function workspaceRemoval(store: Store, chatId: string): Promise<Ch
         removable: verdict.removable,
         ...(record && { path: record.path, ...(record.branch !== undefined && { branch: record.branch }) }),
     };
-}
-
-/** Whether `path` is below `root`, by their names. */
-function isBelow(root: string, path: string): boolean {
-    const way = relative(pathKey(root), pathKey(path));
-
-    return way !== '' && way !== '..' && !way.startsWith(`..${sep}`) && !isAbsolute(way);
 }
 
 /**

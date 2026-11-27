@@ -1,0 +1,14 @@
+/* The trigger keeps the button pressed while its menu is open: the plate stays (the button's own pressed look), the label goes muted. */
+.pill[data-pressed] {
+    --clowdy-button-color: var(--color-secondary-muted-text);
+    --clowdy-button-color--hover: var(--color-secondary-muted-text);
+}
+
+.chevron {
+    flex-shrink: 0;
+    transition: transform var(--transition-duration-fast) var(--ease-in-out);
+}
+
+.pill[data-pressed] .chevron {
+    transform: rotate(180deg);
+}

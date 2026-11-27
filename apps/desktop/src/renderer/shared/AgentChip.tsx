@@ -1,8 +1,7 @@
+import { Chip } from '@clowdy/components/Chip';
 import { User } from '@clowdy/icons/14';
-import { cn } from '@clowdy/lib';
 
 import { useProjectUi } from '../stores';
-import styles from './Chip.module.css';
 import { useRunLabel } from './useRunLabel';
 
 import type { Run } from '@clowdy/protocol';
@@ -20,16 +19,13 @@ export function AgentChip({ run, onPress, className }: AgentChipProps) {
     const label = useRunLabel()(run);
 
     return (
-        <button
-            type="button"
-            className={cn(styles.chip, className)}
-            title={label}
-            onClick={onPress ?? (() => ui.openRun(run.id))}
+        <Chip
+            className={className}
+            icon={<User width={12} height={12} />}
+            tooltip={label}
+            onPress={onPress ?? (() => ui.openRun(run.id))}
         >
-            <span className={styles.icon}>
-                <User width={12} height={12} />
-            </span>
-            <span className={styles.label}>{label}</span>
-        </button>
+            {label}
+        </Chip>
     );
 }

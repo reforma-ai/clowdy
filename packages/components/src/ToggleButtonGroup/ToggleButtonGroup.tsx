@@ -1,12 +1,8 @@
-import { ChevronDown } from '@clowdy/icons/10';
 import { cn, type SelectionInput, toSet } from '@clowdy/lib';
 import { createContext, use, useMemo } from 'react';
 import {
     composeRenderProps,
     type Key,
-    Button as RACButton,
-    Select as RACSelect,
-    type SelectProps as RACSelectProps,
     ToggleButton as RACToggleButton,
     ToggleButtonGroup as RACToggleButtonGroup,
     type ToggleButtonGroupProps as RACToggleButtonGroupProps,
@@ -14,8 +10,6 @@ import {
     SelectionIndicator,
 } from 'react-aria-components';
 
-import { ListBox, type ListBoxSize } from '../List';
-import { Popover } from '../Popover';
 import { useSlotContextProps } from '../Slot';
 import { Tooltip } from '../Tooltip';
 import styles from './ToggleButtonGroup.module.css';
@@ -55,18 +49,6 @@ export interface ToggleButtonGroupItemProps extends Omit<RACToggleButtonProps, '
     tooltipPlacement?: 'top' | 'bottom' | 'left' | 'right';
     className?: RACToggleButtonProps['className'];
     children: ReactNode;
-}
-
-export interface ToggleButtonGroupSelectItemProps<T extends object = object>
-    extends Omit<RACSelectProps<T>, 'className' | 'children'> {
-    items: Iterable<T>;
-    isSelected?: boolean;
-    iconOnly?: boolean;
-    className?: string;
-    popoverClassName?: string;
-    selectedContent: ReactNode;
-    tooltip?: string | ReactNode;
-    children: (item: T) => ReactNode;
 }
 
 export function ToggleButtonGroup(props: ToggleButtonGroupProps) {
@@ -165,64 +147,3 @@ export function ToggleButtonGroupItem({
 }
 
 ToggleButtonGroupItem.displayName = 'ToggleButtonGroupItem';
-
-export function ToggleButtonGroupSelectItem<T extends object = object>({
-    isSelected,
-    iconOnly = false,
-    className,
-    popoverClassName,
-    selectedContent,
-    tooltip,
-    items,
-    children,
-    ...props
-}: ToggleButtonGroupSelectItemProps<T>) {
-    const context = use(ToggleButtonGroupContext);
-
-    if (!context) {
-        throw new Error('ToggleButtonGroupSelectItem must be used within ToggleButtonGroup');
-    }
-
-    const { variant, size } = context;
-    const listBoxSize: ListBoxSize = size === 'xs' ? 'sm' : size;
-    const useSelectionIndicator = variant === 'filled' || variant === 'transparent';
-
-    const button = (
-        <RACButton
-            className={cn(styles.item, className)}
-            data-variant={variant}
-            data-size={size}
-            data-icon-only={iconOnly || undefined}
-            data-selected={isSelected || undefined}
-            data-select-item
-        >
-            {useSelectionIndicator && isSelected && (
-                <span className={styles.selectionIndicator} data-selected aria-hidden />
-            )}
-            <span className={styles.itemContent}>
-                <span className={styles.selectItemLabel}>{selectedContent}</span>
-                <ChevronDown className={styles.itemChevron} aria-hidden />
-            </span>
-        </RACButton>
-    );
-
-    return (
-        <RACSelect {...props} className={styles.selectItem}>
-            {tooltip ? <Tooltip content={tooltip}>{button}</Tooltip> : button}
-
-            <Popover className={cn(styles.selectPopover, popoverClassName)} spacing="xs">
-                <ListBox
-                    aria-label={props['aria-label']}
-                    size={listBoxSize}
-                    autoFocus
-                    className={styles.selectListBox}
-                    items={items}
-                >
-                    {children}
-                </ListBox>
-            </Popover>
-        </RACSelect>
-    );
-}
-
-ToggleButtonGroupSelectItem.displayName = 'ToggleButtonGroupSelectItem';

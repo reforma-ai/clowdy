@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 
 import { useProjectUi, useRootStore } from '../../stores';
 import { startHandoff } from './handoff';
@@ -23,6 +23,9 @@ export function useHandoff(chat: Chat, run: Run | undefined) {
         };
     }, []);
 
-    return (at?: { itemId: string; engine: string }) =>
-        startHandoff({ root, ui, chat, run, stillOpen: () => shown.current, ...at });
+    return useCallback(
+        (at?: { itemId: string; engine: string }) =>
+            startHandoff({ root, ui, chat, run, stillOpen: () => shown.current, ...at }),
+        [root, ui, chat, run]
+    );
 }

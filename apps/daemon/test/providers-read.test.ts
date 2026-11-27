@@ -3,6 +3,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, wr
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { runProgram } from '../src/process/run';
 import { withAppServer } from '../src/providers/appserver';
 import { claudeAccount, claudeWindows, parseClaudeStatus, parseClaudeUsage } from '../src/providers/claude/account';
 import { codexAccount, codexPlan, codexWindows, parseCodexAccount, windowLabel } from '../src/providers/codex/account';
@@ -13,7 +14,6 @@ import {
     readCursorIdentity,
     readCursorToken,
 } from '../src/providers/cursor/account';
-import { runProgram } from '../src/providers/exec';
 import { planLabel } from '../src/providers/parse';
 
 import type { ProbeContext } from '../src/providers/types';

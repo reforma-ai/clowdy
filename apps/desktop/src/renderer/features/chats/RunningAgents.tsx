@@ -2,14 +2,14 @@ import { Shimmer } from '@clowdy/components/Shimmer';
 import { Text } from '@clowdy/components/Text';
 import { Robot2, Terminal } from '@clowdy/icons/14';
 import { shownRunStatus } from '@clowdy/protocol';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 import { formatDuration } from '../../shared';
+import { useNow } from '../../shared/useNow';
 import { useProjectState, useProjectUi, useRootStore, useRunStream } from '../../stores';
 import { ChatIcon } from '../agents/ChatIcon';
 import { openChat } from './archiveChat';
-import { ComposerBanner, ComposerBannerHeader, ComposerBannerStatus } from './ComposerBanner';
-import styles from './ComposerBanner.module.css';
+import { ComposerBanner, ComposerBannerHeader, ComposerBannerRows, ComposerBannerStatus } from './ComposerBanner';
 import { perform } from './commands';
 import {
     agentRowLabel,
@@ -24,6 +24,7 @@ import {
     threadsAtWork,
     unlistedBackground,
 } from './runningAgentRows';
+import { useStopRun } from './useStopRun';
 
 import type { BackgroundItem, Chat, ChatId, Run, RunId } from '@clowdy/protocol';
 
@@ -33,20 +34,29 @@ function elapsedSince(startedAt: number | undefined, now: number): string | unde
     return formatDuration(Math.floor((now - startedAt) / 1000) * 1000);
 }
 
+/**
+ * How many tools a run has called, once its whole stream is read: a count from a stream still loading would start low and jump.
+ * `useAgentActivity` counts the same way but cannot tell a stream that is loading from one with no calls.
+ */
+function useToolCalls(runId: RunId | undefined): number | undefined {
+    const stream = useRunStream(runId);
+
+    return stream?.status === 'ready' ? stream.items.filter(item => item.body.kind === 'tool').length : undefined;
+}
+
+const callsText = (calls: number) => `${calls} ${calls === 1 ? 'call' : 'calls'}`;
+
 function AgentRow({ run, now }: { run: Run; now: number }) {
-    const root = useRootStore();
     const ui = useProjectUi();
-    const stream = useRunStream(run.origin === 'native' ? run.id : undefined);
+    const calls = useToolCalls(run.origin === 'native' ? run.id : undefined);
+    const { stop, isStopping } = useStopRun(run);
     const waiting = shownRunStatus(run) === 'waiting_user';
     const metrics: string[] = [];
 
     // Native runs are created for one invocation, so their first start is also the current start.
     const elapsed = elapsedSince(run.origin === 'native' ? run.startedAt : run.activeSince, now);
     if (elapsed) metrics.push(elapsed);
-    if (stream?.status === 'ready') {
-        const calls = stream.items.filter(item => item.body.kind === 'tool').length;
-        if (calls > 0) metrics.push(`${calls} ${calls === 1 ? 'call' : 'calls'}`);
-    }
+    if (calls) metrics.push(callsText(calls));
     const detail = waiting ? 'Waiting for you' : undefined;
     const progress = metrics.join(', ');
     const name = agentRowLabel(run);
@@ -58,7 +68,8 @@ function AgentRow({ run, now }: { run: Run; now: number }) {
             detail={detail}
             progress={progress}
             action={stoppable ? 'Stop' : undefined}
-            onAction={stoppable ? () => void perform(root, { type: 'run.cancel', runId: run.id }) : undefined}
+            onAction={stoppable ? stop : undefined}
+            isActionPending={isStopping}
             onPress={() => ui.openRun(run.id)}
             pressLabel={`Open ${name}${detail ? `. ${detail}` : ''}${progress ? `. ${progress}` : ''}`}
         >
@@ -87,13 +98,9 @@ function ThreadRow({ chat, run, now }: ThreadAtWork & { now: number }) {
     const project = useProjectState();
     const ui = useProjectUi();
     const detail = threadStatus(run);
-    const stream = useRunStream(run.id);
-    const calls =
-        stream?.status === 'ready' ? stream.items.filter(item => item.body.kind === 'tool').length : undefined;
-    const progress = [
-        elapsedSince(run.activeSince, now),
-        calls === undefined ? undefined : `${calls} ${calls === 1 ? 'call' : 'calls'} total`,
-    ]
+    const calls = useToolCalls(run.id);
+    const { stop, isStopping } = useStopRun(run);
+    const progress = [elapsedSince(run.activeSince, now), calls === undefined ? undefined : `${callsText(calls)} total`]
         .filter(Boolean)
         .join(', ');
 
@@ -104,7 +111,8 @@ function ThreadRow({ chat, run, now }: ThreadAtWork & { now: number }) {
             progress={progress}
             detail={detail}
             action="Stop"
-            onAction={() => void perform(root, { type: 'run.cancel', runId: run.id })}
+            onAction={stop}
+            isActionPending={isStopping}
             onPress={() => void openChat(root, project, ui, chat.id)}
             pressLabel={`Open ${chat.title}${detail ? `. ${detail}` : ''}${progress ? `. ${progress}` : ''}`}
         >
@@ -171,12 +179,8 @@ function Row({ row, now }: { row: StripRow; now: number }) {
 export function RunningAgents({ chat }: { chat: Chat }) {
     const project = useProjectState();
     const ui = useProjectUi();
-    const [now, setNow] = useState(Date.now);
+    const now = useNow(1000);
     const [commandsExpanded, setCommandsExpanded] = useState(false);
-    useEffect(() => {
-        const timer = setInterval(() => setNow(Date.now()), 1000);
-        return () => clearInterval(timer);
-    }, []);
     const agents = runningAgents(project.runs.values(), chat.orchestratorRunId);
     const threads = threadsAtWork(project.threadsOf(chat.id), project.runs);
     const rows = stripRows(agents, threads);
@@ -193,11 +197,11 @@ export function RunningAgents({ chat }: { chat: Chat }) {
         <ComposerBanner role="group" aria-label="Work in progress">
             {rows.length > 0 && <AgentsHeader chatId={chat.id} count={rows.length} />}
             {drawn.length > 0 && (
-                <div className={styles.agentRows}>
+                <ComposerBannerRows>
                     {drawn.map(row => (
                         <Row key={row.id} row={row} now={now} />
                     ))}
-                </div>
+                </ComposerBannerRows>
             )}
             {background.length > 0 && orchestrator && (
                 <>
@@ -214,11 +218,11 @@ export function RunningAgents({ chat }: { chat: Chat }) {
                         Background work
                     </ComposerBannerHeader>
                     {commandsExpanded && (
-                        <div className={styles.agentRows}>
+                        <ComposerBannerRows>
                             {background.map(item => (
                                 <BackgroundItemRow key={item.id} runId={orchestrator.id} item={item} />
                             ))}
-                        </div>
+                        </ComposerBannerRows>
                     )}
                 </>
             )}

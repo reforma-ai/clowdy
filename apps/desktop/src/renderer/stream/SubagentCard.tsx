@@ -1,5 +1,7 @@
-import { openRun } from '../features/chats/archiveChat';
-import { useProjectState, useProjectUi, useRootStore } from '../stores';
+import { use } from 'react';
+
+import { useProjectState } from '../stores';
+import { StreamLinksContext } from './StreamLinks';
 import {
     agentActivityLine,
     agentOutcome,
@@ -31,9 +33,8 @@ export interface SubagentCardProps {
  * opens; an agent that reported nothing leaves a card that only says it ran.
  */
 export function SubagentCard({ call, active }: SubagentCardProps) {
-    const root = useRootStore();
     const project = useProjectState();
-    const ui = useProjectUi();
+    const { onOpenRun } = use(StreamLinksContext);
     const child = childOfCall(project.runs.values(), call.toolCallId);
     // The child run, when there is one, says how it ended; a call that never ended is over once its run is, though the run may work again.
     const outcome = agentOutcome(call, child, active);
@@ -49,7 +50,7 @@ export function SubagentCard({ call, active }: SubagentCardProps) {
             outcome={outcome}
             activity={live ? agentActivityLine(activity) : undefined}
             report={agentReport(outcome, call, child)}
-            onOpen={child && (() => void openRun(root, project, ui, child.id))}
+            onOpen={child && onOpenRun && (() => onOpenRun(child.id))}
         />
     );
 }

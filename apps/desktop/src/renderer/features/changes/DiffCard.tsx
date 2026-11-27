@@ -1,6 +1,8 @@
 import { Button } from '@clowdy/components/Button';
 import { Checkbox } from '@clowdy/components/Checkbox';
+import { DiffStat } from '@clowdy/components/DiffStat';
 import { MenuTrigger } from '@clowdy/components/List';
+import { PathText } from '@clowdy/components/PathText';
 import { Popover, useContextMenu } from '@clowdy/components/Popover';
 import { Separator } from '@clowdy/components/Separator';
 import { Show } from '@clowdy/components/Show';
@@ -13,41 +15,15 @@ import { type CSSProperties, useEffect, useRef, useState } from 'react';
 
 import { useAddToChat } from '../chats/useAddToChat';
 import { PathMenu, placeTarget } from '../openWith';
+import { ChangeKindGlyph } from './ChangeKindGlyph';
 import { CARD_TEXT, type CardBody, cardBody, estimatedLines, needsSides } from './cardView';
 import styles from './DiffCard.module.css';
 import { sidesKey } from './fileSides';
-import { CHANGE_KIND_VIEW, splitPath } from './gitSummary';
 import { useNearViewport } from './useNearViewport';
 
 import type { GitChangedFile } from '@clowdy/protocol';
 import type { Place } from '../sidePanel/currentPlace';
 import type { PlaceChanges } from './PlaceChanges';
-
-/** The added and removed lines of a file as its header shows them, in the colours of the tool cards: nothing for a file whose lines were not counted. */
-function LineCounts({ file }: { file: GitChangedFile }) {
-    if (file.additions === undefined || file.deletions === undefined) return null;
-
-    return (
-        <span className={styles.counts} aria-label={`${file.additions} added, ${file.deletions} removed`}>
-            <Text variant="xs" color="success">{`+${file.additions}`}</Text>
-            <Text variant="xs" color="danger">{`−${file.deletions}`}</Text>
-        </span>
-    );
-}
-
-/** The path of a file in the card header: the folder dimmed and the name strong. A path too long for its room is cut at its start, so the name stays. */
-function PathLabel({ path }: { path: string }) {
-    const { folder, name } = splitPath(path);
-
-    return (
-        <span className={styles.path} dir="rtl" title={path}>
-            <bdi dir="ltr">
-                {folder && <Text color="secondary">{folder}</Text>}
-                <Text weight="medium">{name}</Text>
-            </bdi>
-        </span>
-    );
-}
 
 /** What stands in an open card where there is no diff: a word, centred. */
 function Note({ children }: { children: string }) {
@@ -150,7 +126,6 @@ export function DiffCard({
         if (built) builtOpen.current = open;
     }, [built, open]);
 
-    const kind = CHANGE_KIND_VIEW[file.kind];
     const renamedFrom =
         (file.kind === 'renamed' || file.kind === 'copied') && file.oldPath !== undefined ? file.oldPath : undefined;
     const Chevron = open ? ChevronDown : ChevronRight;
@@ -192,18 +167,9 @@ export function DiffCard({
                             onPress={() => model.toggleFolded(file)}
                         >
                             <Chevron className={styles.chevron} aria-hidden="true" />
-                            <Text
-                                variant="xs"
-                                weight="medium"
-                                color={kind.color}
-                                className={styles.kind}
-                                title={kind.label}
-                                aria-label={kind.label}
-                            >
-                                {kind.glyph}
-                            </Text>
+                            <ChangeKindGlyph kind={file.kind} variant="xs" labelled />
                             <span className={styles.title}>
-                                <PathLabel path={file.path} />
+                                <PathText path={file.path} />
                                 {renamedFrom !== undefined && (
                                     <Text
                                         variant="xs"
@@ -231,7 +197,9 @@ export function DiffCard({
                                 <PathMenu target={target} expectGone={gone} />
                             </Popover>
                         </MenuTrigger>
-                        <LineCounts file={file} />
+                        {file.additions !== undefined && file.deletions !== undefined && (
+                            <DiffStat added={file.additions} removed={file.deletions} className={styles.counts} />
+                        )}
                         <Separator orientation="vertical" spacing={0} className={styles.divider} aria-hidden="true" />
                         <Checkbox
                             size="sm"

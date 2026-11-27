@@ -918,7 +918,7 @@ describe('a folder that offers no worktree', () => {
         vi.spyOn(transport, 'getFolderGit').mockRejectedValue(new TransportError('git did not answer', 503));
         await start({ transport });
 
-        expect(chip()).toBeNull();
+        expect(chip()?.disabled).toBe(true);
         expect(container.querySelector('[aria-label="Where it runs: Git unavailable"]')?.textContent).toBe(
             'Git unavailable'
         );

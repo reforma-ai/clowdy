@@ -331,8 +331,13 @@ describe('over HTTP', () => {
         const { project, folderId, marks, mark, fileOf, rows } = open(repo, other);
         const otherId = project.folders[1].id as string;
         const workspaceId = (
-            h.ok('chat.create', { projectId: project.id, folderId, workspace: { mode: 'existing', path: tree } }).chat
-                .workspace as { id: string }
+            (
+                await h.okAsync('chat.create', {
+                    projectId: project.id,
+                    folderId,
+                    workspace: { mode: 'existing', path: tree },
+                })
+            ).chat.workspace as { id: string }
         ).id;
         const libInCheckout = await fileOf('all', 'lib.ts');
         const libInTree = await fileOf('all', 'lib.ts', workspaceId);
@@ -358,8 +363,13 @@ describe('over HTTP', () => {
         const tree = worktree(repo);
         const { project, folderId, marks, mark, rows } = open(repo);
         const workspaceId = (
-            h.ok('chat.create', { projectId: project.id, folderId, workspace: { mode: 'existing', path: tree } }).chat
-                .workspace as { id: string }
+            (
+                await h.okAsync('chat.create', {
+                    projectId: project.id,
+                    folderId,
+                    workspace: { mode: 'existing', path: tree },
+                })
+            ).chat.workspace as { id: string }
         ).id;
 
         await mark('all', 'lib.ts', 'rev-on-main', workspaceId);
@@ -384,8 +394,13 @@ describe('over HTTP', () => {
         const tree = worktree(repo);
         const { project, folderId, marks, mark, rows } = open(repo);
         const workspaceId = (
-            h.ok('chat.create', { projectId: project.id, folderId, workspace: { mode: 'existing', path: tree } }).chat
-                .workspace as { id: string }
+            (
+                await h.okAsync('chat.create', {
+                    projectId: project.id,
+                    folderId,
+                    workspace: { mode: 'existing', path: tree },
+                })
+            ).chat.workspace as { id: string }
         ).id;
         const { db } = h.store;
         const insert = db.query(
@@ -435,7 +450,7 @@ describe('over HTTP', () => {
         const opened = (
             h.ok('workspace.open', { projectId: project.id, folderId, path: tree }) as { workspace: { id: string } }
         ).workspace.id;
-        const { chat } = h.ok('chat.create', {
+        const { chat } = await h.okAsync('chat.create', {
             projectId: project.id,
             folderId,
             workspace: { mode: 'existing', path: second },
@@ -477,11 +492,13 @@ describe('over HTTP', () => {
         const { project, folderId, mark, rows } = open(repo, other);
         const otherId = project.folders[1].id as string;
         const workspaceId = (
-            h.ok('chat.create', {
-                projectId: project.id,
-                folderId: otherId,
-                workspace: { mode: 'existing', path: tree },
-            }).chat.workspace as { id: string }
+            (
+                await h.okAsync('chat.create', {
+                    projectId: project.id,
+                    folderId: otherId,
+                    workspace: { mode: 'existing', path: tree },
+                })
+            ).chat.workspace as { id: string }
         ).id;
 
         await mark('uncommitted', 'lib.ts', 'rev-main');
@@ -624,8 +641,12 @@ describe('over HTTP', () => {
 
         const { project: other } = h.ok('project.add', { name: 'Other', folders: [stranger] });
         const strangerId = (
-            h.ok('chat.create', { projectId: other.id, workspace: { mode: 'existing', path: strangerTree } }).chat
-                .workspace as { id: string }
+            (
+                await h.okAsync('chat.create', {
+                    projectId: other.id,
+                    workspace: { mode: 'existing', path: strangerTree },
+                })
+            ).chat.workspace as { id: string }
         ).id;
 
         expect((await post(`${route}/viewed`, body({ workspaceId: strangerId }))).status).toBe(404);
@@ -633,8 +654,13 @@ describe('over HTTP', () => {
         // A worktree that is not made yet or is gone from the disk is unavailable, as for the other reads.
         const tree = worktree(repo);
         const workspaceId = (
-            h.ok('chat.create', { projectId: project.id, folderId, workspace: { mode: 'existing', path: tree } }).chat
-                .workspace as { id: string }
+            (
+                await h.okAsync('chat.create', {
+                    projectId: project.id,
+                    folderId,
+                    workspace: { mode: 'existing', path: tree },
+                })
+            ).chat.workspace as { id: string }
         ).id;
 
         h.store.db.query('UPDATE workspaces SET ready = 0 WHERE id = ?').run(workspaceId);

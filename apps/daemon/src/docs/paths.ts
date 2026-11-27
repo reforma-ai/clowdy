@@ -1,6 +1,7 @@
 import { realpathSync } from 'node:fs';
-import { sep } from 'node:path';
 import { isMarkdownFile } from '@clowdy/protocol';
+
+import { isBelow } from '../fs/paths';
 
 /** Whether a name is a document: a Markdown file. */
 export const isDocFile = isMarkdownFile;
@@ -13,7 +14,7 @@ export function realPathBelow(folder: string, path: string): string | undefined 
     try {
         const real = realpathSync.native(path);
 
-        return real.startsWith(realpathSync.native(folder) + sep) ? real : undefined;
+        return isBelow(realpathSync.native(folder), real) ? real : undefined;
     } catch {
         return undefined;
     }

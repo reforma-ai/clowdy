@@ -2,7 +2,6 @@ import { Button } from '@clowdy/components/Button';
 import { Text } from '@clowdy/components/Text';
 import { Box, Plus } from '@clowdy/icons/14';
 
-import { Unavailable } from '../../shared/Unavailable';
 import styles from './ScopeHeader.module.css';
 import { StatusPill } from './status';
 import { RollUpChip } from './TaskChips';
@@ -44,12 +43,17 @@ export function ScopeHeader({ task, status, rollUp, canHaveChildren, onCreate, o
 
             <span className={styles.spacer} />
 
-            <Unavailable label="New sub-task" hint={canHaveChildren ? undefined : DEPTH_LIMIT_HINT}>
-                <Button variant="bordered" size="sm" isDisabled={!canHaveChildren} onPress={onCreate}>
-                    <Plus />
-                    New sub-task
-                </Button>
-            </Unavailable>
+            <Button
+                variant="bordered"
+                size="sm"
+                aria-label="New sub-task"
+                isDisabled={!canHaveChildren}
+                disabledReason={DEPTH_LIMIT_HINT}
+                onPress={onCreate}
+            >
+                <Plus />
+                New sub-task
+            </Button>
             <Button variant="bordered" size="sm" onPress={onDetails}>
                 Details
             </Button>

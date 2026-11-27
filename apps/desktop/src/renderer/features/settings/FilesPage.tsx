@@ -1,30 +1,20 @@
 import { ListBoxItem } from '@clowdy/components/List';
 import { Select } from '@clowdy/components/Select';
+import { SettingsLayout } from '@clowdy/components/SettingsLayout';
 import { Switch } from '@clowdy/components/Switch';
 
 import { treeLayout } from '../files';
 import { AppIcon, chosenApp, openWithPreferences, useOpenApps } from '../openWith';
-import styles from './FilesPage.module.css';
-import { SettingsCard } from './ui/SettingsCard';
-import { SettingsPage } from './ui/SettingsPage';
-import { SettingsRow } from './ui/SettingsRow';
-import { SettingsSection } from './ui/SettingsSection';
 
 import type { OpenApp, OpenPathApp } from '../../../shared/bridge';
 
-const EDITOR_LABEL = 'Default IDE';
-const TERMINAL_LABEL = 'Default terminal';
-const FILE_MANAGER_LABEL = 'Default file manager';
-const HIDDEN_LABEL = 'Show hidden files';
-
+/** A program list of a row; the row names it. */
 function AppSelect({
-    label,
     kind,
     apps,
     selectedId,
     onSelect,
 }: {
-    label: string;
     kind: OpenPathApp['kind'];
     apps: readonly OpenApp[];
     selectedId: string | undefined;
@@ -34,9 +24,7 @@ function AppSelect({
 
     return (
         <Select
-            aria-label={label}
             size="sm"
-            className={styles.select}
             placeholder="None found"
             icon={selected && <AppIcon app={selected} kind={kind} />}
             isDisabled={apps.length === 0}
@@ -57,53 +45,61 @@ export function FilesPage() {
     const apps = useOpenApps();
 
     return (
-        <SettingsPage description="Choose how files are shown, and the programs that open your folders">
-            <SettingsSection title="File tree">
-                <SettingsCard>
-                    <SettingsRow title={HIDDEN_LABEL} description="Files that start with a dot, and node_modules">
+        <SettingsLayout.Page description="Choose how files are shown, and the programs that open your folders">
+            <SettingsLayout.Section title="File tree">
+                <SettingsLayout.Card>
+                    <SettingsLayout.Row
+                        title="Show hidden files"
+                        description="Files that start with a dot, and node_modules"
+                    >
                         <Switch
                             size="sm"
                             isSelected={treeLayout.showHidden}
-                            aria-label={HIDDEN_LABEL}
                             onChange={show => treeLayout.setShowHidden(show)}
                         />
-                    </SettingsRow>
-                </SettingsCard>
-            </SettingsSection>
-            <SettingsSection title="Open with">
-                <SettingsCard divided>
-                    <SettingsRow title={EDITOR_LABEL} description="The editor that opens a folder as a workspace">
+                    </SettingsLayout.Row>
+                </SettingsLayout.Card>
+            </SettingsLayout.Section>
+            <SettingsLayout.Section title="Open with">
+                <SettingsLayout.Card divided>
+                    <SettingsLayout.Row
+                        title="Default IDE"
+                        description="The editor that opens a folder as a workspace"
+                        controlWidth="14rem"
+                    >
                         <AppSelect
-                            label={EDITOR_LABEL}
                             kind="editor"
                             apps={apps.editors}
                             selectedId={openWithPreferences.editor}
                             onSelect={id => openWithPreferences.setEditor(id)}
                         />
-                    </SettingsRow>
-                    <SettingsRow
-                        title={FILE_MANAGER_LABEL}
+                    </SettingsLayout.Row>
+                    <SettingsLayout.Row
+                        title="Default file manager"
                         description="The program that shows a folder with the rest of your files"
+                        controlWidth="14rem"
                     >
                         <AppSelect
-                            label={FILE_MANAGER_LABEL}
                             kind="fileManager"
                             apps={apps.fileManagers}
                             selectedId={openWithPreferences.fileManager}
                             onSelect={id => openWithPreferences.setFileManager(id)}
                         />
-                    </SettingsRow>
-                    <SettingsRow title={TERMINAL_LABEL} description="The terminal that opens a shell in a folder">
+                    </SettingsLayout.Row>
+                    <SettingsLayout.Row
+                        title="Default terminal"
+                        description="The terminal that opens a shell in a folder"
+                        controlWidth="14rem"
+                    >
                         <AppSelect
-                            label={TERMINAL_LABEL}
                             kind="terminal"
                             apps={apps.terminals}
                             selectedId={openWithPreferences.terminal}
                             onSelect={id => openWithPreferences.setTerminal(id)}
                         />
-                    </SettingsRow>
-                </SettingsCard>
-            </SettingsSection>
-        </SettingsPage>
+                    </SettingsLayout.Row>
+                </SettingsLayout.Card>
+            </SettingsLayout.Section>
+        </SettingsLayout.Page>
     );
 }

@@ -1,8 +1,8 @@
-import { ModalContext, ModalProvider, useModalContext } from './hooks/useModalProvider';
+import { ModalContext, ModalProvider, useModalContext, useModalTitleId } from './hooks/useModalProvider';
 import Modal from './Modal';
 
 export { Dialog } from './Dialog';
 export * from './typings';
 
 export type { DialogProps } from './Dialog';
-export { Modal, ModalContext, ModalProvider, useModalContext };
+export { Modal, ModalContext, ModalProvider, useModalContext, useModalTitleId };

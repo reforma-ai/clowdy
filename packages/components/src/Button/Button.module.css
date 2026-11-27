@@ -66,8 +66,7 @@
     }
 
     .button[data-focus-visible='true'] {
-        outline: var(--spacing-4) solid var(--color-primary-muted-border);
-        outline-offset: 0;
+        @ruleset focus-ring;
     }
 
     /* ============================================
@@ -519,7 +518,17 @@
     .button[data-disabled='true'] {
         pointer-events: none;
         opacity: var(--opacity-disabled);
-        cursor: not-allowed;
+    }
+
+    /* The focusable stand-in of a disabled button with a reason: it takes the hover and the focus the button cannot. */
+    .unavailable {
+        display: inline-flex;
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .unavailable[data-full-width] {
+        width: 100%;
     }
 
     /* Pending (loading) */

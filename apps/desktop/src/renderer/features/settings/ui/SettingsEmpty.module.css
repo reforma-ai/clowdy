@@ -1,5 +1,0 @@
-.empty {
-    padding: var(--spacing-xl);
-    border: 1px dashed var(--color-secondary-muted-border);
-    border-radius: var(--radius-lg);
-}

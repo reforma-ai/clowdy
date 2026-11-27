@@ -1,7 +1,9 @@
 import { Button } from '@clowdy/components/Button';
+import { Chip } from '@clowdy/components/Chip';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger, useCollapsible } from '@clowdy/components/Collapsible';
 import { Input } from '@clowdy/components/Input';
 import { Radio, RadioGroup } from '@clowdy/components/Radio';
+import { SettingsLayout } from '@clowdy/components/SettingsLayout';
 import { Show } from '@clowdy/components/Show';
 import { Switch } from '@clowdy/components/Switch';
 import { Text } from '@clowdy/components/Text';
@@ -10,6 +12,7 @@ import { ChevronDown } from '@clowdy/icons/8';
 import { cn } from '@clowdy/lib';
 import { useState } from 'react';
 
+import { useDraftField } from '../useDraftField';
 import styles from './ProviderSettings.module.css';
 import { formatEnv, parseEnv } from './providerView';
 
@@ -19,38 +22,6 @@ import type { useAgentCommands } from './useAgentCommands';
 interface SettingsProps {
     agent: AgentInfo;
     commands: ReturnType<typeof useAgentCommands>;
-}
-
-function SettingRow({
-    setting,
-    isPending,
-    onChange,
-}: {
-    setting: AgentSetting;
-    isPending: boolean;
-    onChange: (value: boolean) => void;
-}) {
-    return (
-        <li className={styles.setting}>
-            <div className={styles.text}>
-                <Text variant="sm" weight="medium">
-                    {setting.label}
-                </Text>
-                {setting.description && (
-                    <Text variant="sm" color="secondary">
-                        {setting.description}
-                    </Text>
-                )}
-            </div>
-            <Switch
-                size="sm"
-                isSelected={setting.value}
-                isPending={isPending}
-                aria-label={setting.label}
-                onChange={onChange}
-            />
-        </li>
-    );
 }
 
 function AdvancedTrigger() {
@@ -100,62 +71,43 @@ function programNoteOf(savedPath: string, foundPath: string | undefined): { text
 export function ProviderAdvanced({ agent, commands }: SettingsProps) {
     const savedPath = agent.overrides?.path ?? '';
     const savedEnv = agent.overrides?.env ? formatEnv(agent.overrides.env) : '';
-    const [pathDraft, setPathDraft] = useState<string>();
+    // Saved on blur or Enter, as a project's name is. An empty box goes back to the program Clowdy finds. A refused path stays in the box.
+    const path = useDraftField(savedPath, async draft => {
+        const next = draft.trim();
+
+        // Nothing to save: the same path, or an empty box when none is saved.
+        return next === savedPath || commands.setPath(next || null);
+    });
     const [envDraft, setEnvDraft] = useState<string>();
-    const path = pathDraft ?? savedPath;
     const env = envDraft ?? savedEnv;
     const parsed = parseEnv(env);
     const envError = env.trim() && !parsed.ok ? parsed.message : undefined;
     const programNote = programNoteOf(savedPath, agent.path);
-    const canReset = Boolean(savedPath) || pathDraft !== undefined;
-
-    // Saved on blur or Enter, as a project's name is. An empty box goes back to the program Clowdy finds. A refused path stays in the box.
-    const commitPath = async () => {
-        const next = pathDraft?.trim();
-
-        if (next === undefined) return;
-
-        // Nothing to save: the same path, or an empty box when none is saved.
-        if (next === savedPath) {
-            setPathDraft(undefined);
-
-            return;
-        }
-
-        if (await commands.setPath(next || null)) setPathDraft(undefined);
-    };
+    const canReset = Boolean(savedPath) || (path.draft !== undefined && path.draft !== savedPath);
 
     const reset = async () => {
         if (savedPath && !(await commands.setPath(null))) return;
 
-        setPathDraft(undefined);
+        path.clear();
     };
 
     return (
         <Collapsible>
             <AdvancedTrigger />
             <AdvancedPanel>
-                <div className={styles.field}>
-                    <Text variant="sm" weight="medium">
-                        Program
-                    </Text>
-                    <Text variant="sm" color={programNote.tone ?? 'secondary'}>
-                        {programNote.text}
-                    </Text>
+                <SettingsLayout.Row
+                    stacked
+                    inset={false}
+                    title="Program"
+                    description={<Text color={programNote.tone ?? 'secondary'}>{programNote.text}</Text>}
+                >
                     <div className={styles.inputs}>
                         <Input
+                            {...path.fieldProps}
                             type="text"
                             variant="bordered"
                             size="sm"
-                            aria-label={`Path to the ${agent.name} program`}
                             placeholder={(!savedPath && agent.path) || '/path/to/program'}
-                            value={path}
-                            onChange={text => setPathDraft(text === savedPath ? undefined : text)}
-                            onBlur={() => void commitPath()}
-                            onKeyDown={event => {
-                                if (event.key === 'Enter') (event.target as HTMLInputElement).blur();
-                                else if (event.key === 'Escape') setPathDraft(undefined);
-                            }}
                         />
                         {/* A press keeps the focus in the box, so the box does not save what Reset is about to throw away. */}
                         <Button
@@ -168,45 +120,45 @@ export function ProviderAdvanced({ agent, commands }: SettingsProps) {
                             Reset
                         </Button>
                     </div>
-                </div>
+                </SettingsLayout.Row>
 
-                <div className={styles.field}>
-                    <Text variant="sm" weight="medium">
-                        Environment
-                    </Text>
-                    <Text variant="sm" color="secondary">
-                        Variables the program starts with, one KEY=VALUE per line. An empty box clears them. They apply
-                        to the next run.
-                    </Text>
+                <SettingsLayout.Row
+                    stacked
+                    inset={false}
+                    title="Environment"
+                    description="Variables the program starts with, one KEY=VALUE per line. An empty box clears them. They apply to the next run."
+                    footer={
+                        <div className={styles.envFooter}>
+                            {envError && (
+                                <Text variant="sm" color="danger" role="alert">
+                                    {envError}
+                                </Text>
+                            )}
+                            <Button
+                                variant="bordered"
+                                size="sm"
+                                isDisabled={envDraft === undefined || !parsed.ok}
+                                isPending={commands.pending.has('env')}
+                                onPress={() =>
+                                    parsed.ok &&
+                                    void commands.setEnv(parsed.env).then(ok => ok && setEnvDraft(undefined))
+                                }
+                            >
+                                Save
+                            </Button>
+                        </div>
+                    }
+                >
                     <Textarea
                         variant="bordered"
                         size="sm"
-                        aria-label={`Environment of ${agent.name}`}
                         placeholder="KEY=VALUE"
                         rows={3}
                         value={env}
                         isInvalid={Boolean(envError)}
                         onChange={text => setEnvDraft(text === savedEnv ? undefined : text)}
                     />
-                    {envError && (
-                        <Text variant="sm" color="danger" role="alert">
-                            {envError}
-                        </Text>
-                    )}
-                    <div>
-                        <Button
-                            variant="bordered"
-                            size="sm"
-                            isDisabled={envDraft === undefined || !parsed.ok}
-                            isPending={commands.pending.has('env')}
-                            onPress={() =>
-                                parsed.ok && void commands.setEnv(parsed.env).then(ok => ok && setEnvDraft(undefined))
-                            }
-                        >
-                            Save
-                        </Button>
-                    </div>
-                </div>
+                </SettingsLayout.Row>
             </AdvancedPanel>
         </Collapsible>
     );
@@ -221,12 +173,20 @@ export function ProviderSettings({
     return (
         <ul className={styles.list} aria-label={`${name} settings`}>
             {settings.map(setting => (
-                <SettingRow
+                <SettingsLayout.Row
                     key={setting.id}
-                    setting={setting}
-                    isPending={commands.pending.has(`setting:${setting.id}`)}
-                    onChange={value => void commands.setSetting(setting.id, value)}
-                />
+                    as="li"
+                    inset={false}
+                    title={setting.label}
+                    description={setting.description}
+                >
+                    <Switch
+                        size="sm"
+                        isSelected={setting.value}
+                        isPending={commands.pending.has(`setting:${setting.id}`)}
+                        onChange={value => void commands.setSetting(setting.id, value)}
+                    />
+                </SettingsLayout.Row>
             ))}
         </ul>
     );
@@ -247,18 +207,15 @@ export function PermissionPresets({ agent, commands }: SettingsProps) {
     const isPending = commands.pending.has('permission');
 
     return (
-        <div className={styles.permissions} aria-busy={isPending || undefined}>
-            <div className={styles.text}>
-                <Text variant="sm" weight="medium">
-                    Permissions
-                </Text>
-                <Text variant="sm" color="secondary">
-                    What the agent may do without asking
-                </Text>
-            </div>
-
+        <SettingsLayout.Row
+            stacked
+            inset={false}
+            title="Permissions"
+            description="What the agent may do without asking"
+            aria-busy={isPending || undefined}
+            className={styles.permissions}
+        >
             <RadioGroup
-                aria-label={`${agent.name} permissions`}
                 value={selected}
                 isReadOnly={isPending}
                 className={styles.presets}
@@ -272,7 +229,9 @@ export function PermissionPresets({ agent, commands }: SettingsProps) {
                                     {preset.name}
                                 </Text>
                                 {preset.id === permissions.default && (
-                                    <span className={styles.defaultTag}>Default</span>
+                                    <Chip tone="neutral" shape="pill">
+                                        Default
+                                    </Chip>
                                 )}
                             </span>
                             <Text variant="sm" color="secondary">
@@ -282,6 +241,6 @@ export function PermissionPresets({ agent, commands }: SettingsProps) {
                     </Radio>
                 ))}
             </RadioGroup>
-        </div>
+        </SettingsLayout.Row>
     );
 }

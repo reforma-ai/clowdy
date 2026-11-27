@@ -5,14 +5,14 @@ import { MAX_GIT_MESSAGE_CHARS } from '@clowdy/protocol';
 import { gitLine, gitRead } from '../domain/git';
 import { exclusive, pathKey, placeOf } from '../domain/workspaces';
 import { conflict, invalid, unavailable } from '../errors';
-import { LEFTOVER_GRACE_MS, runProgram } from '../providers/exec';
+import { LEFTOVER_GRACE_MS, runProgram } from '../process/run';
 import { selectChanged } from './selection';
 import { rebaseUnderWay } from './state';
 import { namesSigningKey, SIGNING_HINT, WriteEnvironment } from './writeEnv';
 
 import type { GitCommitRequest, GitCommitResult, GitErrorDetails } from '@clowdy/protocol';
 import type { Place } from '../domain/places';
-import type { RunResult } from '../providers/exec';
+import type { RunResult } from '../process/run';
 import type { Store } from '../store';
 
 /** A commit may wait for the person's fingerprint (a signing key that asks for one), so it gets time to be reached; a hung agent or hook still ends. */

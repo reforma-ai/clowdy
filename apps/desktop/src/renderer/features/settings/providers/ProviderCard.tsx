@@ -1,9 +1,8 @@
+import { SettingsLayout } from '@clowdy/components/SettingsLayout';
 import { Switch } from '@clowdy/components/Switch';
 import { Text } from '@clowdy/components/Text';
 import { COMMIT_MESSAGE_SETTING_ID } from '@clowdy/protocol';
 
-import { SettingsBlock } from '../ui/SettingsBlock';
-import { SettingsCard } from '../ui/SettingsCard';
 import { AccountLine, SignInAction, SignInPanel } from './Account';
 import styles from './ProviderCard.module.css';
 import { ProviderIcon } from './ProviderIcon';
@@ -32,15 +31,15 @@ export function ProviderCard({ agent }: { agent: AgentInfo }) {
         ) ?? [];
 
     return (
-        <SettingsCard as="section" divided aria-label={agent.name}>
-            <SettingsBlock className={styles.identity}>
+        <SettingsLayout.Card as="section" divided aria-label={agent.name}>
+            <SettingsLayout.Block className={styles.identity}>
                 <span className={styles.icon}>
                     <ProviderIcon agentId={agent.id} size={24} />
                 </span>
 
                 <div className={styles.who}>
                     <header className={styles.title}>
-                        <Text weight="medium" truncate title={agent.name}>
+                        <Text variant="md" weight="medium" truncate title={agent.name}>
                             {agent.name}
                         </Text>
                         {agent.version && (
@@ -71,29 +70,29 @@ export function ProviderCard({ agent }: { agent: AgentInfo }) {
                 </div>
 
                 <SignInPanel agent={agent} commands={commands} className={styles.signIn} />
-            </SettingsBlock>
+            </SettingsLayout.Block>
 
             {usage && (
-                <SettingsBlock>
+                <SettingsLayout.Block>
                     <UsageBlock usage={usage} />
-                </SettingsBlock>
+                </SettingsLayout.Block>
             )}
 
             {(agent.permissions?.presets.length ?? 0) > 0 && (
-                <SettingsBlock data-dim={!isOn || undefined} className={styles.settings}>
+                <SettingsLayout.Block data-dim={!isOn || undefined} className={styles.settings}>
                     <PermissionPresets agent={agent} commands={commands} />
-                </SettingsBlock>
+                </SettingsLayout.Block>
             )}
 
             {settings.length > 0 && (
-                <SettingsBlock data-dim={!isOn || undefined} className={styles.settings}>
+                <SettingsLayout.Block data-dim={!isOn || undefined} className={styles.settings}>
                     <ProviderSettings name={agent.name} settings={settings} commands={commands} />
-                </SettingsBlock>
+                </SettingsLayout.Block>
             )}
 
-            <SettingsBlock data-dim={!isOn || undefined} className={styles.settings}>
+            <SettingsLayout.Block data-dim={!isOn || undefined} className={styles.settings}>
                 <ProviderAdvanced agent={agent} commands={commands} />
-            </SettingsBlock>
-        </SettingsCard>
+            </SettingsLayout.Block>
+        </SettingsLayout.Card>
     );
 }

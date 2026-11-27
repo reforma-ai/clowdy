@@ -289,7 +289,7 @@ describe('the Changes tab of a chat in a worktree', () => {
         const sidebar = container.querySelector('[aria-label="Changes sidebar"]');
 
         expect(sidebar?.textContent).not.toContain('Base:');
-        expect(sidebar?.querySelector('button[data-sync]')?.getAttribute('aria-label')).toBe('Publish branch');
+        expect(sidebar?.querySelector('[data-sync] button')?.getAttribute('aria-label')).toBe('Publish branch');
         expect(sidebar?.querySelector('button[aria-label="Update from main"]')).toBeNull();
         expect(container.querySelector('[role="row"][aria-label^="Open pull request 128"]')?.textContent).toContain(
             'PR #128'
@@ -486,7 +486,7 @@ describe('the Changes tab of a chat in a worktree', () => {
         expect(card('src/limits.ts').textContent).toContain('Too large to show');
     });
 
-    it('shows what a file is: added, modified or deleted, with its lines in the colours of the tool cards, and the old path of a rename', async () => {
+    it('shows what a file is: added, modified or deleted, with its lines, and the old path of a rename', async () => {
         await start({
             wrap: base =>
                 overrideTransport(base, {
@@ -531,11 +531,6 @@ describe('the Changes tab of a chat in a worktree', () => {
         expect(card('src/booking/price.ts').textContent).not.toContain('Renamed from');
         expect(card('src/gone.ts').textContent).toContain('−9');
         expect(card('src/gone.ts').textContent).toContain('+0');
-
-        const counts = card('src/booking/price.ts').querySelectorAll('[class*="counts"] span');
-
-        expect(counts[0]?.className).toMatch(/success/);
-        expect(counts[1]?.className).toMatch(/danger/);
     });
 
     it('sets a path right to left so it is cut at its start, in a run of its own that reads left to right, so dots and brackets stay and a name in an RTL script is not turned round', async () => {

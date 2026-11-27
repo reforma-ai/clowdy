@@ -5,8 +5,8 @@ import { useRootStore } from '../../stores';
 import { editDraftKey } from './composerDrafts';
 import { beginEditSession, endEditSession } from './editSession';
 
-import type { Attachment, Chat, ProjectId, StreamItem } from '@clowdy/protocol';
-import type { RootStore } from '../../stores';
+import type { Attachment, Chat, ProjectId } from '@clowdy/protocol';
+import type { RootStore, RunStream } from '../../stores';
 
 /** What lets go of a file uploaded for an edit that did not go through: nobody will send it, so the daemon need not keep it. */
 const deleteUnsent = (root: RootStore, projectId: ProjectId) => (attachment: Attachment) =>
@@ -14,10 +14,11 @@ const deleteUnsent = (root: RootStore, projectId: ProjectId) => (attachment: Att
 
 export interface EditMessageOptions {
     chat: Chat;
-    /** The chat's stream: the message to edit is one of these, and the edit is over when it is not any more. */
-    items: readonly StreamItem[];
-    /** The stream is loaded: only then can a message that is not in `items` be told to have gone, rather than not to have come yet. */
-    ready: boolean;
+    /**
+     * The chat's stream: the message to edit is one of its items, and the edit is over when it is not any more. Only that item is read, so a message
+     * that streams does not draw the page again. A message that is not there is told to have gone only once the stream is loaded, rather than not to have come yet.
+     */
+    stream: RunStream | undefined;
     /** The chat can be written to: a chat that stops being so (its agent was signed out) closes the editor. */
     writable: boolean;
     /** The bytes of a file the message carries, for the previews in the editor. */
@@ -32,7 +33,7 @@ export interface EditMessageOptions {
  * toast, unless the edit being sent is what removed it. Leaving the chat ends the session, and with it what the editor uploaded and nobody sent, unless an
  * edit is on its way. There is no cancel while an edit is on its way: its files are being used.
  */
-export function useEditMessage({ chat, items, ready, writable, attachmentBlob }: EditMessageOptions) {
+export function useEditMessage({ chat, stream, writable, attachmentBlob }: EditMessageOptions) {
     const root = useRootStore();
     const projectId = chat.projectId;
     const [itemId, setItemId] = useState<string>();
@@ -56,8 +57,8 @@ export function useEditMessage({ chat, items, ready, writable, attachmentBlob }:
     // Leaving the chat takes the session with it, and nobody is left to send the files uploaded for it, unless an edit is on its way.
     useEffect(() => () => close(busy.current), [close]);
 
-    const present = itemId !== undefined && items.some(item => item.id === itemId && item.canEdit);
-    const lost = itemId !== undefined && !pending && (!writable || (ready && !present));
+    const present = itemId !== undefined && stream?.item(itemId)?.canEdit === true;
+    const lost = itemId !== undefined && !pending && (!writable || (stream?.status === 'ready' && !present));
 
     useEffect(() => {
         if (!lost) return;
@@ -67,44 +68,51 @@ export function useEditMessage({ chat, items, ready, writable, attachmentBlob }:
         close();
     }, [lost, writable, close]);
 
-    const begin = (id: string) => {
-        const item = items.find(candidate => candidate.id === id);
+    // Stable while the chat and its stream stay, so the rows under the messages that hold it do not draw again.
+    const begin = useCallback(
+        (id: string) => {
+            const item = stream?.item(id);
 
-        if (open.current !== undefined || item?.body.kind !== 'user' || !item.canEdit) return;
+            if (open.current !== undefined || item?.body.kind !== 'user' || !item.canEdit) return;
 
-        const key = editDraftKey(chat.id, id);
+            const key = editDraftKey(chat.id, id);
 
-        beginEditSession(key, item.body, attachmentBlob);
-        open.current = key;
-        setItemId(id);
-    };
+            beginEditSession(key, item.body, attachmentBlob);
+            open.current = key;
+            setItemId(id);
+        },
+        [stream, chat.id, attachmentBlob]
+    );
 
-    const cancel = () => {
+    const cancel = useCallback(() => {
         if (!busy.current) close();
-    };
+    }, [close]);
 
-    const submit = async ({ text, attachmentIds }: { text: string; attachmentIds: string[] }) => {
-        if (itemId === undefined || busy.current) return;
+    const submit = useCallback(
+        async ({ text, attachmentIds }: { text: string; attachmentIds: string[] }) => {
+            if (itemId === undefined || busy.current) return;
 
-        busy.current = true;
-        setPending(true);
+            busy.current = true;
+            setPending(true);
 
-        try {
-            const result = await root.command({
-                type: 'chat.edit',
-                chatId: chat.id,
-                itemId,
-                text,
-                ...(attachmentIds.length > 0 && { attachmentIds }),
-            });
+            try {
+                const result = await root.command({
+                    type: 'chat.edit',
+                    chatId: chat.id,
+                    itemId,
+                    text,
+                    ...(attachmentIds.length > 0 && { attachmentIds }),
+                });
 
-            if (result.ok) close(true);
-            else toast.error({ message: result.error.message || "Couldn't edit the message" });
-        } finally {
-            busy.current = false;
-            setPending(false);
-        }
-    };
+                if (result.ok) close(true);
+                else toast.error({ message: result.error.message || "Couldn't edit the message" });
+            } finally {
+                busy.current = false;
+                setPending(false);
+            }
+        },
+        [itemId, root, chat.id, close]
+    );
 
     return {
         /** The open session, while there is one: the message being edited and the key of its own draft and files. */

@@ -5,9 +5,9 @@ import { useState } from 'react';
 
 import { useRootStore } from '../../stores';
 import { isRunActive } from './chatRun';
-import { perform } from './commands';
 import styles from './ReadOnlyNotice.module.css';
 import { useHandoff } from './useHandoff';
+import { useStopRun } from './useStopRun';
 
 import type { Chat, Run } from '@clowdy/protocol';
 
@@ -27,7 +27,7 @@ export function ReadOnlyNotice({ chat, run, message }: ReadOnlyNoticeProps) {
     const root = useRootStore();
     const handOffChat = useHandoff(chat, run);
     const [isHandingOff, setIsHandingOff] = useState(false);
-    const [isStopping, setIsStopping] = useState(false);
+    const { stop, isStopping } = useStopRun(run);
 
     const handOff = async () => {
         setIsHandingOff(true);
@@ -36,18 +36,6 @@ export function ReadOnlyNotice({ chat, run, message }: ReadOnlyNoticeProps) {
             await handOffChat();
         } finally {
             setIsHandingOff(false);
-        }
-    };
-
-    const stop = async () => {
-        if (!isRunActive(run)) return;
-
-        setIsStopping(true);
-
-        try {
-            await perform(root, { type: 'run.cancel', runId: run.id });
-        } finally {
-            setIsStopping(false);
         }
     };
 
@@ -74,7 +62,7 @@ export function ReadOnlyNotice({ chat, run, message }: ReadOnlyNoticeProps) {
                         Open Providers
                     </Button>
                     {isRunActive(run) && (
-                        <Button variant="bordered" size="sm" isPending={isStopping} onPress={() => void stop()}>
+                        <Button variant="bordered" size="sm" isPending={isStopping} onPress={stop}>
                             Stop
                         </Button>
                     )}

@@ -1,5 +1,6 @@
+import { RowControls } from '@clowdy/components/List';
+import { FoldButton } from '@clowdy/components/Panel';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@clowdy/components/Table';
-import { ChevronDown, ChevronRight } from '@clowdy/icons/8';
 
 import { AgentChip } from '../../shared';
 import { StatusPill } from './status';
@@ -8,12 +9,9 @@ import styles from './TaskList.module.css';
 import { activeExecutors } from './taskView';
 
 import type { Run, Task, TaskId, TaskStatus } from '@clowdy/protocol';
-import type { CSSProperties, SyntheticEvent } from 'react';
+import type { CSSProperties } from 'react';
 import type { TaskNotes } from './scopeView';
 import type { TreeRow } from './taskTree';
-
-/** A press on a control of the row (an agent chip, a fold, a roll-up chip) belongs to the control: left to bubble, it would also select the row and undo what the control did. */
-const stop = (event: SyntheticEvent) => event.stopPropagation();
 
 export interface TaskListProps {
     /** The rows of the tree, in the order they are drawn, with the folded ones' insides left out. */
@@ -90,23 +88,17 @@ export function TaskList({
                                     <div className={styles.line} style={{ '--depth': depth } as CSSProperties}>
                                         {/* A row with nothing inside leaves the room, so the titles of one level line up, and a press there is a press on the row. The keys fold from the keyboard, so the button is for the pointer. */}
                                         <span className={styles.fold}>
+                                            {/* A press on a control of the row belongs to the control: left to bubble, it would also select the row and undo what the control did. */}
                                             {hasChildren && (
-                                                <button
-                                                    type="button"
-                                                    tabIndex={-1}
-                                                    data-task-control
-                                                    className={styles.chevron}
-                                                    aria-expanded={!collapsed}
-                                                    aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${task.key}`}
-                                                    onPointerDown={stop}
-                                                    onKeyDown={stop}
-                                                    onClick={event => {
-                                                        event.stopPropagation();
-                                                        onToggle(task.id);
-                                                    }}
-                                                >
-                                                    {collapsed ? <ChevronRight /> : <ChevronDown />}
-                                                </button>
+                                                <RowControls data-task-control="">
+                                                    <FoldButton
+                                                        size="xxs"
+                                                        excludeFromTabOrder
+                                                        isExpanded={!collapsed}
+                                                        label={`${collapsed ? 'Expand' : 'Collapse'} ${task.key}`}
+                                                        onToggle={() => onToggle(task.id)}
+                                                    />
+                                                </RowControls>
                                             )}
                                         </span>
                                         <span className={styles.text}>{task.title}</span>
@@ -128,17 +120,11 @@ export function TaskList({
                                     <StatusPill status={statuses.find(status => status.id === task.statusId)} />
                                 </TableCell>
                                 <TableCell>
-                                    <div
-                                        className={styles.agents}
-                                        data-task-control
-                                        onPointerDown={stop}
-                                        onClick={stop}
-                                        onKeyDown={stop}
-                                    >
+                                    <RowControls className={styles.agents} data-task-control="">
                                         {activeExecutors(runsOfTask.get(task.id)).map(run => (
                                             <AgentChip key={run.id} run={run} />
                                         ))}
-                                    </div>
+                                    </RowControls>
                                 </TableCell>
                             </TableRow>
                         );

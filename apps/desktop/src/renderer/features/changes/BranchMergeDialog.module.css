@@ -1,25 +1,9 @@
-.form,
-.detail {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-}
+@reference '@clowdy/styles/rulesets';
 
-.form {
-    position: relative;
-    gap: var(--spacing-16);
-    padding: var(--spacing-20);
-}
-
-.heading {
+/* The title keeps clear of the window's close button. */
+.title {
+    display: block;
     padding-inline-end: var(--spacing-24);
-    overflow-wrap: anywhere;
-}
-
-.close[data-size][data-variant] {
-    position: absolute;
-    inset-block-start: var(--spacing-sm);
-    inset-inline-end: var(--spacing-sm);
 }
 
 .branches {
@@ -31,58 +15,20 @@
 }
 
 .detail {
+    display: flex;
+    flex-direction: column;
     gap: var(--spacing-4);
-    padding: var(--spacing-12);
-    border-radius: var(--radius-md);
-    background: var(--color-secondary-muted-light);
+    min-width: 0;
     overflow-wrap: anywhere;
 }
 
+/* The merge (or Sync) button over Abort, each the width of the dialog. */
 .actions {
     display: flex;
     flex-direction: column;
     gap: var(--spacing-8);
 }
 
-.split {
-    display: flex;
-    gap: var(--spacing-2);
-}
-
 .visuallyHidden {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-}
-
-.primary[data-size][data-variant] {
-    flex: 1;
-    min-width: 0;
-    height: auto;
-    min-height: var(--clowdy-button-size);
-    white-space: normal;
-    overflow-wrap: anywhere;
-}
-
-/* Square on the side the mode button joins; alone, the button keeps its own corners. */
-.split[data-mode] > .primary[data-size][data-variant] {
-    border-start-end-radius: 0;
-    border-end-end-radius: 0;
-}
-
-.mode[data-size][data-variant] {
-    border-start-start-radius: 0;
-    border-end-start-radius: 0;
-}
-
-.actions > button[data-size][data-variant] {
-    width: 100%;
-    min-width: 0;
-    height: auto;
-    min-height: var(--clowdy-button-size);
-    white-space: normal;
-    overflow-wrap: anywhere;
+    @ruleset visually-hidden;
 }

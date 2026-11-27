@@ -59,10 +59,10 @@ async function setup(folders: string[] = []) {
     // The project keeps the real place of a folder (`/private/var/...` for `/var/...` on a Mac), which is the path of its own checkout's row.
     const folder = project.folders[0].path;
     const chatOf = (chatId: string) => getChat(h.store.db, chatId) as Chat;
-    const make = (workspace: unknown): Chat =>
-        (h.ok('chat.create', { projectId: project.id, workspace }) as { chat: Chat }).chat;
+    const make = async (workspace: unknown): Promise<Chat> =>
+        ((await h.okAsync('chat.create', { projectId: project.id, workspace })) as { chat: Chat }).chat;
     const start = async (workspace: unknown = { mode: 'new' }): Promise<Chat> => {
-        const chat = make(workspace);
+        const chat = await make(workspace);
 
         h.ok('chat.send', { chatId: chat.id, text: 'Start' });
         await waitFor(() => {
@@ -202,7 +202,7 @@ test('keeps the checkout after a setup failure and retries setup in that same wo
     };
     expect(workspace).toMatchObject({ managed: true, ready: false });
 
-    const abandoned = make({ mode: 'existing', path });
+    const abandoned = await make({ mode: 'existing', path });
     h.ok('chat.delete', { chatId: abandoned.id });
 
     configure('echo ready > ready.txt');

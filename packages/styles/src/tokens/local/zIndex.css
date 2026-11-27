@@ -20,10 +20,10 @@
     /* Popover elevated — RAC overlays when a modal is open (Select inside settings, etc.). */
     --z-popover-elevated: calc(var(--z-modal) + 1);
 
-    /* Confirm — confirm dialogs above popovers (e.g. delete from a menu); keep in sync with ConfirmModal. */
+    /* Confirm — confirm dialogs above popovers (e.g. delete from a menu); keep in sync with `Z_INDEX` in `@clowdy/components/modals`. */
     --z-confirm: 101100;
 
-    /* Tooltip — above modals, popovers, and confirm (HelpTip inside dialogs). Below toast. */
+    /* Tooltip — above modals, popovers, and confirm (a tooltip inside a dialog). Below toast. */
     --z-tooltip: 101200;
 
     /* Toast — notifications above everything. */

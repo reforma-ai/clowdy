@@ -1,0 +1,58 @@
+@layer components {
+    .track {
+        --clowdy-progress-fill: var(--color-primary);
+        --clowdy-progress-track: var(--color-secondary-muted);
+
+        display: block;
+        flex-shrink: 0;
+        height: var(--spacing-6);
+        border-radius: var(--radius-full);
+        background-color: var(--clowdy-progress-track);
+        overflow: hidden;
+    }
+
+    .track[data-tone='success'] {
+        --clowdy-progress-fill: var(--color-success);
+    }
+
+    .track[data-tone='warning'] {
+        --clowdy-progress-fill: var(--color-warning);
+    }
+
+    .track[data-tone='danger'] {
+        --clowdy-progress-fill: var(--color-danger);
+    }
+
+    .fill {
+        display: block;
+        min-width: var(--spacing-6);
+        height: 100%;
+        border-radius: inherit;
+        background-color: var(--clowdy-progress-fill);
+        transition: width var(--transition-duration) ease-out;
+    }
+
+    .track:not([aria-valuenow]) .fill {
+        animation: sweep var(--transition-duration-snail) var(--ease-in-out) infinite;
+    }
+
+    @keyframes sweep {
+        from {
+            translate: -100% 0;
+        }
+
+        to {
+            translate: 340% 0;
+        }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .fill {
+            transition: none;
+        }
+
+        .track:not([aria-valuenow]) .fill {
+            animation: none;
+        }
+    }
+}

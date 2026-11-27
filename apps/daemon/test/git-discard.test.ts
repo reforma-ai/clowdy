@@ -722,8 +722,8 @@ describe('POST /v1/projects/:id/git/discard', () => {
 
         const { project, folderId } = await open(path, h);
         const workspaceId = (
-            h.ok('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: tree } }).chat
-                .workspace as { id: string }
+            (await h.okAsync('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: tree } }))
+                .chat.workspace as { id: string }
         ).id;
         const response = await h.fetch(`/v1/projects/${project.id}/git/discard`, {
             method: 'POST',

@@ -5,7 +5,7 @@ import { dirname, isAbsolute, join, resolve } from 'node:path';
 
 import { pathKey, placeOf } from '../domain/workspaces';
 import { conflict, invalid, unavailable } from '../errors';
-import { isInside } from '../fs/paths';
+import { isBelow } from '../fs/paths';
 import { printedLines } from './commit';
 import { checkGitWrite, runGitWrite } from './remote';
 import { WriteEnvironment } from './writeEnv';
@@ -386,7 +386,8 @@ export class GitClone {
         const key = pathKey(placeOf(path));
 
         for (const other of this.#running) {
-            if (isInside(other, key) || isInside(key, other)) throw conflict(`${path} is already being cloned into`);
+            if (isBelow(other, key, { allowSelf: true }) || isBelow(key, other))
+                throw conflict(`${path} is already being cloned into`);
         }
 
         const problemWithPath = refusal(path, look(path));

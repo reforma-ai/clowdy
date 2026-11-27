@@ -1,6 +1,0 @@
-/* The blocks of a page, at least 24px apart. The window's scroll gives the padding around them. */
-.body {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-24);
-}

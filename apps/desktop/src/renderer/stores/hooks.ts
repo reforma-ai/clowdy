@@ -38,14 +38,20 @@ export function useProjectUi(): ProjectUi {
     return root.ui.forProject(root.selectedProjectId);
 }
 
-/** A run's stream, fetched on first use and kept current by the event feed. */
+/** A run's stream, fetched on first use and kept current by the event feed while the component shows it. */
 export function useRunStream(runId: RunId | undefined): RunStream | undefined {
-    const stream = useRootStore().streams;
-    const runStream = runId ? stream.of(runId) : undefined;
+    const streams = useRootStore().streams;
+    const runStream = runId ? streams.of(runId) : undefined;
 
     useEffect(() => {
-        void runStream?.load();
-    }, [runStream]);
+        if (!runStream) return;
+
+        const release = streams.hold(runStream);
+
+        void runStream.load();
+
+        return release;
+    }, [streams, runStream]);
 
     return runStream;
 }

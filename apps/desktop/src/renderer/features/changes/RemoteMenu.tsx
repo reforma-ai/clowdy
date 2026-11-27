@@ -1,22 +1,11 @@
 import { Button } from '@clowdy/components/Button';
-import { Menu, MenuItem, MenuSeparator, MenuTrigger } from '@clowdy/components/List';
-import { Popover } from '@clowdy/components/Popover';
+import { Menu, MenuItem, MenuSeparator } from '@clowdy/components/List';
 import { Spinner } from '@clowdy/components/Spinner';
+import { SplitButton } from '@clowdy/components/SplitButton';
 import { Text } from '@clowdy/components/Text';
-import { Tooltip } from '@clowdy/components/Tooltip';
-import {
-    ArrowDown,
-    ArrowDownRight,
-    ArrowUp,
-    ArrowUpRight,
-    ChevronDown,
-    Merge,
-    MergeInto,
-    Refresh,
-} from '@clowdy/icons/14';
+import { ArrowDown, ArrowDownRight, ArrowUp, ArrowUpRight, Merge, MergeInto, Refresh } from '@clowdy/icons/14';
 import { useId, useState } from 'react';
 
-import { Unavailable } from '../../shared/Unavailable';
 import { useNow } from '../../shared/useNow';
 import { useRootStore } from '../../stores';
 import { MERGE_LABELS, openBranchMergeDialog } from './BranchMergeDialog';
@@ -152,102 +141,88 @@ export function RemoteMenu({ facts, checkoutBranch }: { facts: PlaceFacts; check
     };
 
     return (
-        <div className={styles.root}>
-            <div className={styles.split}>
-                <Unavailable label={view.label} hint={off ? offHint : undefined} className={styles.host}>
-                    <Tooltip content={tip} isDisabled={!tip} placement="bottom">
-                        <Button
-                            variant="filled"
-                            color="secondary"
-                            size="sm"
-                            className={styles.main}
-                            contentClassName={styles.content}
-                            isDisabled={off}
-                            isPending={running !== undefined}
-                            spinnerPlacement="none"
-                            aria-label={view.label}
-                            aria-describedby={detail ? detailId : undefined}
-                            data-sync={view.kind}
-                            onPress={() => {
-                                if (view.action === 'sync') sync();
-                                else if (view.action) void remote.run(view.action);
-                            }}
-                        >
-                            <SyncWords label={view.label} line={view.line} tone={view.tone} />
-                            {view.kind === 'update' && view.behind ? (
-                                <CommitCountBadge direction="down" count={view.behind} />
-                            ) : (
-                                <Counts ahead={view.ahead} behind={view.behind} />
-                            )}
-                            {running !== undefined && <Spinner size="xxs" className={styles.spinner} aria-hidden />}
-                        </Button>
-                    </Tooltip>
-                </Unavailable>
-                {detail && (
-                    <span id={detailId} hidden>
-                        {detail}
-                    </span>
+        <div className={styles.root} data-sync={view.kind}>
+            <SplitButton
+                variant="filled"
+                color="secondary"
+                size="sm"
+                wrap
+                fullWidth
+                contentClassName={styles.content}
+                isDisabled={off}
+                disabledReason={off ? offHint : undefined}
+                isPending={running !== undefined}
+                spinnerPlacement="none"
+                aria-label={view.label}
+                aria-describedby={detail ? detailId : undefined}
+                // A tooltip that came and went would remount the button and drop the focus of the person who pressed it, so one with no tip says the label.
+                tooltip={tip ?? view.label}
+                tooltipPlacement="bottom"
+                onPress={() => {
+                    if (view.action === 'sync') sync();
+                    else if (view.action) void remote.run(view.action);
+                }}
+                menuLabel="More source control actions"
+                menuTooltip="Source control actions"
+                menuWidth={220}
+                menu={
+                    <Menu aria-label="Source control actions" size="sm" onAction={key => run(String(key))}>
+                        {actions.map(action => (
+                            <MenuItem
+                                key={action.id}
+                                id={action.id}
+                                icon={ICONS[action.id]}
+                                text={action.label}
+                                endAffix={
+                                    action.count !== undefined ? (
+                                        <Text variant="xs" color="secondary">
+                                            {commitsWords(action.count)}
+                                        </Text>
+                                    ) : undefined
+                                }
+                                isDisabled={action.disabled || remote.isPending(action.id)}
+                            />
+                        ))}
+                        <MenuSeparator />
+                        {update && (
+                            <MenuItem id="update" icon={<Merge />} text={update.label} isDisabled={updateBlocked} />
+                        )}
+                        <MenuItem
+                            id="merge-from"
+                            icon={<ArrowDownRight />}
+                            text={MERGE_LABELS.from}
+                            isDisabled={current === undefined || facts.switching}
+                        />
+                        <MenuItem
+                            id="merge-into"
+                            icon={<ArrowUpRight />}
+                            text={MERGE_LABELS.into}
+                            isDisabled={current === undefined || facts.switching}
+                        />
+                        {destination && (
+                            <MenuItem
+                                id="merge-into-checkout"
+                                icon={<MergeInto />}
+                                text="Merge into main worktree…"
+                                isDisabled={current === undefined || facts.switching}
+                            />
+                        )}
+                    </Menu>
+                }
+            >
+                <SyncWords label={view.label} line={view.line} tone={view.tone} />
+                {view.kind === 'update' && view.behind ? (
+                    <CommitCountBadge direction="down" count={view.behind} />
+                ) : (
+                    <Counts ahead={view.ahead} behind={view.behind} />
                 )}
-
-                <MenuTrigger>
-                    <Button
-                        variant="filled"
-                        color="secondary"
-                        size="sm"
-                        iconOnly
-                        className={styles.more}
-                        aria-label="More source control actions"
-                        tooltip="Source control actions"
-                        tooltipPlacement="bottom"
-                    >
-                        <ChevronDown aria-hidden="true" />
-                    </Button>
-                    <Popover placement="bottom end" spacing="xs" width={220}>
-                        <Menu aria-label="Source control actions" size="sm" onAction={key => run(String(key))}>
-                            {actions.map(action => (
-                                <MenuItem
-                                    key={action.id}
-                                    id={action.id}
-                                    icon={ICONS[action.id]}
-                                    text={action.label}
-                                    endAffix={
-                                        action.count !== undefined ? (
-                                            <Text variant="xs" color="secondary">
-                                                {commitsWords(action.count)}
-                                            </Text>
-                                        ) : undefined
-                                    }
-                                    isDisabled={action.disabled || remote.isPending(action.id)}
-                                />
-                            ))}
-                            <MenuSeparator />
-                            {update && (
-                                <MenuItem id="update" icon={<Merge />} text={update.label} isDisabled={updateBlocked} />
-                            )}
-                            <MenuItem
-                                id="merge-from"
-                                icon={<ArrowDownRight />}
-                                text={MERGE_LABELS.from}
-                                isDisabled={current === undefined || facts.switching}
-                            />
-                            <MenuItem
-                                id="merge-into"
-                                icon={<ArrowUpRight />}
-                                text={MERGE_LABELS.into}
-                                isDisabled={current === undefined || facts.switching}
-                            />
-                            {destination && (
-                                <MenuItem
-                                    id="merge-into-checkout"
-                                    icon={<MergeInto />}
-                                    text="Merge into main worktree…"
-                                    isDisabled={current === undefined || facts.switching}
-                                />
-                            )}
-                        </Menu>
-                    </Popover>
-                </MenuTrigger>
-            </div>
+                {running !== undefined && <Spinner size="xxs" className={styles.spinner} aria-hidden />}
+            </SplitButton>
+            {detail && (
+                <span id={detailId} hidden>
+                    {detail}
+                </span>
+            )}
 
             {failure && (
                 <div className={styles.failure} role="alert">

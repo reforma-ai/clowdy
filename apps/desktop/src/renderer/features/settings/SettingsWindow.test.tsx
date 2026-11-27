@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider, SETTINGS_PAGES } from '../../stores';
 import { SourceControlPreferences, sourceControlPreferences } from '../changes/sourceControlPreferences';
+import { named } from './accessibleName';
 import { SettingsWindow } from './SettingsWindow';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -112,7 +113,7 @@ describe('Settings', () => {
         await draw();
         await press(option('Source Control'));
 
-        const toggle = container.querySelector<HTMLInputElement>('input[aria-label="Collapse diffs by default"]')!;
+        const toggle = named<HTMLInputElement>(container, 'input', 'Collapse diffs by default')!;
 
         expect(titleOf()).toBe('Source Control');
         expect(toggle.checked).toBe(true);
@@ -131,7 +132,7 @@ describe('Settings', () => {
         store.ui.openSettings('source-control');
         await draw();
 
-        const toggle = container.querySelector<HTMLInputElement>('input[aria-label="Sync after commit and merge"]')!;
+        const toggle = named<HTMLInputElement>(container, 'input', 'Sync after commit and merge')!;
 
         expect(new SourceControlPreferences().autoSync).toBe(true);
         expect(toggle.checked).toBe(true);
@@ -149,7 +150,7 @@ describe('Settings', () => {
         store.ui.openSettings('chat');
         await draw();
 
-        const select = () => container.querySelector('button[aria-label="Sleep mode"]');
+        const select = () => named(container, 'button', 'Sleep mode');
         expect(select()?.textContent).toBe('Keep awake while agents work');
         const pick = async (name: string) => {
             await press(select());
@@ -177,7 +178,7 @@ describe('Settings', () => {
         store.ui.openSettings('source-control');
         await draw();
 
-        const select = () => container.querySelector('button[aria-label="Commit message provider"]');
+        const select = () => named(container, 'button', 'Commit message provider');
         const pick = async (name: string) => {
             await press(select());
             const item = [...document.body.querySelectorAll('[role="listbox"] [role="option"]')].find(
