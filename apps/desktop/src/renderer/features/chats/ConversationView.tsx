@@ -24,7 +24,7 @@ const NO_ITEMS: StreamItem[] = [];
 function usageLimitMessage(reason: string): string {
     return reason.replace(
         /^(.+?) is at its usage limit until (.+?)(?:; this run continues then)?$/,
-        (_, engine: string, time: string) => `I've hit the ${engine} usage limit. I'll continue after ${time}.`
+        (_, engine: string, time: string) => `I've hit the ${engine} usage limit, I'll continue at ${time}`
     );
 }
 
@@ -166,6 +166,7 @@ export function ConversationView({
                         active={isRunActive(run)}
                         working={working}
                         waitingNotice={usageLimit}
+                        waitingUntil={usageLimit ? run?.usageLimitUntil : undefined}
                         links={links}
                         // A question the run no longer waits on (stopped, interrupted) is shown but cannot be answered.
                         onAnswer={

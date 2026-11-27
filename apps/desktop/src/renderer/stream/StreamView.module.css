@@ -86,3 +86,17 @@
         transition-duration: 0.01ms;
     }
 }
+
+.waitingNotice {
+    flex-wrap: wrap;
+}
+
+.waitingNotice > :first-child {
+    min-width: min(100%, 18rem);
+}
+
+.countdown {
+    margin-inline-start: auto;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}

@@ -730,7 +730,7 @@ export function AgentList({
               : undefined;
         const draft = messageOf(draftOf(chat.id)) !== '' || filesOf(chat.id).length > 0;
         const unread = ui.hasUnreadCompletion(run);
-        const showPullRequests = chatDotTone(run, threads, draft, unread) === undefined;
+        const showPullRequests = !card || chatDotTone(run, threads, draft, unread) === undefined;
         const status = (
             <ChatStatus
                 run={run}
@@ -1037,8 +1037,8 @@ function RowEnd({
     return (
         // The buttons and the popover are React children of the row, so their clicks and keys would reach the row through the tree.
         <span className={styles.chatActions} {...ownEvents}>
-            {status}
             <BranchPullRequestBadge branchKey={branchKey} visible={showPullRequests} crossWorktree={crossWorktree} />
+            {status}
             {!busy && (
                 <Button
                     className={styles.rowAction}
