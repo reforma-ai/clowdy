@@ -162,26 +162,7 @@ export function WorktreeCardHeader({
                             />
                         </Popover>
                     )}
-                    {collapsed && activity && (
-                        <span
-                            className={styles.worktreeStatus}
-                            role="img"
-                            aria-label={activity === 'asking' ? 'Chats waiting for you' : 'Chats working'}
-                        >
-                            <StatusDot
-                                className={styles.worktreeStatusDot}
-                                tone={activity === 'asking' ? 'accent' : 'success'}
-                            />
-                        </span>
-                    )}
-                    {pullRequestStatus}
                     <span className={styles.worktreeActionButtons}>
-                        <RowActionButton
-                            icon={<NewChat />}
-                            label={`New chat in ${title}`}
-                            isDisabled={card.missing || card.pending || card.workspace?.ready === false}
-                            onPress={newChat}
-                        />
                         <PopoverTrigger
                             isOpen={menuOpen}
                             onOpenChange={open => {
@@ -218,7 +199,26 @@ export function WorktreeCardHeader({
                                 )}
                             </Popover>
                         </PopoverTrigger>
+                        <RowActionButton
+                            icon={<NewChat />}
+                            label={`New chat in ${title}`}
+                            isDisabled={card.missing || card.pending || card.workspace?.ready === false}
+                            onPress={newChat}
+                        />
                     </span>
+                    {collapsed && activity && (
+                        <span
+                            className={styles.worktreeStatus}
+                            role="img"
+                            aria-label={activity === 'asking' ? 'Chats waiting for you' : 'Chats working'}
+                        >
+                            <StatusDot
+                                className={styles.worktreeStatusDot}
+                                tone={activity === 'asking' ? 'accent' : 'success'}
+                            />
+                        </span>
+                    )}
+                    {pullRequestStatus}
                 </RowControls>
             }
         />

@@ -24,6 +24,7 @@ import {
     samePath,
     worktreeLabel,
 } from './workspaceChoice';
+import { worktreeKey as sidebarWorktreeKey, type WorktreeCard, worktreeRank } from './worktreeCards';
 
 import type {
     Chat,
@@ -137,6 +138,11 @@ interface WorkspaceChipProps extends FolderChoices {
     choice: ChatWorkspaceChoice | undefined;
     workspaceRow?: ChatWorkspace;
     chats: ReadonlyMap<ChatId, Chat>;
+    worktreeOrder: readonly string[];
+    sidebarCards: readonly WorktreeCard[];
+    sidebarGrouped: boolean;
+    draftWorktrees: readonly string[];
+    showUnusedWorktrees: boolean;
     /** The branch of the folder's own checkout: without it the row only says which branch the folder is on. */
     main?: MainBranchControls;
     onChoose: (choice: ChatWorkspaceChoice | null) => void;
@@ -159,6 +165,11 @@ function WorkspaceChip({
     choice,
     workspaceRow,
     chats,
+    worktreeOrder,
+    sidebarCards,
+    sidebarGrouped,
+    draftWorktrees,
+    showUnusedWorktrees,
     main,
     onChoose,
     onManage,
@@ -196,9 +207,24 @@ function WorkspaceChip({
     }, [isMenuOpen]);
 
     const worktrees = pickableWorktrees(git);
-    // Worktrees used by chats come first, followed by the rest.
-    const used = worktrees.filter(worktree => chatsUsing(chats.values(), worktree.path).length > 0);
-    const idle = worktrees.filter(worktree => !used.includes(worktree));
+    // Match the sidebar: visible cards first, then the saved card order, with Git order as the fallback.
+    const rank = new Map(worktreeOrder.map((key, index) => [key, index]));
+    const cardOf = (worktree: GitWorktree) =>
+        sidebarCards.find(card => card.folder.id === selectedFolderId && samePath(card.path, worktree.path));
+    const visible = (worktree: GitWorktree) =>
+        sidebarGrouped &&
+        (showUnusedWorktrees ||
+            (cardOf(worktree)?.roots.length ?? 0) > 0 ||
+            draftWorktrees.some(path => samePath(path, worktree.path)));
+    const rankOf = (worktree: GitWorktree) => {
+        const card = cardOf(worktree);
+        return card
+            ? worktreeRank(card, rank)
+            : (rank.get(sidebarWorktreeKey(selectedFolderId, worktree.path)) ?? Infinity);
+    };
+    const orderedWorktrees = [...worktrees].sort(
+        (a, b) => Number(visible(b)) - Number(visible(a)) || rankOf(a) - rankOf(b)
+    );
     const worktreeItem = (worktree: GitWorktree) => (
         <MenuItem
             key={worktree.path}
@@ -425,7 +451,7 @@ function WorkspaceChip({
                                         ) : undefined
                                     }
                                 />
-                                {[...used, ...idle].map(worktreeItem)}
+                                {orderedWorktrees.map(worktreeItem)}
                                 <MenuSeparator />
                                 <MenuSection aria-label="Worktrees of the project" selectionMode="none">
                                     <MenuItem
@@ -537,6 +563,11 @@ export interface WorkspaceChipsProps extends FolderChoices {
     workspaceRow?: ChatWorkspace;
     /** The project's chats, which the list of worktrees names the users of each by. */
     chats: ReadonlyMap<ChatId, Chat>;
+    worktreeOrder: readonly string[];
+    sidebarCards: readonly WorktreeCard[];
+    sidebarGrouped: boolean;
+    draftWorktrees: readonly string[];
+    showUnusedWorktrees: boolean;
     /** The branch of the folder's own checkout (`useMainBranch`); without it the main worktree's row only says which branch the folder is on. */
     main?: MainBranchControls;
     onChoose: (choice: ChatWorkspaceChoice | null) => void;
@@ -555,6 +586,11 @@ export function WorkspaceChips({
     choice,
     workspaceRow,
     chats,
+    worktreeOrder,
+    sidebarCards,
+    sidebarGrouped,
+    draftWorktrees,
+    showUnusedWorktrees,
     main,
     onChoose,
     onManage,
@@ -587,6 +623,11 @@ export function WorkspaceChips({
                 choice={choice}
                 workspaceRow={workspaceRow}
                 chats={chats}
+                worktreeOrder={worktreeOrder}
+                sidebarCards={sidebarCards}
+                sidebarGrouped={sidebarGrouped}
+                draftWorktrees={draftWorktrees}
+                showUnusedWorktrees={showUnusedWorktrees}
                 main={main}
                 onChoose={onChoose}
                 onManage={onManage}

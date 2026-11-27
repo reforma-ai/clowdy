@@ -13,6 +13,7 @@ import { ChatFolder } from './ChatFolder';
 import { DraftChat } from './DraftChat';
 import { RunDetail } from './RunDetail';
 import styles from './Screen.module.css';
+import { useSidebarWorktrees } from './useSidebarWorktrees';
 
 /**
  * Agents: the list of chats on the left, each with its threads below it, and beside it the selected one: a chat (a thread is one) with its
@@ -22,6 +23,7 @@ export function Screen() {
     const project = useProjectState();
     const ui = useProjectUi();
     const { settingsOpen } = useRootStore().ui;
+    const sidebarWorktrees = useSidebarWorktrees(ui.groupByWorktree);
     // The expanded side panel is drawn over the chat, which stays where it is: hidden, so it takes no click, no key and no reader.
     const { expanded } = useSidePanel();
     // A remembered chat or run may be gone: the chat that was open, or the first one listed, stands in.
@@ -83,6 +85,7 @@ export function Screen() {
                     missing={missing}
                     isCovered={expanded}
                     projectInfo={projectInfo}
+                    sidebarWorktrees={sidebarWorktrees}
                 />
             }
         >
@@ -110,7 +113,7 @@ export function Screen() {
                         }
                     />
                 ) : (
-                    <DraftChat missing={missing} />
+                    <DraftChat missing={missing} sidebarWorktrees={sidebarWorktrees} />
                 )}
             </section>
         </SidebarLayout>

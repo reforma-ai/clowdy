@@ -584,7 +584,7 @@ describe('grouped by folder', () => {
     /** The select under the new-chat page's message box, and the rows of its list. */
     const folderSelect = () => container.querySelector<HTMLButtonElement>('button[aria-label^="Folder: "]');
     /** The read only line of a chat that is made, in the place the select had. */
-    const folderLine = () => container.querySelector<HTMLElement>('[role="group"][aria-label^="Current place:"]');
+    const folderLine = () => container.querySelector<HTMLElement>('[role="img"][aria-label^="Current place:"]');
     const folderItem = (name: string) =>
         [...document.body.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find(row => row.textContent === name)!;
     const layoutMenu = async () => {
@@ -1149,7 +1149,13 @@ describe('grouped by folder', () => {
             await draw(() => ui().openChat('c-2'));
 
             expect(folderLine()?.textContent).toBe('feature/payments');
-            expect(folderLine()?.getAttribute('title')).toBe('~/car-rental-api');
+            await act(async () => {
+                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+                folderLine()!.focus();
+            });
+            await vi.waitFor(() =>
+                expect(document.querySelector('[role="tooltip"]')?.textContent).toContain('~/car-rental-api')
+            );
             // Read only: nothing in it opens a list or takes a press.
             expect(folderSelect()).toBeNull();
             expect(folderLine()?.querySelector('button, [tabindex]')).toBeNull();
@@ -1198,7 +1204,15 @@ describe('grouped by folder', () => {
             await draw(() => ui().openChat('c-2'));
 
             expect(folderLine()?.hasAttribute('data-missing')).toBe(true);
-            expect(folderLine()?.getAttribute('title')).toBe('~/car-rental-api\nThis folder no longer exists');
+            await act(async () => {
+                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+                folderLine()!.focus();
+            });
+            await vi.waitFor(() =>
+                expect(document.querySelector('[role="tooltip"]')?.textContent).toContain(
+                    'This folder no longer exists'
+                )
+            );
 
             await draw(() => ui().openChat('c-1'));
 
@@ -1973,18 +1987,18 @@ describe('a chat that works in a worktree', () => {
         await vi.waitFor(() =>
             expect(
                 container.querySelector('[aria-label="Current place: Worktree, branch clowdy/ab12cd34"]')?.textContent
-            ).toBe('Worktree clowdy/ab12cd34')
+            ).toBe('clowdy/ab12cd34')
         );
 
         await draw(() => ui().setChatListLayout('simple'));
         expect(
             container.querySelector('[aria-label="Current place: car-rental, Worktree, branch clowdy/ab12cd34"]')
                 ?.textContent
-        ).toBe('car-rental, Worktree clowdy/ab12cd34');
+        ).toBe('car-rental, clowdy/ab12cd34');
         await draw(() => ui().setChatListLayout('worktree'));
         expect(
             container.querySelector('[aria-label="Current place: Worktree, branch clowdy/ab12cd34"]')?.textContent
-        ).toBe('Worktree clowdy/ab12cd34');
+        ).toBe('clowdy/ab12cd34');
 
         await draw(() => ui().openChat('c-1'));
 
@@ -3083,8 +3097,10 @@ describe('worktree cards', () => {
         await act(async () => window.dispatchEvent(new Event('focus')));
         expect(read).not.toHaveBeenCalled();
         await draw(() => ui().setGroupByWorktree(true));
-        expect(read).toHaveBeenCalledWith(FIXTURE_PROJECT_ID);
+        expect(read).toHaveBeenCalledExactlyOnceWith(FIXTURE_PROJECT_ID);
         read.mockClear();
+        await draw(() => ui().openDraft());
+        expect(read).not.toHaveBeenCalled();
         await act(async () => window.dispatchEvent(new Event('focus')));
         expect(read).toHaveBeenCalledWith(FIXTURE_PROJECT_ID);
         read.mockClear();

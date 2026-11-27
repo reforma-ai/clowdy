@@ -1,6 +1,7 @@
 import { MenuTrigger } from '@clowdy/components/List';
 import { Popover } from '@clowdy/components/Popover';
 import { Text } from '@clowdy/components/Text';
+import { Tooltip } from '@clowdy/components/Tooltip';
 import { Folder, Version, WorktreeFolder } from '@clowdy/icons/14';
 import { mainFolder } from '@clowdy/protocol';
 
@@ -35,18 +36,21 @@ export function ChatFolder({ name, folder, missing, workspace, showFolder = true
     const path = workspace?.path ?? folder.path;
     const repair = useFolderRepair(folder, gone && workspace === undefined);
     const branch = git?.branch;
-    const place = [workspace ? 'Worktree' : undefined, branch].filter(Boolean).join(' ');
+    const place = branch ?? (workspace ? 'Worktree' : undefined);
     // A non-git folder still needs a name when it is the project's only folder.
     const label = [showFolder || !place ? name : undefined, place].filter(Boolean).join(', ');
     const detail = branch ? (git?.detached ? `detached at ${branch}` : `branch ${branch}`) : undefined;
     const ariaLabel = `Current place: ${[showFolder || !place ? name : undefined, workspace ? 'Worktree' : undefined, detail].filter(Boolean).join(', ')}`;
-    const title = [
-        tildePath(path, homeFolder.path),
-        gone ? (workspace ? 'This worktree no longer exists' : 'This folder no longer exists') : undefined,
-        git?.detached ? 'Detached HEAD' : undefined,
-    ]
-        .filter(Boolean)
-        .join('\n');
+    const pathLabel = tildePath(path, homeFolder.path);
+    const note = gone ? (workspace ? 'This worktree no longer exists' : 'This folder no longer exists') : undefined;
+    const tooltip = (
+        <div className={styles.tooltip}>
+            <span>{workspace ? 'Working in worktree' : 'Working in project folder'}</span>
+            <span className={styles.tooltipPath}>{pathLabel}</span>
+            {note && <span>{note}</span>}
+            {git?.detached && <span>Detached HEAD</span>}
+        </div>
+    );
     const icon = workspace ? (
         <WorktreeFolder aria-hidden="true" />
     ) : branch ? (
@@ -57,16 +61,12 @@ export function ChatFolder({ name, folder, missing, workspace, showFolder = true
 
     if (!canOpenPaths()) {
         return (
-            <div
-                role="group"
-                aria-label={ariaLabel}
-                className={styles.folder}
-                data-missing={gone || undefined}
-                title={title}
-            >
-                {icon}
-                <Text truncate>{label}</Text>
-            </div>
+            <Tooltip content={tooltip}>
+                <div role="img" aria-label={ariaLabel} className={styles.folder} data-missing={gone || undefined}>
+                    {icon}
+                    <Text truncate>{label}</Text>
+                </div>
+            </Tooltip>
         );
     }
 
@@ -84,10 +84,9 @@ export function ChatFolder({ name, folder, missing, workspace, showFolder = true
             <ChipTrigger
                 icon={icon}
                 folder={showFolder && place ? name : undefined}
-                lead={workspace ? 'Worktree' : undefined}
-                label={branch ?? (workspace ? '' : name)}
+                label={place ?? name}
                 aria-label={ariaLabel}
-                tooltip={title}
+                tooltip={tooltip}
                 missing={gone}
             />
             <Popover placement="bottom start" spacing="xs">

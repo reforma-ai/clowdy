@@ -36,3 +36,13 @@
     padding-inline-start: var(--spacing-xs);
     color: var(--color-secondary-muted-text);
 }
+
+.tooltip {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+}
+
+.tooltipPath {
+    opacity: var(--opacity-inactive);
+}

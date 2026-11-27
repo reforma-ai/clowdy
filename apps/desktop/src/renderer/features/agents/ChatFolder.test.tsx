@@ -68,6 +68,14 @@ const press = async (target: HTMLElement) =>
         target.click();
     });
 const pill = () => container.querySelector<HTMLButtonElement>('button[aria-label^="Current place:"]');
+const tooltipFor = async (target: HTMLElement) => {
+    await act(async () => {
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+        target.focus();
+    });
+    await vi.waitFor(() => expect(document.querySelector('[role="tooltip"]')).not.toBeNull());
+    return document.querySelector('[role="tooltip"]')!;
+};
 // The rows of the menu itself, and those of its `Open in…` submenu (a menu of its own, once that row is pressed).
 const items = () => [
     ...document.body.querySelectorAll<HTMLElement>(
@@ -146,7 +154,7 @@ describe('the folder of a chat', () => {
 
         // The git mark and the branch, in one label that says on hover and to a screen reader where it runs.
         expect(label?.textContent).toBe('web, main');
-        expect(label?.title).toBe('~/car-rental');
+        expect((await tooltipFor(label!)).textContent).toBe('Working in project folder~/car-rental');
         expect(label?.querySelector('svg')).not.toBeNull();
 
         await draw({
@@ -192,18 +200,17 @@ describe('the folder of a chat', () => {
         await draw({});
 
         expect(container.textContent).toBe('web, 5c4d3e2');
-        expect(
-            container.querySelector<HTMLElement>('[aria-label="Current place: web, detached at 5c4d3e2"]')?.title
-        ).toBe('~/car-rental\nDetached HEAD');
+        const label = container.querySelector<HTMLElement>('[aria-label="Current place: web, detached at 5c4d3e2"]')!;
+        expect((await tooltipFor(label)).textContent).toBe('Working in project folder~/car-rentalDetached HEAD');
     });
 
     it('is read only outside the desktop app: its name, the path on hover, and nothing to press', async () => {
         await draw({});
 
-        const line = container.querySelector<HTMLElement>('[role="group"][aria-label^="Current place:"]');
+        const line = container.querySelector<HTMLElement>('[role="img"][aria-label^="Current place:"]');
 
         expect(line?.textContent).toBe('web, main');
-        expect(line?.title).toBe('~/car-rental');
+        expect((await tooltipFor(line!)).textContent).toBe('Working in project folder~/car-rental');
         expect(container.querySelector('button')).toBeNull();
     });
 
@@ -517,14 +524,16 @@ describe('the folder of a chat that works in a worktree', () => {
     it('says it is a worktree, with its path on hover, and the branch the tree has checked out now', async () => {
         await draw({ workspace });
 
-        expect(container.textContent).toBe('web, Worktree clowdy/ab12cd34');
+        expect(container.textContent).toBe('web, clowdy/ab12cd34');
 
         const label = container.querySelector<HTMLElement>(
             '[aria-label="Current place: web, Worktree, branch clowdy/ab12cd34"]'
         );
 
-        expect(label?.textContent).toBe('web, Worktree clowdy/ab12cd34');
-        expect(label?.title).toBe('~/Clowdy/workspaces/car-rental/ab12cd34/car-rental');
+        expect(label?.textContent).toBe('web, clowdy/ab12cd34');
+        expect((await tooltipFor(label!)).textContent).toBe(
+            'Working in worktree~/Clowdy/workspaces/car-rental/ab12cd34/car-rental'
+        );
         expect(container.querySelector('[data-missing]')).toBeNull();
     });
 
@@ -533,7 +542,7 @@ describe('the folder of a chat that works in a worktree', () => {
 
         await draw({ workspace });
 
-        expect(container.textContent).toBe('web, Worktree feature/other');
+        expect(container.textContent).toBe('web, feature/other');
 
         info.mockImplementation(async () => [
             {
@@ -548,12 +557,12 @@ describe('the folder of a chat that works in a worktree', () => {
         act(() => void window.dispatchEvent(new Event('focus')));
         await settle();
 
-        expect(container.textContent).toBe('web, Worktree 5c4d3e2');
+        expect(container.textContent).toBe('web, 5c4d3e2');
         // The hash stands in a branch's place, and the label says it is a commit: on hover with the worktree's path, and to a screen reader.
-        expect(
-            container.querySelector<HTMLElement>('[aria-label="Current place: web, Worktree, detached at 5c4d3e2"]')
-                ?.title
-        ).toMatch(/\nDetached HEAD$/);
+        const label = container.querySelector<HTMLElement>(
+            '[aria-label="Current place: web, Worktree, detached at 5c4d3e2"]'
+        )!;
+        expect((await tooltipFor(label)).textContent).toContain('Detached HEAD');
     });
 
     it('names no branch until the read has answered, and none that the read does not know once the worktree is made', async () => {
@@ -571,15 +580,11 @@ describe('the folder of a chat that works in a worktree', () => {
         expect(container.textContent).toBe('web, Worktree');
     });
 
-    it('shows the worktree prefix in the same muted style as the new-chat selector', async () => {
+    it('shows the branch and explains the worktree and path in the tooltip', async () => {
         await draw({ workspace, bridge: APP, showFolder: false });
-
-        const parts = [...pill()!.querySelectorAll<HTMLElement>('span')];
-        const prefix = parts.find(part => part.textContent === 'Worktree')!;
-        const branch = parts.find(part => part.textContent === 'clowdy/ab12cd34')!;
-
-        expect(prefix.className).toContain('color-secondary-muted-text');
-        expect(branch.className).not.toContain('color-secondary-muted-text');
+        expect(pill()?.textContent).toBe('clowdy/ab12cd34');
+        const tooltip = await tooltipFor(pill()!);
+        expect(tooltip.textContent).toBe('Working in worktree~/Clowdy/workspaces/car-rental/ab12cd34/car-rental');
     });
 
     it('does not add an empty label when the worktree branch is unknown', async () => {
@@ -594,20 +599,20 @@ describe('the folder of a chat that works in a worktree', () => {
         reads([]);
         await draw({ workspace: { ...workspace, ready: false } });
 
-        expect(container.textContent).toBe('web, Worktree clowdy/ab12cd34');
+        expect(container.textContent).toBe('web, clowdy/ab12cd34');
     });
 
     it('reads the branch again when the worktree gets made', async () => {
         const info = reads([{ workspaceId: workspace.id, exists: true, branch: 'feature/other' }]);
 
         await draw({ workspace: { ...workspace, ready: false } });
-        expect(container.textContent).toBe('web, Worktree clowdy/ab12cd34');
+        expect(container.textContent).toBe('web, clowdy/ab12cd34');
 
         info.mockClear();
         await draw({ workspace });
 
         expect(info).toHaveBeenCalled();
-        expect(container.textContent).toBe('web, Worktree feature/other');
+        expect(container.textContent).toBe('web, feature/other');
     });
 
     it('marks the folder as gone when the worktree is no longer on the disk', async () => {
@@ -643,7 +648,7 @@ describe('the folder of a chat that works in a worktree', () => {
         await draw({ workspace, bridge: APP });
 
         expect(container.querySelectorAll('button')).toHaveLength(1);
-        expect(pill()?.textContent).toBe('webWorktreeclowdy/ab12cd34');
+        expect(pill()?.textContent).toBe('webclowdy/ab12cd34');
         await press(pill()!);
         await press(item('New chat'));
 
@@ -712,8 +717,9 @@ describe('the folder of a chat that works in a worktree', () => {
     it("is read only outside the desktop app, with the worktree's path on hover", async () => {
         await draw({ workspace });
 
-        expect(container.querySelector<HTMLElement>('[role="group"][aria-label^="Current place:"]')?.title).toBe(
-            '~/Clowdy/workspaces/car-rental/ab12cd34/car-rental'
+        const label = container.querySelector<HTMLElement>('[role="img"][aria-label^="Current place:"]')!;
+        expect((await tooltipFor(label)).textContent).toBe(
+            'Working in worktree~/Clowdy/workspaces/car-rental/ab12cd34/car-rental'
         );
         expect(container.querySelector('button')).toBeNull();
     });

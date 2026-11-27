@@ -78,11 +78,10 @@ import { RowFold } from './RowFold';
 import { StarCard } from './StarCard';
 import { SubagentMenu } from './SubagentMenu';
 import { useChatListOrder } from './useChatListOrder';
-import { useSidebarWorktrees } from './useSidebarWorktrees';
 import { WorktreeCardHeader } from './WorktreeCardHeader';
 import { chatWorktreeKey, type WorktreeCard, worktreeCards, worktreeKey, worktreeRank } from './worktreeCards';
 
-import type { Chat, ChatId, FolderId, ProjectInfo, Run } from '@clowdy/protocol';
+import type { Chat, ChatId, FolderId, FolderWorktrees, ProjectInfo, Run } from '@clowdy/protocol';
 import type { NewChatDraft } from '../../stores/NewChatDrafts';
 
 /** The id of the first row, the one that starts a chat. Chat ids never look like it. */
@@ -145,6 +144,7 @@ export function AgentList({
     missing,
     isCovered,
     projectInfo,
+    sidebarWorktrees,
 }: {
     selection: AgentSelection;
     chats: readonly Chat[];
@@ -152,6 +152,7 @@ export function AgentList({
     /** The side panel is in the place of the chat, so the list is a plate of its own. */
     isCovered: boolean;
     projectInfo?: ProjectInfo;
+    sidebarWorktrees?: readonly FolderWorktrees[];
 }) {
     const root = useRootStore();
     useDraftRevision();
@@ -204,7 +205,7 @@ export function AgentList({
     const { folders } = project.project;
     const grouped = ui.groupByFolder;
     const groupedByWorktree = ui.groupByWorktree;
-    const actual = useSidebarWorktrees(groupedByWorktree);
+    const actual = sidebarWorktrees;
     const draftItems = ui.newChatDrafts.drafts;
     const draftFolder = (draft: NewChatDraft) =>
         folders.find(folder => folder.id === draft.folderId)?.id ?? mainFolder(project.project).id;

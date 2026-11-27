@@ -11,7 +11,8 @@ import { useDraftSending } from '../chats/draftSending';
 import { newChatDefaults, startingChoice } from '../chats/newChatDefaults';
 import { currentPlace } from '../sidePanel/currentPlace';
 import { openManageWorktrees } from '../worktrees';
-import { draftTarget } from './agentTree';
+import { draftTarget, visibleChats } from './agentTree';
+import { chatListPreferences } from './chatListPreferences';
 import styles from './DraftChat.module.css';
 import { DraftFolderSelect } from './DraftFolderSelect';
 import { useDraftWorkspaceRow } from './useDraftWorkspaceRow';
@@ -19,9 +20,9 @@ import { useFolderRepository } from './useFolderRepository';
 import { useMainBranch } from './useMainBranch';
 import { WorkspaceChips } from './WorkspaceChips';
 import { effectiveChoice } from './workspaceChoice';
-import { worktreeKey } from './worktreeCards';
+import { worktreeCards, worktreeKey } from './worktreeCards';
 
-import type { FolderId } from '@clowdy/protocol';
+import type { FolderId, FolderWorktrees } from '@clowdy/protocol';
 
 /**
  * The new-chat row's page, a start page: the heading and the message box in the middle. No chat exists yet: the composer
@@ -33,7 +34,13 @@ import type { FolderId } from '@clowdy/protocol';
  * (`useMainBranch`): the message goes only once that is done, and a refusal keeps the words in the box and says why in the pill. A worktree that exists, once chosen, is also the place of the window's tabs (`useDraftWorkspaceRow`). `missing` are the folders gone from the disk, which the select lists and does not let be
  * picked. The chat this page makes keeps the line, with the folder and the place read only (`ChatFolder`).
  */
-export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
+export function DraftChat({
+    missing,
+    sidebarWorktrees,
+}: {
+    missing: ReadonlySet<FolderId>;
+    sidebarWorktrees?: readonly FolderWorktrees[];
+}) {
     const root = useRootStore();
     const project = useProjectState();
     const ui = useProjectUi();
@@ -46,6 +53,14 @@ export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
     const composer = useRef<ComposerHandle>(null);
     const pending = ui.pendingFiles;
     const { folders } = project.project;
+    const sidebarCards = worktreeCards(
+        visibleChats([...project.chats.values()]),
+        project.chats.values(),
+        folders,
+        sidebarWorktrees,
+        undefined,
+        ui.worktreeOrder
+    );
     const target = draftTarget(folders, ui.draftFolderId);
     // The main folder is what a chat works in when it names no folder.
     const folderId = target.isMain ? undefined : target.folder.id;
@@ -198,6 +213,18 @@ export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
                                                 choice={workspace}
                                                 workspaceRow={workspaceRow}
                                                 chats={project.chats}
+                                                worktreeOrder={ui.worktreeOrder}
+                                                sidebarCards={sidebarCards}
+                                                sidebarGrouped={ui.groupByWorktree}
+                                                draftWorktrees={ui.newChatDrafts.drafts.flatMap(draft =>
+                                                    (draft.folderId ?? mainFolder(project.project).id) ===
+                                                        target.folder.id && draft.workspace?.mode === 'existing'
+                                                        ? [draft.workspace.path]
+                                                        : []
+                                                )}
+                                                showUnusedWorktrees={
+                                                    ui.groupByWorktree && chatListPreferences.showUnusedWorktrees
+                                                }
                                                 main={mainBranch.controls}
                                                 onChoose={choice => ui.setDraftWorkspace(choice)}
                                                 onManage={() =>
