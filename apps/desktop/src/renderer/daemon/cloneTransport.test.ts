@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { createTransport, resolveDaemonConfig } from './config';
 import { cloneName, FIXTURE_PROJECTS_FOLDER, FixtureGitClone } from './fixtureGitClone';
+import { createFixtureTransport, fixtureOptions } from './fixtures';
 import { FixtureTransport } from './fixtureTransport';
 import { HttpTransport } from './httpTransport';
 import { TransportError } from './transport';
@@ -304,17 +304,16 @@ describe('FixtureTransport clone', () => {
 
 describe('the page switch for a clone', () => {
     it('takes slow and failed, and leaves any other word out', () => {
-        expect(resolveDaemonConfig('?fixtures=static&clone=slow')).toEqual({
-            kind: 'fixtures',
+        expect(fixtureOptions('?fixtures=static&clone=slow')).toEqual({
             timeline: false,
             clone: 'slow',
         });
-        expect(resolveDaemonConfig('?fixtures=static&clone=failed')).toMatchObject({ clone: 'failed' });
-        expect(resolveDaemonConfig('?fixtures=static&clone=ok')).toEqual({ kind: 'fixtures', timeline: false });
+        expect(fixtureOptions('?fixtures=static&clone=failed')).toMatchObject({ clone: 'failed' });
+        expect(fixtureOptions('?fixtures=static&clone=ok')).toEqual({ timeline: false });
     });
 
     it('is carried to the fixture transport', async () => {
-        const transport = createTransport({ kind: 'fixtures', timeline: false, clone: 'failed' });
+        const transport = createFixtureTransport({ timeline: false, clone: 'failed' });
         const caught = transport.cloneGit(REQUEST).catch((error: unknown) => error);
 
         expect(await caught).toMatchObject({ status: 409 });

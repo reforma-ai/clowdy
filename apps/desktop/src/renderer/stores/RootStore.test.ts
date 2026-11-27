@@ -177,6 +177,7 @@ describe('RootStore', () => {
 
         const stream = root.streams.of('r-orch-2');
 
+        root.streams.hold(stream);
         await stream.load();
 
         const first = stream.items[0];

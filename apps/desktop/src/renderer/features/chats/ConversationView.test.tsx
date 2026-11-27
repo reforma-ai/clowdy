@@ -101,11 +101,9 @@ describe('ConversationView, the states of the stream', () => {
         const stream = await streamOf('r-orch-1');
 
         runInAction(() => {
+            stream.truncate(0);
             stream.status = 'loading';
         });
-        await draw({ run: runOf('r-orch-1'), stream });
-
-        runInAction(() => stream.byId.clear());
         await draw({ run: runOf('r-orch-1'), stream });
 
         expect(text()).toContain('Loading messages…');
@@ -150,7 +148,7 @@ describe('ConversationView, the states of the stream', () => {
     it('shows the empty state of a run that has written nothing', async () => {
         const stream = await streamOf('r-na-02');
 
-        runInAction(() => stream.byId.clear());
+        runInAction(() => stream.truncate(0));
         await draw({ run: runOf('r-na-02'), stream, emptyState: <span>Nothing written</span> });
 
         expect(text()).toContain('Nothing written');

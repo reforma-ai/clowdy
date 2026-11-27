@@ -27,14 +27,7 @@ import { ToolCard } from './ToolCard';
 import { ToolGroup } from './ToolGroup';
 import { TurnRail } from './TurnRail';
 import { turnMarks } from './turnMarks';
-import {
-    foldFinishedWork,
-    forkPointId,
-    groupToolRuns,
-    hasMessageActions,
-    type ItemBlock,
-    type StreamBlock,
-} from './turns';
+import { forkPointId, groupToolRuns, hasMessageActions, type ItemBlock, type StreamBlock, streamBlocks } from './turns';
 import { UserBubble } from './UserBubble';
 import { Worked } from './Worked';
 import { WorkingLine } from './WorkingLine';
@@ -193,7 +186,7 @@ export function StreamView({
         [initialPosition, scrollMemory, stickScrollRef]
     );
     const marks = useMemo(() => turnMarks(items), [items]);
-    const blocks = useMemo(() => groupToolRuns(foldFinishedWork(items, active)), [items, active]);
+    const blocks = useMemo(() => streamBlocks(items, active), [items, active]);
     const lastWithActions = messageActions ? blocks.findLast(hasMessageActions)?.item.id : undefined;
     const forkPoint = forkedFrom && forkPointId(items, forkedFrom.atSeq);
     const last = items.at(-1)?.body;

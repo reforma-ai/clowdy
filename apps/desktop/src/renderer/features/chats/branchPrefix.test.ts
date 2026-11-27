@@ -1,6 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
-import { BranchPrefixPreference } from './branchPrefix';
+import { BranchPrefixPreference, type PrefixDelivery } from './branchPrefix';
 
 const memory = () => {
     const values = new Map<string, string>();
@@ -28,38 +28,50 @@ describe('The branch prefix of a new worktree', () => {
         const sent: string[] = [];
         await preference.connect(undefined, async prefix => {
             sent.push(prefix);
-            return true;
+            return 'ok';
         });
         expect(sent).toEqual(['team/alice']);
         await preference.connect('team/alice', async prefix => {
             sent.push(prefix);
-            return false;
+            return 'unreachable';
         });
         preference.setValue('team/bob');
         await preference.flush();
         const reopened = new BranchPrefixPreference(storage);
         await reopened.connect('team/alice', async prefix => {
             sent.push(prefix);
-            return true;
+            return 'ok';
         });
         expect(reopened.value).toBe('team/bob');
         expect(sent.at(-1)).toBe('team/bob');
     });
 
-    it('retries a failed delivery while the connection remains open', async () => {
-        vi.useFakeTimers();
-        try {
-            const preference = new BranchPrefixPreference(memory());
-            const send = vi.fn().mockResolvedValueOnce(false).mockResolvedValue(true);
-            preference.setValue('team/alice');
-            await preference.connect(undefined, send);
-            expect(send).toHaveBeenCalledTimes(1);
-            await vi.advanceTimersByTimeAsync(2000);
-            expect(send).toHaveBeenLastCalledWith('team/alice');
-            expect(send).toHaveBeenCalledTimes(2);
-        } finally {
-            vi.useRealTimers();
-        }
+    it('sends nothing to a daemon without a prefix while this computer keeps the default', async () => {
+        const preference = new BranchPrefixPreference(memory());
+        const sent: string[] = [];
+
+        await preference.connect(undefined, async prefix => {
+            sent.push(prefix);
+            return 'ok';
+        });
+
+        expect({ sent, value: preference.value }).toEqual({ sent: [], value: 'clowdy' });
+    });
+
+    it('asks an unreachable daemon again on the next flush, and nothing more of one that refused', async () => {
+        const preference = new BranchPrefixPreference(memory());
+        const answers: PrefixDelivery[] = ['unreachable', 'refused', 'ok'];
+        const sent: string[] = [];
+
+        preference.setValue('team/alice');
+        await preference.connect(undefined, async prefix => {
+            sent.push(prefix);
+            return answers.shift() ?? 'ok';
+        });
+        await preference.flush();
+        await preference.flush();
+
+        expect({ sent, value: preference.value }).toEqual({ sent: ['team/alice', 'team/alice'], value: 'team/alice' });
     });
 
     it('keeps a newer edit when an older snapshot arrives', async () => {
@@ -67,7 +79,7 @@ describe('The branch prefix of a new worktree', () => {
         let daemon = 'alpha';
         const send = async (prefix: string) => {
             daemon = prefix;
-            return true;
+            return 'ok' as const;
         };
         await preference.connect('alpha', send);
         const revision = preference.revision;
