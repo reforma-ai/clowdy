@@ -248,7 +248,10 @@ export function AgentList({
     }
     const { showFinishedThreads, expandRunningAgents, showUnusedWorktrees } = chatListPreferences;
     const shownAdditional = additionalCards.filter(
-        card => draftItems.some(draft => additionalDraftKey(draft) === card.key) || card.used || showUnusedWorktrees
+        card =>
+            draftItems.some(draft => additionalDraftKey(draft) === card.key) ||
+            card.roots.length > 0 ||
+            showUnusedWorktrees
     );
     const mainCards: WorktreeCard[] = groupedByWorktree
         ? agentGroups(chats, folders).flatMap(group => {

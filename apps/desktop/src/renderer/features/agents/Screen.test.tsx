@@ -2396,6 +2396,8 @@ describe('worktree cards', () => {
         });
         await draw();
         expect(rowOf('c-4').closest('[data-worktree-card]')?.getAttribute('data-worktree-card')).toBe(mainKey());
+        expect(cardRows()).not.toContain(expectedWorktree);
+        await draw(() => chatListPreferences.setShowUnusedWorktrees(true));
         const link = rowOf('@linked-thread:c-6a');
         expect(link.closest('[data-worktree-card]')?.getAttribute('data-worktree-card')).toBe(expectedWorktree);
         expect(link.textContent).toContain('Fix the price rounding');
@@ -3277,7 +3279,7 @@ describe('worktree cards', () => {
         expect(rowOf(workspaceKey()).querySelector('[aria-label="Chats waiting for you"]')).toBeNull();
     });
 
-    it('keeps a thread-only worktree visible regardless of the unused filter', async () => {
+    it('hides thread-only worktrees until unused worktrees are shown', async () => {
         await restart();
         const workspace = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
         const key = workspaceKey();
@@ -3288,10 +3290,12 @@ describe('worktree cards', () => {
             ui().openChat('c-6a');
         });
         await draw();
-        expect(cardRows()).toContain(key);
+        expect(cardRows()).not.toContain(key);
         expect(rowOf('c-6a')).not.toBeNull();
         await draw(() => chatListPreferences.setShowUnusedWorktrees(true));
         expect(cardRows()).toContain(key);
+        await draw(() => chatListPreferences.setShowUnusedWorktrees(false));
+        expect(cardRows()).not.toContain(key);
         expect(cardRows().length).toBeGreaterThan(0);
     });
 
