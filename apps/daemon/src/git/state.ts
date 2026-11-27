@@ -2,7 +2,7 @@ import { realpath, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { MAX_GIT_BRANCHES } from '@clowdy/protocol';
 
-import { gitLine, gitOutput, gitRead } from '../domain/git';
+import { gitAnswer, gitLine, gitOutput, gitRead, gitRecords } from '../domain/git';
 import { CommandError, conflict, invalid, notFound, unavailable } from '../errors';
 
 import type { FolderGit, GitBranch, GitWorktree, Project, ProjectFolder, ProjectFolderInfo } from '@clowdy/protocol';
@@ -99,9 +99,9 @@ export async function folderHead(folder: string): Promise<Pick<ProjectFolderInfo
     return commit ? { branch: commit, detached: true } : undefined;
 }
 
-/** The branch `origin/HEAD` names (`origin/main`), when the clone or the last fetch left one. */
+/** The branch `origin/HEAD` names (`origin/main`), when the clone or the last fetch left one; `unavailable` when git did not answer, so no other base is picked on a guess. */
 async function originHead(folder: string): Promise<string | undefined> {
-    return gitLine(folder, ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD']);
+    return gitAnswer(folder, ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD']);
 }
 
 /** The branches in the output of `git for-each-ref --format=%(refname) refs/heads refs/remotes`: the local ones and each remote's, without a remote's `HEAD`, in git's order. */
@@ -224,19 +224,28 @@ export async function rebaseUnderWay(cwd: string): Promise<boolean> {
     return state.some(Boolean);
 }
 
+/** A `status` of a large tree may take a while; past this it is given up (`unavailable`). One limit for the Changes panel, the worktree list and the checks before a switch or a merge. */
+export const STATUS_TIMEOUT_MS = 15_000;
+
+/** The `status` that counts a worktree's changed files: a new file or folder is one, a changed submodule too, whatever the person's configuration says of either. */
+const CHANGES_STATUS = [
+    '-c',
+    'core.longpaths=true',
+    'status',
+    '--porcelain',
+    '--untracked-files=normal',
+    '--ignore-submodules=none',
+];
+
+/** How many worktrees have their `status` read at once for the worktree list. */
+const DIRTY_READS = 4;
+
 /**
  * How many files of a worktree have uncommitted changes, a new file or a changed submodule too, whatever the person's git configuration says of untracked files and of
  * submodules (a renamed file is one, and a new folder is one: `--untracked-files=normal`). Nothing when the `status` fails, is cut short or does not answer in time.
  */
 export async function countChanges(path: string): Promise<number | undefined> {
-    const output = await gitOutput(path, [
-        '-c',
-        'core.longpaths=true',
-        'status',
-        '--porcelain',
-        '--untracked-files=normal',
-        '--ignore-submodules=none',
-    ]);
+    const output = await gitOutput(path, CHANGES_STATUS, { timeoutMs: STATUS_TIMEOUT_MS });
 
     return output?.split('\n').filter(line => line !== '').length;
 }
@@ -246,9 +255,11 @@ export async function changedFiles(path: string): Promise<number> {
     return (await countChanges(path)) ?? 1;
 }
 
-/** Whether a worktree has anything uncommitted (`changedFiles`). */
+/** Whether a worktree has anything uncommitted, as `changedFiles` counts it: the first changed file is enough, and a `status` git could not give is "changed". */
 async function isDirty(path: string): Promise<boolean> {
-    return (await changedFiles(path)) > 0;
+    const read = await gitRecords(path, [...CHANGES_STATUS, '-z'], { maxRecords: 1, timeoutMs: STATUS_TIMEOUT_MS });
+
+    return !read.ok || read.records.length > 0;
 }
 
 /**
@@ -292,22 +303,23 @@ async function worktreesOf(
     // A git too old to list worktrees says no: the folder's own entry below is then the whole list.
     if (!read.ok && read.reason === 'unavailable') throw unavailable('git did not answer');
 
-    const worktrees: GitWorktree[] = [];
+    const found: Array<{ entry: ListedWorktree; place: string }> = [];
 
     for (const entry of parseWorktrees(read.ok ? read.stdout : '')) {
         const place = entry.bare || entry.prunable ? undefined : await placeOf(entry.path);
 
-        if (place && (await isOnDisk(join(place, '.git')))) {
-            worktrees.push({
-                // Git prints `C:/work/app` on Windows; the project's folders and the app's paths are written as the machine writes them.
-                path: resolve(entry.path),
-                ...(entry.branch !== undefined && { branch: entry.branch }),
-                head: shortHash(entry.head),
-                main: place === root,
-                dirty: await isDirty(place),
-            });
-        }
+        if (place && (await isOnDisk(join(place, '.git')))) found.push({ entry, place });
     }
+
+    const dirty = await mapLimited(found, DIRTY_READS, ({ place }) => isDirty(place));
+    const worktrees: GitWorktree[] = found.map(({ entry, place }, index) => ({
+        // Git prints `C:/work/app` on Windows; the project's folders and the app's paths are written as the machine writes them.
+        path: resolve(entry.path),
+        ...(entry.branch !== undefined && { branch: entry.branch }),
+        head: shortHash(entry.head),
+        main: place === root,
+        dirty: dirty[index] as boolean,
+    }));
 
     if (!worktrees.some(entry => entry.main)) {
         const commit = (await gitLine(folder, ['rev-parse', 'HEAD'])) ?? '';
@@ -322,6 +334,23 @@ async function worktreesOf(
     }
 
     return worktrees;
+}
+
+/** `work` for every item, at most `limit` at a time; the answers in the order of the items. */
+async function mapLimited<T, R>(items: readonly T[], limit: number, work: (item: T) => Promise<R>): Promise<R[]> {
+    const results: R[] = [];
+    let next = 0;
+    const worker = async () => {
+        while (next < items.length) {
+            const index = next++;
+
+            results[index] = await work(items[index] as T);
+        }
+    };
+
+    await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+
+    return results;
 }
 
 /** The first characters of a commit's hash; none for the all-zero hash git gives a branch with no commit yet. */
@@ -349,7 +378,7 @@ export async function workingTreeRoot(folder: string): Promise<string | undefine
 /**
  * What git says about a folder (`GET /v1/projects/:id/git`). A folder counts as a repository only when it is the root of a working tree (`workingTreeRoot`). A git that does
  * not answer (not there, too slow, too much to say) is `unavailable`, never an empty answer or "no repository", which a caller would take for the truth. The reads of each
- * worktree's status run one after another, so a repository with many worktrees does not start a crowd of processes.
+ * worktree's status run `DIRTY_READS` at a time, so a repository with many worktrees does not start a crowd of processes.
  * `baseBranch` is the folder's configured base (`pickBase`): `defaultBranch` is that branch when the repository has it.
  */
 export async function folderGit(folder: string, baseBranch?: string): Promise<FolderGit> {

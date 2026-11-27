@@ -13,6 +13,7 @@ type MentionFiles = (files: readonly ClipboardFile[]) => boolean;
 interface ComposerBridge {
     quote: Quote;
     mentionFiles?: MentionFiles;
+    appendText?: (text: string) => boolean;
 }
 
 const composers: ComposerBridge[] = [];
@@ -27,8 +28,12 @@ function subscribe(listener: () => void): () => void {
 }
 
 /** A message box that takes quotes and optionally file references, until the returned function is called. */
-export function registerComposer(quote: Quote, mentionFiles?: MentionFiles): () => void {
-    const composer = { quote, mentionFiles };
+export function registerComposer(
+    quote: Quote,
+    mentionFiles?: MentionFiles,
+    appendText?: (text: string) => boolean
+): () => void {
+    const composer = { quote, mentionFiles, appendText };
     composers.push(composer);
     changed();
 
@@ -56,6 +61,11 @@ export function quoteIntoComposer(text: string): boolean {
     return true;
 }
 
+/** Adds a plain paragraph to the current draft without replacing it. */
+export function appendTextIntoComposer(text: string): boolean {
+    return composers.at(-1)?.appendText?.(text) ?? false;
+}
+
 /** Whether a message box is mounted to take a quote: what decides if the side panel offers Add to chat at all. */
 export function useHasComposer(): boolean {
     return useSyncExternalStore(subscribe, () => composers.length > 0);
@@ -73,13 +83,18 @@ export function useCanMentionFiles(): boolean {
 /**
  * Registers the message box while it is mounted, except the box of an edit frame. The bridge calls the latest callbacks through a ref.
  */
-export function useRegisterComposer(quote: Quote | undefined, mentionFiles?: MentionFiles): void {
-    const latest = useRef({ quote, mentionFiles });
+export function useRegisterComposer(
+    quote: Quote | undefined,
+    mentionFiles?: MentionFiles,
+    appendText?: (text: string) => boolean
+): void {
+    const latest = useRef({ quote, mentionFiles, appendText });
     const takes = quote !== undefined;
     const takesFiles = mentionFiles !== undefined;
+    const takesText = appendText !== undefined;
 
     useLayoutEffect(() => {
-        latest.current = { quote, mentionFiles };
+        latest.current = { quote, mentionFiles, appendText };
     });
 
     useEffect(
@@ -87,9 +102,10 @@ export function useRegisterComposer(quote: Quote | undefined, mentionFiles?: Men
             takes
                 ? registerComposer(
                       text => latest.current.quote?.(text),
-                      takesFiles ? files => latest.current.mentionFiles?.(files) ?? false : undefined
+                      takesFiles ? files => latest.current.mentionFiles?.(files) ?? false : undefined,
+                      takesText ? text => latest.current.appendText?.(text) ?? false : undefined
                   )
                 : undefined,
-        [takes, takesFiles]
+        [takes, takesFiles, takesText]
     );
 }

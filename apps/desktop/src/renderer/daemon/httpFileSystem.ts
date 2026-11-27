@@ -2,7 +2,7 @@ import { decodeUtf8 } from '@clowdy/file-manager/paths';
 import { FileSystemError } from '@clowdy/file-manager/provider';
 import { FS_VERSION_HEADER } from '@clowdy/protocol';
 
-import { SseParser } from './sse';
+import { readSse } from './sse';
 
 import type {
     FileContent,
@@ -33,6 +33,8 @@ export interface HttpFileSystemOptions {
 
 const WATCH_RECONNECT_MIN_MS = 500;
 const WATCH_RECONNECT_MAX_MS = 10_000;
+/** Twice the daemon's heartbeat (15 s): a watch silent for this long is taken as hung and opened again. */
+const WATCH_IDLE_MS = 30_000;
 
 const sleepFor = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
@@ -234,38 +236,29 @@ export class HttpFileSystem implements FileSystemProvider {
                 );
 
                 // Whatever way a stream is left (an answer that refuses, a listener that threw, an abort), it is closed and not left open to the daemon while the next one is made.
-                // A stream that has a reader is cancelled through it.
-                let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
-                const close = () => void (reader ?? response.body)?.cancel().catch(() => undefined);
-
-                // The folder is not the project's any more, or the project is gone: nothing is left to follow, and asking again would go on for as long as the app runs.
-                if (response.status === 404) return close();
-
                 if (!response.ok || !response.body) {
-                    close();
+                    void response.body?.cancel().catch(() => undefined);
+
+                    // The folder is not the project's any more, or the project is gone: nothing is left to follow, and asking again would go on for as long as the app runs.
+                    if (response.status === 404) return;
 
                     throw new Error(`The daemon answered ${response.status} for the watch`);
                 }
 
                 try {
-                    reader = response.body.getReader();
-
-                    const decoder = new TextDecoder();
-                    const parser = new SseParser();
-
                     listener({ type: 'resync' });
+                } catch (error) {
+                    void response.body.cancel().catch(() => undefined);
 
-                    backoff = WATCH_RECONNECT_MIN_MS;
+                    throw error;
+                }
 
-                    for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
-                        for (const frame of parser.push(decoder.decode(chunk.value, { stream: true }))) {
-                            const event = watchEvent(frame.data);
+                backoff = WATCH_RECONNECT_MIN_MS;
 
-                            if (event) listener(event);
-                        }
-                    }
-                } finally {
-                    close();
+                for await (const frame of readSse(response.body, WATCH_IDLE_MS)) {
+                    const event = watchEvent(frame.data);
+
+                    if (event) listener(event);
                 }
             } catch {
                 // Dropped or refused: the retry below.

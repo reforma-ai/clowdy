@@ -4,5 +4,12 @@
     --shadow-md: 0 var(--spacing-6) var(--spacing-lg) 0 var(--color-black-a5);
     --shadow-sm: 0 var(--spacing-2) var(--spacing-8) 0 var(--color-black-a5);
     --shadow-xs: 0 var(--spacing-2) var(--spacing-4) 0 var(--color-black-a5);
+    /* The lift of a small float over the page: a popover, a menu, a button that hovers over a selection. */
+    --shadow-float: 0 var(--spacing-16) var(--spacing-32) 0 var(--color-dark-a10);
     --effect-ai: 0 0 var(--spacing-20) 0.0625rem var(--color-primary-a10);
+}
+
+.dark,
+[data-theme='dark'] {
+    --shadow-float: 0 var(--spacing-16) var(--spacing-32) 0 var(--color-black-a50);
 }

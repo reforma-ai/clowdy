@@ -1,10 +1,10 @@
+import { Chip } from '@clowdy/components/Chip';
 import { FileIcon } from '@clowdy/components/FileIcon';
 import { For } from '@clowdy/components/For';
 import { Menu, MenuHeader, MenuItem, MenuSection } from '@clowdy/components/List';
 import { Popover, PopoverScroll, useContextMenu } from '@clowdy/components/Popover';
 import { Show } from '@clowdy/components/Show';
 import { toast } from '@clowdy/components/Toast';
-import { cn } from '@clowdy/lib';
 
 import { openInFiles } from '../../features/files/openInFiles';
 import { useKindOnDisk } from '../../features/files/useKindOnDisk';
@@ -23,13 +23,12 @@ import {
     useOpenApps,
 } from '../../features/openWith';
 import { currentPlace, isSamePlace, placeOf, placePath } from '../../features/sidePanel/currentPlace';
-import chipStyles from '../../shared/Chip.module.css';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { findChipFiles, useFoundFiles } from './chipFind';
 import { chipLabelFromPath, isDirectoryPath, normalizeChipPath } from './chipPath';
 import { isAbsolute, resolveChipTarget } from './chipTarget';
 
-import type { MouseEvent } from 'react';
+import type { PressEvent } from 'react-aria-components';
 
 /** How many of the files a written path could mean are listed to choose from. */
 const MATCHES_SHOWN = 10;
@@ -182,11 +181,14 @@ export function FileChip({ path, lines, className }: FileChipProps) {
         current
     );
 
-    const open = async (event: MouseEvent<HTMLButtonElement>) => {
-        // Where the menu opens if there is nothing to open: at the pointer, or under the chip for a press from the keyboard (which has no pointer). Read before waiting,
-        // since the event is not the chip's any more after that.
-        const { left, bottom } = event.currentTarget.getBoundingClientRect();
-        const [x, y] = event.detail === 0 ? [left, bottom] : [event.clientX, event.clientY];
+    const open = async (event: PressEvent) => {
+        // Where the menu opens if there is nothing to open: at the pointer, or under the chip for a press from the keyboard or a screen reader (which have no
+        // pointer). Read before waiting, since the chip may be gone after that.
+        const { left, top, bottom } = (event.target as Element).getBoundingClientRect();
+        const [x, y] =
+            event.pointerType === 'keyboard' || event.pointerType === 'virtual'
+                ? [left, bottom]
+                : [left + event.x, top + event.y];
 
         // ⌘ on a Mac, Ctrl on Windows: the menu, as a right-click gives it, in place of opening the file.
         if (event.metaKey || event.ctrlKey) {
@@ -216,19 +218,16 @@ export function FileChip({ path, lines, className }: FileChipProps) {
 
     return (
         <>
-            <button
-                type="button"
-                className={cn(chipStyles.chip, className)}
-                title={clean}
+            <Chip
+                className={className}
+                icon={<FileIcon path={clean} kind={isDirectoryPath(path) ? 'directory' : 'file'} />}
+                tooltip={clean}
                 aria-label={`Open ${clean || 'workspace'}`}
-                onClick={event => void open(event)}
+                onPress={event => void open(event)}
                 {...contextMenu.areaProps}
             >
-                <span className={chipStyles.icon}>
-                    <FileIcon path={clean} kind={isDirectoryPath(path) ? 'directory' : 'file'} />
-                </span>
-                <span className={chipStyles.label}>{label}</span>
-            </button>
+                {label}
+            </Chip>
             <Show when={contextMenu.isOpen}>
                 <Popover {...contextMenu.popoverProps} placement="bottom start" spacing="xs">
                     {target ? (

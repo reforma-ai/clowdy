@@ -1,11 +1,11 @@
 import { Button } from '@clowdy/components/Button';
+import { SettingsLayout } from '@clowdy/components/SettingsLayout';
 import { Switch } from '@clowdy/components/Switch';
 import { toast } from '@clowdy/components/Toast';
 import { observer } from 'mobx-react-lite';
 import { useState } from 'react';
 
 import { useAgents, useRootStore } from '../../stores';
-import { SettingsRow } from './ui/SettingsRow';
 
 export const SharedAgentSwitch = observer(function SharedAgentSwitch({
     id,
@@ -31,11 +31,11 @@ export const SharedAgentSwitch = observer(function SharedAgentSwitch({
         setSaving(false);
     }
     return (
-        <SettingsRow
+        <SettingsLayout.Row
             title={title}
             description={
                 mixed
-                    ? `${description} Providers have different saved choices until you change this switch.`
+                    ? `${description}. Providers have different saved choices until you change this switch.`
                     : description
             }
         >
@@ -51,6 +51,6 @@ export const SharedAgentSwitch = observer(function SharedAgentSwitch({
                     Turn off for all
                 </Button>
             )}
-        </SettingsRow>
+        </SettingsLayout.Row>
     );
 });

@@ -1,14 +1,13 @@
 import { Alert, AlertDescription, AlertIcon } from '@clowdy/components/Alert';
-import { Box } from '@clowdy/components/Box';
 import { Button } from '@clowdy/components/Button';
 import { FormField } from '@clowdy/components/FormField';
 import { Input } from '@clowdy/components/Input';
-import { Modal, useModalContext } from '@clowdy/components/Modal';
-import { Text } from '@clowdy/components/Text';
+import { useModalContext } from '@clowdy/components/Modal';
+import { DialogLayout, openFormDialog } from '@clowdy/components/modals';
 import { toast } from '@clowdy/components/Toast';
 import { AttentionCircle } from '@clowdy/icons/14';
 import { branchNameProblem } from '@clowdy/protocol';
-import { type FormEvent, useState } from 'react';
+import { useState } from 'react';
 
 import { branchPrefix } from '../chats/branchPrefix';
 import { refreshFolderGit } from '../openWith';
@@ -25,15 +24,7 @@ interface CreateWorktreeOptions {
 }
 
 export function openCreateWorktree(props: CreateWorktreeOptions): void {
-    Modal.create({
-        width: 420,
-        shadow: true,
-        clickOut: true,
-        closeOnEscape: true,
-        closeButton: true,
-        handle: false,
-        component: <CreateWorktreeForm {...props} />,
-    });
+    openFormDialog({ width: 420, component: <CreateWorktreeForm {...props} /> });
 }
 
 function CreateWorktreeForm({ root, projectId, folderId, reload }: CreateWorktreeOptions) {
@@ -46,9 +37,7 @@ function CreateWorktreeForm({ root, projectId, folderId, reload }: CreateWorktre
     const prefix = branchPrefix.value;
     const branch = branchName && !problem ? `${prefix}/${branchName}` : undefined;
 
-    const submit = async (event: FormEvent) => {
-        event.preventDefault();
-
+    const submit = async () => {
         if (!branchName || problem || pending) return;
 
         setFailure(undefined);
@@ -82,8 +71,7 @@ function CreateWorktreeForm({ root, projectId, folderId, reload }: CreateWorktre
     };
 
     return (
-        <form className={styles.dialog} onSubmit={event => void submit(event)}>
-            <Text variant="heading-3">New worktree</Text>
+        <DialogLayout title="New worktree" onSubmit={() => void submit()}>
             <FormField layout="vertical">
                 <FormField.Label>Worktree name</FormField.Label>
                 <FormField.Description>
@@ -132,6 +120,6 @@ function CreateWorktreeForm({ root, projectId, folderId, reload }: CreateWorktre
             >
                 {pending ? 'Preparing worktree…' : 'Create worktree'}
             </Button>
-        </form>
+        </DialogLayout>
     );
 }

@@ -1,7 +1,6 @@
 import { Alert, AlertAction, AlertDescription, AlertIcon } from '@clowdy/components/Alert';
 import { Button } from '@clowdy/components/Button';
-import { Loader } from '@clowdy/components/Loader';
-import { Text } from '@clowdy/components/Text';
+import { PanelLoadingState } from '@clowdy/components/Panel';
 import { AttentionCircle, Close } from '@clowdy/icons/14';
 import { useEffect, useState } from 'react';
 
@@ -45,10 +44,7 @@ export function OpeningTask({ reading, onRetry, onClose }: OpeningTaskProps) {
 
             <div className={styles.body}>
                 {reading.status === 'loading' ? (
-                    <div className={styles.waiting} role="status">
-                        <Loader size="xs" />
-                        <Text color="secondary">Loading the task…</Text>
-                    </div>
+                    <PanelLoadingState label="Loading the task…" />
                 ) : (
                     <Alert color="danger">
                         <AlertIcon>

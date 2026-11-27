@@ -1,20 +1,23 @@
 import { Button } from '@clowdy/components/Button';
 import { Checkbox } from '@clowdy/components/Checkbox';
+import { DiffStat } from '@clowdy/components/DiffStat';
 import { For } from '@clowdy/components/For';
-import { GridList, GridListItem, Menu, MenuItem, MenuTrigger } from '@clowdy/components/List';
+import { GridList, GridListItem, Menu, MenuItem } from '@clowdy/components/List';
+import { PathText } from '@clowdy/components/PathText';
 import { Popover, useContextMenu } from '@clowdy/components/Popover';
 import { Scrollable } from '@clowdy/components/Scrollable';
 import { Spinner } from '@clowdy/components/Spinner';
+import { SplitButton, type SplitButtonProps } from '@clowdy/components/SplitButton';
 import { Text } from '@clowdy/components/Text';
 import { Textarea } from '@clowdy/components/Textarea';
-import { AiStar, ChevronDown, Refresh, Undo } from '@clowdy/icons/14';
+import { AiStar, Refresh, Undo } from '@clowdy/icons/14';
 import { commitMessageAgent, writesCommitMessages } from '@clowdy/protocol';
 import { type MouseEvent, type KeyboardEvent as ReactKeyboardEvent, useEffect, useState } from 'react';
 
-import { Unavailable } from '../../shared/Unavailable';
 import { useAgents, useProjectUi, useRootStore } from '../../stores';
-import { quoteIntoComposer } from '../chats/composerBridge';
+import { appendTextIntoComposer } from '../chats/composerBridge';
 import { PathMenu, placeTarget } from '../openWith';
+import { ChangeKindGlyph } from './ChangeKindGlyph';
 import styles from './CommitBox.module.css';
 import { commitDraftOf } from './CommitDraft';
 import { commitLabel, commitTarget, isFetchFirst, SYNC_WORDS } from './changesActions';
@@ -23,11 +26,11 @@ import { openDiscardDialog } from './DiscardDialog';
 import { discardChanges } from './discardChanges';
 import { discardableFiles } from './discardRules';
 import { gitFactsOf } from './gitFacts';
-import { CHANGE_KIND_VIEW, splitPath } from './gitSummary';
 import { useRemoteActions } from './useRemoteActions';
 
 import type { GitChangedFile, GitStatusEntry } from '@clowdy/protocol';
 import type { ReactNode } from 'react';
+import type { PressEvent } from 'react-aria-components';
 import type { Place } from '../sidePanel/currentPlace';
 import type { CommitDraft } from './CommitDraft';
 import type { PlaceChanges } from './PlaceChanges';
@@ -103,9 +106,6 @@ function CommitFileRow({
     draft: CommitDraft;
     mergeGroup?: 'conflicts' | 'staged';
 }) {
-    const kind = CHANGE_KIND_VIEW[file.kind];
-    const { folder, name } = splitPath(file.path);
-
     return (
         <GridListItem
             id={file.path}
@@ -124,25 +124,13 @@ function CommitFileRow({
             }
             endAffix={
                 file.additions !== undefined && file.deletions !== undefined ? (
-                    <span className={styles.counts}>
-                        <Text variant="sm" color="success">{`+${file.additions}`}</Text>
-                        <Text variant="sm" color="danger">{`−${file.deletions}`}</Text>
-                    </span>
+                    <DiffStat added={file.additions} removed={file.deletions} className={styles.counts} />
                 ) : undefined
             }
         >
-            <Text slot="label" className={styles.fileName} title={file.path}>
-                <Text weight="medium" color={kind.color} className={styles.glyph} title={kind.label} aria-hidden="true">
-                    {kind.glyph}
-                </Text>
-                <Text weight="medium" truncate className={styles.name}>
-                    {name}
-                </Text>
-                {folder && (
-                    <Text color="secondary" truncate className={styles.folderHint}>
-                        {folder.slice(0, -1)}
-                    </Text>
-                )}
+            <Text slot="label" className={styles.fileName}>
+                <ChangeKindGlyph kind={file.kind} />
+                <PathText path={file.path} />
             </Text>
         </GridListItem>
     );
@@ -259,24 +247,11 @@ function CommitFileList({
     );
 }
 
-function ConflictActions({
-    conflicts,
-    writing,
-    remote,
-}: {
-    conflicts: readonly CommitFile[];
-    writing: boolean;
-    remote: RemoteActions;
-}) {
+function ConflictActions({ writing, remote }: { writing: boolean; remote: RemoteActions }) {
     const ui = useProjectUi();
 
     const ask = () => {
-        const quote =
-            conflicts.length === 0
-                ? 'Resolve the merge conflicts'
-                : `Resolve the merge conflicts in:\n${conflicts.map(({ path }) => `- \`${path}\``).join('\n')}`;
-
-        if (quoteIntoComposer(quote)) ui.showChat();
+        if (appendTextIntoComposer('Resolve the merge conflicts')) ui.showChat();
     };
 
     return (
@@ -432,6 +407,23 @@ export function CommitBox({ model, place }: { model: PlaceChanges; place: Place 
         ? (draft.commitReason ?? (commitAndSync && draft.busy === undefined ? draft.syncBlock : undefined))
         : undefined;
     const commit = (shift: boolean) => void draft.commit(shift ? !syncsByDefault : undefined);
+    // The Commit button, alone while a merge has conflicts or with the menu of the other way to commit, where its label wraps at the narrowest sidebar.
+    const commitProps = {
+        color: 'contrast',
+        size: 'sm',
+        fullWidth: true,
+        contentClassName: styles.commitContent,
+        isDisabled: !(commitAndSync ? draft.canCommitAndSync : draft.canCommit),
+        disabledReason: reason,
+        isPending: draft.writing,
+        tooltip:
+            hasChangesToCommit && reason === undefined && !merging && !commitAndSync && target
+                ? `Commit to ${target.name}`
+                : undefined,
+        tooltipPlacement: 'top',
+        onPress: (event: PressEvent) => commit(event.shiftKey),
+        children: label,
+    } satisfies Omit<SplitButtonProps, 'menu' | 'menuLabel'>;
 
     return (
         <section className={styles.root} aria-label="Commit">
@@ -463,9 +455,7 @@ export function CommitBox({ model, place }: { model: PlaceChanges; place: Place 
                     )
                 }
             />
-            {showConflicts && (
-                <ConflictActions conflicts={mergeFiles.conflicts} writing={draft.writing} remote={remote} />
-            )}
+            {showConflicts && <ConflictActions writing={draft.writing} remote={remote} />}
 
             {(hasFiles || conflicts > 0) && (
                 <Scrollable className={styles.list} contentClass={styles.rows}>
@@ -543,55 +533,31 @@ export function CommitBox({ model, place }: { model: PlaceChanges; place: Place 
                 }}
             />
 
-            <div className={styles.commitGroup}>
-                <Unavailable label={label} hint={reason} className={styles.commitHost}>
-                    <Button
-                        color="contrast"
-                        size="sm"
-                        className={styles.commit}
-                        contentClassName={styles.commitContent}
-                        isDisabled={!(commitAndSync ? draft.canCommitAndSync : draft.canCommit)}
-                        isPending={draft.writing}
-                        tooltip={
-                            hasChangesToCommit && reason === undefined && !merging && !commitAndSync && target
-                                ? `Commit to ${target.name}`
-                                : undefined
-                        }
-                        tooltipPlacement="top"
-                        onPress={event => commit(event.shiftKey)}
-                    >
-                        {label}
-                    </Button>
-                </Unavailable>
-                {(!merging || draft.concluding) && (
-                    <MenuTrigger>
-                        <Button
-                            variant="bordered"
-                            size="sm"
-                            iconOnly
-                            className={styles.more}
-                            isDisabled={!draft.canCommit}
-                            aria-label="More ways to commit"
-                            tooltip="More ways to commit"
-                            tooltipPlacement="top"
-                        >
-                            <ChevronDown aria-hidden="true" />
-                        </Button>
-                        <Popover placement="top end" spacing="xs" width={220}>
-                            <Menu aria-label="Commit" size="sm" onAction={() => void draft.commit(!syncsByDefault)}>
-                                <MenuItem
-                                    id={syncsByDefault ? 'local' : 'sync'}
-                                    icon={syncsByDefault ? undefined : <Refresh />}
-                                    text={syncsByDefault ? localOnlyLabel : syncLabel}
-                                    description={alternateBlock}
-                                    stacked={alternateBlock !== undefined}
-                                    isDisabled={alternateBlock !== undefined}
-                                />
-                            </Menu>
-                        </Popover>
-                    </MenuTrigger>
-                )}
-            </div>
+            {!merging || draft.concluding ? (
+                <SplitButton
+                    {...commitProps}
+                    wrap
+                    menuLabel="More ways to commit"
+                    menuTooltip="More ways to commit"
+                    isMenuDisabled={!draft.canCommit}
+                    menuPlacement="top end"
+                    menuWidth={220}
+                    menu={
+                        <Menu aria-label="Commit" size="sm" onAction={() => void draft.commit(!syncsByDefault)}>
+                            <MenuItem
+                                id={syncsByDefault ? 'local' : 'sync'}
+                                icon={syncsByDefault ? undefined : <Refresh />}
+                                text={syncsByDefault ? localOnlyLabel : syncLabel}
+                                description={alternateBlock}
+                                stacked={alternateBlock !== undefined}
+                                isDisabled={alternateBlock !== undefined}
+                            />
+                        </Menu>
+                    }
+                />
+            ) : (
+                <Button {...commitProps} />
+            )}
 
             {/* Several chats share a place, so a commit that goes straight to the branch the work is compared with is said before it is made. */}
             {hasChangesToCommit && target?.onBase && (

@@ -1,8 +1,7 @@
 import { Alert, AlertAction, AlertDescription, AlertIcon } from '@clowdy/components/Alert';
 import { Button } from '@clowdy/components/Button';
 import { ContentColumn } from '@clowdy/components/ContentColumn';
-import { Loader } from '@clowdy/components/Loader';
-import { Text } from '@clowdy/components/Text';
+import { PanelLoadingState } from '@clowdy/components/Panel';
 import { AttentionCircle } from '@clowdy/icons/14';
 import { shownRunStatus } from '@clowdy/protocol';
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -13,7 +12,7 @@ import styles from './ConversationView.module.css';
 import { isRunActive, liveLine } from './chatRun';
 import { perform } from './commands';
 
-import type { Run, StreamItem } from '@clowdy/protocol';
+import type { ApprovalDecision, Run, StreamItem } from '@clowdy/protocol';
 import type { ReactNode, Ref } from 'react';
 import type { RunStream } from '../../stores';
 import type { ConversationLinks } from './useStreamLinks';
@@ -120,6 +119,29 @@ export function ConversationView({
         (shown === 'queued' || shown === 'blocked') && run?.statusReason?.includes(' is at its usage limit until ')
             ? usageLimitMessage(run.statusReason)
             : undefined;
+    const runId = run?.id;
+    const answerable = run?.status === 'waiting_user';
+    // Stable while the run stays, so the cards of the stream do not draw again on every chunk.
+    // A question the run no longer waits on (stopped, interrupted) is shown but cannot be answered.
+    const onAnswer = useMemo(
+        () =>
+            runId !== undefined && answerable
+                ? async (questionId: string, answer: string) => {
+                      await perform(root, { type: 'run.answer', runId, questionId, answer });
+                  }
+                : undefined,
+        [root, runId, answerable]
+    );
+    // A request for permission is decided while its own item is open, whatever the run is doing, so the card gates itself and the handler only needs a run to name.
+    const onDecide = useMemo(
+        () =>
+            runId !== undefined
+                ? async (approvalId: string, decision: ApprovalDecision) => {
+                      await perform(root, { type: 'run.decide', runId, approvalId, decision });
+                  }
+                : undefined,
+        [root, runId]
+    );
     // The live line follows what the person reads of the run: none while a card waits for them.
     const working =
         isRunActive(run) &&
@@ -148,10 +170,7 @@ export function ConversationView({
             )}
 
             {((stream && (stream.status === 'idle' || stream.status === 'loading') && !hasItems) || holding) && (
-                <div className={styles.center}>
-                    <Loader size="xs" />
-                    <Text color="secondary">Loading messages…</Text>
-                </div>
+                <PanelLoadingState label="Loading messages…" />
             )}
 
             {composerInset !== undefined &&
@@ -168,22 +187,8 @@ export function ConversationView({
                         waitingNotice={usageLimit}
                         waitingUntil={usageLimit ? run?.usageLimitUntil : undefined}
                         links={links}
-                        // A question the run no longer waits on (stopped, interrupted) is shown but cannot be answered.
-                        onAnswer={
-                            run?.status === 'waiting_user'
-                                ? async (questionId, answer) => {
-                                      await perform(root, { type: 'run.answer', runId: run.id, questionId, answer });
-                                  }
-                                : undefined
-                        }
-                        // A request for permission is decided while its own item is open, whatever the run is doing, so the card gates itself and the handler only needs a run to name.
-                        onDecide={
-                            run
-                                ? async (approvalId, decision) => {
-                                      await perform(root, { type: 'run.decide', runId: run.id, approvalId, decision });
-                                  }
-                                : undefined
-                        }
+                        onAnswer={onAnswer}
+                        onDecide={onDecide}
                     />
                 )}
 

@@ -85,12 +85,17 @@ async function setup() {
     const { project } = h.ok('project.add', { name: 'Shop', folders: [shop, infra] });
     const { project: stranger } = h.ok('project.add', { name: 'Other', folders: [other] });
     const [folder, infraFolder] = project.folders as Array<{ id: string; path: string }>;
-    const workspace = (projectId: string, path: string, folderId?: string) =>
-        h.ok('chat.create', { projectId, workspace: { mode: 'existing', path }, ...(folderId && { folderId }) }).chat
-            .workspace as { id: string };
-    const feature = workspace(project.id, tree);
-    const tuning = workspace(project.id, infraTree, infraFolder.id);
-    const theirs = workspace(stranger.id, otherTree);
+    const workspace = async (projectId: string, path: string, folderId?: string) =>
+        (
+            await h.okAsync('chat.create', {
+                projectId,
+                workspace: { mode: 'existing', path },
+                ...(folderId && { folderId }),
+            })
+        ).chat.workspace as { id: string };
+    const feature = await workspace(project.id, tree);
+    const tuning = await workspace(project.id, infraTree, infraFolder.id);
+    const theirs = await workspace(stranger.id, otherTree);
     const base = `/v1/projects/${project.id}`;
     const fsUrl = (route: string, params: Record<string, string | undefined>) =>
         `${base}/fs/${route}?${new URLSearchParams(Object.entries(params).flatMap(([key, value]) => (value === undefined ? [] : [[key, value]]))).toString()}`;
@@ -397,7 +402,8 @@ describe('the file system in a worktree', () => {
 
     test('a workspace that is not made yet, or is gone from the disk, is unavailable in every route', async () => {
         const { h, project, folder, shop, base, fsUrl, post, failure } = await setup();
-        const unmade = h.ok('chat.create', { projectId: project.id, workspace: { mode: 'new' } }).chat.workspace as {
+        const unmade = (await h.okAsync('chat.create', { projectId: project.id, workspace: { mode: 'new' } })).chat
+            .workspace as {
             id: string;
             ready: boolean;
             path: string;
@@ -406,8 +412,9 @@ describe('the file system in a worktree', () => {
 
         git(shop, 'worktree', 'add', '-q', '-b', 'gone', gone);
 
-        const missing = h.ok('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: gone } }).chat
-            .workspace as { id: string };
+        const missing = (
+            await h.okAsync('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: gone } })
+        ).chat.workspace as { id: string };
 
         rmSync(gone, { recursive: true, force: true });
         expect(unmade.ready).toBe(false);
@@ -460,8 +467,9 @@ describe('the file system in a worktree', () => {
 
         git(shop, 'worktree', 'add', '-q', '-b', 'watched', gone);
 
-        const { id } = h.ok('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: gone } }).chat
-            .workspace as { id: string };
+        const { id } = (
+            await h.okAsync('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: gone } })
+        ).chat.workspace as { id: string };
         const response = await h.fetch(fsUrl('watch', { folderId: folder.id, workspaceId: id }));
         const reader = new EventReader(response.body as ReadableStream<Uint8Array>);
         const inCheckout = new EventReader(
@@ -657,7 +665,8 @@ describe('the workspaces in the info of the projects', () => {
     test('says a worktree is not there while it is not made or when its folder is gone, and leaves `workspaces` out for a project with none', async () => {
         const { h, project, shop } = await setup();
         const { project: plain } = h.ok('project.add', { name: 'Plain', folders: [makeRepo(dirname(shop), 'plain')] });
-        const unmade = h.ok('chat.create', { projectId: plain.id, workspace: { mode: 'new' } }).chat.workspace as {
+        const unmade = (await h.okAsync('chat.create', { projectId: plain.id, workspace: { mode: 'new' } })).chat
+            .workspace as {
             id: string;
         };
         const info = async (projectId: string) =>
@@ -669,8 +678,9 @@ describe('the workspaces in the info of the projects', () => {
 
         git(shop, 'worktree', 'add', '-q', '-b', 'info-gone', gone);
 
-        const { id } = h.ok('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: gone } }).chat
-            .workspace as { id: string };
+        const { id } = (
+            await h.okAsync('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: gone } })
+        ).chat.workspace as { id: string };
 
         rmSync(gone, { recursive: true, force: true });
         expect((await info(project.id)).workspaces).toContainEqual({ workspaceId: id, exists: false });
@@ -719,7 +729,9 @@ describe('the workspaces in the info of the projects', () => {
         git(found, 'switch', '-q', '-c', 'switched');
         expect(await infoOf()).toEqual([{ workspaceId: workspace.id, exists: true, branch: 'switched' }]);
 
-        const chat = h.ok('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: found } }).chat;
+        const chat = (
+            await h.okAsync('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: found } })
+        ).chat;
 
         expect(chat.workspace?.id).toBe(workspace.id);
         expect(await infoOf()).toEqual([{ workspaceId: workspace.id, exists: true, branch: 'switched' }]);
@@ -762,8 +774,9 @@ describe('the workspaces in the info of the projects', () => {
 
     test('is one entry for a worktree that several chats work in', async () => {
         const { h, project, tree, feature } = await setup();
-        const again = h.ok('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: tree } }).chat
-            .workspace as { id: string };
+        const again = (
+            await h.okAsync('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: tree } })
+        ).chat.workspace as { id: string };
         const info = (await (await h.fetch(`/v1/projects/info?project=${project.id}`)).json()) as ProjectInfo[];
 
         expect(again.id).toBe(feature.id);
@@ -811,8 +824,9 @@ describe('a worktree inside the main checkout', () => {
         git(shop, 'worktree', 'add', '-q', '-b', 'inner', nested);
         put(nested, { 'inside.txt': 'inside' });
 
-        const { id } = h.ok('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: nested } })
-            .chat.workspace as { id: string };
+        const { id } = (
+            await h.okAsync('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: nested } })
+        ).chat.workspace as { id: string };
         const listed = (
             (await (await h.fetch(fsUrl('list', { folderId: folder.id, workspaceId: id }))).json()) as FsEntry[]
         ).map(entry => entry.path);

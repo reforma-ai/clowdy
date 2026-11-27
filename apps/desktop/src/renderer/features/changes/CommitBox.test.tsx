@@ -15,6 +15,7 @@ import {
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { type Transport, TransportError } from '../../daemon/transport';
 import { RootStore, RootStoreProvider } from '../../stores';
+import { registerComposer } from '../chats/composerBridge';
 import { CommitBox } from './CommitBox';
 import { CommitDraft, commitDraftOf } from './CommitDraft';
 import { type GitPlaceKey, gitFactsOf } from './gitFacts';
@@ -600,6 +601,14 @@ describe('the commit box', () => {
             expect(headings()).toEqual(['Conflicts1', 'Files to commit1']);
             expect(box()?.querySelector('details')).toBeNull();
             expect(buttonOf('Abort merge')).toBeDefined();
+            const appendText = vi.fn(() => true);
+            const unregister = registerComposer(vi.fn(), undefined, appendText);
+            try {
+                await press(buttonOf('Ask agent')!);
+                expect(appendText).toHaveBeenCalledExactlyOnceWith('Resolve the merge conflicts');
+            } finally {
+                unregister();
+            }
             expect(checkboxes()).toHaveLength(0);
             await press(stagedRow);
             expect(model.revealRequest).toBe('src/booking/price.ts');

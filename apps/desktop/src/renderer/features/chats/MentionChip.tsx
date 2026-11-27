@@ -1,13 +1,10 @@
+import { Chip } from '@clowdy/components/Chip';
 import { FileIcon } from '@clowdy/components/FileIcon';
-import { Tooltip } from '@clowdy/components/Tooltip';
 import { Message, Page } from '@clowdy/icons/14';
-import { cn } from '@clowdy/lib';
 
-import chipStyles from '../../shared/Chip.module.css';
-import { TaskChipContents, taskChipClass } from '../../shared/TaskChip';
+import { taskChipIcon } from '../../shared/TaskChip';
 import { useProjectState } from '../../stores';
 import { statusTone } from '../tasks/status';
-import styles from './MentionChip.module.css';
 
 import type { ComposerMentionAttrs, RichInputMentionRenderProps } from '@clowdy/components/RichInput';
 import type { ReactNode } from 'react';
@@ -32,6 +29,7 @@ export function mentionIcon({ kind, data }: Pick<ComposerMentionAttrs, 'kind' | 
     }
 }
 
+/** A task mention: the task chip of the chat, out of the tab order since it is part of the text. */
 function TaskMentionChip({ mention }: Pick<RichInputMentionRenderProps, 'mention'>) {
     const project = useProjectState();
     const task = project.taskOfKey(mention.label);
@@ -39,45 +37,35 @@ function TaskMentionChip({ mention }: Pick<RichInputMentionRenderProps, 'mention
     const title = task?.title ?? (mention.data as { title?: string } | null)?.title;
 
     return (
-        <Tooltip content={title}>
-            <span
-                className={cn(taskChipClass, styles.chip)}
-                data-chip
-                data-tone={statusTone(status?.category)}
-                tabIndex={-1}
-            >
-                <TaskChipContents label={mention.label} status={status} />
-            </span>
-        </Tooltip>
+        <Chip tone={statusTone(status?.category)} icon={taskChipIcon(status)} tooltip={title} data-chip tabIndex={-1}>
+            {mention.label}
+        </Chip>
     );
 }
 
 /** A skill asked for in a message that was sent: the plate it had in the box, with its description as the hover title. */
 export function SkillChip({ name, description }: { name: string; description?: string }) {
     return (
-        <span className={cn(chipStyles.chip, styles.chip)} data-chip title={description}>
-            <span className={chipStyles.label}>{`/${name}`}</span>
-        </span>
+        <Chip data-chip title={description}>
+            {`/${name}`}
+        </Chip>
     );
 }
 
-/** A mention inside the text: the same plate as a task chip in the chat, with what it points at as its hover title. */
+/**
+ * A mention inside the text: the same plate as a task chip in the chat, with what it points at as its hover title. A native title, since a chip with a tooltip
+ * would be a stop of its own inside the text.
+ */
 export function MentionChip({ mention }: RichInputMentionRenderProps) {
     if (mention.kind === 'task') return <TaskMentionChip mention={mention} />;
 
     const title =
         (mention.data as { title?: unknown; path?: unknown } | null)?.title ??
         (mention.data as { path?: unknown } | null)?.path;
-    const icon = mentionIcon(mention);
 
     return (
-        <span
-            className={cn(chipStyles.chip, styles.chip)}
-            data-chip
-            title={typeof title === 'string' ? title : undefined}
-        >
-            {icon && <span className={chipStyles.icon}>{icon}</span>}
-            <span className={chipStyles.label}>{mention.label}</span>
-        </span>
+        <Chip data-chip icon={mentionIcon(mention)} title={typeof title === 'string' ? title : undefined}>
+            {mention.label}
+        </Chip>
     );
 }

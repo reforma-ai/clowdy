@@ -1,16 +1,15 @@
 import { Button } from '@clowdy/components/Button';
 import { Input } from '@clowdy/components/Input';
+import { SettingsLayout } from '@clowdy/components/SettingsLayout';
 import { Spinner } from '@clowdy/components/Spinner';
 import { Text } from '@clowdy/components/Text';
 import { Close } from '@clowdy/icons/12';
 import { NO_PROJECT_ICON } from '@clowdy/protocol';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 
 import { ProjectIcon } from '../../../shared/ProjectIcon';
 import { useProjectIcon, useRootStore } from '../../../stores';
-import { SettingsCard } from '../ui/SettingsCard';
-import { SettingsRow } from '../ui/SettingsRow';
-import { SettingsSection } from '../ui/SettingsSection';
+import { useDraftField } from '../useDraftField';
 import { ProjectDefaults } from './ProjectDefaults';
 import styles from './ProjectDetail.module.css';
 import { ProjectFolders } from './ProjectFolders';
@@ -40,11 +39,11 @@ export function ProjectDetail({ project, info, infoFailed }: ProjectDetailProps)
     return (
         <>
             {!project.personal && (
-                <SettingsSection title="Project">
-                    <SettingsCard>
+                <SettingsLayout.Section title="Project">
+                    <SettingsLayout.Card>
                         <NameRow project={project} />
-                    </SettingsCard>
-                </SettingsSection>
+                    </SettingsLayout.Card>
+                </SettingsLayout.Section>
             )}
 
             <ProjectFolders project={project} info={info} infoFailed={infoFailed} />
@@ -59,41 +58,21 @@ export function ProjectDetail({ project, info, infoFailed }: ProjectDetailProps)
 /** Rename on blur or Enter; Escape puts the name back. The draft stays on screen until the daemon's own name arrives. */
 function NameRow({ project }: { project: Project }) {
     const root = useRootStore();
-    const [draft, setDraft] = useState<string>();
+    const { fieldProps } = useDraftField(project.name, async draft => {
+        const name = draft.trim();
 
-    // The daemon's answer, from this window or another one.
-    useEffect(() => setDraft(undefined), [project.name]);
+        if (!name || name === project.name) return true;
 
-    const commit = async () => {
-        const name = draft?.trim();
-
-        if (!name || name === project.name) {
-            setDraft(undefined);
-
-            return;
-        }
-
-        if (!(await renameProject(root, project, name))) setDraft(undefined);
-    };
+        // A refused name goes back to the saved one; an accepted one stays until the daemon's answer replaces the value.
+        return !(await renameProject(root, project, name));
+    });
 
     return (
-        <SettingsRow title="Name" description="How the project is listed in Clowdy">
-            <Input
-                type="text"
-                variant="bordered"
-                className={styles.nameField}
-                aria-label="Project name"
-                value={draft ?? project.name}
-                onChange={setDraft}
-                onBlur={() => void commit()}
-                onKeyDown={event => {
-                    if (event.key === 'Enter') event.currentTarget.blur();
-                    else if (event.key === 'Escape') setDraft(undefined);
-                }}
-            >
+        <SettingsLayout.Row title="Name" description="How the project is listed in Clowdy" controlWidth="18rem">
+            <Input {...fieldProps} type="text" variant="bordered" className={styles.nameField}>
                 <IconField slot="prefix" project={project} />
             </Input>
-        </SettingsRow>
+        </SettingsLayout.Row>
     );
 }
 
@@ -170,9 +149,9 @@ function RemoveSection({ project, info }: { project: Project; info: ProjectInfo 
     const stays = project.folders.length === 1 ? 'The folder and its files stay' : 'Its folders and their files stay';
 
     return (
-        <SettingsSection title="Danger zone">
-            <SettingsCard>
-                <SettingsRow
+        <SettingsLayout.Section title="Danger zone">
+            <SettingsLayout.Card>
+                <SettingsLayout.Row
                     title="Remove project"
                     description={`Deletes ${project.name}'s chats, tasks and the work of its agents from Clowdy. ${stays} on your computer.`}
                     footer={
@@ -186,8 +165,8 @@ function RemoveSection({ project, info }: { project: Project; info: ProjectInfo 
                     <Button color="danger" isDisabled={working} onPress={() => removeProject(root, project, info)}>
                         Remove project
                     </Button>
-                </SettingsRow>
-            </SettingsCard>
-        </SettingsSection>
+                </SettingsLayout.Row>
+            </SettingsLayout.Card>
+        </SettingsLayout.Section>
     );
 }

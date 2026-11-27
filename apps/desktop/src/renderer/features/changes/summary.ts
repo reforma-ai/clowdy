@@ -8,9 +8,9 @@ import type { RepositoryChanges } from './PlaceChanges';
 export interface ChangesSummary {
     /** `16 files`, or `3 of 16 files` while the filter hides some. */
     files: string;
-    /** `+491` and `−38`, with a real minus sign as the tool cards write it: of every file, or of the ones the filter shows. */
-    additions: string;
-    deletions: string;
+    /** The added and removed lines: of every file, or of the ones the filter shows. */
+    additions: number;
+    deletions: number;
     /** Some file's lines were not counted, so the numbers are a lower bound. */
     incomplete: boolean;
     /** `2 viewed`: how many of the list's files are viewed, said only when some are. */
@@ -40,8 +40,8 @@ export function summaryOf(changes: RepositoryChanges, shown: readonly GitChanged
 
     return {
         files: filtered ? `${shown.length} of ${filesWords(changes.files.length)}` : filesWords(changes.fileCount),
-        additions: `+${additions}`,
-        deletions: `−${deletions}`,
+        additions,
+        deletions,
         incomplete: !changes.statsComplete,
         ...(viewed > 0 && { viewed: `${viewed} viewed` }),
         notes,

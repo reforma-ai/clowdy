@@ -1,122 +1,13 @@
-@reference '@clowdy/styles/rulesets';
-
-/*
- * The cards of other work in a stream, one family: a message another thread wrote, a thread that stopped and a sub-agent, running or over (`AgentCard`). A bordered plate
- * in the stream for words an agent wrote and not the person, built as an answered question is: a header that opens with an icon, and under a rule, flush with the plate's
- * own padding and not pushed in by the icon, what the work says.
- */
-.card {
-    @ruleset typography-text-md;
-
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    width: 100%;
-    max-width: 100%;
-    border: 1px solid var(--color-secondary-muted-border);
-    border-radius: calc(var(--radius-lg) * var(--squircle-radius-factor));
-    corner-shape: superellipse(var(--squircle-value));
-    background-color: var(--color-surface-float);
-    overflow: hidden;
-    overflow-wrap: anywhere;
-    transition: background-color 0.15s ease;
-}
-
+/* What the cards of other work put in their frame (`StreamCard`): a message another thread wrote, a thread that stopped and a sub-agent, running or over. */
 .group {
     display: flex;
     flex-direction: column;
     gap: var(--spacing-sm);
 }
 
-/* The header: the icon belongs to the title, so what is under the rule starts at the plate's edge. */
-.head {
-    @ruleset typography-text-sm;
-
-    display: flex;
-    align-items: flex-start;
-    gap: var(--spacing-sm);
-    min-width: 0;
-    min-height: var(--spacing-36);
-    padding: var(--spacing-md) var(--spacing-lg);
-}
-
-/* The rule stands in from the card's edges, as in the answered question and the tool cards. A bar across the foot of a clamp runs out to the edges, so it gets the padding to reach past. */
-.body {
-    --clamp-bleed-inline: var(--spacing-lg);
-
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-xs);
-    padding: var(--spacing-md) var(--spacing-lg) var(--spacing-lg);
-}
-
-.body::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: var(--spacing-md);
-    right: var(--spacing-md);
-    height: 1px;
-    background-color: var(--color-secondary-muted-border);
-}
-
-.body > :last-child {
-    --clamp-bleed-bottom: var(--spacing-lg);
-}
-
-.icon {
-    display: inline-flex;
-    flex-shrink: 0;
-    align-items: center;
-    height: var(--spacing-20);
-    color: var(--color-secondary-muted-text);
-}
-
-.title {
-    flex: 1;
-    min-width: 0;
-    font-weight: 500;
-    line-height: var(--spacing-20);
-}
-
 /* The name of a thread in a title: a link in the title's own words. */
 .link {
     font-weight: 500;
-}
-
-/*
- * The press of a card that opens something: the title is the button (the one way in for the keyboard and a screen reader), and its box stretches over the card, so a press
- * anywhere on the plate opens it. What is drawn over the stretch (the report) is left alone: its words can be selected and its toggle pressed.
- */
-.press {
-    margin: 0;
-    padding: 0;
-    border: none;
-    background: none;
-    color: inherit;
-    font: inherit;
-    text-align: start;
-    cursor: pointer;
-}
-
-.press::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-}
-
-.press:focus-visible {
-    outline: none;
-}
-
-.card[data-pressable]:has(.press:hover) {
-    background-color: var(--color-secondary-muted-light);
-}
-
-.card[data-pressable]:has(.press:focus-visible) {
-    outline: var(--spacing-4) solid var(--color-primary-muted-border);
-    outline-offset: calc(var(--spacing-4) * -1);
 }
 
 .report {

@@ -184,8 +184,8 @@ describe('GET /v1/projects/:id/git/branches', () => {
 
         const { project, read } = await open(path, h);
         const workspaceId = (
-            h.ok('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: chatTree } }).chat
-                .workspace as { id: string }
+            (await h.okAsync('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: chatTree } }))
+                .chat.workspace as { id: string }
         ).id;
         const answer = listing(await read());
         const byName = (list: typeof answer, name: string) => list.local.find(branch => branch.name === name)!;
@@ -215,8 +215,8 @@ describe('GET /v1/projects/:id/git/branches', () => {
 
         const { project, read } = await open(path, h);
         const workspaceId = (
-            h.ok('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: link } }).chat
-                .workspace as { id: string }
+            (await h.okAsync('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: link } }))
+                .chat.workspace as { id: string }
         ).id;
 
         expect(listing(await read()).local.find(branch => branch.name === 'linked')!.heldBy).toMatchObject({
@@ -342,8 +342,8 @@ describe('GET /v1/projects/:id/git/branches', () => {
         git(path, 'worktree', 'add', '-q', '-b', 'gone-branch', tree);
 
         const workspaceId = (
-            h.ok('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: tree } }).chat
-                .workspace as { id: string }
+            (await h.okAsync('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: tree } }))
+                .chat.workspace as { id: string }
         ).id;
 
         git(path, 'worktree', 'remove', '--force', tree);

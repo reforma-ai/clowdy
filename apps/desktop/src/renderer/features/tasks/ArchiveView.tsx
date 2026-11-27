@@ -1,8 +1,7 @@
 import { Alert, AlertAction, AlertDescription, AlertIcon } from '@clowdy/components/Alert';
 import { Button } from '@clowdy/components/Button';
-import { Loader } from '@clowdy/components/Loader';
+import { FoldButton, PanelEmptyState, PanelLoadingState } from '@clowdy/components/Panel';
 import { Text } from '@clowdy/components/Text';
-import { ChevronDown, ChevronRight } from '@clowdy/icons/8';
 import { AttentionCircle, Undo } from '@clowdy/icons/14';
 import { type CSSProperties, useEffect, useRef, useState } from 'react';
 
@@ -80,12 +79,7 @@ export function ArchiveView({ statuses, openId, onOpen, pageSize = ARCHIVE_PAGE_
     });
 
     if (state.status === 'loading') {
-        return (
-            <div className={styles.center} role="status">
-                <Loader size="xs" />
-                <Text color="secondary">Loading the archive…</Text>
-            </div>
-        );
+        return <PanelLoadingState label="Loading the archive…" />;
     }
 
     if (state.status === 'failed') {
@@ -109,10 +103,14 @@ export function ArchiveView({ statuses, openId, onOpen, pageSize = ARCHIVE_PAGE_
     if (state.tasks.length === 0 && !state.hasMore) {
         return (
             <div ref={frame} className={styles.center}>
-                <Text variant="heading-4" tabIndex={-1} className={styles.heading} data-archive-heading>
-                    Nothing archived
-                </Text>
-                <Text color="secondary">Finished work you archive shows up here, and can be restored</Text>
+                <PanelEmptyState
+                    title={
+                        <span tabIndex={-1} className={styles.heading} data-archive-heading>
+                            Nothing archived
+                        </span>
+                    }
+                    description="Finished work you archive shows up here, and can be restored"
+                />
             </div>
         );
     }
@@ -173,15 +171,12 @@ export function ArchiveView({ statuses, openId, onOpen, pageSize = ARCHIVE_PAGE_
                         >
                             <span className={styles.fold}>
                                 {hasChildren && (
-                                    <button
-                                        type="button"
-                                        className={styles.chevron}
-                                        aria-expanded={!collapsed}
-                                        aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${task.key}`}
-                                        onClick={() => toggle(task.id)}
-                                    >
-                                        {collapsed ? <ChevronRight /> : <ChevronDown />}
-                                    </button>
+                                    <FoldButton
+                                        size="xxs"
+                                        isExpanded={!collapsed}
+                                        label={`${collapsed ? 'Expand' : 'Collapse'} ${task.key}`}
+                                        onToggle={() => toggle(task.id)}
+                                    />
                                 )}
                             </span>
                             <button

@@ -12,7 +12,6 @@ import { OverlayTriggerStateContext, PopoverContext, type PressEvent } from 'rea
 import { tildePath } from '../../shared/displayPath';
 import { homeFolder } from '../../shared/homeFolder';
 import { isInPickerPopover, type PickerOption } from '../../shared/PickerPopover';
-import { Unavailable } from '../../shared/Unavailable';
 import { BranchPickerWithCreate } from './BranchPickerWithCreate';
 import { ChipTrigger } from './ChipTrigger';
 import { MainBranchPicker } from './MainBranchPicker';
@@ -688,12 +687,18 @@ export function WorkspaceChips({
     if (!why) return null;
 
     return (
-        <Unavailable label="Where it runs: Git unavailable" hint={why} placement="bottom">
-            <div role="group" className={styles.label}>
-                <Text truncate color="secondary">
-                    Git unavailable
-                </Text>
-            </div>
-        </Unavailable>
+        // A dim pill that does not open: the reason is its tooltip.
+        <Button
+            size="sm"
+            variant="transparent"
+            color="secondary"
+            rounded
+            isDisabled
+            disabledReason={why}
+            tooltipPlacement="bottom"
+            aria-label="Where it runs: Git unavailable"
+        >
+            Git unavailable
+        </Button>
     );
 }

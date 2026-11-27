@@ -1,0 +1,27 @@
+@layer components {
+    .layout {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-xxl);
+        min-width: 0;
+        padding: var(--spacing-20);
+    }
+
+    .header {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-md);
+        min-width: 0;
+    }
+
+    .title {
+        margin: 0;
+    }
+
+    .actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: var(--spacing-md);
+    }
+}

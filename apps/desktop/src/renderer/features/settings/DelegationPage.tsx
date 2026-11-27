@@ -1,3 +1,4 @@
+import { SettingsLayout } from '@clowdy/components/SettingsLayout';
 import { toast } from '@clowdy/components/Toast';
 import { observer } from 'mobx-react-lite';
 import { useEffect, useState } from 'react';
@@ -6,15 +7,17 @@ import { useAgents, useRootStore } from '../../stores';
 import { ModelPicker } from '../chats/ModelPicker';
 import { useModelChoice } from '../chats/useModelChoice';
 import { SharedAgentSwitch } from './SharedAgentSwitch';
-import { SettingsCard } from './ui/SettingsCard';
-import { SettingsPage } from './ui/SettingsPage';
-import { SettingsRow } from './ui/SettingsRow';
-import { SettingsSection } from './ui/SettingsSection';
 
 import type { DelegationSettings } from '@clowdy/protocol';
 
 const ROLES = ['default', 'research', 'code', 'review'] as const;
 const LABELS = { default: 'Default', research: 'Research', code: 'Code', review: 'Review' };
+const DESCRIPTIONS = {
+    default: 'Threads without a role and roles that use the default',
+    research: 'Investigate questions, explore code and gather information',
+    code: 'Implement changes and fix issues',
+    review: 'Review changes and check results',
+};
 
 export const DelegationPage = observer(function DelegationPage() {
     const root = useRootStore();
@@ -46,18 +49,18 @@ export const DelegationPage = observer(function DelegationPage() {
     }
 
     return (
-        <SettingsPage description="Choose agents for new threads">
-            <SettingsSection title="Native subagents">
-                <SettingsCard>
+        <SettingsLayout.Page description="Choose agents for new threads">
+            <SettingsLayout.Section title="Native subagents">
+                <SettingsLayout.Card>
                     <SharedAgentSwitch
                         id="subagents"
                         title="Enable native subagents"
                         description="Allow supported agents to start subagents within a run"
                     />
-                </SettingsCard>
-            </SettingsSection>
-            <SettingsSection title="Thread roles">
-                <SettingsCard>
+                </SettingsLayout.Card>
+            </SettingsLayout.Section>
+            <SettingsLayout.Section title="Thread roles">
+                <SettingsLayout.Card divided>
                     {ROLES.map(role => {
                         const selected = settings?.[role];
                         const selectedAlternative =
@@ -70,9 +73,10 @@ export const DelegationPage = observer(function DelegationPage() {
                             { id: 'inherit', label: 'Inherit orchestrator' },
                         ];
                         return (
-                            <SettingsRow
+                            <SettingsLayout.Row
                                 key={role}
                                 title={LABELS[role]}
+                                description={DESCRIPTIONS[role]}
                                 footer={
                                     selected?.kind === 'model' &&
                                     status === 'ready' &&
@@ -106,11 +110,11 @@ export const DelegationPage = observer(function DelegationPage() {
                                             });
                                     }}
                                 />
-                            </SettingsRow>
+                            </SettingsLayout.Row>
                         );
                     })}
-                </SettingsCard>
-            </SettingsSection>
-        </SettingsPage>
+                </SettingsLayout.Card>
+            </SettingsLayout.Section>
+        </SettingsLayout.Page>
     );
 });

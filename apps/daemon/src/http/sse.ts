@@ -2,24 +2,23 @@ import { SSE_EVENT } from '@clowdy/protocol';
 
 import { CommandError, HTTP_STATUS } from '../errors';
 
-import type {
-    ClowdyEvent,
-    GitCloneEvent,
-    GitErrorDetails,
-    GitSyncEvent,
-    GitSyncProgress,
-    GitSyncResult,
-} from '@clowdy/protocol';
+import type { GitCloneEvent, GitErrorDetails, GitSyncEvent, GitSyncProgress, GitSyncResult } from '@clowdy/protocol';
 import type { CloneStep } from '../git/clone';
-import type { Store } from '../store';
+import type { EventRow, Store } from '../store';
 
 const HEARTBEAT_MS = 15_000;
 const BATCH = 200;
 
 const encoder = new TextEncoder();
 
-export const frame = (event: ClowdyEvent) =>
-    encoder.encode(`id: ${event.cursor}\nevent: ${SSE_EVENT}\ndata: ${JSON.stringify(event)}\n\n`);
+/**
+ * An event's frame, its data the `ClowdyEvent` as JSON. The stored data goes in as it was serialized when it was emitted, so no client parses it and
+ * serializes it again however many streams send it.
+ */
+const frame = (row: EventRow) =>
+    encoder.encode(
+        `id: ${row.cursor}\nevent: ${SSE_EVENT}\ndata: {"cursor":${row.cursor},"at":${row.at},"projectId":${JSON.stringify(row.project_id)},"data":${row.data}}\n\n`
+    );
 
 /** A write runs to completion even if the client stops reading its progress. */
 export function gitSyncStream(
@@ -153,7 +152,7 @@ export function eventStream(
         },
         async pull(controller) {
             for (;;) {
-                const events = store.eventsAfter(position, projectId, BATCH);
+                const events = store.eventRowsAfter(position, projectId, BATCH);
 
                 if (events.length > 0) {
                     for (const event of events) {

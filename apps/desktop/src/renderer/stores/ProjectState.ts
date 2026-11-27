@@ -1,4 +1,4 @@
-import { makeAutoObservable, observableRef, observableShallow, runInAction } from 'mobx';
+import { makeAutoObservable, observable, observableRef, observableShallow, runInAction } from 'mobx';
 
 import { TransportError } from '../daemon/transport';
 
@@ -87,6 +87,11 @@ export class ProjectState {
      * reads the archive again when it changes. It only grows, and its value means nothing else. A task made on the board counts too (it cannot be told from a restored one).
      */
     archiveRevision = 0;
+    /**
+     * The ids of the tasks on the board and in `archivedKnown`, by key. `taskOfKey` reads one key of it, so a chip re-renders when its own task changes, not on every
+     * change of the board.
+     */
+    readonly #taskIdsByKey = observable.map<string, TaskId>({}, { deep: false });
     /** Events that arrived while the first snapshot was loading. */
     readonly #queue: ClowdyEvent[] = [];
     #loadId = 0;
@@ -161,6 +166,9 @@ export class ProjectState {
         this.tasks = new Map(snapshot.tasks.map(task => [task.id, task]));
         // A task that is on the board is not archived any more, whatever the memory says: it was restored while the feed was away.
         snapshot.tasks.forEach(task => this.archivedKnown.delete(task.id));
+        this.#taskIdsByKey.replace(
+            [...this.tasks.values(), ...this.archivedKnown.values()].map(task => [task.key, task.id])
+        );
         this.archiveRevision++;
         // The feed may have missed what makes a key a task now, and a daemon that failed may be back: every key is asked again when something shows it.
         this.#unresolvedKeys.clear();
@@ -226,6 +234,7 @@ export class ProjectState {
                         this.archiveRevision++;
 
                     this.tasks.set(data.task.id, data.task);
+                    this.#taskIdsByKey.set(data.task.key, data.task.id);
                 } else {
                     this.tasks.delete(data.task.id);
                     this.rememberArchived([data.task]);
@@ -233,15 +242,19 @@ export class ProjectState {
                 }
 
                 break;
-            case 'task.deleted':
+            case 'task.deleted': {
                 // A task that is not on the board is in the archive, or nowhere.
                 if (!this.tasks.has(data.taskId)) this.archiveRevision++;
 
+                const deleted = this.taskById(data.taskId);
+
                 this.archivedKnown.delete(data.taskId);
                 this.tasks.delete(data.taskId);
+                this.#forgetKey(deleted);
                 this.#dropLinks(link => link.taskId === data.taskId);
                 this.#bumpComments(data.taskId);
                 break;
+            }
             case 'task.comment.upserted':
                 this.#bumpComments(data.comment.taskId);
                 break;
@@ -346,11 +359,17 @@ export class ProjectState {
             // Deleted first, so a task read again moves to the end of the order the oldest are dropped in.
             this.archivedKnown.delete(task.id);
             this.archivedKnown.set(task.id, task);
+            this.#taskIdsByKey.set(task.key, task.id);
         }
 
         const excess = this.archivedKnown.size - ARCHIVED_MEMORY_LIMIT;
 
-        if (excess > 0) [...this.archivedKnown.keys()].slice(0, excess).forEach(id => this.archivedKnown.delete(id));
+        if (excess > 0) {
+            for (const task of [...this.archivedKnown.values()].slice(0, excess)) {
+                this.archivedKnown.delete(task.id);
+                this.#forgetKey(task);
+            }
+        }
     }
 
     /** The task on the board, else the archived one the window knows. Not the daemon's: `readTask` is. */
@@ -383,11 +402,16 @@ export class ProjectState {
     }
 
     #heldTaskOfKey(key: string): Task | undefined {
-        for (const task of this.tasks.values()) if (task.key === key) return task;
+        const taskId = this.#taskIdsByKey.get(key);
 
-        for (const task of this.archivedKnown.values()) if (task.key === key) return task;
+        return taskId === undefined ? undefined : this.taskById(taskId);
+    }
 
-        return undefined;
+    /** Lets go of the key of a task that left the board and `archivedKnown`. */
+    #forgetKey(task: Task | undefined): void {
+        if (!task || this.taskById(task.id) || this.#taskIdsByKey.get(task.key) !== task.id) return;
+
+        this.#taskIdsByKey.delete(task.key);
     }
 
     /** Starts the reads that wait for a place, as many as `KEY_READS_AT_ONCE` allows, the keys asked for first going first. */

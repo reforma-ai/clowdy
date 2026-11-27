@@ -50,11 +50,8 @@
 }
 
 .totals {
-    display: inline-flex;
     flex-shrink: 0;
     margin-left: auto;
-    gap: var(--spacing-4);
-    white-space: nowrap;
 }
 
 .note {

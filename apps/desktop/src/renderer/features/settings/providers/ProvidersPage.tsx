@@ -1,14 +1,9 @@
-import { Alert, AlertAction, AlertDescription, AlertIcon } from '@clowdy/components/Alert';
-import { Box } from '@clowdy/components/Box';
-import { Button } from '@clowdy/components/Button';
-import { Loader } from '@clowdy/components/Loader';
-import { Text } from '@clowdy/components/Text';
-import { AttentionCircle } from '@clowdy/icons/14';
+import { PanelEmptyState, PanelLoadingState } from '@clowdy/components/Panel';
+import { SettingsLayout } from '@clowdy/components/SettingsLayout';
 import { useEffect } from 'react';
 
 import { useAgents, useRootStore } from '../../../stores';
-import { SettingsEmpty } from '../ui/SettingsEmpty';
-import { SettingsPage } from '../ui/SettingsPage';
+import { ReadFailed } from '../ReadFailed';
 import { ProviderCard } from './ProviderCard';
 import styles from './ProvidersPage.module.css';
 import { providerAgents } from './providerView';
@@ -39,45 +34,30 @@ export function ProvidersPage() {
 
     if (status === 'loading' && agents.length === 0) {
         return (
-            <SettingsPage description={INTRO}>
-                <Box direction="row" gap="md" align="center">
-                    <Loader size="xs" />
-                    <Text color="secondary">Looking for agents…</Text>
-                </Box>
-            </SettingsPage>
+            <SettingsLayout.Page description={INTRO}>
+                <PanelLoadingState label="Looking for agents…" />
+            </SettingsLayout.Page>
         );
     }
 
     if (status === 'failed' && agents.length === 0) {
         return (
-            <SettingsPage description={INTRO}>
-                <Box gap="md" align="start">
-                    <Text color="danger">The agents could not be loaded. {error}</Text>
-                    <Button variant="bordered" size="sm" onPress={() => void refresh()}>
-                        Try again
-                    </Button>
-                </Box>
-            </SettingsPage>
+            <SettingsLayout.Page description={INTRO}>
+                <ReadFailed message={`The agents could not be loaded. ${error}`} onRetry={() => void refresh()} />
+            </SettingsLayout.Page>
         );
     }
 
     return (
-        <SettingsPage description={INTRO}>
+        <SettingsLayout.Page description={INTRO}>
             {status === 'failed' && (
-                <Alert color="danger">
-                    <AlertIcon>
-                        <AttentionCircle />
-                    </AlertIcon>
-                    <AlertDescription>{`The agents could not be read again, so what is shown may be out of date. ${error}`}</AlertDescription>
-                    <AlertAction>
-                        <Button size="sm" variant="bordered" onPress={() => void refresh()}>
-                            Try again
-                        </Button>
-                    </AlertAction>
-                </Alert>
+                <ReadFailed
+                    message={`The agents could not be read again, so what is shown may be out of date. ${error}`}
+                    onRetry={() => void refresh()}
+                />
             )}
             {providers.length === 0 ? (
-                <SettingsEmpty>The daemon lists none of Claude Code, Codex or Cursor</SettingsEmpty>
+                <PanelEmptyState fill={false} label="The daemon lists none of Claude Code, Codex or Cursor" />
             ) : (
                 <div className={styles.cards}>
                     {providers.map(agent => (
@@ -85,6 +65,6 @@ export function ProvidersPage() {
                     ))}
                 </div>
             )}
-        </SettingsPage>
+        </SettingsLayout.Page>
     );
 }

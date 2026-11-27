@@ -14,55 +14,6 @@
     user-select: text;
 }
 
-/* The button that names the next action and the dropdown that keeps the others, side by side, as the commit box's Commit and its menu are. */
-.split {
-    display: flex;
-    gap: var(--spacing-2);
-    width: 100%;
-    min-width: 0;
-}
-
-.main[data-size][data-variant],
-.more[data-size][data-variant] {
-    --clowdy-button-transform-pressed: none;
-}
-
-/* The button's stop (`Unavailable`), when it is off and says why: it takes what the dropdown leaves, and its focus ring follows the button's corners. */
-.host {
-    flex: 1 1 0;
-    min-width: 0;
-    border-radius: calc(var(--radius-md) * var(--squircle-radius-factor));
-    corner-shape: superellipse(var(--squircle-value));
-}
-
-/* The button takes what the dropdown leaves and is as tall as its two lines, with the corners of the dropdown's side squared so the two read as one. */
-.main[data-size][data-variant] {
-    flex: 1 1 0;
-    justify-content: flex-start;
-    width: 100%;
-    min-width: 0;
-    height: auto;
-    min-height: var(--spacing-36);
-    padding: var(--spacing-4) var(--spacing-8);
-    text-align: start;
-    border-start-end-radius: 0;
-    border-end-end-radius: 0;
-}
-
-/* The words of a button that cannot be pressed are what says why, so they stay readable: the design system's dimming (0.4) would take them. */
-.main[data-disabled='true'] {
-    opacity: 0.7;
-}
-
-.more[data-size][data-variant] {
-    flex-shrink: 0;
-    align-self: stretch;
-    height: auto;
-    min-height: var(--spacing-36);
-    border-start-start-radius: 0;
-    border-end-start-radius: 0;
-}
-
 .content {
     flex: 1;
     justify-content: flex-start;
@@ -154,14 +105,6 @@
 
     .line {
         display: none;
-    }
-
-    .main[data-size][data-variant] {
-        padding-inline: var(--spacing-6);
-    }
-
-    .more[data-size][data-variant] {
-        min-width: var(--spacing-24);
     }
 }
 

@@ -447,7 +447,10 @@ describe('chat.create: every other choice is as it was', () => {
         const h = await start({ gitEnvironment: recorded.environment });
         const { path } = withOther();
         const { project } = h.ok('project.add', { folders: [path] });
-        const { chat } = h.ok('chat.create', { projectId: project.id, workspace: { mode: 'new', base: 'other' } });
+        const { chat } = await h.okAsync('chat.create', {
+            projectId: project.id,
+            workspace: { mode: 'new', base: 'other' },
+        });
 
         expect(chat.workspace).toMatchObject({ ready: false, managed: true });
         expect(branchOf(path)).toBe('main');
@@ -463,7 +466,10 @@ describe('chat.create: every other choice is as it was', () => {
         git(path, 'worktree', 'add', '-q', '-b', 'held', tree);
 
         const { project } = h.ok('project.add', { folders: [path] });
-        const { chat } = h.ok('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: tree } });
+        const { chat } = await h.okAsync('chat.create', {
+            projectId: project.id,
+            workspace: { mode: 'existing', path: tree },
+        });
 
         expect(chat.workspace).toMatchObject({ path: realpathSync(tree), ready: true });
         expect(branchOf(path)).toBe('main');

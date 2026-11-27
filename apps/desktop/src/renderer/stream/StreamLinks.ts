@@ -1,6 +1,6 @@
 import { createContext } from 'react';
 
-import type { Attachment, Chat, ChatId, SkillEntry, Task, TaskId } from '@clowdy/protocol';
+import type { Attachment, Chat, ChatId, RunId, SkillEntry, Task, TaskId } from '@clowdy/protocol';
 
 /** What a message's text may point at inside the app. Without it, task keys and chat references stay plain text and a thread's name opens nothing. */
 export interface StreamLinks {
@@ -17,6 +17,8 @@ export interface StreamLinks {
     chatOfId?: (chatId: ChatId) => Pick<Chat, 'id' | 'title'> | undefined;
     /** Opens a referenced chat or a chat a thread's card names (the thread that wrote, or the one that stopped). */
     onOpenChat?: (chatId: ChatId) => void;
+    /** Opens the page of a sub-agent its card names, bringing it out of the archive first. Without it the card opens nothing. */
+    onOpenRun?: (runId: RunId) => void;
 }
 
 /** The default, one object for every stream without links: a fresh one per render would re-render everything that reads the context. */

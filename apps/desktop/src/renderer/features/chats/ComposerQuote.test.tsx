@@ -9,7 +9,7 @@ import { type RootStore, RootStoreProvider } from '../../stores';
 import { UserBubble } from '../../stream/UserBubble';
 import { Composer, type ComposerHandle } from './Composer';
 import { codeQuote } from './codeQuote';
-import { mentionFilesIntoComposer, quoteIntoComposer } from './composerBridge';
+import { appendTextIntoComposer, mentionFilesIntoComposer, quoteIntoComposer } from './composerBridge';
 import { draftOf, messageOf, newChatDraftKey, saveDraft } from './composerDrafts';
 import { modelStore } from './modelTestKit';
 
@@ -275,6 +275,17 @@ describe('ComposerHandle.quote', () => {
         expect(docToPlainText(draftOf(newChatDraftKey('p'))).replaceAll('  \n', '\n')).toBe('> A line to build on\n\n');
         expect(document.activeElement).toBe(field());
         expect(atEnd()).toBe(true);
+    });
+});
+
+describe('plain text from the side panel', () => {
+    it('adds a separate paragraph to the draft without a quote', async () => {
+        await mount();
+        type('Existing draft');
+
+        expect(await act(async () => appendTextIntoComposer('Resolve the merge conflicts'))).toBe(true);
+        expect(written()).toBe('Existing draft\n\nResolve the merge conflicts');
+        expect(document.activeElement).toBe(field());
     });
 });
 

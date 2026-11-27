@@ -1,6 +1,5 @@
 import { Attachments, PreviewableAttachment } from '@clowdy/components/Attachment';
 import { Button } from '@clowdy/components/Button';
-import { ListBoxItem } from '@clowdy/components/List';
 import { type ComposerDoc, emptyComposerDoc, RichInput, type RichInputHandle } from '@clowdy/components/RichInput';
 import { toast } from '@clowdy/components/Toast';
 import { Clip } from '@clowdy/icons/14';
@@ -43,6 +42,7 @@ import { useComposerFiles } from './useComposerFiles';
 import { useMentionTriggers } from './useMentionTriggers';
 import { NO_PROVIDER_HINT, useModelChoice } from './useModelChoice';
 import { usePromptSuggestion } from './usePromptSuggestion';
+import { useStopRun } from './useStopRun';
 
 import type {
     Attachment,
@@ -198,7 +198,7 @@ export function Composer({
     // edited, with its key, and any other key is read from the store (which every edit writes first).
     const [shown, setShown] = useState({ key, doc: start?.draftDoc ?? draftOf(key) });
     const doc = shown.key === key ? shown.doc : (start?.draftDoc ?? draftOf(key));
-    const [isStopping, setIsStopping] = useState(false);
+    const { stop, isStopping } = useStopRun(run);
     const inFlight = useDraftSending(start?.draftKey);
     const unresolved = Boolean(start?.journal?.get()?.operation || start?.journal?.get()?.firstMessage);
     const draftLocked = inFlight || unresolved;
@@ -358,8 +358,19 @@ export function Composer({
         }),
         [draftLocked, attach.add, pasted, reply, quote]
     );
-    // The side panel's Add to chat sends quotes and file references to this box, never to an edit frame.
-    useRegisterComposer(editMode ? undefined : quote, editMode ? undefined : mentionFiles);
+    const appendText = (text: string): boolean => {
+        if (draftLocked || !field.current || !text) return false;
+        field.current.appendBlocks([{ type: 'paragraph', content: [{ type: 'text', text }] }]);
+
+        return true;
+    };
+
+    // The side panel adds content to this box, never to an edit frame.
+    useRegisterComposer(
+        editMode ? undefined : quote,
+        editMode ? undefined : mentionFiles,
+        editMode ? undefined : appendText
+    );
 
     /** Sends the message; `mod` (Cmd/Ctrl+Enter) sends it the other way than Enter while the orchestrator works. */
     const send = async (from: ComposerDoc, mod = false) => {
@@ -567,14 +578,6 @@ export function Composer({
         if (files.length > 0) restoreFiles(key, files);
 
         field.current?.focus();
-    };
-
-    const stop = async () => {
-        if (!run) return;
-
-        setIsStopping(true);
-        await perform(root, { type: 'run.cancel', runId: run.id });
-        setIsStopping(false);
     };
 
     // A press on the card's own space puts the caret in the text, as in any input; the controls keep their presses.

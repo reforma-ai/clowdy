@@ -599,10 +599,12 @@ describe('POST /v1/projects/:id/git/switch: refusals', () => {
         commitFile(tree, 'unmerged.txt');
 
         const { project, failure } = await open(path, h);
-        const { id: workspaceId } = h.ok('chat.create', {
-            projectId: project.id,
-            workspace: { mode: 'existing', path: tree },
-        }).chat.workspace as { id: string };
+        const { id: workspaceId } = (
+            await h.okAsync('chat.create', {
+                projectId: project.id,
+                workspace: { mode: 'existing', path: tree },
+            })
+        ).chat.workspace as { id: string };
         const before = snapshot(tree);
 
         expect(await failure(409, 'other', { workspaceId })).toMatchObject({
@@ -626,10 +628,12 @@ describe('POST /v1/projects/:id/git/switch: refusals', () => {
         git(path, 'push', '-q', 'origin', 'main');
 
         const { project, result, failure } = await open(path, h);
-        const { id: workspaceId } = h.ok('chat.create', {
-            projectId: project.id,
-            workspace: { mode: 'existing', path: tree },
-        }).chat.workspace as { id: string };
+        const { id: workspaceId } = (
+            await h.okAsync('chat.create', {
+                projectId: project.id,
+                workspace: { mode: 'existing', path: tree },
+            })
+        ).chat.workspace as { id: string };
         const main = snapshot(path);
 
         const clean = snapshot(tree);
@@ -844,11 +848,11 @@ withScripts('POST /v1/projects/:id/git/switch: concurrent worktrees', () => {
         git(path, 'config', 'filter.wait-switch.smudge', `sh '${filter}'`);
 
         const { project, call } = await open(path, h);
-        const workspaceOf = (tree: string) =>
-            h.ok('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: tree } }).chat.workspace
-                .id as string;
-        const first = workspaceOf(firstTree);
-        const second = workspaceOf(secondTree);
+        const workspaceOf = async (tree: string) =>
+            (await h.okAsync('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: tree } }))
+                .chat.workspace.id as string;
+        const first = await workspaceOf(firstTree);
+        const second = await workspaceOf(secondTree);
         const initial = call('other', { workspaceId: first });
         let competing: Promise<Response> | undefined;
 
@@ -964,11 +968,13 @@ describe('POST /v1/projects/:id/git/switch: runs working in the place', () => {
 
         const { project } = h.ok('project.add', { folders: [path, second] });
         const [folderId, secondId] = project.folders.map((folder: { id: string }) => folder.id) as [string, string];
-        const inTree = h.ok('chat.create', {
-            projectId: project.id,
-            folderId,
-            workspace: { mode: 'existing', path: tree },
-        }).chat.id as string;
+        const inTree = (
+            await h.okAsync('chat.create', {
+                projectId: project.id,
+                folderId,
+                workspace: { mode: 'existing', path: tree },
+            })
+        ).chat.id as string;
         const inSecond = h.ok('chat.create', { projectId: project.id, folderId: secondId }).chat.id as string;
 
         h.ok('chat.send', { chatId: inTree, text: 'in the tree' });

@@ -11,6 +11,7 @@ import { busyEnter } from '../chats/busyEnter';
 import { ComposerBannerPreferences, composerBannerPreferences } from '../chats/composerBannerPreferences';
 import { newChatDefaults } from '../chats/newChatDefaults';
 import { swipeToReply } from '../chats/swipeReplyPreference';
+import { named } from './accessibleName';
 import { ChatPage } from './ChatPage';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -24,16 +25,16 @@ let store: RootStore;
 
 const LABEL = 'Send a message while the agent is working';
 const SWIPE = 'Swipe a message to reply';
-const swipeSwitch = () => container.querySelector<HTMLInputElement>(`input[aria-label="${SWIPE}"]`)!;
+const swipeSwitch = () => named<HTMLInputElement>(container, 'input', SWIPE)!;
 const radio = (group: string, label: string) =>
-    [...container.querySelectorAll<HTMLElement>(`[aria-label="${group}"] [role="radio"]`)].find(
+    [...named(container, '[aria-labelledby]', group)!.querySelectorAll<HTMLElement>('[role="radio"]')].find(
         item => item.textContent === label
     )!;
 const checked = (group: string) =>
-    container.querySelector(`[aria-label="${group}"] [role="radio"][aria-checked="true"]`)?.textContent;
-const finished = () => container.querySelector<HTMLInputElement>('input[aria-label="Show completed threads"]')!;
+    named(container, '[aria-labelledby]', group)?.querySelector('[role="radio"][aria-checked="true"]')?.textContent;
+const finished = () => named<HTMLInputElement>(container, 'input', 'Show completed threads')!;
 const labels = (group: string) =>
-    [...container.querySelectorAll<HTMLElement>(`[aria-label="${group}"] [role="radio"]`)].map(
+    [...named(container, '[aria-labelledby]', group)!.querySelectorAll<HTMLElement>('[role="radio"]')].map(
         item => item.textContent
     );
 
@@ -90,12 +91,12 @@ describe('ChatPage', () => {
     });
 
     it('leaves the worktree prefix to Source Control', () => {
-        expect(container.querySelector('input[aria-label="Branch prefix"]')).toBeNull();
+        expect(named(container, 'input', 'Branch prefix')).toBeNull();
     });
 
     it('stores the two composer banner choices independently', () => {
-        const changes = container.querySelector<HTMLInputElement>('input[aria-label="Show last run changes"]')!;
-        const tasks = container.querySelector<HTMLInputElement>('input[aria-label="Show tasks"]')!;
+        const changes = named<HTMLInputElement>(container, 'input', 'Show last run changes')!;
+        const tasks = named<HTMLInputElement>(container, 'input', 'Show tasks')!;
         expect([changes.checked, tasks.checked]).toEqual([true, true]);
         act(() => changes.click());
         expect([changes.checked, tasks.checked]).toEqual([false, true]);
@@ -145,20 +146,20 @@ describe('ChatPage', () => {
     });
 
     it("offers the app's agent and mode of new chats, with no Default, Last used at first", () => {
-        expect(labels('Agent for new chats')).toEqual(['Last used', 'Claude Code', 'Codex', 'Cursor']);
-        expect(labels('Mode for new chats')).toEqual(['Last used', 'Hands-off', 'Hands-on']);
-        expect([checked('Agent for new chats'), checked('Mode for new chats')]).toEqual(['Last used', 'Last used']);
+        expect(labels('Agent')).toEqual(['Last used', 'Claude Code', 'Codex', 'Cursor']);
+        expect(labels('Mode')).toEqual(['Last used', 'Hands-off', 'Hands-on']);
+        expect([checked('Agent'), checked('Mode')]).toEqual(['Last used', 'Last used']);
     });
 
     it("keeps the app's agent and mode of new chats on this computer, and Last used clears each", () => {
-        act(() => radio('Agent for new chats', 'Codex').click());
-        act(() => radio('Mode for new chats', 'Hands-on').click());
+        act(() => radio('Agent', 'Codex').click());
+        act(() => radio('Mode', 'Hands-on').click());
 
         expect([newChatDefaults.engine, newChatDefaults.mode]).toEqual(['codex', 'semi']);
-        expect([checked('Agent for new chats'), checked('Mode for new chats')]).toEqual(['Codex', 'Hands-on']);
+        expect([checked('Agent'), checked('Mode')]).toEqual(['Codex', 'Hands-on']);
 
-        act(() => radio('Agent for new chats', 'Last used').click());
-        act(() => radio('Mode for new chats', 'Last used').click());
+        act(() => radio('Agent', 'Last used').click());
+        act(() => radio('Mode', 'Last used').click());
 
         expect([newChatDefaults.engine, newChatDefaults.mode]).toEqual([undefined, undefined]);
     });

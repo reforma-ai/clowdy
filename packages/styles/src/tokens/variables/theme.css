@@ -3,6 +3,7 @@
     --color-surface: var(--color-light);
     --color-surface-float: var(--color-white);
     --color-surface-border: var(--color-secondary-200);
+    --color-focus-ring: var(--color-primary-muted-border);
     --color-secondary: var(--color-secondary-200);
     --color-secondary-light: var(--color-secondary-100);
     --color-secondary-lighten: var(--color-secondary-50);
@@ -119,6 +120,7 @@
     --color-surface: var(--color-secondary-900);
     --color-surface-float: var(--color-secondary-950);
     --color-surface-border: var(--color-light-a10);
+    --color-focus-ring: var(--color-primary-muted-border);
     --color-secondary: var(--color-secondary-800);
     --color-secondary-light: var(--color-secondary-800);
     --color-secondary-lighten: var(--color-secondary-700);

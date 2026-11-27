@@ -1,3 +1,4 @@
+import { DiffStat } from '@clowdy/components/DiffStat';
 import { SearchInput } from '@clowdy/components/Input';
 import { ListBoxHeader, ListBoxItem, ListBoxSection } from '@clowdy/components/List';
 import { PanelHeader } from '@clowdy/components/Panel';
@@ -48,12 +49,7 @@ const Summary = observer(function Summary({ model }: { model: PlaceChanges }) {
                 </Text>
             )}
             <span className={styles.totals} title={summary.incomplete ? "Some files weren't counted" : undefined}>
-                <Text variant="xs" color="success">
-                    {summary.additions}
-                </Text>
-                <Text variant="xs" color="danger">
-                    {summary.deletions}
-                </Text>
+                <DiffStat added={summary.additions} removed={summary.deletions} />
             </span>
         </div>
     );

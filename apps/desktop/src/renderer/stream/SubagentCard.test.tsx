@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createFixtureData, FIXTURE_PROJECT_ID } from '../daemon/fixtureData';
 import { FixtureTransport } from '../daemon/fixtureTransport';
+import { openRun } from '../features/chats/archiveChat';
 import { RootStore, RootStoreProvider } from '../stores';
 import { StreamView } from './StreamView';
 
@@ -96,8 +97,12 @@ function text(scope: HTMLElement = card()): string | null {
     return copy.textContent;
 }
 
-/** Draws the calls as a stream of r-orch-1, then again once the streams the cards read have been fetched. */
-async function draw(calls: StreamItemBody[], active = true, links: StreamLinks = {}) {
+/** Draws the calls as a stream of r-orch-1, then again once the streams the cards read have been fetched. A card opens its sub-agent as the app's links do (`useStreamLinks`). */
+async function draw(calls: StreamItemBody[], active = true, given: StreamLinks = {}) {
+    const links: StreamLinks = {
+        onOpenRun: runId => void openRun(store, store.selectedProject!, ui(), runId),
+        ...given,
+    };
     const items: StreamItem[] = calls.map((body, index) => ({
         id: `i-${index}`,
         runId: 'r-orch-1',

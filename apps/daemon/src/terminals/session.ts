@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { rmSync } from 'node:fs';
+import { mkdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { isTerminalSize, TERMINAL_SCROLLBACK } from '@clowdy/protocol';
 import { SerializeAddon } from '@xterm/addon-serialize';
@@ -17,6 +18,9 @@ import type { Shell } from './shell';
 
 /** Output is passed on once per turn of the event loop, or at once when this much has piled up: a burst becomes few frames, a keystroke's echo waits no longer than a turn. */
 const MAX_BATCH_BYTES = 64 * 1024;
+
+/** How long output waits before the log is rewritten with it: one rewrite a second at most however busy the shell (the log is for agents to read). */
+const LOG_DELAY_MS = 1000;
 
 /** DECSET mouse report encodings (UTF-8, SGR, urxvt, SGR pixels); setting one replaces the other. */
 const MOUSE_ENCODINGS = new Set([1005, 1006, 1015, 1016]);
@@ -94,8 +98,10 @@ export class TerminalSession {
     // `addon-serialize` restores mouse tracking but not these, so a screen appends them.
     #mouseEncoding: number | undefined;
     #cursorHidden = false;
-    /** A rewrite of the log is waiting for the mirror to finish what it has already been given. */
-    #logScheduled = false;
+    /** The rewrite of the log that is waiting for `LOG_DELAY_MS` to pass. */
+    #logTimer: ReturnType<typeof setTimeout> | undefined;
+    /** The rewrites of the log, one after the other: the last one that was started, done when all are. */
+    #logWrites: Promise<void> = Promise.resolve();
 
     constructor(
         readonly id: string,
@@ -236,7 +242,10 @@ export class TerminalSession {
     /** Kills the shell, frees the mirror and tells the clients the terminal is gone. */
     dispose(): void {
         this.#disposed = true;
+        clearTimeout(this.#logTimer);
         this.#removeLog();
+        // A rewrite that was under way when the terminal closed may land after the removal.
+        void this.#logWrites.then(() => this.#removeLog());
         this.kill();
         this.#mirror.dispose();
 
@@ -289,6 +298,8 @@ export class TerminalSession {
 
     #ended(exitCode: number): void {
         this.#flush();
+        // What the shell printed last is in the log at once, not a second later.
+        this.#scheduleLog(0);
         this.#state = 'exited';
         this.#exitCode = exitCode;
         this.#endedAt = Date.now();
@@ -358,22 +369,29 @@ export class TerminalSession {
         });
     }
 
-    /** Rewrites the log once the mirror has parsed the output it already has. A burst is one write. */
-    #scheduleLog(): void {
-        if (!this.spec.logPath || this.#logScheduled || this.#disposed) {
+    /** Rewrites the log `delayMs` from now (`LOG_DELAY_MS` by default), once the mirror has parsed the output it has by then: all the output of that time is one write. */
+    #scheduleLog(delayMs = LOG_DELAY_MS): void {
+        if (!this.spec.logPath || this.#disposed) {
             return;
         }
 
-        this.#logScheduled = true;
-        void this.#writeLog();
+        if (this.#logTimer) {
+            if (delayMs > 0) return;
+
+            clearTimeout(this.#logTimer);
+        }
+
+        this.#logTimer = setTimeout(() => {
+            this.#logTimer = undefined;
+            this.#logWrites = this.#logWrites.then(() => this.#writeLog());
+        }, delayMs);
+        this.#logTimer.unref?.();
     }
 
     async #writeLog(): Promise<void> {
         const path = this.spec.logPath;
 
         if (!path) {
-            this.#logScheduled = false;
-
             return;
         }
 
@@ -388,8 +406,6 @@ export class TerminalSession {
         } catch {
             // The mirror discarded the burst. A later one schedules another rewrite.
             return;
-        } finally {
-            this.#logScheduled = false;
         }
 
         if (this.#disposed) {
@@ -399,16 +415,29 @@ export class TerminalSession {
         try {
             const text = plainBuffer(this.#mirror);
 
-            if (text === '' && !existsSync(path)) {
+            if (
+                text === '' &&
+                !(await stat(path).then(
+                    () => true,
+                    () => false
+                ))
+            ) {
                 return;
             }
 
-            mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+            await mkdir(dirname(path), { recursive: true, mode: 0o700 });
             const temporary = join(dirname(path), `.${this.id}.log.tmp`);
 
             // Replacing the file keeps the previous log when the rename does not land.
-            writeFileSync(temporary, text, { mode: 0o600 });
-            renameSync(temporary, path);
+            await writeFile(temporary, text, { mode: 0o600 });
+
+            if (this.#disposed) {
+                await rm(temporary, { force: true });
+
+                return;
+            }
+
+            await rename(temporary, path);
         } catch (error) {
             console.warn('[clowdy] could not write the terminal log:', error);
         }

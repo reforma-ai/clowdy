@@ -77,8 +77,8 @@ async function setup(options: { origin?: boolean; script?: Script } = {}) {
     const { store } = h;
     const chatOf = (chatId: string) => getChat(store.db, chatId) as Chat;
     const runOf = (chatId: string) => h.run(chatOf(chatId).orchestratorRunId as string);
-    const make = (workspace: unknown): Chat =>
-        (h.ok('chat.create', { projectId: project.id, workspace }) as { chat: Chat }).chat;
+    const make = async (workspace: unknown): Promise<Chat> =>
+        ((await h.okAsync('chat.create', { projectId: project.id, workspace })) as { chat: Chat }).chat;
     const send = async (chat: Chat, text: string, until: Run['status'] = 'succeeded') => {
         const before = chatOf(chat.id).orchestratorRunId === undefined ? undefined : runOf(chat.id).finishedAt;
 
@@ -93,7 +93,7 @@ async function setup(options: { origin?: boolean; script?: Script } = {}) {
     };
     /** A chat on a new worktree whose first turn has made it. */
     const start = async (): Promise<Chat> => {
-        const chat = make({ mode: 'new' });
+        const chat = await make({ mode: 'new' });
 
         await send(chat, 'Start');
 
@@ -207,7 +207,7 @@ describe('what GET /v1/chats/:id/workspace says', () => {
         git(repo, 'add', '.gitignore');
         git(repo, 'commit', '-q', '-m', 'Ignore');
 
-        const chat = make({ mode: 'new' });
+        const chat = await make({ mode: 'new' });
 
         await send(chat, 'Start');
 
@@ -245,7 +245,7 @@ describe('what GET /v1/chats/:id/workspace says', () => {
 
         git(repo, 'worktree', 'add', '-q', '-b', 'feature', tree);
 
-        const chat = make({ mode: 'existing', path: tree });
+        const chat = await make({ mode: 'existing', path: tree });
 
         expect(chat.workspace).toMatchObject({ managed: false });
         expect(await removal(chat)).toMatchObject({ removable: false, branch: 'feature' });
@@ -288,7 +288,7 @@ describe('what GET /v1/chats/:id/workspace says', () => {
         expect(chatsOfWorkspace(store.db, chat.workspace!.id)).toEqual([chat.id, thread.id, deeper.id]);
         expect((await removal(chat)).removable).toBe(true);
 
-        const other = make({ mode: 'existing', path });
+        const other = await make({ mode: 'existing', path });
 
         expect(other.workspace!.id).toBe(chat.workspace!.id);
         expect((await removal(chat)).removable).toBe(false);
@@ -428,7 +428,7 @@ describe('chat.delete with removeWorkspace', () => {
         // Shared with another chat.
         git(repo, 'merge', '-q', '--no-ff', '-m', 'Merge the work', branch!);
 
-        const other = make({ mode: 'existing', path });
+        const other = await make({ mode: 'existing', path });
 
         expect(refusal(await remove(chat))).toEqual({
             code: 'conflict',
@@ -446,7 +446,7 @@ describe('chat.delete with removeWorkspace', () => {
 
         git(repo, 'worktree', 'add', '-q', '-b', 'feature', tree);
 
-        const found = make({ mode: 'existing', path: tree });
+        const found = await make({ mode: 'existing', path: tree });
 
         expect(refusal(await remove(found))).toEqual({
             code: 'conflict',
@@ -650,7 +650,7 @@ describe('chat.delete with removeWorkspace', () => {
         const { h, repo, store, project, make, start, remove, exists } = await setup();
         const chat = await start();
         const { path, branch } = chat.workspace!;
-        const other = make({ mode: 'existing', path });
+        const other = await make({ mode: 'existing', path });
         const mainBefore = mainState(repo);
 
         expect((await remove(chat, false)).ok).toBe(true);
@@ -668,7 +668,7 @@ describe('chat.delete with removeWorkspace', () => {
         // Git still lists it, so a new chat can pick it from the folder's existing worktrees, as one that is not Clowdy's now.
         expect(git(repo, 'worktree', 'list', '--porcelain')).toContain(`branch refs/heads/${branch}`);
 
-        const again = make({ mode: 'existing', path });
+        const again = await make({ mode: 'existing', path });
 
         expect(again.workspace).toMatchObject({ path: realpathSync(path), managed: false, ready: true });
         expect(mainState(repo)).toEqual(mainBefore);

@@ -2736,11 +2736,23 @@
                     "name": "robot2",
                     "sourceHash": "2df3e66ff5d999d6ba7a0420aa574072a6791b44f025b22b3cdc0273f5962fcd"
                 },
+                "16748:134399": {
+                    "file": "robot-cancel.svg",
+                    "fingerprint": "a81076c8150bd8c977f9070c5200a86d344b95e34034dc2e9bc4645fffad202e",
+                    "name": "robot-cancel",
+                    "sourceHash": "94ffb2d14d45c860c9c873e412fc9499af354229108bc05b74aae6d7bfcb2ea4"
+                },
                 "16740:129188": {
                     "file": "robot-done.svg",
                     "fingerprint": "c1752c95fae122d98c4b01dc4eed99f78e4c3abbf24306b647097e63aa7bb295",
                     "name": "robot-done",
                     "sourceHash": "61239aed860dbf116754469f3bff89f20392579a95f0aad6f8bf8cda2e91416d"
+                },
+                "16748:134360": {
+                    "file": "robot-message.svg",
+                    "fingerprint": "fbdef41bd032ac39e7bf64c09cd5ae31c60b472cccf9a143415d6d7c58cd2261",
+                    "name": "robot-message",
+                    "sourceHash": "7d078ab5b212b1d6775a362682a85cff0126ea42458d6c23a78ade2a7b7982af"
                 },
                 "15811:3427": {
                     "file": "tokens.svg",
@@ -3340,6 +3352,12 @@
                     "fingerprint": "ff90228d8dd3da52601a9fc0f9feb7c312b5a069a728cca00f9d1d05dd3ef2d8",
                     "name": "microphone",
                     "sourceHash": "cdfebc5f5c4977a8abcc7ff846a1a15e0fda6760d5fc0a60e31665689ffa2a85"
+                },
+                "16748:129201": {
+                    "file": "ai-providers.svg",
+                    "fingerprint": "952498fd6b7ad29ddb87eaa0f808afa3214c5b06b4f996ed0b28c7d1dccddbd7",
+                    "name": "ai-providers",
+                    "sourceHash": "cb6484efcefbf8635eae3a1d151d335e4802d67a4d8445208dd1da03f3bb4441"
                 }
             },
             "nodeId": "5398:46777"

@@ -37,14 +37,26 @@ import type { Editor } from '@tiptap/core';
 import type { ReactNode } from 'react';
 import type { KeyValueStorage } from '../../stores/storage';
 
-// `Modal` cannot load under the desktop's Vitest (decorators), and no confirmation is opened here.
-vi.mock('@clowdy/components/modals', () => ({ openConfirmModal: vi.fn() }));
+// Confirmations are only counted here; the other dialogs (removing a worktree) open for real.
+vi.mock('@clowdy/components/modals', async importOriginal => ({
+    ...(await importOriginal<typeof import('@clowdy/components/modals')>()),
+    openConfirmModal: vi.fn(),
+}));
 
 vi.mock('../changes/BranchPicker', async importOriginal => ({
     BranchPicker: observer((await importOriginal<typeof import('../changes/BranchPicker')>()).BranchPicker),
 }));
 vi.mock('../changes/BranchList', async importOriginal => ({
     BranchList: observer((await importOriginal<typeof import('../changes/BranchList')>()).BranchList),
+}));
+// The app build makes every component an observer; the test build does not, so the ones that read stores the test changes are wrapped here.
+vi.mock('./ProjectMenu', async importOriginal => ({
+    ProjectMenu: observer((await importOriginal<typeof import('./ProjectMenu')>()).ProjectMenu),
+}));
+vi.mock('./BranchPullRequestBadge', async importOriginal => ({
+    BranchPullRequestBadge: observer(
+        (await importOriginal<typeof import('./BranchPullRequestBadge')>()).BranchPullRequestBadge
+    ),
 }));
 
 // The pages beside the list are drawn by their own tests; here they only say which one was asked for. A chat's `controls` stand beside it, as the line under its message box.

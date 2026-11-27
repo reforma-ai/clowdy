@@ -2,11 +2,15 @@ import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 
 import { CommandError, unavailable } from '../errors';
+import { inheritedEnv } from '../process/env';
 
 const run = promisify(execFile);
 
 /** A read on a person's folder that takes longer than this is given up: the folder may be on a disk that does not answer. */
 const READ_TIMEOUT_MS = 5000;
+
+/** How long the sync `git` may hold up the whole daemon (HTTP, SSE, terminals, runs) before it is killed and the call is `unavailable`. */
+export const SYNC_READ_TIMEOUT_MS = 10_000;
 
 export interface GitResult {
     ok: boolean;
@@ -15,17 +19,18 @@ export interface GitResult {
 }
 
 /**
- * Runs git synchronously. Only for short commands (rev-parse, init, a commit). With `timeoutMs` a git that does not answer in time is `unavailable`, not a
- * "no": a caller that holds up the whole daemon while it waits (a command inside a transaction) says how long it may.
+ * Runs git synchronously. Only for short commands (rev-parse, init, a commit): everything else waits while it runs, so a git that does not answer within `timeoutMs`
+ * (`SYNC_READ_TIMEOUT_MS` by default; a hook that waits, a disk that does not answer) is killed and `unavailable`, not a "no".
  */
-export function git(cwd: string, args: string[], timeoutMs?: number): GitResult {
+export function git(cwd: string, args: string[], timeoutMs = SYNC_READ_TIMEOUT_MS): GitResult {
     try {
         const result = Bun.spawnSync(['git', ...args], {
             cwd,
             stdout: 'pipe',
             stderr: 'pipe',
-            env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
-            ...(timeoutMs !== undefined && { timeout: timeoutMs, killSignal: 'SIGKILL' }),
+            env: { ...inheritedEnv(), GIT_TERMINAL_PROMPT: '0' },
+            timeout: timeoutMs,
+            killSignal: 'SIGKILL',
         });
 
         if (result.exitedDueToTimeout) {
@@ -49,8 +54,8 @@ const MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
  * The environment of every read: no prompt for a password, no index lock (these reads run in the person's repositories while they work in them, and a `status` would
  * refresh the index under that lock), and English with no translation or collation of the person's locale, so what is read from git's words is the same everywhere.
  */
-function readEnvironment(): NodeJS.ProcessEnv {
-    return { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0', LANGUAGE: 'C', LC_ALL: 'C' };
+function readEnvironment(): Record<string, string> {
+    return { ...inheritedEnv(), GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0', LANGUAGE: 'C', LC_ALL: 'C' };
 }
 
 /**
@@ -222,7 +227,10 @@ export async function gitOutput(cwd: string, args: string[], options?: GitReadOp
     return read.ok ? read.stdout : undefined;
 }
 
-/** The first line git prints in `cwd` (`gitOutput`): nothing when git fails, prints nothing or does not answer. */
+/**
+ * The first line git prints in `cwd` (`gitOutput`): nothing when git fails, prints nothing or does not answer. Only for an answer whose absence changes nothing but what is
+ * shown; a caller that decides on a "no" (a commit that is not there, a ref that is missing) asks `gitAnswer`.
+ */
 export async function gitLine(cwd: string, args: string[], options?: GitReadOptions): Promise<string | undefined> {
     return (await gitOutput(cwd, args, options))?.trim().split('\n')[0] || undefined;
 }

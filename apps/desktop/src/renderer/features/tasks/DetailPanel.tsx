@@ -1,4 +1,5 @@
 import { Button } from '@clowdy/components/Button';
+import { Chip } from '@clowdy/components/Chip';
 import { ConfirmButton } from '@clowdy/components/ConfirmButton';
 import { ListBoxItem } from '@clowdy/components/List';
 import { openConfirmModal } from '@clowdy/components/modals';
@@ -99,10 +100,7 @@ export function DetailPanel({ task, taskRuns, titleRef, onOpenSubtasks, tree, on
     return (
         <aside className={styles.panel} aria-label={`Task ${task.key}`}>
             <div className={styles.head}>
-                <span className={styles.key}>
-                    <Box aria-hidden width={12} height={12} />
-                    {task.key}
-                </span>
+                <Chip icon={<Box width={12} height={12} />}>{task.key}</Chip>
                 <Button
                     iconOnly
                     size="sm"

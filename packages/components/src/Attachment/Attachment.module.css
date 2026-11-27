@@ -72,7 +72,7 @@
 
     /* The hit button fills the card and its own focus ring would be clipped by `overflow: hidden`. */
     .attachment:has(.attachmentHit[data-focus-visible='true']) {
-        outline: var(--spacing-4) solid var(--color-primary-muted-border);
+        outline: var(--spacing-4) solid var(--color-focus-ring);
         outline-offset: 0;
     }
 

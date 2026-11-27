@@ -1,5 +1,5 @@
 import { lstat, realpath } from 'node:fs/promises';
-import { join, sep } from 'node:path';
+import { isAbsolute, join, relative, sep } from 'node:path';
 
 import { CommandError, conflict, invalid, unavailable } from '../errors';
 
@@ -58,6 +58,26 @@ export function normalizeFsPath(input: unknown): string {
     return segments.join('/');
 }
 
+/** A name git keeps its data in, or that Windows reads as one (a trailing dot or space is dropped, `GIT~1` is its short name). */
+export function isGitName(name: string): boolean {
+    const bare = name.replace(/[. ]+$/, '').toLowerCase();
+
+    return bare === '.git' || /^git~\d+$/.test(bare);
+}
+
+/**
+ * Refuses a normalized path that is git's own folder or runs through it (a repository's, or a nested one's): a write there changes a hook or the config, and a delete
+ * takes the history that is not pushed. The file manager shows `.git` and reads it, and changes it never.
+ */
+export function refuseGitPath(rel: string): void {
+    if (rel.split('/').some(isGitName)) {
+        throw invalid(
+            `${rel} is in git's own folder, which is not changed here`,
+            reasoned('permission', { path: rel })
+        );
+    }
+}
+
 /** Whether a name found in a folder can be addressed back by a client: one with a backslash or a drive letter could not. */
 export const isAddressable = (path: string) => !path.includes('\\') && !/^[A-Za-z]:/.test(path);
 
@@ -68,9 +88,17 @@ export const isListed = (name: string) => isAddressable(name) && !TRANSIENT_NAME
 export const isWithin = (path: string, ancestor: string) =>
     ancestor === '' || path === ancestor || path.startsWith(`${ancestor}/`);
 
-/** Whether the absolute path `path` is `root` or below it. */
-export const isInside = (root: string, path: string) =>
-    path === root || path.startsWith(root.endsWith(sep) ? root : root + sep);
+/**
+ * Whether the absolute path `path` lies below the folder `root`, or is it with `allowSelf`. It asks `relative()`, so the platform decides what is the same path (case does not
+ * matter on Windows) and a name that only starts with `..` (`..env`) is below.
+ */
+export function isBelow(root: string, path: string, { allowSelf = false }: { allowSelf?: boolean } = {}): boolean {
+    const rel = relative(root, path);
+
+    if (rel === '') return allowSelf;
+
+    return rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
+}
 
 /** Whether a path of the folder is one of, or below, a folder that nothing is listed, watched or searched under. */
 export const underCutoff = (path: string) =>
@@ -170,7 +198,7 @@ export async function followLink(
         throw error;
     }
 
-    if (!isInside(root, real)) {
+    if (!isBelow(root, real, { allowSelf: true })) {
         throw outside(`${rel} runs through a symbolic link that leaves the folder`);
     }
 

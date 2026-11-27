@@ -1,6 +1,6 @@
 # Scrollable (agents)
 
-Docs: **[README.md](./README.md)**. Storybook: `Components/Layout/Scrollable`.
+Docs: **[README.md](./README.md)**. Import from `@clowdy/components/Scrollable`.
 
 ## Layout
 
@@ -9,6 +9,5 @@ Docs: **[README.md](./README.md)**. Storybook: `Components/Layout/Scrollable`.
 | Pattern                   | Where                                                              |
 | ------------------------- | ------------------------------------------------------------------ |
 | `<Scrollable>`            | panels, chat, lists                                                |
-| External element chrome   | `LayersPanel` (arborist `listEl`), `CodeTextarea` (`.cm-scroller`) |
-| Remote `ScrollAxisSource` | `FramePageScrollChrome` (iframe page scroll)                       |
-| Split axes                | PanZoom H = local `Scrollable`; V = frame remote                   |
+| External element chrome   | file-manager `Explorer`, `CodeEditor` (`.cm-scroller`), `DiffView`; `Autocomplete` |
+| Remote `ScrollAxisSource` | none yet                                                           |

@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { gitAnswer, gitRead } from '../domain/git';
 import { exclusive } from '../domain/workspaces';
 import { CommandError, conflict, invalid, unavailable } from '../errors';
-import { LEFTOVER_GRACE_MS, runProgram } from '../providers/exec';
+import { LEFTOVER_GRACE_MS, runProgram } from '../process/run';
 import { printedLines, shownLine, writeLine } from './commit';
 import { rememberFetch } from './lastFetch';
 import { checkoutOf, defaultBranchOf, workingTreeRoot } from './state';
@@ -22,7 +22,7 @@ import type {
     GitUpstream,
 } from '@clowdy/protocol';
 import type { Place } from '../domain/places';
-import type { RunOptions, RunResult } from '../providers/exec';
+import type { RunOptions, RunResult } from '../process/run';
 import type { Store } from '../store';
 import type { GitWritesOptions } from './commit';
 

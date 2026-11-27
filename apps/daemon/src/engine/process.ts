@@ -1,5 +1,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 
+import { killTree } from '../process/kill';
+
 import type { ChildProcess } from 'node:child_process';
 
 /** After a polite stop, the group gets this long before it is killed outright. */
@@ -7,35 +9,6 @@ const KILL_AFTER_MS = 2000;
 const STDERR_TAIL_CHARS = 4000;
 /** How long a failure waits for what a process that is ending wrote last (`stderrOf`): it ends the wait as soon as the pipes close, so this bounds a leftover that holds one. */
 const STDERR_WAIT_MS = 1000;
-
-/** Signals every process of the group `pgid`. On Windows, which has no groups, it stops the process tree of `pgid`. */
-export function killProcessGroup(pgid: number, signal: NodeJS.Signals): void {
-    if (process.platform === 'win32') {
-        spawnSync('taskkill', ['/PID', String(pgid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
-
-        return;
-    }
-
-    try {
-        process.kill(-pgid, signal);
-    } catch {
-        // The group is already gone.
-    }
-}
-
-/** Whether any process is still in the group `pgid`; one that has exited and not been reaped counts. Always false on Windows, which has no groups. */
-export function processGroupAlive(pgid: number): boolean {
-    if (process.platform === 'win32') return false;
-
-    try {
-        process.kill(-pgid, 0);
-
-        return true;
-    } catch (error) {
-        // `EPERM` is a group that is there and is not ours to signal; `ESRCH` is one that is gone.
-        return (error as NodeJS.ErrnoException).code === 'EPERM';
-    }
-}
 
 /** A process below an agent's own, and the group it is in. */
 export interface Below {
@@ -207,9 +180,10 @@ export function spawnInOwnGroup({ command, args, cwd, env }: ProcessSpec): Promi
                 alive = false;
                 clearTimeout(timer);
 
-                // Whatever the agent's tools left running goes down with it.
-                if (child.pid !== undefined) {
-                    killProcessGroup(child.pid, 'SIGKILL');
+                // Whatever the agent's tools left running goes down with it. Windows has no groups, and the tree of a pid that is gone is not worth a `taskkill`:
+                // the pid may be another process's by now.
+                if (child.pid !== undefined && process.platform !== 'win32') {
+                    killTree(child.pid, 'SIGKILL');
                     signalBelow([...below.values()], child.pid, 'SIGKILL');
                 }
 
@@ -240,11 +214,11 @@ export function spawnInOwnGroup({ command, args, cwd, env }: ProcessSpec): Promi
                     }
 
                     watch();
-                    killProcessGroup(pid, 'SIGTERM');
+                    killTree(pid, 'SIGTERM');
                     signalBelow([...below.values()], pid, 'SIGTERM');
                     timer = setTimeout(() => {
                         if (alive) {
-                            killProcessGroup(pid, 'SIGKILL');
+                            killTree(pid, 'SIGKILL');
                             signalBelow([...below.values()], pid, 'SIGKILL');
                         }
                     }, KILL_AFTER_MS);

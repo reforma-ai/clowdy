@@ -419,7 +419,7 @@ test('protects ignored files, refuses dirty and active targets, and keeps the so
     expect(readFileSync(join(target, 'protected.txt'), 'utf8')).toBe('Do not touch\n');
     unlinkSync(join(target, 'protected.txt'));
 
-    const { chat } = h.ok('chat.create', {
+    const { chat } = await h.okAsync('chat.create', {
         projectId: project.id,
         folderId,
         workspace: { mode: 'existing', path: target },

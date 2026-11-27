@@ -20,6 +20,11 @@ export function ComposerBanner({ className, children, ...props }: HTMLAttributes
     );
 }
 
+/** The rows of agents or background work under a header: five fit, more scroll. */
+export function ComposerBannerRows({ children }: { children: ReactNode }) {
+    return <div className={styles.agentRows}>{children}</div>;
+}
+
 /** The scroll area and list shared by the file and task disclosures. */
 export function ComposerBannerList({
     label,
@@ -56,6 +61,8 @@ export interface ComposerBannerStatusProps {
     /** Accessible name when the visible action needs context. */
     actionLabel?: string;
     onAction?: () => void;
+    /** The action runs: its button spins and takes no more presses. */
+    isActionPending?: boolean;
     /** A press anywhere on the row but the button. The button then shows on hover or focus. */
     onPress?: () => void;
     /** What a screen reader hears for the pressable row. */
@@ -71,6 +78,7 @@ export function ComposerBannerStatus({
     action,
     actionLabel,
     onAction,
+    isActionPending,
     onPress,
     pressLabel,
 }: ComposerBannerStatusProps) {
@@ -122,6 +130,7 @@ export function ComposerBannerStatus({
                     className={styles.action}
                     aria-label={actionLabel}
                     isDisabled={!onAction}
+                    isPending={isActionPending}
                     onPress={onAction}
                 >
                     {action}
