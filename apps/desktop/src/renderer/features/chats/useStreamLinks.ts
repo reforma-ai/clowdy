@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
-import { openChat } from './archiveChat';
+import { openChat, openRun } from './archiveChat';
 import { useSkillLookup } from './useSkillLookup';
 
 import type { Attachment } from '@clowdy/protocol';
@@ -12,7 +12,7 @@ export type ConversationLinks = StreamLinks & Required<Pick<StreamLinks, 'attach
 
 /**
  * What the text of a conversation may point at in the app, the same on every page that shows one: a task key in a message is a chip that opens the task (an archived
- * one is known to the window too, `ProjectState.taskOfKey`), a skill it asks for is a chip, and a thread's card opens that thread.
+ * one is known to the window too, `ProjectState.taskOfKey`), a skill it asks for is a chip, a thread's card opens that thread and a sub-agent's card its page.
  */
 export function useStreamLinks(): ConversationLinks {
     const root = useRootStore();
@@ -29,6 +29,7 @@ export function useStreamLinks(): ConversationLinks {
             hasChat: (chatId: string) => project.chats.has(chatId),
             chatOfId: (chatId: string) => project.chats.get(chatId),
             onOpenChat: (chatId: string) => void openChat(root, project, ui, chatId),
+            onOpenRun: (runId: string) => void openRun(root, project, ui, runId),
         }),
         [project, ui, root, skillOfName]
     );
