@@ -91,7 +91,14 @@ export function FolderWorktreesList({
             leave();
         },
         onRemove: (group: FolderWorktrees, worktree: WorktreeInfo) =>
-            void openRemoveWorktree({ root, projectId, folderId: group.folderId, path: worktree.path, reload }),
+            void openRemoveWorktree({
+                root,
+                projectId,
+                folderId: group.folderId,
+                path: worktree.path,
+                preview: worktree,
+                reload,
+            }),
     };
 
     return (
