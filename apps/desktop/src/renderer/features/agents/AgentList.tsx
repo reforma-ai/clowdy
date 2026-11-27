@@ -713,14 +713,12 @@ export function AgentList({
         const run = runOf(chat);
         const busy = actions.busy(chat);
         const below = project.threadsBelow(chat.id);
-        // The dot tells what the threads below do. A native sub-agent adds nothing to it: it works inside the session of its chat's orchestrator (or its thread's),
-        // and that run is active for as long, so the dot is green already; and a sub-agent never asks for the chat's dot or counts as unread, its question is a card in the stream.
+        // The dot tells that a thread below waits for the person. A native sub-agent never asks for the chat's dot or counts as unread: its question is a card in the stream.
         const threads = below.some(thread => thread.archivedAt === undefined && asksThePerson(thread, project.runs))
             ? ('asking' as const)
-            : below.some(thread => isActiveThread(thread, project.runs))
-              ? ('working' as const)
-              : undefined;
-        // Everything that works inside the chat, whether its row is folded or not and whether the chat works itself: the dot says that something does, this says how many.
+            : undefined;
+        // What works inside the chat is told by this count, whether its row is folded or not and whether the chat works itself. It takes the place of the green dot that working
+        // threads gave, which looked like the dot of the chat working itself and said nothing of how many.
         const agentsInside = agentsWorkingInside(chat, below, project.runs, agentsOf);
         const draft = messageOf(draftOf(chat.id)) !== '' || filesOf(chat.id).length > 0;
         const unread = ui.hasUnreadCompletion(run);

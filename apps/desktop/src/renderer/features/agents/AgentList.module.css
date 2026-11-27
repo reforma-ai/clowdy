@@ -81,16 +81,21 @@
     opacity: var(--opacity-inactive);
 }
 
-/* What works inside the chat, as a count before its dot: small muted text in an outline, as wide as it needs, on a line with the dot. */
+/* What works inside the chat, as a count at the row's end: small text in an outline, with room round it, and the dot (when the chat has one) after it. */
 .agentsInside {
     flex-shrink: 0;
-    padding-inline: var(--spacing-6);
+    padding: var(--spacing-2) var(--spacing-8);
     border-radius: var(--radius-sm);
     box-shadow: inset 0 0 0 var(--spacing-1) var(--color-secondary-muted-border);
-    color: var(--color-secondary-muted-text);
+    color: var(--color-secondary-muted-content);
     font-size: var(--text-xs);
     line-height: var(--leading-xs);
     white-space: nowrap;
+}
+
+/* A chat with no dot or pull request after its count leaves the room they would take (their 24px and the gap), so the counts of the rows end in one column. */
+.agentsInside:not(:has(~ :is(.archiveStatus, .pullRequests))) {
+    margin-inline-end: calc(var(--spacing-24) + var(--spacing-xs));
 }
 
 .archiveStatus,

@@ -1828,10 +1828,11 @@ describe('threads', () => {
         expect(ui().expandedChats).not.toContain('c-6');
     });
 
-    it('marks a chat at rest whose threads work with the working dot, and each thread with its own state', async () => {
+    it('marks a chat at rest whose threads work with the count of the agents inside and no dot, and each thread with its own state', async () => {
         await draw(() => ui().toggleChatExpanded('c-6'));
 
-        expect(dotOf('c-6')).toBe('Threads working');
+        expect(dotOf('c-6')).toBeUndefined();
+        expect(rowOf('c-6').textContent).toContain('2 agents');
         expect(dotOf('c-6a')).toBe('Working');
         expect(dotOf('c-6c')).toBe('Failed');
         expect(dotOf('c-6b')).toBeUndefined();
@@ -1867,13 +1868,14 @@ describe('threads', () => {
             'c-2',
         ]);
 
-        // Decided: the thread goes back behind the fold, and the chat's dot to its threads working.
+        // Decided: the thread goes back behind the fold, and the chat's dot goes: the count of what works inside is what says it.
         await act(async () => foldOf('c-6')!.click());
         await draw(() =>
             project().runs.set('r-orch-6e', { ...project().runs.get('r-orch-6e')!, awaitingUser: undefined })
         );
         expect(rowKeys()).not.toContain('c-6e');
-        expect(dotOf('c-6')).toBe('Threads working');
+        expect(dotOf('c-6')).toBeUndefined();
+        expect(rowOf('c-6').textContent).toContain('2 agents');
     });
 
     it('offers no Archive on a chat whose threads work, and offers it on a finished thread', async () => {
@@ -1882,7 +1884,7 @@ describe('threads', () => {
         const busyActions = rowOf('c-6').querySelector('[slot="endAffix"]');
 
         expect(busyActions?.querySelector('button[aria-label="Archive"]')).toBeNull();
-        expect(busyActions?.querySelector('[aria-label="Threads working"] [data-tone="success"]')).not.toBeNull();
+        expect(busyActions?.textContent).toBe('2 agents');
         expect(rowOf('c-6b').querySelector('button[aria-label="Archive"]')?.hasAttribute('disabled')).toBe(false);
 
         await press(rowOf('c-6').querySelector<HTMLElement>('button[aria-label="Chat actions"]')!);

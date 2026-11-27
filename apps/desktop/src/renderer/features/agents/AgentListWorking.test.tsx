@@ -165,6 +165,15 @@ describe('the count of agents inside a chat', () => {
         expect(countOf('c-1')).toBe('3 agents');
     });
 
+    it('takes the place of the green dot that working threads gave: a chat at rest has no dot, and one that works itself has its own beside the count', () => {
+        // c-6 rests while its threads work.
+        expect(rowOf('c-6').querySelector('[role="img"]')).toBeNull();
+        expect(countOf('c-6')).toBe('2 agents');
+        // c-1 works itself.
+        expect(rowOf('c-1').querySelector('[aria-label="Working"]')).not.toBeNull();
+        expect(countOf('c-1')).toBe('3 agents');
+    });
+
     it('says one agent in the singular, and drops away when the last one ends', async () => {
         const thread = project().runs.get('r-orch-6e')!;
 
