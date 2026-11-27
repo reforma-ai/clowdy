@@ -2205,7 +2205,7 @@ describe('thread_spawn with a worktree', () => {
                 headers: { 'content-type': 'application/json' },
                 body: JSON.stringify({ type: 'settings.setBranchPrefix', prefix, requestId: crypto.randomUUID() }),
             });
-            return ((await response.json()) as { ok: boolean }).ok;
+            return ((await response.json()) as { ok: boolean }).ok ? 'ok' : 'refused';
         });
         git(project.path, 'branch', 'team/alice/inspect-cache');
         const first = await spawn(parent.run, 'Inspect cache', held(latch()), {
