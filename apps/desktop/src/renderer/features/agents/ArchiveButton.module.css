@@ -1,3 +1,5 @@
+@reference '@clowdy/styles/rulesets';
+
 .title {
     display: block;
     overflow: hidden;
@@ -42,8 +44,12 @@
     justify-content: flex-start;
 }
 
-.search {
-    padding: var(--spacing-xs);
+.search[data-size][data-variant] {
+    --clowdy-input-height: var(--spacing-30);
+    --clowdy-input-padding-block: var(--spacing-10);
+    --clowdy-input-padding-inline: var(--spacing-md);
+
+    @ruleset typography-text-sm;
 }
 
 .triggerLabel {

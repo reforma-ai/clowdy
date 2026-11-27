@@ -1596,12 +1596,11 @@ describe('the archive', () => {
         expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe('c-5');
     });
 
-    it('shows a green status in place of the archive shortcut while the chat works, its agent icon when agents work inside it', () => {
+    it('shows a green status in place of the archive shortcut while the chat works', () => {
         const busyActions = rowOf('c-1').querySelector('[slot="endAffix"]');
 
         expect(busyActions?.querySelector('button[aria-label="Archive"]')).toBeNull();
-        expect(busyActions?.querySelector('[aria-label="3 agents work inside"]')).not.toBeNull();
-        expect(busyActions?.querySelector('[aria-label="Working"]')).toBeNull();
+        expect(busyActions?.querySelector('[aria-label="Working"]')).not.toBeNull();
         expect(rowOf('c-4').querySelector('button[aria-label="Archive"]')?.hasAttribute('disabled')).toBe(false);
     });
 

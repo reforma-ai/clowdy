@@ -1,5 +1,5 @@
 import { Button } from '@clowdy/components/Button';
-import { SearchInput } from '@clowdy/components/Input';
+import { Input } from '@clowdy/components/Input';
 import {
     GridList,
     GridListHeader,
@@ -13,11 +13,11 @@ import {
     RowControls,
 } from '@clowdy/components/List';
 import { Popover, PopoverScroll, PopoverTrigger } from '@clowdy/components/Popover';
+import { Separator } from '@clowdy/components/Separator';
 import { Text } from '@clowdy/components/Text';
-import { Archive, More, Trash } from '@clowdy/icons/14';
+import { Archive, More, Search, Trash } from '@clowdy/icons/14';
 import { History } from '@clowdy/icons/16';
 import { type RefObject, useRef, useState } from 'react';
-import { ButtonContext } from 'react-aria-components';
 
 import { formatElapsed } from '../../shared';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
@@ -117,18 +117,19 @@ function ArchiveList({
 
     return (
         <>
-            <div className={styles.search}>
-                <ButtonContext.Provider value={null}>
-                    <SearchInput
-                        size="sm"
-                        variant="filled"
-                        aria-label="Search archived chats"
-                        placeholder="Search chats"
-                        value={query}
-                        onChange={setQuery}
-                    />
-                </ButtonContext.Provider>
-            </div>
+            <Input
+                type="text"
+                size="sm"
+                variant="inline"
+                className={styles.search}
+                aria-label="Search archived chats"
+                placeholder="Search chats"
+                value={query}
+                onChange={setQuery}
+            >
+                <Search slot="prefix" aria-hidden size={14} />
+            </Input>
+            <Separator spacing="xs" />
             {chats.length === 0 ? (
                 <Text variant="sm" color="secondary" className={styles.empty}>
                     No archived chats
