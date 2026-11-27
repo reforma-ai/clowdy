@@ -158,7 +158,9 @@ export function useChatListOrder(
 
     const cardSiblings = (id: string) => {
         const card = shownCards.find(candidate => candidate.key === id);
-        return card ? shownCards.filter(candidate => !ui.groupByFolder || candidate.folder.id === card.folder.id) : [];
+        return card && !card.main
+            ? shownCards.filter(candidate => !candidate.main && candidate.folder.id === card.folder.id)
+            : [];
     };
 
     const moveCard = (id: string, targetId: string, position: Position) => {

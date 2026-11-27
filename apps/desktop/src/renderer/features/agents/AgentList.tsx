@@ -8,7 +8,7 @@ import {
     RowControls,
     useCellEditMode,
 } from '@clowdy/components/List';
-import { FoldButton, Panel, PanelContent } from '@clowdy/components/Panel';
+import { Panel, PanelContent } from '@clowdy/components/Panel';
 import { Popover, PopoverTrigger, useContextMenu } from '@clowdy/components/Popover';
 import { Show } from '@clowdy/components/Show';
 import { Archive, Check, Close, Message, More, NewChat, Plus, Robot2 } from '@clowdy/icons/14';
@@ -71,6 +71,7 @@ import { BranchPullRequestBadge } from './BranchPullRequestBadge';
 import { ChatIcon, ChatStatus } from './ChatIcon';
 import { chatListPreferences } from './chatListPreferences';
 import { GroupFolderName } from './GroupFolderName';
+import { GroupHeader } from './GroupHeader';
 import { openNewChat } from './openNewChat';
 import { ProjectMenu } from './ProjectMenu';
 import { RowFold } from './RowFold';
@@ -197,7 +198,8 @@ export function AgentList({
     const groupedByWorktree = ui.groupByWorktree;
     const actual = useSidebarWorktrees(groupedByWorktree);
     const draftItems = ui.newChatDrafts.drafts;
-    const draftFolder = (draft: NewChatDraft) => draft.folderId ?? mainFolder(project.project).id;
+    const draftFolder = (draft: NewChatDraft) =>
+        folders.find(folder => folder.id === draft.folderId)?.id ?? mainFolder(project.project).id;
     const additionalDraftKey = (draft: NewChatDraft) =>
         draft.workspace?.mode === 'existing' ? worktreeKey(draftFolder(draft), draft.workspace.path) : undefined;
     const additionalCards = worktreeCards(
@@ -216,7 +218,7 @@ export function AgentList({
         additionalCards.push({
             key,
             folder,
-            folderName: folder.path,
+            folderName: agentGroups([], folders).find(group => group.folder.id === folder.id)?.name ?? folder.path,
             path: draft.workspace.path,
             missing: false,
             pending: true,
@@ -234,7 +236,6 @@ export function AgentList({
     const mainCards: WorktreeCard[] = groupedByWorktree
         ? agentGroups(chats, folders).flatMap(group => {
               const roots = group.roots.filter(chat => !chat.workspace);
-              if (!shownAdditional.some(card => card.folder.id === group.folder.id)) return [];
               return [
                   {
                       key: worktreeKey(group.folder.id, group.folder.path),
@@ -253,10 +254,15 @@ export function AgentList({
         : [];
     const draftCardKey = (draft: NewChatDraft) =>
         additionalDraftKey(draft) ??
-        (!draft.workspace ? mainCards.find(card => card.folder.id === draftFolder(draft))?.key : undefined);
+        (draft.workspace?.mode !== 'existing'
+            ? mainCards.find(card => card.folder.id === draftFolder(draft))?.key
+            : undefined);
     const rank = new Map(ui.worktreeOrder.map((key, index) => [key, index]));
     const cards = [...mainCards, ...additionalCards].sort(
-        (a, b) => (rank.get(a.key) ?? Infinity) - (rank.get(b.key) ?? Infinity)
+        (a, b) =>
+            folders.indexOf(a.folder) - folders.indexOf(b.folder) ||
+            Number(Boolean(b.main)) - Number(Boolean(a.main)) ||
+            (rank.get(a.key) ?? Infinity) - (rank.get(b.key) ?? Infinity)
     );
     const shownCards = cards.filter(card => card.main || shownAdditional.includes(card));
     const order = useChatListOrder(chats, openChatId, cards, shownCards);
@@ -284,55 +290,33 @@ export function AgentList({
             openRunId: openRun?.id,
         });
     const rowEntries = (roots: readonly Chat[]): ListEntry[] => rowsOf(roots).map(row => ({ kind: 'row', row }));
-    const cardEntries = (roots: readonly Chat[], scoped: readonly WorktreeCard[]): ListEntry[] => {
-        const cardEntry = (card: WorktreeCard): ListEntry => {
-            const isCollapsed = ui.collapsedWorktrees.includes(card.key);
-            return {
-                kind: 'worktree',
-                card,
-                isCollapsed,
-                rows: isCollapsed ? [] : rowsOf(card.roots),
-                drafts: isCollapsed ? [] : draftItems.filter(draft => draftCardKey(draft) === card.key),
-            };
-        };
-        return [
-            ...rowEntries(
-                roots.filter(chat => !chat.workspace && !scoped.some(card => card.main && card.roots.includes(chat)))
-            ),
-            ...scoped.map(cardEntry),
-        ];
-    };
-    const entries: ListEntry[] = grouped
-        ? agentGroups(chats, folders).flatMap((group): ListEntry[] => {
-              const isCollapsed = ui.collapsedFolders.includes(group.folder.id);
-              const standalone = draftItems.filter(
-                  draft =>
-                      draftFolder(draft) === group.folder.id &&
-                      (!groupedByWorktree || !shownCards.some(card => card.key === draftCardKey(draft)))
-              );
-              const body = isCollapsed
-                  ? []
-                  : [
-                        ...standalone.map(draft => ({ kind: 'draft' as const, draft })),
-                        ...(groupedByWorktree
-                            ? cardEntries(
-                                  group.roots,
-                                  shownCards.filter(card => card.folder.id === group.folder.id)
-                              )
-                            : rowEntries(group.roots)),
-                    ];
-              return [
-                  { kind: 'group', group, isCollapsed },
-                  ...(isCollapsed || body.length ? body : [{ kind: 'empty' as const, folderId: group.folder.id }]),
-              ];
+    const entries: ListEntry[] = groupedByWorktree
+        ? shownCards.map(card => {
+              const isCollapsed = ui.collapsedWorktrees.includes(card.key);
+              return {
+                  kind: 'worktree' as const,
+                  card,
+                  isCollapsed,
+                  rows: isCollapsed ? [] : rowsOf(card.roots),
+                  drafts: isCollapsed ? [] : draftItems.filter(draft => draftCardKey(draft) === card.key),
+              };
           })
-        : groupedByWorktree
-          ? [
-                ...draftItems
-                    .filter(draft => !shownCards.some(card => card.key === draftCardKey(draft)))
-                    .map(draft => ({ kind: 'draft' as const, draft })),
-                ...cardEntries(chats, shownCards),
-            ]
+        : grouped
+          ? agentGroups(chats, folders).flatMap((group): ListEntry[] => {
+                const isCollapsed = ui.collapsedFolders.includes(group.folder.id);
+                const body = isCollapsed
+                    ? []
+                    : [
+                          ...draftItems
+                              .filter(draft => draftFolder(draft) === group.folder.id)
+                              .map(draft => ({ kind: 'draft' as const, draft })),
+                          ...rowEntries(group.roots),
+                      ];
+                return [
+                    { kind: 'group', group, isCollapsed },
+                    ...(isCollapsed || body.length ? body : [{ kind: 'empty' as const, folderId: group.folder.id }]),
+                ];
+            })
           : [...draftItems.map(draft => ({ kind: 'draft' as const, draft })), ...rowEntries(chats)];
 
     const visibleRows = new Map<string, AgentRow>();
@@ -434,10 +418,7 @@ export function AgentList({
         // Only a chat has a fold: a sub-agent's row has none.
         if (row && row.childCount > 0)
             return { isExpanded: row.isExpanded, toggle: () => ui.toggleChatExpanded(row.id) };
-        if (
-            entry?.kind === 'worktree' &&
-            (entry.card.roots.length > 0 || draftItems.some(draft => draftCardKey(draft) === entry.card.key))
-        )
+        if (entry?.kind === 'worktree')
             return { isExpanded: !entry.isCollapsed, toggle: () => ui.toggleWorktreeCollapsed(entry.card.key) };
 
         if (entry?.kind === 'group')
@@ -502,12 +483,20 @@ export function AgentList({
         const startChat = () => openNewChat(project, ui, group.folder.id);
 
         return (
-            <GridListItem
+            <GroupHeader
                 key={groupKey(group.folder.id)}
                 id={groupKey(group.folder.id)}
                 text={group.name}
-                className={styles.group}
-                plateless
+                collapsed={isCollapsed}
+                onToggle={() => ui.toggleFolderCollapsed(group.folder.id)}
+                name={
+                    <GroupFolderName
+                        name={group.name}
+                        folder={group.folder}
+                        missing={isMissing}
+                        onNewChat={startChat}
+                    />
+                }
                 endAffix={
                     <RowControls className={styles.end}>
                         <RowActionButton
@@ -522,27 +511,7 @@ export function AgentList({
                 }
                 data-collapsed={isCollapsed || undefined}
                 data-missing={isMissing || undefined}
-            >
-                <span className={styles.groupTitle}>
-                    <RowControls className={styles.groupNameBox}>
-                        <GroupFolderName
-                            name={group.name}
-                            folder={group.folder}
-                            missing={isMissing}
-                            onNewChat={startChat}
-                        />
-                    </RowControls>
-                    {/* The way to fold the group. On a folded group it is always there, which says it is folded; on an open one it comes with the pointer or the keyboard. */}
-                    <RowControls className={styles.groupFold}>
-                        <FoldButton
-                            label={`${isCollapsed ? 'Expand' : 'Collapse'} ${group.name}`}
-                            isExpanded={!isCollapsed}
-                            data-show={isCollapsed ? undefined : listBoxItemDataShow.itemBoth}
-                            onToggle={() => ui.toggleFolderCollapsed(group.folder.id)}
-                        />
-                    </RowControls>
-                </span>
-            </GridListItem>
+            />
         );
     };
 
@@ -631,13 +600,22 @@ export function AgentList({
                             }
                             collapsed={entry.isCollapsed}
                             activity={cardActivity(entry.card)}
-                            hasDraft={draftItems.some(draft => draftCardKey(draft) === entry.card.key)}
-                            showFolder={!grouped && folders.length > 1}
                             onToggle={() => ui.toggleWorktreeCollapsed(entry.card.key)}
                             onDragStart={event => order.startCard(event, entry.card.key)}
                         />
                         {entry.drafts.map(renderDraft)}
                         {entry.rows.map(row => renderAgentRow(row, entry.card))}
+                        {!entry.isCollapsed && entry.rows.length === 0 && entry.drafts.length === 0 && (
+                            <GridListItem
+                                id={`${EMPTY_PREFIX}${entry.card.key}`}
+                                text="No chats"
+                                icon={<Message />}
+                                className={styles.empty}
+                                isDisabled
+                            >
+                                <span className={styles.title}>No chats</span>
+                            </GridListItem>
+                        )}
                     </GridListSection>
                 );
             case 'empty':
