@@ -1,92 +1,48 @@
-import { Tag, type TagComponentProps } from './Tag';
-import { TagGroup, type TagGroupProps } from './TagGroup';
+import { Chip } from '../Chip';
 
 import type { ReactNode } from 'react';
-import type { Key } from 'react-aria-components';
+import type { SemanticColor } from '../types';
+import type { TagSize } from './Tag.types';
 
-export interface BadgeProps
-    extends Omit<TagGroupProps, 'items' | 'children' | 'renderEmptyState' | 'selectedKeys' | 'selectionMode' | 'id'>,
-        Pick<
-            TagComponentProps,
-            | 'id'
-            | 'textValue'
-            | 'icon'
-            | 'count'
-            | 'href'
-            | 'target'
-            | 'onPress'
-            | 'onHoverStart'
-            | 'onHoverEnd'
-            | 'onHoverChange'
-            | 'rounded'
-            | 'tooltip'
-        > {
-    /** Label inside the tag. */
+export interface BadgeProps {
+    /** Label inside the badge. */
     children?: ReactNode;
-    /** React Aria key for the single tag. */
-    value?: Key;
-    /** Class name on the inner `Tag` (not the group wrapper). */
-    tagClassName?: TagComponentProps['className'];
+    /** `secondary` (the default) is the plain chip. */
+    color?: SemanticColor;
+    /** `xs` is 20px; the larger sizes are 24px. */
+    size?: TagSize;
+    /** Pill shape. */
+    rounded?: boolean;
+    icon?: ReactNode;
+    tooltip?: ReactNode;
+    /** The badge's name for a screen reader when it has a tooltip and its label is not plain text. */
+    textValue?: string;
+    className?: string;
 }
 
-/**
- * Single-tag chip: a {@link TagGroup} with one {@link Tag}. Use for badges and status pills; use
- * {@link TagGroup} when you have multiple tags or list semantics.
- * Pass `onRemove` (see {@link TagGroup}) to show the dismiss control.
- */
+/** A static label: a `Chip` with the `Tag` colour names. New code uses `Chip` directly; `TagGroup` is for lists of tags. */
 export function Badge({
     children,
-    value = 'badge',
-    id,
-    textValue,
-    icon,
-    count,
-    tagClassName,
     color = 'secondary',
     size = 'md',
     rounded,
-    className,
-    href,
-    target,
-    onPress,
-    onHoverStart,
-    onHoverEnd,
-    onHoverChange,
-    onRemove,
+    icon,
     tooltip,
-    ...groupProps
+    textValue,
+    className,
 }: BadgeProps) {
-    const itemKey = id ?? value;
-
     return (
-        <TagGroup
-            {...groupProps}
-            key={String(itemKey)}
-            color={color}
-            size={size}
-            rounded={rounded}
+        <Chip
+            tone={color === 'secondary' ? undefined : color}
+            size={size === 'xs' ? 'xs' : 'sm'}
+            shape={rounded ? 'pill' : 'squircle'}
+            icon={icon}
+            tooltip={tooltip}
+            aria-label={tooltip == null ? undefined : textValue}
             className={className}
-            onRemove={onRemove}
         >
-            <Tag
-                id={itemKey}
-                value={value}
-                textValue={textValue}
-                icon={icon}
-                count={count}
-                rounded={rounded}
-                className={tagClassName}
-                href={href}
-                target={target}
-                onPress={onPress}
-                onHoverStart={onHoverStart}
-                onHoverEnd={onHoverEnd}
-                onHoverChange={onHoverChange}
-                tooltip={tooltip}
-            >
-                {children}
-            </Tag>
-        </TagGroup>
+            {children}
+        </Chip>
     );
 }
 
