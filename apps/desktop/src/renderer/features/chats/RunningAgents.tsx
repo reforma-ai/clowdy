@@ -1,6 +1,6 @@
 import { Shimmer } from '@clowdy/components/Shimmer';
 import { Text } from '@clowdy/components/Text';
-import { BackgroundTask, Robot, Terminal } from '@clowdy/icons/14';
+import { BackgroundTask, Robot2, Terminal } from '@clowdy/icons/14';
 import { shownRunStatus } from '@clowdy/protocol';
 import { useEffect, useState } from 'react';
 
@@ -54,7 +54,7 @@ function AgentRow({ run, now }: { run: Run; now: number }) {
 
     return (
         <ComposerBannerStatus
-            icon={<Robot />}
+            icon={<Robot2 />}
             detail={detail}
             progress={progress}
             action={stoppable ? 'Stop' : undefined}

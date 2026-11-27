@@ -1,5 +1,5 @@
 import { BoltBordered, Edit } from '@clowdy/icons/12';
-import { Robot } from '@clowdy/icons/14';
+import { Robot2 } from '@clowdy/icons/14';
 import { shownRunStatus } from '@clowdy/protocol';
 
 import { RUN_STATUS_VIEW, StatusDot } from '../../shared';
@@ -82,7 +82,7 @@ export function ChatStatus({
     return (
         <span className={className} role="img" aria-label={label}>
             {showAgents ? (
-                <Robot className={styles.agents} aria-hidden />
+                <Robot2 className={styles.agents} aria-hidden />
             ) : showDraft ? (
                 <Edit className={styles.draft} aria-hidden />
             ) : showBackground ? (

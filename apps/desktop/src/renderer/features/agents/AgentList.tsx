@@ -14,7 +14,7 @@ import {
     Message,
     More,
     Plus,
-    Robot,
+    Robot2,
     Split,
 } from '@clowdy/icons/14';
 import { cn } from '@clowdy/lib';
@@ -921,7 +921,7 @@ const SubagentItem = memo(function SubagentItem({
         <GridListItem
             id={run.id}
             text={label}
-            icon={<Robot />}
+            icon={<Robot2 />}
             endAffix={
                 canArchive ? (
                     // The button is a React child of the row, so its clicks and keys would reach the row through the tree.

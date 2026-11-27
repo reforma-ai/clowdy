@@ -1,7 +1,7 @@
 import { Button } from '@clowdy/components/Button';
 import { Shimmer } from '@clowdy/components/Shimmer';
 import { Text } from '@clowdy/components/Text';
-import { Robot } from '@clowdy/icons/14';
+import { Robot2 } from '@clowdy/icons/14';
 import { ProgressLoader } from '@clowdy/icons/assets';
 import { Children, type ReactNode, use, useId } from 'react';
 
@@ -186,7 +186,7 @@ export function ThreadMessageCard({ chatId, title, text, turn }: ThreadMessageCa
     return (
         <CardFrame
             slot="thread-message"
-            icon={<Robot />}
+            icon={<Robot2 />}
             title={
                 <>
                     Message from <ChatName chatId={chatId} title={title} />
