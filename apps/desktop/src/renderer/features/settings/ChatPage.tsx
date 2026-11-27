@@ -9,6 +9,7 @@ import { composerBannerPreferences } from '../chats/composerBannerPreferences';
 import { newChatDefaults } from '../chats/newChatDefaults';
 import { swipeToReply } from '../chats/swipeReplyPreference';
 import { modeOf, NewChatChoices } from './NewChatChoices';
+import { SharedAgentSwitch } from './SharedAgentSwitch';
 import { SleepSettings } from './SleepSettings';
 import { SettingsCard } from './ui/SettingsCard';
 import { SettingsPage } from './ui/SettingsPage';
@@ -37,6 +38,11 @@ export function ChatPage() {
         <SettingsPage description="Choose how chats look and behave">
             <SettingsSection title="Messages">
                 <SettingsCard>
+                    <SharedAgentSwitch
+                        id="promptSuggestions"
+                        title="Suggest next messages"
+                        description="Let supported agents suggest your next message in new sessions"
+                    />
                     <SettingsRow
                         title={LABEL}
                         description={`Steer it into the current turn, or queue it for the next one. Press ${OTHER_KEY} to use the other option.`}

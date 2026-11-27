@@ -313,6 +313,7 @@ export class V1Layer implements ProtocolLayer {
                 agent: agent.name,
                 options: selectsOf(configOptions),
                 model: options.model,
+                strictModel: options.strictModel,
                 effort: options.effort,
                 mode: agent.permission.mode,
                 set: async ({ configId, value }) => {

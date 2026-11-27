@@ -35,6 +35,7 @@ export const agentsHandlers: Pick<
     | 'agent.signIn'
     | 'agent.cancelSignIn'
     | 'agents.setCommitMessageProvider'
+    | 'agents.setSharedSetting'
 > = {
     'agent.add': (services, { id, name, command, args, env }) =>
         change(services, id, () => {
@@ -61,6 +62,11 @@ export const agentsHandlers: Pick<
             services.agents.remove(id);
 
             return { id };
+        }),
+    'agents.setSharedSetting': (services, { id, enabled }) =>
+        change(services, undefined, () => {
+            services.agents.setSharedSetting(id, enabled);
+            return { id, enabled };
         }),
     'agents.setCommitMessageProvider': (services, { provider }) =>
         change(services, undefined, () => {

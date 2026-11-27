@@ -55,6 +55,25 @@ beforeEach(() => {
 
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
+describe('shared agent settings', () => {
+    test('retains mixed provider values until an explicit shared choice and keeps workflows independent after restart', () => {
+        const dataDir = join(root, 'data');
+        const reg = new AgentRegistry({ discovery: discovery(), dataDir });
+        reg.update('claude', { settings: { subagents: false, workflows: true } });
+        reg.update('codex', { settings: { subagents: true } });
+        expect([reg.setting('claude', 'subagents'), reg.setting('codex', 'subagents')]).toEqual([false, true]);
+        reg.setSharedSetting('subagents', false);
+        const restarted = new AgentRegistry({ discovery: discovery(), dataDir });
+        expect([
+            restarted.setting('claude', 'subagents'),
+            restarted.setting('codex', 'subagents'),
+            restarted.setting('claude', 'workflows'),
+        ]).toEqual([false, false, true]);
+        const stored = JSON.parse(readFileSync(join(dataDir, 'agents.json'), 'utf8'));
+        expect(stored.overrides.codex.settings.subagents).toBe(true);
+    });
+});
+
 describe('the catalog', () => {
     test('fetches each adapter at one exact, stable version, never a range, a tag or a preview', () => {
         const packages = SPECS.flatMap(agent => (agent.launch.kind === 'package' ? [agent.launch.package] : []));
@@ -445,6 +464,28 @@ describe('AgentRegistry', () => {
 
             return resolved.agent;
         };
+
+        test('global switches reach supported agents without changing the separate Claude workflow', async () => {
+            program('claude', '2.1.325');
+            program('codex', 'codex-cli 0.166.0');
+            const reg = registry();
+            reg.setSharedSetting('subagents', false);
+            reg.setSharedSetting('promptSuggestions', false);
+            const claude = await start(reg);
+            const codex = await start(reg, 'codex');
+            expect(claude.promptSuggestions).toBe(false);
+            expect(claude.env.CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION).toBe('false');
+            expect(claude.sessionMeta).toMatchObject({
+                claudeCode: {
+                    options: { disallowedTools: ['AskUserQuestion', 'ExitPlanMode', 'Agent', 'Task', 'ListAgents'] },
+                },
+            });
+            expect(JSON.parse(codex.env.CODEX_CONFIG!)).toMatchObject({
+                'agents.enabled': false,
+                'features.multi_agent_v2': false,
+            });
+            expect(codex.promptSuggestions).toBe(false);
+        });
 
         test('Claude Code lists its settings at their defaults, and the defaults are what a run gets today', async () => {
             program('claude', '2.1.325 (Claude Code)');

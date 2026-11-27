@@ -1,6 +1,6 @@
 import { homedir } from 'node:os';
 
-import { readBranchPrefix } from '../db/appSettings';
+import { readBranchPrefix, readDelegation } from '../db/appSettings';
 import { listArtifactsOfTask } from '../db/artifacts';
 import { chatIdsOfTask, listChats, listChatTaskLinks } from '../db/chats';
 import { listProjects, listStatuses } from '../db/projects';
@@ -20,6 +20,7 @@ export function rootSnapshot(store: Store): RootSnapshot {
         projects: listProjects(store.db),
         home: homedir(),
         branchPrefix: readBranchPrefix(store.db),
+        delegation: readDelegation(store.db),
     }));
 }
 
