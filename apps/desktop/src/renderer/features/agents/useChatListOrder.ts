@@ -303,6 +303,12 @@ export function useChatListOrder(
             source.current = key;
             event.dataTransfer.setData(CARD_DRAG_TYPE, key);
             event.dataTransfer.effectAllowed = 'move';
+
+            const card = event.currentTarget.closest<HTMLElement>('[data-worktree-card]');
+            if (card) {
+                const box = card.getBoundingClientRect();
+                event.dataTransfer.setDragImage(card, event.clientX - box.left, event.clientY - box.top);
+            }
         },
         start(event: DragEvent<HTMLElement>, id: ChatId) {
             source.current = id;

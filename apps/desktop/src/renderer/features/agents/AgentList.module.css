@@ -44,6 +44,11 @@
     opacity: var(--opacity-disabled);
 }
 
+/* Groups have no background: keep their slot empty while other groups move across it. */
+.worktreeCard[data-reorder-source] {
+    visibility: hidden;
+}
+
 @media (prefers-reduced-motion: reduce) {
     :is(.chatRow, .agentRow, .worktreeCard) {
         transition: none;

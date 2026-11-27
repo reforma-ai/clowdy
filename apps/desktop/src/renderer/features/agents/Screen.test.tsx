@@ -2895,6 +2895,21 @@ describe('worktree cards', () => {
         expect(cardRows().slice(0, 3)).toEqual([cards[0], cards[2], cards[1]]);
     });
 
+    it('uses the whole visible worktree group as the drag image', async () => {
+        await restart();
+        await draw(() => ui().setGroupByWorktree(true));
+        const card = rowOf(workspaceKey()).closest<HTMLElement>('[data-worktree-card]')!;
+        const transfer = new DataTransfer();
+        transfer.setDragImage = vi.fn();
+        const event = new MouseEvent('dragstart', { bubbles: true, cancelable: true });
+        Object.defineProperty(event, 'dataTransfer', { value: transfer });
+        await act(async () =>
+            rowOf(workspaceKey()).querySelector<HTMLElement>('[draggable="true"]')!.dispatchEvent(event)
+        );
+        expect(transfer.setDragImage).toHaveBeenCalledWith(card, expect.any(Number), expect.any(Number));
+        expect(card.contains(rowOf(FIXTURE_WORKSPACE_CHAT_ID))).toBe(true);
+    });
+
     it('moves an occupied worktree among unused worktrees', async () => {
         await restart();
         await draw(() => {
