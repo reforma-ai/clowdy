@@ -2,18 +2,18 @@ import { Button } from '@clowdy/components/Button';
 import { Checkbox } from '@clowdy/components/Checkbox';
 import { DiffStat } from '@clowdy/components/DiffStat';
 import { For } from '@clowdy/components/For';
-import { GridList, GridListItem, Menu, MenuItem, MenuTrigger } from '@clowdy/components/List';
+import { GridList, GridListItem, Menu, MenuItem } from '@clowdy/components/List';
 import { PathText } from '@clowdy/components/PathText';
 import { Popover, useContextMenu } from '@clowdy/components/Popover';
 import { Scrollable } from '@clowdy/components/Scrollable';
 import { Spinner } from '@clowdy/components/Spinner';
+import { SplitButton, type SplitButtonProps } from '@clowdy/components/SplitButton';
 import { Text } from '@clowdy/components/Text';
 import { Textarea } from '@clowdy/components/Textarea';
-import { AiStar, ChevronDown, Refresh, Undo } from '@clowdy/icons/14';
+import { AiStar, Refresh, Undo } from '@clowdy/icons/14';
 import { commitMessageAgent, writesCommitMessages } from '@clowdy/protocol';
 import { type MouseEvent, type KeyboardEvent as ReactKeyboardEvent, useEffect, useState } from 'react';
 
-import { Unavailable } from '../../shared/Unavailable';
 import { useAgents, useProjectUi, useRootStore } from '../../stores';
 import { quoteIntoComposer } from '../chats/composerBridge';
 import { PathMenu, placeTarget } from '../openWith';
@@ -30,6 +30,7 @@ import { useRemoteActions } from './useRemoteActions';
 
 import type { GitChangedFile, GitStatusEntry } from '@clowdy/protocol';
 import type { ReactNode } from 'react';
+import type { PressEvent } from 'react-aria-components';
 import type { Place } from '../sidePanel/currentPlace';
 import type { CommitDraft } from './CommitDraft';
 import type { PlaceChanges } from './PlaceChanges';
@@ -419,6 +420,23 @@ export function CommitBox({ model, place }: { model: PlaceChanges; place: Place 
         ? (draft.commitReason ?? (commitAndSync && draft.busy === undefined ? draft.syncBlock : undefined))
         : undefined;
     const commit = (shift: boolean) => void draft.commit(shift ? !syncsByDefault : undefined);
+    // The Commit button, alone while a merge has conflicts or with the menu of the other way to commit, where its label wraps at the narrowest sidebar.
+    const commitProps = {
+        color: 'contrast',
+        size: 'sm',
+        fullWidth: true,
+        contentClassName: styles.commitContent,
+        isDisabled: !(commitAndSync ? draft.canCommitAndSync : draft.canCommit),
+        disabledReason: reason,
+        isPending: draft.writing,
+        tooltip:
+            hasChangesToCommit && reason === undefined && !merging && !commitAndSync && target
+                ? `Commit to ${target.name}`
+                : undefined,
+        tooltipPlacement: 'top',
+        onPress: (event: PressEvent) => commit(event.shiftKey),
+        children: label,
+    } satisfies Omit<SplitButtonProps, 'menu' | 'menuLabel'>;
 
     return (
         <section className={styles.root} aria-label="Commit">
@@ -530,55 +548,31 @@ export function CommitBox({ model, place }: { model: PlaceChanges; place: Place 
                 }}
             />
 
-            <div className={styles.commitGroup}>
-                <Unavailable label={label} hint={reason} className={styles.commitHost}>
-                    <Button
-                        color="contrast"
-                        size="sm"
-                        className={styles.commit}
-                        contentClassName={styles.commitContent}
-                        isDisabled={!(commitAndSync ? draft.canCommitAndSync : draft.canCommit)}
-                        isPending={draft.writing}
-                        tooltip={
-                            hasChangesToCommit && reason === undefined && !merging && !commitAndSync && target
-                                ? `Commit to ${target.name}`
-                                : undefined
-                        }
-                        tooltipPlacement="top"
-                        onPress={event => commit(event.shiftKey)}
-                    >
-                        {label}
-                    </Button>
-                </Unavailable>
-                {(!merging || draft.concluding) && (
-                    <MenuTrigger>
-                        <Button
-                            variant="bordered"
-                            size="sm"
-                            iconOnly
-                            className={styles.more}
-                            isDisabled={!draft.canCommit}
-                            aria-label="More ways to commit"
-                            tooltip="More ways to commit"
-                            tooltipPlacement="top"
-                        >
-                            <ChevronDown aria-hidden="true" />
-                        </Button>
-                        <Popover placement="top end" spacing="xs" width={220}>
-                            <Menu aria-label="Commit" size="sm" onAction={() => void draft.commit(!syncsByDefault)}>
-                                <MenuItem
-                                    id={syncsByDefault ? 'local' : 'sync'}
-                                    icon={syncsByDefault ? undefined : <Refresh />}
-                                    text={syncsByDefault ? localOnlyLabel : syncLabel}
-                                    description={alternateBlock}
-                                    stacked={alternateBlock !== undefined}
-                                    isDisabled={alternateBlock !== undefined}
-                                />
-                            </Menu>
-                        </Popover>
-                    </MenuTrigger>
-                )}
-            </div>
+            {!merging || draft.concluding ? (
+                <SplitButton
+                    {...commitProps}
+                    wrap
+                    menuLabel="More ways to commit"
+                    menuTooltip="More ways to commit"
+                    isMenuDisabled={!draft.canCommit}
+                    menuPlacement="top end"
+                    menuWidth={220}
+                    menu={
+                        <Menu aria-label="Commit" size="sm" onAction={() => void draft.commit(!syncsByDefault)}>
+                            <MenuItem
+                                id={syncsByDefault ? 'local' : 'sync'}
+                                icon={syncsByDefault ? undefined : <Refresh />}
+                                text={syncsByDefault ? localOnlyLabel : syncLabel}
+                                description={alternateBlock}
+                                stacked={alternateBlock !== undefined}
+                                isDisabled={alternateBlock !== undefined}
+                            />
+                        </Menu>
+                    }
+                />
+            ) : (
+                <Button {...commitProps} />
+            )}
 
             {/* Several chats share a place, so a commit that goes straight to the branch the work is compared with is said before it is made. */}
             {hasChangesToCommit && target?.onBase && (

@@ -289,7 +289,7 @@ describe('the Changes tab of a chat in a worktree', () => {
         const sidebar = container.querySelector('[aria-label="Changes sidebar"]');
 
         expect(sidebar?.textContent).not.toContain('Base:');
-        expect(sidebar?.querySelector('button[data-sync]')?.getAttribute('aria-label')).toBe('Publish branch');
+        expect(sidebar?.querySelector('[data-sync] button')?.getAttribute('aria-label')).toBe('Publish branch');
         expect(sidebar?.querySelector('button[aria-label="Update from main"]')).toBeNull();
         expect(container.querySelector('[role="row"][aria-label^="Open pull request 128"]')?.textContent).toContain(
             'PR #128'

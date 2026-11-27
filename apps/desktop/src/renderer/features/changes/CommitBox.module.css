@@ -88,12 +88,6 @@
     }
 }
 
-.commitGroup {
-    display: flex;
-    gap: var(--spacing-sm);
-    min-width: 0;
-}
-
 .generateProgress {
     position: relative;
 }
@@ -108,43 +102,12 @@
     background: currentColor;
 }
 
-/* The Commit button's stop (`Unavailable`), when it is off and says why: it is the button's place in the group, and its focus ring follows the button's corners. */
-.commitHost {
-    flex: 1 1 0;
-    min-width: 0;
-    border-radius: calc(var(--radius-md) * var(--squircle-radius-factor));
-    corner-shape: superellipse(var(--squircle-value));
-}
-
-/* Keep the commit label readable at the minimum sidebar width. */
-.commit[data-size][data-variant] {
-    flex: 1 1 0;
-    min-width: 0;
-    height: auto;
-    min-height: var(--spacing-30);
-    padding-block: var(--spacing-xs);
-}
-
+/* The Commit label stays centred when it wraps. */
 .commitContent {
+    flex: 1;
+    justify-content: center;
     min-width: 0;
-    line-height: 1.2;
     text-align: center;
-    white-space: normal;
-}
-
-@container (max-width: 12rem) {
-    .commit[data-size][data-variant] {
-        padding-inline: var(--spacing-sm);
-        font-size: var(--text-xs);
-    }
-
-    .more[data-size][data-variant] {
-        min-width: var(--spacing-24);
-    }
-}
-
-.more[data-size][data-variant] {
-    flex: 0 0 auto;
 }
 
 /* Git's line, its hint, and for a push turned down for newer commits the Fetch origin button, which goes under the line where there is no room beside it. */
@@ -156,6 +119,6 @@
     overflow-wrap: anywhere;
 }
 
-.fetch[data-size][data-variant] {
+.fetch {
     margin-top: var(--spacing-xxs);
 }

@@ -85,7 +85,9 @@ const buttonOf = (label: string) =>
     );
 /** The sync button: the one that names the next action. */
 const createPRButton = () => container.querySelector<HTMLButtonElement>('button[aria-label="Create PR"]') ?? undefined;
-const syncButton = () => container.querySelector<HTMLButtonElement>('button[data-sync]')!;
+const syncButton = () => container.querySelector<HTMLButtonElement>('[data-sync] button')!;
+/** What the sync button offers (`push`, `blocked`, …), which its group carries. */
+const syncKind = () => syncButton().closest('[data-sync]')?.getAttribute('data-sync');
 const syncCopy = () => syncButton().querySelector('[data-sync-copy]')?.textContent;
 const syncDetail = () => document.getElementById(syncButton().getAttribute('aria-describedby') ?? '')?.textContent;
 /** The dropdown beside it, which keeps every action. */
@@ -350,7 +352,7 @@ describe('the sync button in the sidebar', () => {
     ] as const)('holds Sync where it cannot run (%s) with an accessible reason', async (script, kind, line) => {
         await start({ gitWrites: { remote: script } });
 
-        expect(syncButton().getAttribute('data-sync')).toBe(kind);
+        expect(syncKind()).toBe(kind);
         expect(syncButton().disabled).toBe(true);
         expect(syncCopy()).toContain(line);
         const stand = syncButton().closest('[role="button"][aria-disabled="true"]');
@@ -423,7 +425,7 @@ describe('the sync button in the sidebar', () => {
 
         expect(syncButton()).toBe(button);
         expect(button.hasAttribute('data-pending')).toBe(false);
-        expect(button.dataset.sync).toBe('push');
+        expect(syncKind()).toBe('push');
         expect(status()).toBeNull();
     });
 
@@ -1550,7 +1552,7 @@ describe('Create PR in the sidebar', () => {
 
         expect(createPRButton()).toBeUndefined();
         expect(buttonOf('Push first')).toBeUndefined();
-        expect(syncButton().getAttribute('data-sync')).toBe('push');
+        expect(syncKind()).toBe('push');
 
         await press(syncButton());
         await settle();
