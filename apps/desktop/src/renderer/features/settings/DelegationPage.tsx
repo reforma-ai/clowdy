@@ -1,5 +1,3 @@
-import { ListBoxItem } from '@clowdy/components/List';
-import { Select } from '@clowdy/components/Select';
 import { toast } from '@clowdy/components/Toast';
 import { observer } from 'mobx-react-lite';
 import { useEffect, useState } from 'react';
@@ -24,7 +22,6 @@ export const DelegationPage = observer(function DelegationPage() {
     const models = useModelChoice({ chat: undefined, made: undefined, run: undefined });
     const [settings, setSettings] = useState<DelegationSettings>();
     const [saving, setSaving] = useState(false);
-    const [choosing, setChoosing] = useState<(typeof ROLES)[number]>();
 
     useEffect(() => {
         let live = true;
@@ -44,7 +41,6 @@ export const DelegationPage = observer(function DelegationPage() {
         const result = await root.command({ type: 'settings.setDelegation', settings: next });
         if (result.ok) {
             setSettings(next);
-            setChoosing(undefined);
         } else toast.error({ message: result.error.message });
         setSaving(false);
     }
@@ -64,20 +60,14 @@ export const DelegationPage = observer(function DelegationPage() {
                 <SettingsCard>
                     {ROLES.map(role => {
                         const selected = settings?.[role];
-                        const kind =
-                            choosing === role
-                                ? 'model'
+                        const selectedAlternative =
+                            selected?.kind === 'model'
+                                ? undefined
                                 : (selected?.kind ?? (role === 'default' ? 'inherit' : 'default'));
-                        const choice =
-                            choosing === role
-                                ? models.choice && { engine: models.choice.engine }
-                                : selected?.kind === 'model'
-                                  ? selected
-                                  : undefined;
+                        const choice = selected?.kind === 'model' ? selected : { engine: models.choice?.engine ?? '' };
                         const options = [
                             ...(role === 'default' ? [] : [{ id: 'default', label: 'Use default' }]),
                             { id: 'inherit', label: 'Inherit orchestrator' },
-                            { id: 'model', label: 'Choose model' },
                         ];
                         return (
                             <SettingsRow
@@ -91,41 +81,31 @@ export const DelegationPage = observer(function DelegationPage() {
                                         : undefined
                                 }
                             >
-                                <Select
-                                    aria-label={`${LABELS[role]} selection`}
-                                    size="sm"
-                                    items={options}
-                                    selectedKey={kind}
-                                    isDisabled={!settings || saving}
-                                    onSelectionChange={(key: unknown) => {
-                                        if (!settings) return;
-                                        const next = { ...settings };
-                                        if (key === 'model') {
-                                            setChoosing(role);
-                                            return;
-                                        }
-                                        if (key === 'default') delete next[role];
-                                        else if (key === 'inherit') next[role] = { kind: 'inherit' };
-                                        else return;
-                                        void save(next);
+                                <ModelPicker
+                                    label={`${LABELS[role]} selection`}
+                                    disabled={!settings || saving}
+                                    choice={choice}
+                                    providers={models.providers}
+                                    alternatives={{
+                                        selected: selectedAlternative,
+                                        options,
+                                        onPick: id => {
+                                            if (!settings || saving) return;
+                                            const next = { ...settings };
+                                            if (id === 'default') delete next[role];
+                                            else if (id === 'inherit') next[role] = { kind: 'inherit' };
+                                            else return;
+                                            void save(next);
+                                        },
                                     }}
-                                >
-                                    {option => <ListBoxItem id={option.id} text={option.label} />}
-                                </Select>
-                                {kind === 'model' && !choice && 'No available provider'}
-                                {kind === 'model' && choice && (
-                                    <ModelPicker
-                                        choice={choice}
-                                        providers={models.providers}
-                                        onPick={choice => {
-                                            if (!saving && settings && choice.model)
-                                                void save({
-                                                    ...settings,
-                                                    [role]: { kind: 'model', ...choice, model: choice.model },
-                                                });
-                                        }}
-                                    />
-                                )}
+                                    onPick={choice => {
+                                        if (!saving && settings && choice.model)
+                                            void save({
+                                                ...settings,
+                                                [role]: { kind: 'model', ...choice, model: choice.model },
+                                            });
+                                    }}
+                                />
                             </SettingsRow>
                         );
                     })}

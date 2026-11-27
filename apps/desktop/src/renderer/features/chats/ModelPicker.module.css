@@ -152,6 +152,14 @@
     }
 }
 
+.alternatives {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-xs);
+    padding: var(--spacing-lg) var(--spacing-lg) 0;
+}
+
 /* ---------------------------------- The face ---------------------------------- */
 
 .face {
