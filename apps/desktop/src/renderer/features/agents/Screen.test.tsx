@@ -27,6 +27,7 @@ import { branchPullRequestsOf } from '../changes/branchPullRequests';
 import { dropDraft, newChatDraftKey, saveDraft } from '../chats/composerDrafts';
 import { setFiles } from '../chats/composerFiles';
 import { refreshFolderGit } from '../openWith/useFolderGit';
+import { terminalsStoreOf } from '../terminal/useTerminalsStore';
 import { chatListPreferences } from './chatListPreferences';
 import { openNewChat } from './openNewChat';
 import { Screen } from './Screen';
@@ -700,68 +701,14 @@ describe('grouped by folder', () => {
         expect(rowOf(`@empty:${API.id}`).textContent).toBe('No chats');
     });
 
-    it('keeps the current chat when opening a folder menu and opens a draft when New chat is chosen', async () => {
-        const name = (folderId: string) =>
-            rowOf(head(folderId)).querySelector<HTMLButtonElement>('button[aria-label^="Folder:"]');
-        const menuItems = () =>
-            [...document.body.querySelectorAll('[role="menu"][aria-label="Open folder"] [role="menuitem"]')].map(
-                row => row.textContent
-            );
-
-        // With no desktop bridge there is nothing to open a folder in: the name is a label.
-        await restart();
-        expect(name(MAIN)).toBeNull();
-
-        window.desktop = {
-            getOpenApps: async () => ({ editors: [], terminals: [], fileManagers: [] }),
-            openPath: vi.fn(async () => undefined),
-        } as never;
-
-        try {
-            await restart({ transport: new FixtureTransport({ data: withFixtureWorkspace(twoFolders()) }) });
-            expect(name(MAIN)?.textContent).toBe('car-rental');
-            await draw(() => ui().openChat(FIXTURE_WORKSPACE_CHAT_ID));
-            await press(name(MAIN)!);
-            await press(menuItem('New chat'));
-            expect(ui().draftWorkspace).toBeNull();
-            await draw(() => ui().openChat(FIXTURE_WORKSPACE_CHAT_ID));
-
-            await press(name(API.id)!);
-            expect([ui().draft, ui().chatId]).toEqual([false, FIXTURE_WORKSPACE_CHAT_ID]);
-            expect(isSelected(FIXTURE_WORKSPACE_CHAT_ID)).toBe(true);
-            expect(menuItems()).toEqual(['New chat', 'Copy path', 'Open in…', 'Tidy up…', 'Folder settings…']);
-
-            await press(menuItem('New chat'));
-            await draw();
-
-            expect([ui().draft, ui().draftFolderId]).toEqual([true, API.id]);
-            expect(ui().draftWorkspace).toBeNull();
-            expect(isSelected(`@draft:${ui().draftId}`)).toBe(true);
-
-            // The built-in tabs can open the folder when it matches the current draft.
-            await press(name(API.id)!);
-            expect(menuItems()).toEqual([
-                'New chat',
-                'Open in Files',
-                'Open in Terminal',
-                'Copy path',
-                'Open in…',
-                'Tidy up…',
-                'Folder settings…',
-            ]);
-
-            await press(menuItem('New chat'));
-            await draw(() => ui().setDraftWorkspace({ mode: 'new' }));
-            await press(name(MAIN)!);
-            expect([ui().draft, ui().draftFolderId, ui().draftWorkspace]).toEqual([true, API.id, { mode: 'new' }]);
-            await press(menuItem('New chat'));
-
-            // The main folder's draft follows the project's main folder.
-            expect([ui().draft, ui().draftFolderId]).toEqual([true, null]);
-            expect(ui().collapsedFolders).toEqual([]);
-        } finally {
-            window.desktop = undefined;
-        }
+    it('opens a draft in the folder chosen from its actions without folding the group', async () => {
+        await restart({ transport: new FixtureTransport({ data: withFixtureWorkspace(twoFolders()) }) });
+        await draw(() => ui().openChat(FIXTURE_WORKSPACE_CHAT_ID));
+        await press(buttonNamed('Worktree actions: car-rental-api'));
+        expect([ui().draft, ui().chatId, ui().collapsedFolders]).toEqual([false, FIXTURE_WORKSPACE_CHAT_ID, []]);
+        await press(menuItem('New chat'));
+        expect([ui().draft, ui().draftFolderId, ui().draftWorkspace]).toEqual([true, API.id, null]);
+        expect(ui().collapsedFolders).toEqual([]);
     });
 
     it('puts right a folder that is gone from the disk from the menu of its group: Locate… moves the folder, Remove from project takes it out', async () => {
@@ -787,15 +734,15 @@ describe('grouped by folder', () => {
 
         try {
             const name = (folderId: string) =>
-                rowOf(head(folderId)).querySelector<HTMLButtonElement>('button[aria-label^="Folder:"]')!;
+                rowOf(head(folderId)).querySelector<HTMLButtonElement>('button[aria-label^="Worktree actions:"]')!;
             const menuItems = () =>
-                [...document.body.querySelectorAll('[role="menu"][aria-label="Open folder"] [role="menuitem"]')].map(
-                    row => row.textContent
-                );
+                [
+                    ...document.body.querySelectorAll('[role="menu"][aria-label="Worktree actions"] [role="menuitem"]'),
+                ].map(row => row.textContent);
             const item = (text: string) =>
                 [
                     ...document.body.querySelectorAll<HTMLElement>(
-                        '[role="menu"][aria-label="Open folder"] [role="menuitem"]'
+                        '[role="menu"][aria-label="Worktree actions"] [role="menuitem"]'
                     ),
                 ].find(row => row.textContent === text)!;
 
@@ -808,11 +755,13 @@ describe('grouped by folder', () => {
                 'Locate…',
                 'Remove from project',
                 'New chat',
+                'Open in Files',
+                'Open in Terminal',
                 'Copy path',
                 'Open in…',
-                'Tidy up…',
-                'Folder settings…',
             ]);
+            expect(item('Open in Files').getAttribute('aria-disabled')).toBe('true');
+            expect(item('Open in Terminal').getAttribute('aria-disabled')).toBe('true');
             expect(item('New chat').getAttribute('aria-disabled')).toBe('true');
             await press(item('New chat'));
             expect(ui().draft).toBe(false);
@@ -849,7 +798,7 @@ describe('grouped by folder', () => {
         }
     });
 
-    it('folds a group by the chevron after its name and by the arrows, not by a press on the heading, and remembers it', async () => {
+    it('folds a group by its title and by the arrows, and remembers it', async () => {
         await restart();
         // The heading is a label: a press on its name folds nothing.
         await press(rowOf(head(API.id)));
@@ -883,6 +832,17 @@ describe('grouped by folder', () => {
         expect(rowKeys()).toEqual([head(MAIN), head(API.id), 'c-2']);
         await key('ArrowRight');
         expect(ui().collapsedFolders).toEqual([]);
+    });
+
+    it('folds a folder using the keyboard on its title', async () => {
+        await restart();
+        const button = buttonNamed('Collapse car-rental-api');
+        button.focus();
+        await act(async () => {
+            button.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+            button.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true, cancelable: true }));
+        });
+        expect(ui().collapsedFolders).toEqual([API.id]);
     });
 
     it("steps J and K over the headings as the arrows do, and past a group's note of no chats", async () => {
@@ -1372,7 +1332,12 @@ describe('the heading', () => {
 
         try {
             await press(buttonNamed('Project menu'));
-            await press(menuItem('Add folder'));
+            await press(menuItem('Add…'));
+            await press(
+                [...document.body.querySelectorAll<HTMLButtonElement>('button')].find(
+                    item => item.textContent?.trim() === 'Choose folder on computer'
+                )!
+            );
             await act(async () => void (await new Promise(resolve => setTimeout(resolve, 0))));
 
             expect(choose).toHaveBeenCalledOnce();
@@ -1385,15 +1350,33 @@ describe('the heading', () => {
         }
     });
 
+    it('opens the clone form from the project menu without keeping the add dialog open', async () => {
+        const create = Modal.create.bind(Modal);
+        vi.spyOn(Modal, 'create').mockImplementation(options => create({ ...options, animate: false }));
+        try {
+            await press(buttonNamed('Project menu'));
+            await press(menuItem('Add…'));
+            const clone = [...document.body.querySelectorAll<HTMLButtonElement>('button')].find(
+                node => node.textContent?.trim() === 'Clone Git repository'
+            )!;
+            await press(clone);
+            await vi.waitFor(() =>
+                expect(document.body.querySelector('input[aria-label="Repository address"]')).not.toBeNull()
+            );
+            expect(document.body.querySelector('[aria-label="Add to project"]')).toBeNull();
+        } finally {
+            for (const modal of [...Modal.opened].reverse()) await act(async () => modal.close(false));
+            vi.restoreAllMocks();
+        }
+    });
+
     it('does not offer adding folders to the personal space', async () => {
         await draw(() => store.selectProject(FIXTURE_PERSONAL_PROJECT_ID));
         await draw();
         await press(buttonNamed('Project menu'));
 
         expect(
-            [...document.body.querySelectorAll('[role^="menuitem"]')].some(row =>
-                row.textContent?.includes('Add folder')
-            )
+            [...document.body.querySelectorAll('[role^="menuitem"]')].some(row => row.textContent?.includes('Add…'))
         ).toBe(false);
         expect(menuItem('Project settings')).toBeTruthy();
     });
@@ -2659,14 +2642,111 @@ describe('worktree cards', () => {
         }
     );
 
+    it('opens branch selection for the main checkout without creating a workspace', async () => {
+        await restart();
+        const commands = vi.spyOn(store.transport, 'command');
+        const branches = vi.spyOn(store.transport, 'getGitBranches');
+        await draw(() => ui().setGroupByWorktree(true));
+        await draw();
+        await press(rowOf(mainKey()).querySelector<HTMLElement>('button[aria-label^="Worktree actions:"]')!);
+        await vi.waitFor(() => expect(menuItem('Switch branch')).toBeDefined());
+        await press(menuItem('Switch branch'));
+        await vi.waitFor(() =>
+            expect(branches).toHaveBeenCalledWith(FIXTURE_PROJECT_ID, { folderId: 'fld_car_rental' })
+        );
+        expect(commands.mock.calls.some(([input]) => input.type === 'workspace.open')).toBe(false);
+        expect(document.querySelector('input[placeholder="Filter branches"]')).not.toBeNull();
+    });
+
+    it.each(['Open in Files', 'Open in Terminal'] as const)(
+        'opens %s in another worktree without changing the active draft',
+        async action => {
+            await restart();
+            await draw(() => {
+                ui().setGroupByWorktree(true);
+                ui().openDraft([], 'fld_api');
+            });
+            const draft = ui().draftId;
+            const workspace = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
+            await press(rowOf(workspaceKey()).querySelector<HTMLElement>('button[aria-label^="Worktree actions:"]')!);
+            await press(menuItem(action));
+            await vi.waitFor(() => expect(ui().sidePanelPlace?.workspace?.id).toBe(workspace.id));
+            expect([ui().draftId, ui().draftFolderId, ui().sidePanelTab]).toEqual([
+                draft,
+                'fld_api',
+                action === 'Open in Files' ? 'files' : 'terminal',
+            ]);
+            if (action === 'Open in Terminal') {
+                expect(
+                    terminalsStoreOf(store.transport).activeOf(FIXTURE_PROJECT_ID, workspace.folderId, workspace.id)
+                        ?.info.cwd
+                ).toBe(workspace.path);
+            }
+            await draw(() => ui().openChat('c-4'));
+            expect(ui().sidePanelPlace).toBeNull();
+        }
+    );
+
+    it.each(['Open in Files', 'Open in Terminal'] as const)(
+        'opens %s in another folder without changing the active chat',
+        async action => {
+            await restart();
+            await draw(() => {
+                ui().setGroupByWorktree(true);
+                ui().openChat(FIXTURE_WORKSPACE_CHAT_ID);
+            });
+            const api = worktreeKey('fld_api', '/Users/dev/car-rental-api');
+            await press(rowOf(api).querySelector<HTMLElement>('button[aria-label^="Worktree actions:"]')!);
+            await press(menuItem(action));
+            await vi.waitFor(() => expect(ui().sidePanelPlace?.folder.id).toBe('fld_api'));
+            expect([ui().chatId, ui().sidePanelPlace?.workspace, ui().sidePanelTab]).toEqual([
+                FIXTURE_WORKSPACE_CHAT_ID,
+                undefined,
+                action === 'Open in Files' ? 'files' : 'terminal',
+            ]);
+            if (action === 'Open in Terminal') {
+                expect(terminalsStoreOf(store.transport).activeOf(FIXTURE_PROJECT_ID, 'fld_api')?.info.cwd).toBe(
+                    '/Users/dev/car-rental-api'
+                );
+            }
+        }
+    );
+
+    it('does not reopen the panel when a delayed worktree selection finishes after it was closed', async () => {
+        await restart();
+        await draw(() => {
+            ui().setGroupByWorktree(true);
+            chatListPreferences.setShowUnusedWorktrees(true);
+        });
+        const original = store.transport.command.bind(store.transport);
+        let finish!: () => void;
+        const gate = new Promise<void>(resolve => {
+            finish = resolve;
+        });
+        vi.spyOn(store.transport, 'command').mockImplementation(async input => {
+            if (input.type === 'workspace.open') await gate;
+            return original(input);
+        });
+        const card = cardRows().find(key => key?.includes('search-filters'))!;
+        await press(rowOf(card).querySelector<HTMLElement>('button[aria-label^="Worktree actions:"]')!);
+        await press(menuItem('Open in Files'));
+        await draw(() => ui().closeSidePanel());
+        await act(async () => {
+            finish();
+            await gate;
+        });
+        await new Promise(resolve => setTimeout(resolve, 30));
+        expect([ui().sidePanelOpen, ui().sidePanelPlace]).toEqual([false, null]);
+    });
+
     it('starts a draft in a worktree with no chats from its own menu', async () => {
         await restart();
         await draw(() => ui().setGroupByWorktree(true));
         await draw(() => chatListPreferences.setShowUnusedWorktrees(true));
         const card = cardRows().find(key => key?.includes('search-filters'))!;
         await press(rowOf(card).querySelector<HTMLElement>('button[aria-label^="Worktree actions:"]')!);
-        expect(menuItem('Open in Files')).toBeUndefined();
-        expect(menuItem('Open in Terminal')).toBeUndefined();
+        expect(menuItem('Open in Files')).toBeDefined();
+        expect(menuItem('Open in Terminal')).toBeDefined();
         await press(menuItem('New chat'));
         expect([ui().draft, ui().draftWorkspace]).toEqual([
             true,
@@ -2893,6 +2973,21 @@ describe('worktree cards', () => {
         const cards = cardRows();
         await drag(cards[1]!, cards[2]!);
         expect(cardRows().slice(0, 3)).toEqual([cards[0], cards[2], cards[1]]);
+    });
+
+    it('uses the whole visible worktree group as the drag image', async () => {
+        await restart();
+        await draw(() => ui().setGroupByWorktree(true));
+        const card = rowOf(workspaceKey()).closest<HTMLElement>('[data-worktree-card]')!;
+        const transfer = new DataTransfer();
+        transfer.setDragImage = vi.fn();
+        const event = new MouseEvent('dragstart', { bubbles: true, cancelable: true });
+        Object.defineProperty(event, 'dataTransfer', { value: transfer });
+        await act(async () =>
+            rowOf(workspaceKey()).querySelector<HTMLElement>('[draggable="true"]')!.dispatchEvent(event)
+        );
+        expect(transfer.setDragImage).toHaveBeenCalledWith(card, expect.any(Number), expect.any(Number));
+        expect(card.contains(rowOf(FIXTURE_WORKSPACE_CHAT_ID))).toBe(true);
     });
 
     it('moves an occupied worktree among unused worktrees', async () => {

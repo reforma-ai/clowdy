@@ -57,6 +57,26 @@
         }
     }
 
+    /* A picture is its own square card, with the remove action over the corner. */
+    .attachment[data-compact] {
+        --attachment-preview: var(--spacing-64);
+
+        width: var(--attachment-preview);
+        height: var(--attachment-preview);
+
+        &:not(.pressable),
+        .attachmentHit {
+            padding: 0;
+        }
+
+        .removeButton {
+            top: var(--spacing-4);
+            right: var(--spacing-4);
+            bottom: auto;
+            margin: 0;
+        }
+    }
+
     @media (hover: hover) {
         .attachment.pressable {
             transition:

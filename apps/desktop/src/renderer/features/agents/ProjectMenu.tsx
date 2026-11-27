@@ -4,6 +4,7 @@ import { Popover } from '@clowdy/components/Popover';
 import { Switch } from '@clowdy/components/Switch';
 import { Check, ChevronRight, More } from '@clowdy/icons/14';
 
+import { openAddFolderDialog } from '../../shell/AddFolderDialog';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { addFolders } from '../settings/projects/projectActions';
 import { chatListPreferences } from './chatListPreferences';
@@ -30,10 +31,7 @@ export function ProjectMenu() {
     ];
 
     const addFolder = () => {
-        const choose = window.desktop?.chooseDirectories;
-
-        if (choose) void choose().then(paths => addFolders(root, project, paths));
-        else root.ui.openProjectSettings(project.id);
+        openAddFolderDialog(root.transport, paths => void addFolders(root, project, paths));
     };
 
     return (
@@ -43,7 +41,7 @@ export function ProjectMenu() {
             </Button>
             <Popover placement="bottom end" spacing="xs" width={290}>
                 <Menu aria-label="Project menu" size="sm">
-                    {!project.personal && <MenuItem id="add-folder" text="Add folder…" onAction={addFolder} />}
+                    {!project.personal && <MenuItem id="add-folder" text="Add…" onAction={addFolder} />}
                     <MenuItem
                         id="settings"
                         text="Project settings…"

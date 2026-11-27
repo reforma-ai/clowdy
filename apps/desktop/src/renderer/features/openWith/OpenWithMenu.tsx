@@ -8,7 +8,7 @@ import { Github } from '@clowdy/icons/logo';
 
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { openInFiles } from '../files/openInFiles';
-import { currentPlace, isPlaceReady, isSamePlace, placeOf } from '../sidePanel/currentPlace';
+import { currentPlace, isPlaceReady, isSamePlace, panelPlace, placeOf } from '../sidePanel/currentPlace';
 import { openInTerminal } from '../terminal/openInTerminal';
 import { AppIcon } from './AppIcon';
 import { chosenPrograms, openEffects, useOpenApps } from './openApps';
@@ -37,6 +37,7 @@ export interface OpenWithMenuProps {
     git: FolderGit | undefined;
     /** Offers a new chat in the target's checkout. */
     onNewChat?: () => void;
+    onOpenPlace?: (tab: 'files' | 'terminal') => void;
     /** The caller's own items, in a section of their own after `Open in…`. */
     extra?: readonly OpenMenuExtra[];
     /** A last item, under a separator, `Folder settings…`, runs this (it opens the folder's settings and worktrees). Without it there is no such item. */
@@ -143,6 +144,7 @@ export function OpenWithMenu({
     repair,
     git,
     onNewChat,
+    onOpenPlace,
     extra = [],
     onManageWorktrees,
     onClose,
@@ -155,20 +157,28 @@ export function OpenWithMenu({
     // The Files tab shows the place the window works in (the folder, or the open chat's worktree), so a path in another folder of the project cannot be shown there, nor
     // can one in another worktree of it, nor one in a worktree that is not made yet.
     const place = placeOf(target);
-    const isHere = isSamePlace(currentPlace(project, ui), place) && isPlaceReady(place);
+    const isHere =
+        (isSamePlace(panelPlace(project, ui), place) || isSamePlace(currentPlace(project, ui), place)) &&
+        isPlaceReady(place);
     const actions = openActions({
         target,
         programs: chosenPrograms(apps),
         git,
         missing: missing || notReady,
         effects: openEffects,
-        inFiles: isHere
-            ? () =>
-                  void openInFiles(root, target.projectId, place, target.relative).then(
-                      opened => !opened && toast.error({ message: 'Couldn’t open this path' })
-                  )
-            : undefined,
-        inTerminal: isHere ? () => void openInTerminal(root, target.projectId, place, target.relative) : undefined,
+        inFiles: onOpenPlace
+            ? () => onOpenPlace('files')
+            : isHere
+              ? () =>
+                    void openInFiles(root, target.projectId, place, target.relative).then(
+                        opened => !opened && toast.error({ message: 'Couldn’t open this path' })
+                    )
+              : undefined,
+        inTerminal: onOpenPlace
+            ? () => onOpenPlace('terminal')
+            : isHere
+              ? () => void openInTerminal(root, target.projectId, place, target.relative)
+              : undefined,
     });
     const here = actions.filter(action => action.group !== 'outside');
     const outside = actions.filter(action => action.group === 'outside');

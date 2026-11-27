@@ -97,7 +97,7 @@ export type AttachmentProps = Omit<HTMLAttributes<HTMLDivElement>, 'children'> &
     onPress?: ComponentProps<typeof Button>['onPress'];
 };
 
-/** One attachment card: image preview or file icon beside the name and size, with loading, error, retry and remove states. */
+/** A square image preview or a file card with name and size, with loading, error, retry and remove states. */
 export function Attachment({
     data,
     loading = false,
@@ -109,7 +109,10 @@ export function Attachment({
     ...props
 }: AttachmentProps) {
     const label = attachmentLabel(data);
-    const interactive = onPress !== undefined && !loading && !error;
+    const src = imageSource(data);
+    const [failedSrc, setFailedSrc] = useState<string>();
+    const compact = Boolean(src && src !== failedSrc);
+    const interactive = onPress !== undefined && !loading && !error && (!src || compact);
     const removable = onRemove !== undefined && !loading;
     const size = data.size === undefined ? undefined : formatFileSize(data.size);
 
@@ -123,9 +126,14 @@ export function Attachment({
                     </div>
                 }
             >
-                <Show when={error} fallback={<AttachmentPreview data={data} label={label} />}>
+                <Show
+                    when={error}
+                    fallback={
+                        <AttachmentPreview data={data} label={label} failedSrc={failedSrc} onError={setFailedSrc} />
+                    }
+                >
                     <div className={cn(styles.preview, styles.previewError)}>
-                        <AttachmentPreview data={data} label={label} />
+                        <AttachmentPreview data={data} label={label} failedSrc={failedSrc} onError={setFailedSrc} />
                         <Show when={onRetry}>
                             <Button
                                 type="button"
@@ -146,16 +154,18 @@ export function Attachment({
                 </Show>
             </Show>
 
-            <div className={styles.info}>
-                <Text variant="label" truncate>
-                    {label}
-                </Text>
-                <Show when={size}>
-                    <Text variant="label" truncate className={styles.infoDetail}>
-                        {size}
+            {!compact && (
+                <div className={styles.info}>
+                    <Text variant="label" truncate>
+                        {label}
                     </Text>
-                </Show>
-            </div>
+                    <Show when={size}>
+                        <Text variant="label" truncate className={styles.infoDetail}>
+                            {size}
+                        </Text>
+                    </Show>
+                </div>
+            )}
         </>
     );
 
@@ -176,6 +186,7 @@ export function Attachment({
             data-removable={removable || undefined}
             data-loading={loading || undefined}
             data-error={error || undefined}
+            data-compact={compact || undefined}
             {...props}
         >
             <Show when={interactive} fallback={content}>
@@ -229,9 +240,18 @@ export function PreviewableAttachment(props: AttachmentProps) {
 }
 
 /** The image when there is one to show, else the file's icon. A source that fails to load falls back to the icon. */
-function AttachmentPreview({ data, label }: { data: AttachmentData; label: string }) {
+function AttachmentPreview({
+    data,
+    label,
+    failedSrc,
+    onError,
+}: {
+    data: AttachmentData;
+    label: string;
+    failedSrc?: string;
+    onError: (src: string | undefined) => void;
+}) {
     const src = imageSource(data);
-    const [failedSrc, setFailedSrc] = useState<string>();
 
     return (
         <Show
@@ -248,7 +268,7 @@ function AttachmentPreview({ data, label }: { data: AttachmentData; label: strin
                 className={cn(styles.preview, styles.previewImg)}
                 src={src}
                 alt={label}
-                onError={() => setFailedSrc(src)}
+                onError={() => onError(src)}
             />
         </Show>
     );

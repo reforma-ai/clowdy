@@ -44,6 +44,11 @@
     opacity: var(--opacity-disabled);
 }
 
+/* Groups have no background: keep their slot empty while other groups move across it. */
+.worktreeCard[data-reorder-source] {
+    visibility: hidden;
+}
+
 @media (prefers-reduced-motion: reduce) {
     :is(.chatRow, .agentRow, .worktreeCard) {
         transition: none;
@@ -193,21 +198,10 @@
     font-weight: 500;
 }
 
-/* The name of a group that opens its folder's menu: a button of the chevron's size (`xs`, its own padding), in the heading's own type and not the button's. A name that is only a label (a page in a browser) has the same room at its start. */
-.groupNameBox {
+.groupToggle {
     min-width: 0;
-}
-
-.groupName {
+    max-width: 100%;
     font: inherit;
-}
-
-.groupPlainName {
-    padding-inline-start: calc(var(--spacing-8) + 1px);
-}
-
-.groupFold {
-    flex-shrink: 0;
 }
 
 /* The note of a group with no chat: a chat's own row, drawn in the muted colour, and nothing to press. */
@@ -269,10 +263,9 @@
 }
 
 .worktreeTitle {
-    padding-inline-start: calc(var(--spacing-8) + 1px);
     display: flex;
     align-items: center;
-    gap: var(--spacing-2);
+    gap: var(--spacing-4);
     min-width: 0;
 }
 

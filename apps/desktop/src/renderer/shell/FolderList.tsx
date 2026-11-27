@@ -5,6 +5,7 @@ import { Text } from '@clowdy/components/Text';
 import { Plus, Version } from '@clowdy/icons/14';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 
+import { openAddFolderDialog } from './AddFolderDialog';
 import { openCloneRepository } from './CloneRepositoryForm';
 import styles from './FolderList.module.css';
 import { FolderRow } from './FolderRow';
@@ -38,6 +39,7 @@ export interface FolderListProps<T> {
      * Absent: the list does not clone.
      */
     transport?: Transport;
+    useAddDialog?: boolean;
     /** What the card says while there are no folders. */
     empty?: ReactNode;
 }
@@ -60,6 +62,7 @@ export function FolderList<T>({
     canDrop,
     onAdd,
     transport,
+    useAddDialog,
     empty,
 }: FolderListProps<T>) {
     const card = useRef<HTMLDivElement>(null);
@@ -136,7 +139,20 @@ export function FolderList<T>({
                           {empty}
                       </Text>
                   )}
-            {onAdd && <FolderAdder onAdd={onAdd} transport={transport} />}
+            {onAdd &&
+                (useAddDialog && transport ? (
+                    <div data-folder-adder>
+                        <button
+                            type="button"
+                            className={styles.add}
+                            onClick={() => openAddFolderDialog(transport, onAdd)}
+                        >
+                            <Plus /> Add…
+                        </button>
+                    </div>
+                ) : (
+                    <FolderAdder onAdd={onAdd} transport={transport} />
+                ))}
         </div>
     );
 }

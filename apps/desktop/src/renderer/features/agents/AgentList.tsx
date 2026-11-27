@@ -70,8 +70,6 @@ import {
 import { BranchPullRequestBadge } from './BranchPullRequestBadge';
 import { ChatIcon, ChatStatus } from './ChatIcon';
 import { chatListPreferences } from './chatListPreferences';
-import { GroupFolderName } from './GroupFolderName';
-import { GroupHeader } from './GroupHeader';
 import { openNewChat } from './openNewChat';
 import { ProjectMenu } from './ProjectMenu';
 import { RowFold } from './RowFold';
@@ -129,7 +127,7 @@ interface ChatActions {
  * started and the threads its agents started in one list, oldest first, folded until the person opens them, except what works (with Expand active threads on)
  * or waits for the person. Archived chats are not here, they are in the archive's list (the button
  * in the heading, beside the project menu), and take their threads with them. `missing` are the folders gone from the disk (`Screen` reads them once for the list and the new-chat page): their group is marked and its button is off. With the menu's folder layout (the default), the
- * chats stand in a group for the folder they work in, under a heading that folds the group. Its name opens the folder's menu (`GroupFolderName`), and the menu and heading both offer a new chat in that folder.
+ * chats stand in a group for the folder they work in, under a heading that folds the group. Its title folds the group, and its actions offer a new chat in that folder.
  */
 export function AgentList({
     selection,
@@ -483,34 +481,24 @@ export function AgentList({
         const startChat = () => openNewChat(project, ui, group.folder.id);
 
         return (
-            <GroupHeader
+            <WorktreeCardHeader
                 key={groupKey(group.folder.id)}
                 id={groupKey(group.folder.id)}
-                text={group.name}
+                card={{
+                    key: groupKey(group.folder.id),
+                    main: true,
+                    folder: group.folder,
+                    folderName: group.name,
+                    path: group.folder.path,
+                    missing: isMissing,
+                    pending: false,
+                    used: false,
+                    roots: [],
+                    linkedChats: [],
+                }}
                 collapsed={isCollapsed}
                 onToggle={() => ui.toggleFolderCollapsed(group.folder.id)}
-                name={
-                    <GroupFolderName
-                        name={group.name}
-                        folder={group.folder}
-                        missing={isMissing}
-                        onNewChat={startChat}
-                    />
-                }
-                endAffix={
-                    <RowControls className={styles.end}>
-                        <RowActionButton
-                            icon={<NewChat />}
-                            label={`New chat in ${group.name}`}
-                            isDisabled={isMissing}
-                            disabledReason="This folder no longer exists"
-                            data-show={listBoxItemDataShow.itemBoth}
-                            onPress={startChat}
-                        />
-                    </RowControls>
-                }
-                data-collapsed={isCollapsed || undefined}
-                data-missing={isMissing || undefined}
+                onNewChat={startChat}
             />
         );
     };
