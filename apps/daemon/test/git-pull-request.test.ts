@@ -413,6 +413,25 @@ function commitMore(path: string, name = 'more.txt'): string {
     return git(path, 'rev-parse', 'HEAD');
 }
 
+/** Runs `action` with a `git` on the daemon's `PATH` that dies without an answer when it is asked for a commit (`<ref>^{commit}`), as one killed for the time does. */
+async function withGitSilentOnCommits<T>(action: () => Promise<T>): Promise<T> {
+    const bin = tempDir('git-silent');
+    const path = process.env.PATH;
+
+    writeFileSync(
+        join(bin, 'git'),
+        `#!/bin/sh\ncase "$*" in *'^{commit}'*) kill -9 $$ ;; esac\nexec ${Bun.which('git')} "$@"\n`
+    );
+    chmodSync(join(bin, 'git'), 0o755);
+    process.env.PATH = `${bin}:${path}`;
+
+    try {
+        return await action();
+    } finally {
+        process.env.PATH = path;
+    }
+}
+
 /** What a read of a place that is a repository answers: the answer is checked to be one. */
 function ready(info: GitPullRequestInfo): Extract<GitPullRequestInfo, { isRepository: true }> {
     if (!info.isRepository) throw new Error('The place is not a repository');
@@ -859,6 +878,18 @@ withStandIn('PullRequests', () => {
             gh.reply('other', { body: graphql([node({ state: 'MERGED', headRefOid: ahead, headRefName: 'other' })]) });
             commitMore(path, 'other.txt');
             expect(await pullRequestOf(place)).toBeUndefined();
+        });
+
+        test('keeps a merged pull request that HEAD has moved past when git does not answer whether it has the commit', async () => {
+            const { place, path, head } = repoOn();
+
+            commitMore(path);
+            gh.reply('feature', { body: graphql([node({ state: 'MERGED', headRefOid: head })]) });
+
+            expect(await withGitSilentOnCommits(() => pullRequestOf(place))).toMatchObject({
+                number: 7,
+                state: 'merged',
+            });
         });
 
         test('never drops an open pull request, however far the branch has moved', async () => {
@@ -1661,6 +1692,16 @@ withStandIn('Branch pull request history', () => {
         rmSync(join(path, '.git', 'objects', middle.slice(0, 2), middle.slice(2)));
 
         expect((await read(place)).pullRequests[0]?.movedPast).toBeUndefined();
+    });
+
+    test('does not mark a branch when git does not answer whether the repository has the base', async () => {
+        const { path, place, head } = repoOn();
+        gh.reply('feature', { body: historyPage([historyNode(10, 'MERGED', { headRefOid: head })]) });
+        commitMore(path, 'own.txt');
+
+        const [latest] = (await withGitSilentOnCommits(() => read(place))).pullRequests;
+
+        expect([latest?.number, latest?.movedPast]).toEqual([10, undefined]);
     });
 
     test('keeps the complete stored history and archive across restarts, partial failures, offline reads and restores', async () => {

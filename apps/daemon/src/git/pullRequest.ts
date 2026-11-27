@@ -244,6 +244,17 @@ function summaryOf(node: unknown, repo: GitHubRepo, branch: string): GitPullRequ
     };
 }
 
+/** Whether the repository has `ref` as a commit (`commitAt`); nothing when git did not answer, which the judgements below take for "the pull request stays". */
+async function hasCommit(cwd: string, ref: string): Promise<boolean | undefined> {
+    try {
+        return (await commitAt(cwd, ref)) !== undefined;
+    } catch (error) {
+        if (error instanceof CommandError) return undefined;
+
+        throw error;
+    }
+}
+
 /**
  * Whether the local branch has commits of its own since a pull request's branch was at `headCommit`: commits that are on neither that branch nor the pull request's base (as
  * `origin` has it, or as the local branch of that name has it), merges left out. So a squash or rebase merge (the branch's own commits are still on the branch's side), a base that
@@ -254,11 +265,12 @@ async function branchMovedPast(cwd: string, branch: string, headCommit: string, 
     if (!COMMIT_HASH.test(headCommit)) return false;
 
     // Only a base the repository has is left out of the count, since git refuses a revision it does not know. For the commit and the branch git's refusal is the answer: no count is "no".
-    const bases = await Promise.all(
-        [`refs/remotes/origin/${base}`, `refs/heads/${base}`].map(async ref =>
-            (await commitAt(cwd, ref)) ? [ref] : []
-        )
-    );
+    const refs = [`refs/remotes/origin/${base}`, `refs/heads/${base}`];
+    const has = await Promise.all(refs.map(ref => hasCommit(cwd, ref)));
+
+    // A base git could not say it has would be counted as the branch's own work.
+    if (has.includes(undefined)) return false;
+
     const count = await gitLine(cwd, [
         'rev-list',
         '--count',
@@ -266,7 +278,7 @@ async function branchMovedPast(cwd: string, branch: string, headCommit: string, 
         `refs/heads/${branch}`,
         '--not',
         headCommit,
-        ...bases.flat(),
+        ...refs.filter((_, index) => has[index]),
     ]);
 
     return count !== undefined && Number(count) > 0;
@@ -277,7 +289,7 @@ async function branchMovedPast(cwd: string, branch: string, headCommit: string, 
  * not have (the person has not fetched it), a git that cannot say, and a hash that is not one count as "not moved past", so the pull request stays.
  */
 async function movedPast(cwd: string, headCommit: string): Promise<boolean> {
-    if (!COMMIT_HASH.test(headCommit) || !(await commitAt(cwd, headCommit))) return false;
+    if (!COMMIT_HASH.test(headCommit) || !(await hasCommit(cwd, headCommit))) return false;
 
     const read = await gitRead(cwd, ['merge-base', '--is-ancestor', 'HEAD', headCommit]);
 
