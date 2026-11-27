@@ -14,6 +14,7 @@ import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { overrideTransport } from '../../daemon/testing';
 import { RootStore } from '../../stores';
 import { openManageWorktrees } from './ManageWorktrees';
+import { openRemoveWorktree } from './RemoveWorktreeDialog';
 
 import type { CommandResult } from '@clowdy/protocol';
 import type { CommandInput, Transport } from '../../daemon/transport';
@@ -166,10 +167,99 @@ describe('Remove in Manage worktrees', () => {
         await settle();
         expect(isConfirming()).toBe(true);
         expect(confirmation().querySelector('[role=status]')).not.toBeNull();
-        expect(textButton(confirmation(), 'Remove worktree')).toBeUndefined();
+        expect(confirmation().textContent).toContain('feature/done');
+        expect(textButton(confirmation(), 'Remove worktree')?.disabled).toBe(true);
+        await act(async () => checkbox()!.click());
+        expect(checkbox()!.checked).toBe(false);
         expect(removals()).toEqual([]);
-        release();
+        await act(async () => release());
         await settle();
+        expect(checkbox()!.checked).toBe(false);
+        await confirm('Remove worktree');
+        expect(removals()[0]).not.toHaveProperty('deleteBranch');
+    });
+
+    it('clears a branch choice when the verified branch changed', async () => {
+        await open();
+        let release!: () => void;
+        const gate = new Promise<void>(resolve => {
+            release = resolve;
+        });
+        getProjectWorktrees.mockImplementationOnce(async projectId => {
+            await gate;
+            const groups = await new FixtureTransport({ data: dataWithKinds() }).getProjectWorktrees(projectId);
+            const row = groups.flatMap(group => group.worktrees).find(tree => tree.path === CLEAN_UNMERGED)!;
+            row.branch = 'wip/other';
+            return groups;
+        });
+        await click(await removeItem(CLEAN_UNMERGED));
+        await settle();
+        await act(async () => checkbox()!.click());
+        expect(checkbox()!.checked).toBe(true);
+        await act(async () => release());
+        await settle();
+        expect(checkbox()!.checked).toBe(false);
+        expect(confirmation().textContent).toContain('changed');
+        expect(removals()).toEqual([]);
+    });
+
+    it('clears a chat deletion choice if the full affected set changes', async () => {
+        await open();
+        let release!: () => void;
+        const gate = new Promise<void>(resolve => {
+            release = resolve;
+        });
+        getProjectWorktrees.mockImplementationOnce(async projectId => {
+            await gate;
+            return new FixtureTransport({ data: dataWithKinds() }).getProjectWorktrees(projectId);
+        });
+        const readSnapshot = store.transport.getProjectSnapshot.bind(store.transport);
+        vi.spyOn(store.transport, 'getProjectSnapshot').mockImplementation(async projectId => {
+            const snapshot = await readSnapshot(projectId);
+            const linked = snapshot.chats.find(chat => chat.id === 'c-9')!;
+            return { ...snapshot, chats: [...snapshot.chats, { ...linked, id: 'c-new', title: 'New chat' }] };
+        });
+        act(() => {
+            void openRemoveWorktree({
+                root: store,
+                projectId: FIXTURE_PROJECT_ID,
+                folderId: 'fld_car_rental',
+                path: CLOWDY_WORKTREE,
+            });
+        });
+        await settle();
+        expect(deleteChats()).not.toBeNull();
+        await click(deleteChats()!);
+        expect(deleteChats()!.checked).toBe(true);
+        await act(async () => release());
+        await settle();
+        expect(deleteChats()!.checked).toBe(false);
+        expect(confirmation().textContent).toContain('changed');
+        expect(removals()).toEqual([]);
+    });
+
+    it('opens only one confirmation for repeated requests', async () => {
+        await open();
+        let release!: () => void;
+        const gate = new Promise<void>(resolve => {
+            release = resolve;
+        });
+        getProjectWorktrees.mockImplementationOnce(async projectId => {
+            await gate;
+            return new FixtureTransport({ data: dataWithKinds() }).getProjectWorktrees(projectId);
+        });
+        const target = { root: store, projectId: FIXTURE_PROJECT_ID, folderId: 'fld_car_rental', path: CLEAN_MERGED };
+        act(() => {
+            void openRemoveWorktree(target);
+            void openRemoveWorktree(target);
+        });
+        await settle();
+        expect(Modal.opened).toHaveLength(2);
+        await click(confirmation().querySelector<HTMLElement>('button[aria-label="Close"]')!);
+        await act(async () => release());
+        await settle();
+        expect(Modal.opened).toHaveLength(1);
+        expect(removals()).toEqual([]);
     });
 
     it('does not offer removal when the read fails', async () => {
@@ -178,7 +268,7 @@ describe('Remove in Manage worktrees', () => {
         await click(await removeItem(CLEAN_MERGED));
         await settle();
         expect(confirmation().querySelector('[role=alert]')?.textContent).toContain('Read failed');
-        expect(textButton(confirmation(), 'Remove worktree')).toBeUndefined();
+        expect(textButton(confirmation(), 'Remove worktree')?.disabled).toBe(true);
         expect(removals()).toEqual([]);
     });
 

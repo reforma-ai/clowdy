@@ -111,6 +111,7 @@ export function ChatFolder({ name, folder, missing, workspace, showFolder = true
                                   folderId: folder.id,
                                   path,
                                   workspaceId: workspace.id,
+                                  previewLabel: branch,
                               })
                             : undefined
                     }

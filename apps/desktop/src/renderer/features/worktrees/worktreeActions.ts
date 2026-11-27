@@ -14,6 +14,8 @@ export interface WorktreeTarget {
     path: string;
     workspaceId?: string;
     reload?: () => Promise<void>;
+    preview?: WorktreeInfo;
+    previewLabel?: string;
 }
 
 export async function readWorktree({ root, projectId, folderId, path, workspaceId }: WorktreeTarget) {
@@ -28,7 +30,11 @@ export async function readWorktree({ root, projectId, folderId, path, workspaceI
 }
 
 /** Direct links as reported by Git's worktree list or the more recent chat snapshot. */
-export function linkedChatIds(worktree: WorktreeInfo, snapshot: ProjectSnapshot, folderId: FolderId): Set<string> {
+export function linkedChatIds(
+    worktree: Pick<WorktreeInfo, 'path' | 'workspaceId' | 'chats'>,
+    snapshot: Pick<ProjectSnapshot, 'chats' | 'runs'>,
+    folderId: FolderId
+): Set<string> {
     const linked = new Set(worktree.chats.map(chat => chat.id));
     for (const chat of snapshot.chats) {
         if (
@@ -42,7 +48,11 @@ export function linkedChatIds(worktree: WorktreeInfo, snapshot: ProjectSnapshot,
 }
 
 /** The linked roots and the full cascade, including threads that work in a different place. */
-export function affectedChats(worktree: WorktreeInfo, snapshot: ProjectSnapshot, folderId: FolderId) {
+export function affectedChats(
+    worktree: Pick<WorktreeInfo, 'path' | 'workspaceId' | 'chats'>,
+    snapshot: Pick<ProjectSnapshot, 'chats' | 'runs'>,
+    folderId: FolderId
+) {
     const chats = new Map(snapshot.chats.map(chat => [chat.id, chat]));
     const linked = linkedChatIds(worktree, snapshot, folderId);
     if ([...linked].some(id => !chats.has(id))) throw new Error('The chats linked to this worktree changed. Try again');
