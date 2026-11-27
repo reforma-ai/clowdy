@@ -3,7 +3,7 @@ import { Menu, MenuItem, MenuSection, MenuSeparator, MenuTrigger } from '@clowdy
 import { Popover, PopoverScroll } from '@clowdy/components/Popover';
 import { Text } from '@clowdy/components/Text';
 import { ChevronRight } from '@clowdy/icons/8';
-import { Check, Folder, Settings, Split, Version } from '@clowdy/icons/14';
+import { Check, Folder, Settings, Version, WorktreeFolder } from '@clowdy/icons/14';
 import { capitalize } from '@clowdy/lib';
 import { folderNames } from '@clowdy/protocol';
 import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
@@ -49,7 +49,7 @@ function WorkspaceLabel({ worktree, branch }: { worktree: string; branch?: strin
             title={tildePath(worktree, homeFolder.path)}
             aria-label={`Where it runs: Worktree${branch ? `, branch ${branch}` : ''}`}
         >
-            <Split aria-hidden="true" />
+            <WorktreeFolder aria-hidden="true" />
             <Text color="secondary">Worktree</Text>
             {branch && <Text truncate>{branch}</Text>}
         </div>
@@ -235,7 +235,7 @@ function WorkspaceChip({
             stacked
             data-align="center"
             data-worktree=""
-            icon={<Split aria-hidden="true" />}
+            icon={<WorktreeFolder aria-hidden="true" />}
             text={worktreeLabel(worktree)}
             description={usersLine(chatsUsing(chats.values(), worktree.path))}
         />
@@ -340,7 +340,11 @@ function WorkspaceChip({
                     }}
                     folder={folderName}
                     icon={
-                        choice?.mode === 'new' || chosen ? <Split aria-hidden="true" /> : <Version aria-hidden="true" />
+                        choice?.mode === 'new' || chosen ? (
+                            <WorktreeFolder aria-hidden="true" />
+                        ) : (
+                            <Version aria-hidden="true" />
+                        )
                     }
                     lead={'lead' in trigger ? trigger.lead : undefined}
                     label={trigger.label}
@@ -448,7 +452,7 @@ function WorkspaceChip({
                                     data-new-worktree=""
                                     // The row shuts the menu itself (`onAction`): a press on the base inside it must not.
                                     shouldCloseOnSelect={false}
-                                    icon={<Split aria-hidden="true" />}
+                                    icon={<WorktreeFolder aria-hidden="true" />}
                                     text="New worktree"
                                     stacked
                                     description={

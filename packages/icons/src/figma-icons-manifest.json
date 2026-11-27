@@ -780,6 +780,18 @@
                     "name": "more",
                     "sourceHash": "1d119734526c065d5de1b04e04269ef961ef7ab9f57a7d0350cee639805ef1ea"
                 },
+                "2962:31351": {
+                    "file": "home.svg",
+                    "fingerprint": "bbdfb7d0a69a6ac1a2b8c1d10f8c9fa2d13d0fde92b05eab63ea15c6f42e7fd5",
+                    "name": "home",
+                    "sourceHash": "381435c675101fd2aa48082225256723278531996710c784008bcbe9b32d3fec"
+                },
+                "2962:31356": {
+                    "file": "page.svg",
+                    "fingerprint": "9b784e92ba39df4f5dcaebcc49865bae862ddd318bd8940030353a871a2823ad",
+                    "name": "page",
+                    "sourceHash": "4d8ea358a77a852bced5104acacf8a3745e02d1609edc5ba0133944c86d4d19f"
+                },
                 "1413:6364": {
                     "file": "folder.svg",
                     "fingerprint": "c8e938053bf80ca1be51a6fab648c9fbf41616d4b1155a60d8e871a9d89cbc42",
@@ -1073,18 +1085,6 @@
                     "fingerprint": "15e39ba816216f714ff372dc73f43a6d32900c5af701e2e3f7529592967bc6ff",
                     "name": "summary",
                     "sourceHash": "357191eed29f530d29170e6aa84b64b511604581ed7e4be98f9363c801efd817"
-                },
-                "2962:31351": {
-                    "file": "home.svg",
-                    "fingerprint": "bbdfb7d0a69a6ac1a2b8c1d10f8c9fa2d13d0fde92b05eab63ea15c6f42e7fd5",
-                    "name": "home",
-                    "sourceHash": "381435c675101fd2aa48082225256723278531996710c784008bcbe9b32d3fec"
-                },
-                "2962:31356": {
-                    "file": "page.svg",
-                    "fingerprint": "9b784e92ba39df4f5dcaebcc49865bae862ddd318bd8940030353a871a2823ad",
-                    "name": "page",
-                    "sourceHash": "4d8ea358a77a852bced5104acacf8a3745e02d1609edc5ba0133944c86d4d19f"
                 },
                 "2976:42542": {
                     "file": "sliders.svg",
@@ -2795,6 +2795,12 @@
                     "fingerprint": "986de09bbb460f69dcfd9b39e43754f90396e08139b432e97593a14c77c47619",
                     "name": "add-folder",
                     "sourceHash": "359be41615cf058d034169492cbd0c78f91a50079c2d00735897ec378f90f8ce"
+                },
+                "16766:134407": {
+                    "file": "worktree-folder.svg",
+                    "fingerprint": "2b3aafce19e3c51bac40f9132eef99740c3835d5e99e1fb0d17fe2fde4dbdcd0",
+                    "name": "worktree-folder",
+                    "sourceHash": "ed9c376bef8e16ff6c3c947073880d76e51c93fda6776c58892425762c275b64"
                 }
             },
             "nodeId": "12522:118247"

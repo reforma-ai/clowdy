@@ -1,4 +1,4 @@
-import { Merge, Split } from '@clowdy/icons/14';
+import { Merge, WorktreeFolder } from '@clowdy/icons/14';
 
 import { type BranchPullRequestKey, useBranchPullRequests } from '../changes/branchPullRequests';
 
@@ -30,7 +30,7 @@ export function BranchPullRequestBadge({
                 aria-label="Thread works in a different worktree"
                 title="Thread works in a different worktree"
             >
-                <Split aria-hidden="true" />
+                <WorktreeFolder aria-hidden="true" />
             </span>
         ) : null;
 
