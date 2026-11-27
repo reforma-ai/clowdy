@@ -85,11 +85,14 @@ export function WorktreeCardHeader({
         setSwitchWorkspace(workspace);
     };
     const newChat = () =>
-        ui.openDraft([], card.folder.id === mainFolder(project.project).id ? null : card.folder.id, {
-            mode: 'existing',
-            path: card.path,
-        });
-    const title = [showFolder ? card.folderName : undefined, worktreeLabel(card)].filter(Boolean).join(', ');
+        ui.openDraft(
+            [],
+            card.folder.id === mainFolder(project.project).id ? null : card.folder.id,
+            card.main ? null : { mode: 'existing', path: card.path }
+        );
+    const title = [showFolder ? card.folderName : undefined, card.main ? 'Main worktree' : worktreeLabel(card)]
+        .filter(Boolean)
+        .join(', ');
     const tooltip = card.pending ? 'Worktree not prepared yet' : card.missing ? 'Worktree no longer exists' : undefined;
     const stop = (event: SyntheticEvent) => event.stopPropagation();
     return (
@@ -276,7 +279,7 @@ function WorktreeCardMenu({
                 path: card.path,
                 relative: '',
                 kind: 'directory',
-                workspace,
+                workspace: card.main ? undefined : workspace,
             }}
             missing={card.missing}
             notReady={card.pending}
@@ -284,7 +287,7 @@ function WorktreeCardMenu({
             onNewChat={onNewChat}
             onClose={onClose}
             extra={[
-                ...(!card.missing && !card.pending && card.workspace?.ready !== false
+                ...(!card.main && !card.missing && !card.pending && card.workspace?.ready !== false
                     ? [
                           {
                               id: 'switch-branch',
@@ -294,7 +297,7 @@ function WorktreeCardMenu({
                           },
                       ]
                     : []),
-                ...(!card.pending
+                ...(!card.main && !card.pending
                     ? worktreeMenuExtras({
                           root,
                           projectId: project.id,

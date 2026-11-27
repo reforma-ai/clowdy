@@ -81,7 +81,7 @@ import { SubagentMenu } from './SubagentMenu';
 import { useChatListOrder } from './useChatListOrder';
 import { useSidebarWorktrees } from './useSidebarWorktrees';
 import { WorktreeCardHeader } from './WorktreeCardHeader';
-import { chatWorktreeKey, type WorktreeCard, worktreeCards } from './worktreeCards';
+import { chatWorktreeKey, type WorktreeCard, worktreeCards, worktreeKey } from './worktreeCards';
 
 import type { Chat, ChatId, FolderId, ProjectInfo, Run, RunId } from '@clowdy/protocol';
 
@@ -203,11 +203,36 @@ export function AgentList({
     const grouped = ui.groupByFolder;
     const groupedByWorktree = ui.groupByWorktree;
     const actual = useSidebarWorktrees(groupedByWorktree);
-    const cards = groupedByWorktree
+    const additionalCards = groupedByWorktree
         ? worktreeCards(chats, project.chats.values(), folders, actual, projectInfo, ui.worktreeOrder)
         : [];
     const { showFinishedThreads, expandRunningAgents, showUnusedWorktrees } = chatListPreferences;
-    const shownCards = cards.filter(card => (card.used ? card.roots.length > 0 : showUnusedWorktrees));
+    const shownAdditional = additionalCards.filter(card => (card.used ? card.roots.length > 0 : showUnusedWorktrees));
+    const mainCards: WorktreeCard[] = groupedByWorktree
+        ? agentGroups(chats, folders).flatMap(group => {
+              const roots = group.roots.filter(chat => !chat.workspace);
+              if (!roots.length || !shownAdditional.some(card => card.folder.id === group.folder.id)) return [];
+              return [
+                  {
+                      key: worktreeKey(group.folder.id, group.folder.path),
+                      main: true,
+                      folder: group.folder,
+                      folderName: group.name,
+                      path: group.folder.path,
+                      missing: missing.has(group.folder.id),
+                      pending: false,
+                      used: true,
+                      roots,
+                      linkedChats: roots,
+                  },
+              ];
+          })
+        : [];
+    const rank = new Map(ui.worktreeOrder.map((key, index) => [key, index]));
+    const cards = [...mainCards, ...additionalCards].sort(
+        (a, b) => (rank.get(a.key) ?? Infinity) - (rank.get(b.key) ?? Infinity)
+    );
+    const shownCards = cards.filter(card => card.main || shownAdditional.includes(card));
     const order = useChatListOrder(chats, openChatId, cards, shownCards);
     // The sub-agents of every chat, found in one pass over the project's runs and not once per chat.
     const agentsByRoot = nativeAgentsByRoot(project.runs.values());
@@ -238,7 +263,12 @@ export function AgentList({
             const isCollapsed = ui.collapsedWorktrees.includes(card.key);
             return { kind: 'worktree', card, isCollapsed, rows: isCollapsed ? [] : rowsOf(card.roots) };
         };
-        return [...rowEntries(roots.filter(chat => !chat.workspace)), ...scoped.map(cardEntry)];
+        return [
+            ...rowEntries(
+                roots.filter(chat => !chat.workspace && !scoped.some(card => card.main && card.roots.includes(chat)))
+            ),
+            ...scoped.map(cardEntry),
+        ];
     };
     const entries: ListEntry[] = grouped
         ? agentGroups(chats, folders).flatMap((group): ListEntry[] => {
@@ -296,7 +326,10 @@ export function AgentList({
     const ancestors = opened ? ancestorChats(project.chats, opened.id) : [];
     // An unarchived child whose parent is archived/missing is itself a visible root.
     const rootChat = opened && [opened, ...ancestors].find(chat => chats.some(root => root.id === chat.id));
-    const selectedCard = groupedByWorktree && rootChat ? chatWorktreeKey(rootChat, cards) : undefined;
+    const selectedCard =
+        groupedByWorktree && rootChat
+            ? (chatWorktreeKey(rootChat, cards) ?? mainCards.find(card => card.roots.includes(rootChat))?.key)
+            : undefined;
     const selectedFolder = selectedCard ? cards.find(card => card.key === selectedCard)?.folder.id : undefined;
     useEffect(() => {
         if (openChatId === undefined) return;
