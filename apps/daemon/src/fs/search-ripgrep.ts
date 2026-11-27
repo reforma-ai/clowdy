@@ -5,6 +5,7 @@ import { createInterface } from 'node:readline';
 import { MAX_FS_SEARCH_LINES_PER_FILE } from '@clowdy/protocol';
 
 import { invalid, unavailable } from '../errors';
+import { inheritedEnv } from '../process/env';
 import { isBelow } from './paths';
 import { MAX_SEARCHED_BYTES } from './search-rules';
 
@@ -128,7 +129,7 @@ function runProgram(
             return;
         }
 
-        const { RIPGREP_CONFIG_PATH: _config, ...env } = process.env;
+        const { RIPGREP_CONFIG_PATH: _config, ...env } = inheritedEnv();
         let child: ReturnType<typeof spawn>;
 
         try {
