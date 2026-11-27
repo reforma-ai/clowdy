@@ -1,4 +1,5 @@
 import { Button } from '@clowdy/components/Button';
+import { SearchInput } from '@clowdy/components/Input';
 import {
     GridList,
     GridListHeader,
@@ -15,7 +16,8 @@ import { Popover, PopoverScroll, PopoverTrigger } from '@clowdy/components/Popov
 import { Text } from '@clowdy/components/Text';
 import { Archive, More, Trash } from '@clowdy/icons/14';
 import { History } from '@clowdy/icons/16';
-import { type RefObject, useState } from 'react';
+import { type RefObject, useRef, useState } from 'react';
+import { ButtonContext } from 'react-aria-components';
 
 import { formatElapsed } from '../../shared';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
@@ -66,17 +68,22 @@ export function WorktreeArchiveButton({
     isOpen: boolean;
     onOpenChange: (open: boolean) => void;
 }) {
+    const rowRef = useRef<HTMLElement | null>(null);
+
     return (
         <PopoverTrigger isOpen={isOpen} onOpenChange={onOpenChange}>
             <Button
+                ref={element => {
+                    rowRef.current = element?.closest('[role="row"]') ?? null;
+                }}
                 variant="transparent"
                 size="unset"
                 className={styles.trigger}
                 contentClassName={styles.triggerContent}
             >
-                {label}
+                <span className={styles.triggerLabel}>{label}</span>
             </Button>
-            <Popover placement="bottom start" spacing="xs" width={LIST_WIDTH}>
+            <Popover triggerRef={rowRef} placement="bottom start" spacing="xs" width={LIST_WIDTH}>
                 <ArchiveList chats={chats} onClose={() => onOpenChange(false)} showContext />
             </Popover>
         </PopoverTrigger>
@@ -96,74 +103,105 @@ function ArchiveList({
     const project = useProjectState();
     const ui = useProjectUi();
     const [menuOpenId, setMenuOpenId] = useState<ChatId | null>(null);
+    const [query, setQuery] = useState('');
     const now = Date.now();
-    const groups = archiveGroups(chats, now);
+    const filter = query.trim().toLocaleLowerCase();
+    const matches = chats.filter(chat => {
+        const parent = showContext && chat.parentChatId ? project.chats.get(chat.parentChatId) : undefined;
+        return (
+            chat.title.toLocaleLowerCase().includes(filter) ||
+            (parent?.title.toLocaleLowerCase().includes(filter) ?? false)
+        );
+    });
+    const groups = archiveGroups(matches, now);
 
-    return chats.length === 0 ? (
-        <Text variant="sm" color="secondary" className={styles.empty}>
-            No archived chats
-        </Text>
-    ) : (
-        <PopoverScroll maxHeight={360}>
-            <GridList
-                aria-label="Archived chats"
-                size="sm"
-                onAction={key => {
-                    onClose();
-                    void openChat(root, project, ui, String(key));
-                }}
-            >
-                {groups.map(group => (
-                    <GridListSection key={group.id} aria-label={group.title}>
-                        <GridListHeader>{group.title}</GridListHeader>
-                        {group.chats.map(chat => {
-                            const run = orchestratorOf(chat, project.runs);
-                            const parent = chat.parentChatId ? project.chats.get(chat.parentChatId) : undefined;
-                            const title =
-                                showContext && chat.parentChatId
-                                    ? `${chat.title} — thread in ${parent?.title ?? 'another chat'}`
-                                    : chat.title;
+    return (
+        <>
+            <div className={styles.search}>
+                <ButtonContext.Provider value={null}>
+                    <SearchInput
+                        size="sm"
+                        variant="filled"
+                        aria-label="Search archived chats"
+                        placeholder="Search chats"
+                        value={query}
+                        onChange={setQuery}
+                    />
+                </ButtonContext.Provider>
+            </div>
+            {chats.length === 0 ? (
+                <Text variant="sm" color="secondary" className={styles.empty}>
+                    No archived chats
+                </Text>
+            ) : matches.length === 0 ? (
+                <Text variant="sm" color="secondary" className={styles.empty}>
+                    No matching chats
+                </Text>
+            ) : (
+                <PopoverScroll maxHeight={360}>
+                    <GridList
+                        aria-label="Archived chats"
+                        size="sm"
+                        onAction={key => {
+                            onClose();
+                            void openChat(root, project, ui, String(key));
+                        }}
+                    >
+                        {groups.map(group => (
+                            <GridListSection key={group.id} aria-label={group.title}>
+                                <GridListHeader>{group.title}</GridListHeader>
+                                {group.chats.map(chat => {
+                                    const run = orchestratorOf(chat, project.runs);
+                                    const parent = chat.parentChatId ? project.chats.get(chat.parentChatId) : undefined;
+                                    const title =
+                                        showContext && chat.parentChatId
+                                            ? `${chat.title} — thread in ${parent?.title ?? 'another chat'}`
+                                            : chat.title;
 
-                            return (
-                                <GridListItem
-                                    key={chat.id}
-                                    id={chat.id}
-                                    text={title}
-                                    data-open={menuOpenId === chat.id || undefined}
-                                    icon={<ChatIcon chat={chat} run={run} unread={ui.hasUnreadCompletion(run)} />}
-                                    endAffix={
-                                        <ArchivedEnd
-                                            chat={chat}
-                                            isOpen={menuOpenId === chat.id}
-                                            onOpenChange={open => setMenuOpenId(open ? chat.id : null)}
-                                            ago={formatElapsed(now - chat.archivedAt)}
-                                            onUnarchive={() =>
-                                                void (showContext
-                                                    ? bringBack(root, project, chat)
-                                                    : unarchiveChat(root, chat))
+                                    return (
+                                        <GridListItem
+                                            key={chat.id}
+                                            id={chat.id}
+                                            text={title}
+                                            data-open={menuOpenId === chat.id || undefined}
+                                            icon={
+                                                <ChatIcon chat={chat} run={run} unread={ui.hasUnreadCompletion(run)} />
                                             }
-                                            onDelete={() => {
-                                                onClose();
-                                                deleteChat(
-                                                    root,
-                                                    chat,
-                                                    run !== undefined,
-                                                    project.threadsBelow(chat.id).length
-                                                );
-                                            }}
-                                        />
-                                    }
-                                >
-                                    <span className={styles.title} title={title}>
-                                        {title}
-                                    </span>
-                                </GridListItem>
-                            );
-                        })}
-                    </GridListSection>
-                ))}
-            </GridList>
-        </PopoverScroll>
+                                            endAffix={
+                                                <ArchivedEnd
+                                                    chat={chat}
+                                                    isOpen={menuOpenId === chat.id}
+                                                    onOpenChange={open => setMenuOpenId(open ? chat.id : null)}
+                                                    ago={formatElapsed(now - chat.archivedAt)}
+                                                    onUnarchive={() =>
+                                                        void (showContext
+                                                            ? bringBack(root, project, chat)
+                                                            : unarchiveChat(root, chat))
+                                                    }
+                                                    onDelete={() => {
+                                                        onClose();
+                                                        deleteChat(
+                                                            root,
+                                                            chat,
+                                                            run !== undefined,
+                                                            project.threadsBelow(chat.id).length
+                                                        );
+                                                    }}
+                                                />
+                                            }
+                                        >
+                                            <span className={styles.title} title={title}>
+                                                {title}
+                                            </span>
+                                        </GridListItem>
+                                    );
+                                })}
+                            </GridListSection>
+                        ))}
+                    </GridList>
+                </PopoverScroll>
+            )}
+        </>
     );
 }
 

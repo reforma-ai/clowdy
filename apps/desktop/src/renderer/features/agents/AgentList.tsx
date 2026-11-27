@@ -697,6 +697,7 @@ export function AgentList({
                                     text={emptyLabel}
                                     icon={archived.length ? <Archive /> : <Message />}
                                     className={styles.empty}
+                                    data-open={archiveOpenKey === entry.card.key || undefined}
                                     isDisabled={archived.length === 0}
                                 >
                                     {archived.length ? (
