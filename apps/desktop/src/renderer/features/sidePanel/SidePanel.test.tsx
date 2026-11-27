@@ -821,22 +821,24 @@ describe('the Changes item of the rail', () => {
         for (const script of ['open', 'draft', 'merged'] as const) {
             await inWorktree(script);
 
-            expect(dot()).not.toBeNull();
+            expect(dot()?.getAttribute('data-tone')).toBe('primary');
             expect(nameOf()).toBe('Changes, 3 uncommitted files');
         }
 
-        // With no pull request the commits are unmerged too, and the name says both.
+        // Uncommitted files take priority over unmerged commits.
         await inWorktree('none');
 
         expect(dot()).not.toBeNull();
-        expect(nameOf()).toBe('Changes, 3 uncommitted files, 2 commits not merged');
+        expect(nameOf()).toBe('Changes, 3 uncommitted files');
+        expect(dot()?.getAttribute('data-tone')).toBe('primary');
     });
 
     it('draws a dot for commits that are not merged while no pull request holds them', async () => {
         await inWorktree('none', { clean: true });
 
         expect(dot()).not.toBeNull();
-        expect(nameOf()).toBe('Changes, 2 commits not merged');
+        expect(nameOf()).toMatch(/^Changes, 2 commits not in /);
+        expect(dot()?.getAttribute('data-tone')).toBe('neutral');
 
         // A merged pull request that the branch has moved past holds nothing of what is on it now.
         await inWorktree('none', { clean: true, tweak: history(true) });
@@ -844,20 +846,25 @@ describe('the Changes item of the rail', () => {
         expect(dot()).not.toBeNull();
     });
 
-    it('draws no dot for commits that a pull request holds, one that is open, a draft, or a merged one', async () => {
-        for (const script of ['open', 'draft', 'merged'] as const) {
+    it('shows a green dot for an open or draft pull request with no uncommitted files', async () => {
+        for (const script of ['open', 'draft'] as const) {
             await inWorktree(script, { clean: true });
 
-            expect(dot()).toBeNull();
-            expect(nameOf()).toBeNull();
+            expect(dot()?.getAttribute('data-tone')).toBe('success');
+            expect(nameOf()).toMatch(/Changes, (Open|Draft) pull request #/);
         }
-
-        await inWorktree('none', { clean: true, tweak: history() });
-
-        expect(dot()).toBeNull();
     });
 
-    it('draws the dot only while the Changes tab is not the one on show: on another tab, and with the panel shut', async () => {
+    it('uses a neutral dot for sync work without an open pull request', async () => {
+        await inWorktree('none', { clean: true, remote: 'behind' });
+        expect(dot()?.getAttribute('data-tone')).toBe('neutral');
+
+        await inWorktree('merged', { clean: true, remote: 'behind' });
+
+        expect(dot()?.getAttribute('data-tone')).toBe('neutral');
+    });
+
+    it('keeps the dot visible while the Changes tab is open or closed', async () => {
         await inWorktree('draft');
 
         expect(dot()).not.toBeNull();
@@ -866,8 +873,8 @@ describe('the Changes item of the rail', () => {
         await settle();
 
         expect(tab('Changes')?.getAttribute('aria-current')).toBe('page');
-        expect(dot()).toBeNull();
-        expect(nameOf()).toBeNull();
+        expect(dot()?.getAttribute('data-tone')).toBe('primary');
+        expect(nameOf()).toBe('Changes, 3 uncommitted files');
         expect(iconOf()).toBe(markupOf(Merge));
 
         await press(tab('Files')!);

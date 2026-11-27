@@ -31,9 +31,7 @@ const TABS = {
  * pinned at the bottom. A click on a tab opens the panel on it, or shuts it when that tab is the one it shows,
  * and the key of the tab does the same (`ProjectUi.toggleSidePanelTab`; `Cmd+Esc` shuts or opens the panel whatever tab it shows). Only the tab the panel shows is
  * current (in the primary colour, as the open chat is in Reforma's rail), and none is while the panel is shut. The button and the tabs are not drawn where the window shows
- * no project; Settings, which is the window's and not a project's, always is. The Changes tab draws the merge icon while the branch has a pull request to show (the one Source Control lists) and the commit icon otherwise, and a small dot while it is not the tab on show and
- * the branch has work that is nowhere else: files that are uncommitted, or commits that are not merged and in no pull request. The tooltip says the stage, the commits to send or take, and the
- * uncommitted files in words.
+ * no project; Settings, which is the window's and not a project's, always is. The Changes dot shows uncommitted files, an open pull request, or other work in progress.
  */
 export function SidePanelRail() {
     const root = useRootStore();
@@ -75,11 +73,7 @@ export function SidePanelRail() {
                                 size={TABS[tab].size}
                                 current={current}
                                 accent
-                                dot={
-                                    tab === 'changes' && !current && changes?.unlanded
-                                        ? { label: changes.unlandedLabel }
-                                        : undefined
-                                }
+                                dot={tab === 'changes' ? changes?.dot : undefined}
                                 tooltip={
                                     lines.length > 0 ? (
                                         <>
