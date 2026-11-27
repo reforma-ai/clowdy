@@ -6,8 +6,8 @@
  *
  * Bundles live in one permanent prerelease tagged `ota` (a prerelease never becomes Latest, which the shell updater
  * follows): `bundle-<version>.tar.gz` files and one signed `manifest.json` naming the newest. Publishing uploads the
- * archive, then replaces the manifest, then deletes all but the newest three archives, so an app that read the manifest
- * finds its archive. The app installs a bundle only on a shell at least `minShell`; so a bundle goes out only when that
+ * archive, then replaces the manifest. Archives are retained so a client that read an older manifest still finds it.
+ * The app installs a bundle only on a shell at least `minShell`; so a bundle goes out only when that
  * shell is released and has not changed since (`SHELL_PATHS`), or an older shell would get code that needs a newer one.
  *
  * `CLOWDY_OTA_SIGNING_KEY` is the Ed25519 private key (PKCS#8 PEM); `CLOWDY_OTA_PUBLIC_KEY` must be its public half, the
@@ -16,24 +16,28 @@
 
 import { execFile } from 'node:child_process';
 import { createPrivateKey, createPublicKey, generateKeyPairSync } from 'node:crypto';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { gunzipSync } from 'node:zlib';
 import { isVersionAheadOf } from '@clowdy/lib/semver';
+import { PROTOCOL_VERSION } from '@clowdy/protocol';
 
 import {
     type BundleManifest,
     MANIFEST_FILE,
     openManifest,
     parseManifest,
+    sha256,
     signManifest,
 } from '../src/main/bundleManifest';
+import { readTar, tarSize } from '../src/main/tar';
 import {
     createPrerelease,
-    deleteAsset,
     downloadAsset,
+    downloadAssetTo,
     listReleases,
     type Release,
     releaseAssets,
@@ -49,7 +53,6 @@ const desktopRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 const repoRoot = path.resolve(desktopRoot, '../..');
 
 const OTA_TAG = 'ota';
-const KEEP_BUNDLES = 3;
 
 /**
  * What the shell ships, relative to the repository: a change here since the shell's release means a bundle built now
@@ -106,17 +109,6 @@ export function decideOta({ bundle, releases, shellChanged, published }: OtaDeci
     if (published !== null && published >= bundle.version) return skip(`Bundle ${published} is out already`);
 
     return { decision: 'publish', reason: `Publishing bundle ${bundle.version} for shells from ${bundle.minShell}` };
-}
-
-/** The archives to delete after `newest` is published: every bundle but the newest `KEEP_BUNDLES`. */
-export function bundlesToPrune(assets: readonly string[], keep = KEEP_BUNDLES): string[] {
-    const versions = assets
-        .map(name => /^bundle-(\d+)\.tar\.gz$/.exec(name))
-        .filter(match => match !== null)
-        .map(match => Number(match[1]))
-        .sort((a, b) => b - a);
-
-    return versions.slice(keep).map(version => `bundle-${version}.tar.gz`);
 }
 
 async function git(args: string[], cwd = repoRoot): Promise<{ code: number; stdout: string }> {
@@ -204,6 +196,68 @@ async function buildSigned(
     return { manifest, archive, manifestFile };
 }
 
+/** Validate the complete artifact as the shell will consume it before publishing any installer. */
+export async function verifyBootstrap(dir: string, publicKey: string, shellVersion: string): Promise<string> {
+    const manifest = openManifest(await readFile(path.join(dir, MANIFEST_FILE), 'utf8'), publicKey);
+
+    if (
+        manifest.minShell !== shellVersion ||
+        manifest.protocol !== PROTOCOL_VERSION ||
+        manifest.archive.name !== `bundle-${manifest.version}.tar.gz`
+    )
+        throw new Error('Incompatible bootstrap bundle');
+
+    const required = [
+        'renderer/index.html',
+        'daemon/main.js',
+        'daemon/mcp-stdio.js',
+        'daemon/clowdy.js',
+        'system-skills/.claude-plugin/plugin.json',
+    ];
+    if (
+        required.some(file => !manifest.files[file]) ||
+        !Object.keys(manifest.files).some(file => file.startsWith('system-skills/skills/'))
+    ) {
+        throw new Error('Bootstrap bundle is missing required files');
+    }
+
+    const archive = await readFile(path.join(dir, manifest.archive.name));
+    if (archive.length !== manifest.archive.size || sha256(archive) !== manifest.archive.sha256)
+        throw new Error('Bootstrap archive does not match its manifest');
+    const expected = new Map(Object.entries(manifest.files));
+    const entries = readTar(
+        gunzipSync(archive, { maxOutputLength: tarSize([...expected.values()].map(file => file.size)) })
+    );
+    for (const entry of entries) {
+        const file = expected.get(entry.path);
+        if (!file || entry.data.length !== file.size || sha256(entry.data) !== file.sha256)
+            throw new Error('Bootstrap archive contains an invalid file');
+        expected.delete(entry.path);
+    }
+    if (expected.size) throw new Error('Bootstrap archive is missing files');
+    return manifest.archive.name;
+}
+
+async function prepareBootstrap(outdir: string): Promise<void> {
+    await mkdir(outdir, { recursive: true });
+    const { buildOtaBundle } = await import('./bundle');
+    const { manifest } = await buildOtaBundle(outdir);
+    await writeFile(path.join(outdir, '.bootstrap-unsigned.json'), JSON.stringify(manifest));
+}
+
+async function signBootstrap(outdir: string): Promise<void> {
+    if (!process.env.CLOWDY_OTA_PUBLIC_KEY) throw new Error('CLOWDY_OTA_PUBLIC_KEY is required');
+    const keys = signingKeys();
+    if (!keys) throw new Error('CLOWDY_OTA_SIGNING_KEY is required');
+    const manifest = parseManifest(await readFile(path.join(outdir, '.bootstrap-unsigned.json'), 'utf8'));
+    await writeFile(path.join(outdir, MANIFEST_FILE), JSON.stringify(signManifest(manifest, keys.privateKey)));
+    const { version } = JSON.parse(await readFile(path.join(desktopRoot, 'package.json'), 'utf8')) as {
+        version: string;
+    };
+    await verifyBootstrap(outdir, keys.publicKey, version);
+    console.log(`Verified bootstrap ${manifest.version}`);
+}
+
 async function publish(): Promise<void> {
     const keys = signingKeys();
 
@@ -254,11 +308,23 @@ async function publish(): Promise<void> {
             });
         }
 
-        // The archive first, the manifest that names it second, the pruning last.
-        await uploadAssets(OTA_TAG, [archive], true);
+        // Never replace an archive: a client may already hold a manifest naming it.
+        // A retry may reuse an identical archive left by an interrupted publish.
+        if (((await releaseAssets(OTA_TAG)) ?? []).includes(path.basename(archive))) {
+            const existing = await mkdtemp(path.join(tmpdir(), 'clowdy-ota-existing-'));
+            try {
+                await downloadAssetTo(OTA_TAG, path.basename(archive), existing);
+                if (
+                    sha256(await readFile(path.join(existing, path.basename(archive)))) !==
+                    sha256(await readFile(archive))
+                ) {
+                    throw new Error(`Archive ${path.basename(archive)} already exists with different contents`);
+                }
+            } finally {
+                await rm(existing, { recursive: true, force: true });
+            }
+        } else await uploadAssets(OTA_TAG, [archive]);
         await uploadAssets(OTA_TAG, [manifestFile], true);
-
-        for (const name of bundlesToPrune((await releaseAssets(OTA_TAG)) ?? [])) await deleteAsset(OTA_TAG, name);
 
         console.log(`Published bundle ${bundle.version}`);
     } finally {
@@ -292,10 +358,14 @@ async function dryRun(outdir: string): Promise<void> {
 if (import.meta.main) {
     const [flag, dir] = process.argv.slice(2);
 
-    if (flag === '--dry-run' && dir) await dryRun(path.resolve(dir));
+    if (flag === '--prepare-bootstrap' && dir) await prepareBootstrap(path.resolve(dir));
+    else if (flag === '--sign-bootstrap' && dir) await signBootstrap(path.resolve(dir));
+    else if (flag === '--dry-run' && dir) await dryRun(path.resolve(dir));
     else if (flag === undefined) await publish();
     else {
-        console.error('Usage: bun scripts/publish-ota.ts [--dry-run <dir>]');
+        console.error(
+            'Usage: bun scripts/publish-ota.ts [--dry-run <dir> | --prepare-bootstrap <dir> | --sign-bootstrap <dir>]'
+        );
         process.exit(1);
     }
 }

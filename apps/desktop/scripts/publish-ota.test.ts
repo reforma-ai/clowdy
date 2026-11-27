@@ -1,10 +1,15 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { generateKeyPairSync } from 'node:crypto';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { gzipSync } from 'node:zlib';
+import { PROTOCOL_VERSION } from '@clowdy/protocol';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 
-import { bundlesToPrune, decideOta, shellChangedSince } from './publish-ota';
+import { sha256, signManifest } from '../src/main/bundleManifest';
+import { writeTar } from '../src/main/tar';
+import { decideOta, shellChangedSince, verifyBootstrap } from './publish-ota';
 
 import type { Release } from './github';
 
@@ -61,18 +66,58 @@ describe('decideOta', () => {
     });
 });
 
-test('bundlesToPrune keeps the newest three archives', () => {
-    expect(
-        bundlesToPrune([
-            'manifest.json',
-            'bundle-9.tar.gz',
-            'bundle-12.tar.gz',
-            'bundle-10.tar.gz',
-            'bundle-11.tar.gz',
-            'other.zip',
-        ])
-    ).toEqual(['bundle-9.tar.gz']);
-    expect(bundlesToPrune(['bundle-1.tar.gz', 'manifest.json'])).toEqual([]);
+describe('bootstrap artifact verification', () => {
+    let dir = '';
+    const keys = generateKeyPairSync('ed25519');
+    const publicKey = keys.publicKey.export({ type: 'spki', format: 'pem' }).toString();
+    const privateKey = keys.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
+    const files = [
+        'renderer/index.html',
+        'daemon/main.js',
+        'daemon/mcp-stdio.js',
+        'daemon/clowdy.js',
+        'system-skills/.claude-plugin/plugin.json',
+        'system-skills/skills/orchestrate/SKILL.md',
+    ];
+
+    beforeEach(() => {
+        dir = mkdtempSync(path.join(tmpdir(), 'clowdy-bootstrap-'));
+        const entries = files.map(file => ({ path: file, data: Buffer.from(file) }));
+        const archive = gzipSync(writeTar(entries));
+        const manifest = {
+            version: 1,
+            minShell: '0.1.3',
+            protocol: PROTOCOL_VERSION,
+            archive: { name: 'bundle-1.tar.gz', size: archive.length, sha256: sha256(archive) },
+            files: Object.fromEntries(
+                entries.map(entry => [entry.path, { size: entry.data.length, sha256: sha256(entry.data) }])
+            ),
+        };
+        writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify(signManifest(manifest, privateKey)));
+        writeFileSync(path.join(dir, 'bundle-1.tar.gz'), archive);
+    });
+    afterEach(() => rmSync(dir, { recursive: true, force: true }));
+    test('accepts a complete signed compatible archive', async () => {
+        await expect(verifyBootstrap(dir, publicKey, '0.1.3')).resolves.toBe('bundle-1.tar.gz');
+    });
+    test('rejects an archive changed after signing', async () => {
+        writeFileSync(path.join(dir, 'bundle-1.tar.gz'), 'wrong');
+        await expect(verifyBootstrap(dir, publicKey, '0.1.3')).rejects.toThrow();
+    });
+    test('rejects an incompatible shell', async () => {
+        await expect(verifyBootstrap(dir, publicKey, '0.1.4')).rejects.toThrow();
+    });
+    test('rejects a different public key', async () => {
+        const other = generateKeyPairSync('ed25519').publicKey.export({ type: 'spki', format: 'pem' }).toString();
+        await expect(verifyBootstrap(dir, other, '0.1.3')).rejects.toThrow();
+    });
+    test('rejects a correctly signed manifest missing a required file', async () => {
+        const signed = JSON.parse(readFileSync(path.join(dir, 'manifest.json'), 'utf8')) as { body: string };
+        const manifest = JSON.parse(signed.body);
+        delete manifest.files['daemon/main.js'];
+        writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify(signManifest(manifest, privateKey)));
+        await expect(verifyBootstrap(dir, publicKey, '0.1.3')).rejects.toThrow();
+    });
 });
 
 describe('shellChangedSince', () => {

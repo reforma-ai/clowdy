@@ -86,6 +86,8 @@ export interface OtaOptions {
     publicKey: string;
     /** Where `manifest.json` and the archives are published, without a trailing slash; empty turns checks off. */
     feed: string;
+    /** The immutable bootstrap assets published with this shell. */
+    bootstrapFeed?: string;
     fetch: (url: string, init?: { signal?: AbortSignal }) => Promise<Response>;
     /**
      * The bundle version the running daemon reports, if one runs: its folder is never deleted. Rejects when a daemon runs
@@ -318,12 +320,51 @@ export function createOta(options: OtaOptions) {
         }
     }
 
+    /** Installs the newest usable first bundle from the current feed or this shell's bootstrap. */
+    async function bootstrap(onProgress: (fraction: number) => void): Promise<void> {
+        if (!publicKey || !feed || !options.bootstrapFeed)
+            throw new Error('This app has no update feed or verification key');
+
+        const waiting = { onProgress, wait: options.catchUpMs ?? CATCH_UP_MS };
+        const errors: string[] = [];
+
+        const candidates = await Promise.all(
+            [feed, options.bootstrapFeed].map(async source => {
+                try {
+                    return await candidate(source, waiting);
+                } catch (error) {
+                    errors.push(errorText(error));
+                    return null;
+                }
+            })
+        );
+
+        const usable = candidates.filter(item => item !== null).sort((a, b) => b.manifest.version - a.manifest.version);
+        for (const item of usable) {
+            try {
+                await installCandidate(item, waiting);
+                return;
+            } catch (error) {
+                errors.push(errorText(error));
+            }
+        }
+
+        throw new Error(errors.join('; ') || 'No compatible bundle is available');
+    }
+
     /**
      * Installs the published bundle when it is newer and this shell can run it, and puts it on trial. Resolves to its
      * version, or null when there is nothing to install. With `waiting` a launch waits, so the requests are cut short.
      */
-    async function installNewer(waiting?: Waiting): Promise<number | null> {
-        const response = await options.fetch(`${feed}/${MANIFEST_FILE}`, {
+    async function installNewer(waiting?: Waiting, source = feed): Promise<number | null> {
+        const item = await candidate(source, waiting);
+        if (!item) return null;
+        await installCandidate(item, waiting);
+        return item.manifest.version;
+    }
+
+    async function candidate(source: string, waiting?: Waiting) {
+        const response = await options.fetch(`${source}/${MANIFEST_FILE}`, {
             signal: waiting && AbortSignal.timeout(waiting.wait.manifest),
         });
 
@@ -344,20 +385,24 @@ export function createOta(options: OtaOptions) {
             return null;
         }
 
-        // The app's own copy is the floor anyway; only an installed bundle is worth going back to.
+        return { source, signed, manifest };
+    }
+
+    async function installCandidate(
+        { source, signed, manifest }: { source: string; signed: string; manifest: BundleManifest },
+        waiting?: Waiting
+    ): Promise<void> {
         const previous = running.dir ? running.version : null;
 
         // The state switches in the same turn as the install, so a prune never sees the new folder without the state that keeps it.
         await exclusive(async () => {
-            await install(manifest, signed, waiting);
+            await install(manifest, signed, source, waiting);
             await changeState(state => ({ ...state, current: manifest.version, previous, unconfirmed: true }));
         });
         await prune();
-
-        return manifest.version;
     }
 
-    async function install(manifest: BundleManifest, signed: string, waiting?: Waiting): Promise<void> {
+    async function install(manifest: BundleManifest, signed: string, source: string, waiting?: Waiting): Promise<void> {
         const target = path.join(bundles, String(manifest.version));
 
         // Installed by a run that ended before it wrote `state.json`.
@@ -368,7 +413,7 @@ export function createOta(options: OtaOptions) {
         // Before the request: a launch whose download stalls before it answers still shows why it waits.
         waiting?.onProgress(0);
 
-        const response = await options.fetch(`${feed}/${name}`, {
+        const response = await options.fetch(`${source}/${name}`, {
             signal: waiting && AbortSignal.timeout(waiting.wait.install),
         });
 
@@ -525,6 +570,7 @@ export function createOta(options: OtaOptions) {
         enabled,
         choose,
         catchUp,
+        bootstrap,
         watchReady,
         ready,
         daemonUp,

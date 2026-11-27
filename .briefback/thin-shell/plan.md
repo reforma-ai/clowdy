@@ -17,12 +17,13 @@
 
 ## Stage 2 — Thin bootstrap and publishing
 
-- [ ] Remove the frontend and daemon from the installer, preserve the local development flow and packaged runtime.
-- [ ] Require a signed compatible bundle when no usable installed bundle exists, with progress and retry or quit. Preserve verified cached startup and rollback.
-- [ ] Publish a compatible signed bootstrap before the shell; ensure old shells can fetch a compatible bundle and fail releases closed on missing keys.
-- [ ] Set version 0.1.3 and update release guidance.
-- Verify fresh install, retry, signature and compatibility rejection, existing offline startup, rollback, release ordering and packaged contents; run relevant shell checks and review before commit.
+- [x] Remove the frontend and daemon from the installer, preserve the local development flow and packaged runtime.
+- [x] Require a signed compatible bundle when no usable installed bundle exists, with progress and retry or quit. Preserve verified cached startup and rollback.
+- [x] Publish a compatible signed bootstrap before the shell; ensure old shells can fetch a compatible bundle and fail releases closed on missing keys.
+- [x] Set version 0.1.3 and update release guidance.
 
 Partial progress: release-configured builds now require an Ed25519 public key. Checked missing-key rejection, local shell and signed OTA dry-run builds, shell tests (336), lint and typecheck. An independent review confirmed the guard only covers the public key: matching private keys and a published bootstrap still need verification.
 
-Publication investigation: the existing OTA gate waits for a released shell; archive pruning can remove an archive named by a manifest already read by a client. A per-shell signed manifest and archive published in the same immutable release as the installer can provide a compatible fallback, but must be validated before the release becomes public. The latest OTA feed, retry UI, startup selection, packaging, rollback checks and concurrent publication remain to implement and verify.
+Publication decision: the OTA gate waits for a released shell, so each shell release carries its own verified signed bootstrap. OTA archives are retained because clients may have read an older manifest.
+
+Implemented per-shell signed fallback published with the installer, retained OTA archives, and selected the newest compatible signed manifest at first launch. Checks: shell suite 360 passed including signed local HTTP fixture, offline retry and cache, incompatible and tampered bundles, and rollback; lint, typecheck, frozen install, release-configured shell and signed bootstrap builds passed. macOS and Windows release artifacts built locally; feeds and archive contents checked, including Ubuntu p7zip integrity checks. Independent review found and verified fixes to bootstrap selection and artifact validation. Real installer execution, actual GitHub workflow concurrency and release publication remain for the parent to verify; publication was not attempted.

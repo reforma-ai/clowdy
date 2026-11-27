@@ -1,5 +1,6 @@
 import { generateKeyPairSync } from 'node:crypto';
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { gzipSync } from 'node:zlib';
@@ -17,6 +18,7 @@ const keyPair = () =>
 const release = keyPair();
 const stranger = keyPair();
 const FEED = 'https://feed.test/ota';
+const BOOTSTRAP = 'https://feed.test/v0.2.0';
 const PROTOCOL = 3;
 const encoder = new TextEncoder();
 
@@ -39,6 +41,7 @@ const bundleFiles = (version: number): Record<string, string> => ({
 });
 
 interface Publish {
+    source?: string;
     minShell?: string;
     protocol?: number;
     key?: string;
@@ -88,6 +91,7 @@ function machine({ ownVersion = 100, shellVersion = '0.2.0', catchUpMs = { manif
                 protocol: PROTOCOL,
                 publicKey: release.publicKey,
                 feed: FEED,
+                bootstrapFeed: BOOTSTRAP,
                 fetch,
                 daemonVersion: async () => {
                     if (daemonVersion instanceof Error) throw daemonVersion;
@@ -111,6 +115,7 @@ function machine({ ownVersion = 100, shellVersion = '0.2.0', catchUpMs = { manif
                 key = release.privateKey,
                 alter = files => files,
                 corrupt = false,
+                source = FEED,
             }: Publish = {}
         ) {
             const files = bundleFiles(version);
@@ -135,8 +140,8 @@ function machine({ ownVersion = 100, shellVersion = '0.2.0', catchUpMs = { manif
 
             if (corrupt) archive[archive.length - 1] ^= 0xff;
 
-            feed.set(`${FEED}/${name}`, archive);
-            feed.set(`${FEED}/manifest.json`, encoder.encode(JSON.stringify(signManifest(manifest, key))));
+            feed.set(`${source}/${name}`, archive);
+            feed.set(`${source}/manifest.json`, encoder.encode(JSON.stringify(signManifest(manifest, key))));
         },
         installed: async () => (await readdir(path.join(updates, 'bundles')).catch(() => [] as string[])).sort(),
         state: async () =>
@@ -546,6 +551,118 @@ const hangs = (init?: { signal?: AbortSignal }) =>
     new Promise<Response>((_resolve, reject) => {
         init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
     });
+
+describe('bootstrap', () => {
+    test('installs a signed bundle from a local HTTP server', async () => {
+        const app = machine({ ownVersion: 0 });
+        app.publish(101, { source: BOOTSTRAP });
+        const serve = app.fetch.getMockImplementation()!;
+        const server = createServer(async (request, response) => {
+            const original = `https://feed.test${request.url}`;
+            const file = await serve(original);
+            response.writeHead(file.status);
+            response.end(Buffer.from(await file.arrayBuffer()));
+        });
+        await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+        const address = server.address();
+        if (!address || typeof address === 'string') throw new Error('No HTTP address');
+        app.fetch.mockImplementation((url, init) =>
+            globalThis.fetch(url.replace('https://feed.test', `http://127.0.0.1:${address.port}`), init)
+        );
+
+        try {
+            const { ota } = await app.launch();
+            await ota.bootstrap(vi.fn());
+            expect((await ota.choose()).version).toBe(101);
+        } finally {
+            await new Promise<void>((resolve, reject) => server.close(error => (error ? reject(error) : resolve())));
+        }
+    });
+
+    test('prefers the latest compatible bundle and uses it offline on later launches', async () => {
+        const app = machine({ ownVersion: 0 });
+        app.publish(101, { source: BOOTSTRAP });
+        app.publish(102);
+        const { ota } = await app.launch();
+        const progress = vi.fn();
+
+        await ota.bootstrap(progress);
+        expect((await ota.choose()).version).toBe(102);
+        expect(progress).toHaveBeenCalledWith(1);
+        app.fetch.mockRejectedValue(new Error('offline'));
+        expect((await app.launch()).bundle.version).toBe(102);
+    });
+
+    test('prefers the newer bootstrap when the latest feed has an older compatible bundle', async () => {
+        const app = machine({ ownVersion: 0 });
+        app.publish(102, { source: BOOTSTRAP });
+        app.publish(101);
+        const { ota } = await app.launch();
+
+        await ota.bootstrap(vi.fn());
+        expect((await ota.choose()).version).toBe(102);
+    });
+
+    test('tries the older compatible source when the newest archive is corrupt', async () => {
+        const app = machine({ ownVersion: 0 });
+        app.publish(102, { source: BOOTSTRAP, corrupt: true });
+        app.publish(101);
+        const { ota } = await app.launch();
+
+        await ota.bootstrap(vi.fn());
+        expect((await ota.choose()).version).toBe(101);
+    });
+
+    test.each<Publish>([{ minShell: '0.3.0' }, { protocol: 4 }, { key: stranger.privateKey }, { corrupt: true }])(
+        'uses the signed compatible fallback when the latest feed cannot be used: %o',
+        async latest => {
+            const app = machine({ ownVersion: 0 });
+            app.publish(101, { source: BOOTSTRAP });
+            app.publish(102, latest);
+            const { ota } = await app.launch();
+
+            await ota.bootstrap(vi.fn());
+            expect((await ota.choose()).version).toBe(101);
+        }
+    );
+
+    test('fails offline and succeeds on retry after connectivity returns', async () => {
+        const app = machine({ ownVersion: 0 });
+        app.publish(101, { source: BOOTSTRAP });
+        const serve = app.fetch.getMockImplementation()!;
+        app.fetch.mockRejectedValue(new Error('offline'));
+        const { ota } = await app.launch();
+
+        await expect(ota.bootstrap(vi.fn())).rejects.toThrow();
+        app.fetch.mockImplementation(serve);
+        await ota.bootstrap(vi.fn());
+        expect((await ota.choose()).version).toBe(101);
+    });
+
+    test('rejects a tampered fallback and leaves no installed bundle', async () => {
+        const app = machine({ ownVersion: 0 });
+        app.publish(101, { source: BOOTSTRAP, corrupt: true });
+        const { ota } = await app.launch();
+
+        await expect(ota.bootstrap(vi.fn())).rejects.toThrow();
+        expect(await app.installed()).toEqual([]);
+    });
+
+    test('uses the fallback after the first downloaded bundle fails its trial', async () => {
+        const app = machine({ ownVersion: 0 });
+        app.publish(101, { source: BOOTSTRAP });
+        app.publish(102);
+        const first = await app.launch();
+        await first.ota.bootstrap(vi.fn());
+        await first.ota.choose();
+        first.ota.watchReady();
+        await vi.waitFor(() => expect(app.relaunch).toHaveBeenCalledOnce());
+
+        const next = await app.launch();
+        await next.ota.bootstrap(vi.fn());
+        expect((await next.ota.choose()).version).toBe(101);
+    });
+});
 
 describe('catchUp', () => {
     /** A first launch: the bundle is chosen, then the catch-up runs and chooses again when it installed one. */
