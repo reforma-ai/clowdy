@@ -1,4 +1,5 @@
 import { processesBelow, signalBelow } from '../engine/process';
+import { killTree } from '../process/kill';
 
 import type { RunProcess } from '../db/runs';
 
@@ -78,7 +79,7 @@ export function mayBeSameProcess(ref: RunProcess): boolean {
 /** Signals the process group of a run's engine (the whole tree), or the process alone when it has no group of its own. */
 export function signalProcess(ref: RunProcess, signal: 'SIGTERM' | 'SIGKILL'): void {
     if (process.platform === 'win32') {
-        Bun.spawnSync(['taskkill', '/PID', String(ref.pid), '/T', '/F'], { stdout: 'ignore', stderr: 'ignore' });
+        killTree(ref.pid, signal);
 
         return;
     }

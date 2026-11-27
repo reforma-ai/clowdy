@@ -1,3 +1,5 @@
+import { killTree } from '../process/kill';
+
 /** What a process that was run for its output came to. */
 export interface LineRun {
     /** The exit code; `null` when the process was killed (a stop, the time) or never started. */
@@ -99,30 +101,14 @@ export async function runLines(argv: string[], options: LineRunOptions): Promise
     let aborted = false;
     let exited = false;
     let hardKill: ReturnType<typeof setTimeout> | undefined;
-    const killTree = (force: boolean) => {
-        try {
-            if (windows) {
-                Bun.spawn(['taskkill', '/pid', String(child.pid), '/T', '/F'], {
-                    stdin: 'ignore',
-                    stdout: 'ignore',
-                    stderr: 'ignore',
-                    windowsHide: true,
-                });
-            } else {
-                process.kill(-child.pid, force ? 'SIGKILL' : 'SIGTERM');
-            }
-        } catch {
-            // The group is gone already, or never was one.
-            child.kill(force ? 'SIGKILL' : 'SIGTERM');
-        }
-    };
+    const kill = (force: boolean) => killTree(child.pid, force ? 'SIGKILL' : 'SIGTERM');
     const end = () => {
         if (exited || hardKill) {
             return;
         }
 
-        killTree(false);
-        hardKill = setTimeout(() => killTree(true), KILL_GRACE_MS);
+        kill(false);
+        hardKill = setTimeout(() => kill(true), KILL_GRACE_MS);
     };
     const stop = () => {
         aborted = true;
@@ -157,9 +143,10 @@ export async function runLines(argv: string[], options: LineRunOptions): Promise
         clearTimeout(hardKill);
         signal?.removeEventListener('abort', stop);
 
-        // A program that was told to stop may have left what it started behind: nothing of it is wanted any more.
-        if (!exited || aborted || timedOut) {
-            killTree(true);
+        // A program that was told to stop may have left what it started behind: nothing of it is wanted any more. On Windows the stop ended the tree, and the pid of a
+        // program that has exited may be another process's by now.
+        if (!exited || ((aborted || timedOut) && !windows)) {
+            kill(true);
         }
 
         for (const reader of readers) {
