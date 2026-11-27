@@ -378,7 +378,7 @@ export async function workingTreeRoot(folder: string): Promise<string | undefine
 /**
  * What git says about a folder (`GET /v1/projects/:id/git`). A folder counts as a repository only when it is the root of a working tree (`workingTreeRoot`). A git that does
  * not answer (not there, too slow, too much to say) is `unavailable`, never an empty answer or "no repository", which a caller would take for the truth. The reads of each
- * worktree's status run one after another, so a repository with many worktrees does not start a crowd of processes.
+ * worktree's status run `DIRTY_READS` at a time, so a repository with many worktrees does not start a crowd of processes.
  * `baseBranch` is the folder's configured base (`pickBase`): `defaultBranch` is that branch when the repository has it.
  */
 export async function folderGit(folder: string, baseBranch?: string): Promise<FolderGit> {
