@@ -9,6 +9,7 @@ import { useRef, useState } from 'react';
 
 import { ProjectIcon } from '../../../shared/ProjectIcon';
 import { useProjectIcon, useRootStore } from '../../../stores';
+import { openManageWorktrees } from '../../worktrees';
 import { useDraftField } from '../useDraftField';
 import { ProjectDefaults } from './ProjectDefaults';
 import styles from './ProjectDetail.module.css';
@@ -48,10 +49,30 @@ export function ProjectDetail({ project, info, infoFailed }: ProjectDetailProps)
 
             <ProjectFolders project={project} info={info} infoFailed={infoFailed} />
 
+            <WorktreesSection project={project} />
+
             <ProjectDefaults project={project} />
 
             {!project.personal && <RemoveSection project={project} info={info} />}
         </>
+    );
+}
+
+function WorktreesSection({ project }: { project: Project }) {
+    const root = useRootStore();
+    return (
+        <SettingsLayout.Section title="Worktrees">
+            <SettingsLayout.Card>
+                <SettingsLayout.Row title="Worktrees" description="Manage or clean up worktrees across this project">
+                    <Button onPress={() => openManageWorktrees({ root, projectId: project.id })}>
+                        Manage worktrees
+                    </Button>
+                    <Button onPress={() => openManageWorktrees({ root, projectId: project.id, initialTidy: true })}>
+                        Tidy up worktrees
+                    </Button>
+                </SettingsLayout.Row>
+            </SettingsLayout.Card>
+        </SettingsLayout.Section>
     );
 }
 

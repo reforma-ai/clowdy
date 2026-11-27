@@ -4,11 +4,10 @@ import { Button } from '@clowdy/components/Button';
 import { For } from '@clowdy/components/For';
 import { useModalContext } from '@clowdy/components/Modal';
 import { PanelEmptyState } from '@clowdy/components/Panel';
-import { Text } from '@clowdy/components/Text';
 import { AttentionCircle, Mop } from '@clowdy/icons/14';
 import { mainFolder } from '@clowdy/protocol';
 import { reaction, runInAction } from 'mobx';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { useRootStore } from '../../stores';
 import { openChat } from '../chats/archiveChat';
@@ -16,23 +15,22 @@ import { refreshFolderGit } from '../openWith';
 import { openCreateWorktree } from './CreateWorktreeDialog';
 import styles from './ManageWorktrees.module.css';
 import { openRemoveWorktree } from './RemoveWorktreeDialog';
-import { openTidyWorktrees } from './TidyWorktreesDialog';
+import { TidyWorktreesMode } from './TidyWorktreesDialog';
 import { useProjectWorktrees } from './useProjectWorktrees';
 import { WorktreeGroup, type WorktreeRowActions } from './WorktreeRow';
 import { WorktreesSkeleton } from './WorktreesSkeleton';
 import { repositoryGroups } from './worktreeView';
 
-import type { FolderId, FolderWorktrees, ProjectId, WorktreeChat, WorktreeInfo } from '@clowdy/protocol';
+import type { FolderWorktrees, ProjectId, WorktreeChat, WorktreeInfo } from '@clowdy/protocol';
 
 export function FolderWorktreesList({
     projectId,
-    folderId,
-    pendingChanges,
+    initialTidy = false,
 }: {
     projectId: ProjectId;
-    folderId: FolderId;
-    pendingChanges: boolean;
+    initialTidy?: boolean;
 }) {
+    const [tidy, setTidy] = useState(initialTidy);
     const root = useRootStore();
     const { modal } = useModalContext();
     const { folders, failed, reload } = useProjectWorktrees(projectId);
@@ -102,25 +100,16 @@ export function FolderWorktreesList({
             }),
     };
 
+    if (tidy) return <TidyWorktreesMode projectId={projectId} reload={reload} onCancel={() => setTidy(false)} />;
+
     return (
         <div className={styles.groups}>
-            <Box direction="row" justify="between" align="center">
-                <Text variant="heading-4">Worktrees</Text>
-                <Button
-                    size="sm"
-                    variant="bordered"
-                    onPress={() => void openTidyWorktrees({ root, projectId, folderId, reload })}
-                >
+            <Box direction="row" justify="end" align="center">
+                <Button size="sm" variant="bordered" onPress={() => setTidy(true)}>
                     <Mop />
                     Tidy up…
                 </Button>
             </Box>
-            {pendingChanges && (
-                <Text variant="sm" color="secondary">
-                    Save folder settings before creating a worktree
-                </Text>
-            )}
-
             {failed && (
                 <Alert color={groups ? 'warning' : 'danger'} role={groups ? 'status' : 'alert'}>
                     <AlertIcon>
@@ -139,17 +128,16 @@ export function FolderWorktreesList({
 
             <div className={styles.groups}>
                 {groups === undefined && !failed && <WorktreesSkeleton />}
-                {groups && !groups.some(item => item.group.folderId === folderId) && (
-                    <PanelEmptyState fill={false} label="This folder is not a git repository" />
+                {groups && groups.length === 0 && (
+                    <PanelEmptyState fill={false} label="No git repositories in this project" />
                 )}
-                <For each={(groups ?? []).filter(item => item.group.folderId === folderId)}>
+                <For each={groups ?? []}>
                     {({ group, folder }) => (
                         <WorktreeGroup
                             key={group.folderId}
                             projectId={projectId}
                             group={group}
                             folder={folder}
-                            createDisabled={pendingChanges}
                             onCreate={() => openCreateWorktree({ root, projectId, folderId: group.folderId, reload })}
                             {...actions}
                         />

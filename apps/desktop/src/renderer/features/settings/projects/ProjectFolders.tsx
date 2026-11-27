@@ -176,7 +176,7 @@ function WorkspaceButton({ project, view }: { project: Project; view: FolderView
     const root = useRootStore();
 
     return (
-        <Tooltip content="Folder settings and worktrees">
+        <Tooltip content="Folder settings">
             <Button
                 variant="filling"
                 color="secondary"

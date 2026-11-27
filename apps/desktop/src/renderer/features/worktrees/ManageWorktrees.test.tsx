@@ -18,7 +18,7 @@ import { overrideTransport } from '../../daemon/testing';
 import { RootStore } from '../../stores';
 import { openManageWorktrees } from './ManageWorktrees';
 
-import type { CommandResult, FolderWorktrees } from '@clowdy/protocol';
+import type { FolderWorktrees } from '@clowdy/protocol';
 import type { Transport } from '../../daemon/transport';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -110,10 +110,6 @@ const buttonIn = (parent: HTMLElement, label: string) =>
 const textButton = (parent: HTMLElement, text: string) =>
     [...parent.querySelectorAll<HTMLButtonElement>('button')].find(candidate => candidate.textContent?.trim() === text);
 const click = (element: HTMLElement) => act(async () => element.click());
-const selectTab = async (tab: 'Settings' | 'Worktrees') => {
-    await click(textButton(dialog()!, tab)!);
-    await settle();
-};
 const isOpen = () => Modal.opened.length > 0;
 const items = () => [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')];
 const item = (text: string) => items().find(candidate => candidate.textContent?.startsWith(text));
@@ -236,86 +232,23 @@ describe('Manage worktrees', () => {
                 .map(row => row.textContent)
                 .join()
         ).toContain('clowdy/next');
-        expect(groups()).toHaveLength(1);
+        expect(groups()).toHaveLength(3);
     });
 
-    it('preserves edited settings across tabs and requires saving before creating a worktree', async () => {
+    it('shows worktrees for all project repositories in one window', async () => {
         await open({ folderId: 'fld_api' });
-        expect(textButton(group('car-rental-api'), 'New worktree')!.disabled).toBe(false);
-        await selectTab('Settings');
-        const name = () => dialog()!.querySelector<HTMLInputElement>('input[aria-label="Folder name"]')!;
-        const typeName = (value: string) =>
-            act(() => {
-                Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(name(), value);
-                name().dispatchEvent(new Event('input', { bubbles: true }));
-            });
-        typeName('Backend');
-        await selectTab('Worktrees');
-        expect(textButton(group('car-rental-api'), 'New worktree')!.disabled).toBe(true);
-        expect(dialog()!.textContent).toContain('Save folder settings before creating a worktree');
-        await selectTab('Settings');
-        expect(name().value).toBe('Backend');
-        typeName('');
-        await selectTab('Worktrees');
-        expect(textButton(group('car-rental-api'), 'New worktree')!.disabled).toBe(false);
-    });
-
-    it('allows retrying a refused save after switching tabs while it is pending', async () => {
-        let finish!: (result: CommandResult) => void;
-        const command = vi.fn<Transport['command']>(
-            () =>
-                new Promise(resolve => {
-                    finish = resolve;
-                })
-        );
-        await open({ folderId: 'fld_api', overrides: { command } });
-        await selectTab('Settings');
-        const name = () => dialog()!.querySelector<HTMLInputElement>('input[aria-label="Folder name"]')!;
-        const save = () => textButton(dialog()!, 'Save')!;
-        act(() => {
-            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(name(), 'Backend');
-            name().dispatchEvent(new Event('input', { bubbles: true }));
-        });
-        act(() => name().closest('form')!.requestSubmit());
-        await selectTab('Worktrees');
-        expect(textButton(group('car-rental-api'), 'New worktree')!.disabled).toBe(true);
-        await selectTab('Settings');
-        act(() => name().closest('form')!.requestSubmit());
-        expect(command).toHaveBeenCalledTimes(1);
-        await act(async () =>
-            finish({ ok: false, requestId: 'refused', error: { code: 'conflict', message: 'Refused' } })
-        );
-        expect(name().value).toBe('Backend');
-        expect(save().hasAttribute('data-pending')).toBe(false);
-        act(() => name().closest('form')!.requestSubmit());
-        expect(command).toHaveBeenCalledTimes(2);
-        await selectTab('Worktrees');
-        await act(async () => finish({ ok: true, requestId: 'saved', data: {} }));
-        await settle();
-        expect(isOpen()).toBe(false);
-    });
-
-    it('keeps worktrees accessible in the personal space without offering unsupported settings', async () => {
-        await open({ projectId: FIXTURE_PERSONAL_PROJECT_ID });
-        expect(dialog()!.textContent).toContain('Worktrees');
-        await selectTab('Settings');
-        expect(dialog()!.textContent).toContain('Folder settings are unavailable in the personal space');
-        expect(dialog()!.querySelector('input[aria-label="Folder name"]')).toBeNull();
-    });
-
-    it('shows only the selected folder in its Worktrees tab, separate from Settings', async () => {
-        await open({ folderId: 'fld_api' });
-        expect(groups().map(section => section.querySelector('h3')!.textContent)).toEqual(['car-rental-api']);
+        expect(groups().map(section => section.querySelector('h3')!.textContent)).toEqual([
+            'car-rental',
+            'car-rental-api',
+            'notes',
+        ]);
+        expect(group('notes').textContent).toContain('This folder is not a git repository');
         expect(rowsOf(group('car-rental-api')).map(item => item.dataset.worktreePath)).toEqual([
             '/Users/dev/car-rental-api',
             '/Users/dev/Clowdy/workspaces/car-rental-api/ab12cd34/car-rental-api',
             DETACHED_WORKTREE,
         ]);
         expect(dialog()!.querySelector('input[aria-label="Folder name"]')).toBeNull();
-        await selectTab('Settings');
-        expect(dialog()!.textContent).toContain('Settings of car-rental-api');
-        expect(dialog()!.querySelector('input[aria-label="Folder name"]')).not.toBeNull();
-        expect(groups()).toHaveLength(0);
     });
 
     it("marks the folder's own checkout with its branch and whether it has local changes, and gives it no Remove", async () => {
@@ -739,7 +672,7 @@ describe('Manage worktrees', () => {
 
         expect(getProjectWorktrees).toHaveBeenCalledTimes(2);
         // The list stays while the next read runs.
-        expect(groups()).toHaveLength(1);
+        expect(groups()).toHaveLength(3);
     });
 
     it('shows what is changed since the last read when the window gets focus again', async () => {
@@ -851,7 +784,7 @@ describe('Manage worktrees', () => {
         await settle();
 
         expect(dialog()!.textContent).not.toContain("Couldn't load the worktrees");
-        expect(groups()).toHaveLength(1);
+        expect(groups()).toHaveLength(3);
     });
 
     it('keeps the list it has and says so when a later read fails', async () => {
@@ -866,7 +799,7 @@ describe('Manage worktrees', () => {
         await act(async () => void window.dispatchEvent(new Event('focus')));
         await settle();
 
-        expect(groups()).toHaveLength(1);
+        expect(groups()).toHaveLength(3);
         expect(dialog()!.textContent).toContain("Couldn't refresh the list");
         expect(dialog()!.textContent).not.toContain("Couldn't load the worktrees");
     });
@@ -890,7 +823,7 @@ describe('Manage worktrees', () => {
 
         expect(getProjectWorktrees).toHaveBeenCalledTimes(3);
         expect(dialog()!.textContent).not.toContain("Couldn't refresh the list");
-        expect(groups()).toHaveLength(1);
+        expect(groups()).toHaveLength(3);
     });
 
     it("says so when none of the project's folders is a repository", async () => {
@@ -904,7 +837,7 @@ describe('Manage worktrees', () => {
 
         await open({ overrides: { getProjectWorktrees } });
 
-        expect(groups()).toEqual([]);
+        expect(groups()).toHaveLength(3);
         expect(dialog()!.textContent).toContain('This folder is not a git repository');
     });
 
@@ -914,7 +847,7 @@ describe('Manage worktrees', () => {
         await settle();
 
         expect(isOpen()).toBe(true);
-        expect(groups()).toHaveLength(1);
+        expect(groups()).toHaveLength(3);
     });
 
     it('takes the person to the project with Settings shut when a new chat or a chat is chosen, though the window showed another project with Settings open', async () => {
