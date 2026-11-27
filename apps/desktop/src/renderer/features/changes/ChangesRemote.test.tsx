@@ -537,7 +537,7 @@ describe('the sync button in the sidebar', () => {
 });
 
 describe('merging branches from the sync menu', () => {
-    const dialog = () => document.querySelector<HTMLElement>('[data-modal-window] [role="dialog"]')!;
+    const dialog = () => document.querySelector<HTMLElement>('[data-modal-window][role="dialog"]')!;
     const heading = () => dialog().querySelector('h2')?.textContent;
     const modeTrigger = () => dialog().querySelector<HTMLButtonElement>('button[aria-label="Choose merge mode"]')!;
     const options = () => [...dialog().querySelectorAll<HTMLElement>('[role="option"]')];
@@ -1093,19 +1093,21 @@ describe('merging branches from the sync menu', () => {
         await open('Merge into branch…');
         await press(option('main'));
         await settle();
-        const primary = button('Merge');
         expect(modeTrigger()).not.toBeNull();
 
-        await press(primary);
+        await press(button('Merge'));
         await settle();
+        // The split button gives way to one full-width button, which takes the focus and spins until the sync is done.
+        const spinning = button('Merge');
         expect(modeTrigger()).toBeNull();
-        expect(primary.getAttribute('data-pending')).toBe('true');
+        expect(spinning.getAttribute('data-pending')).toBe('true');
+        await vi.waitFor(() => expect(document.activeElement).toBe(spinning));
 
         releaseMerge.resolve();
         await settle();
         expect(modeTrigger()).toBeNull();
-        expect(primary.isConnected).toBe(true);
-        expect(primary.getAttribute('data-pending')).toBe('true');
+        expect(spinning.isConnected).toBe(true);
+        expect(spinning.getAttribute('data-pending')).toBe('true');
         expect(heading()).toBe('Merged clowdy/ab12cd34 into main');
 
         releaseSync.resolve();

@@ -1,14 +1,16 @@
 import { Alert, AlertDescription, AlertIcon } from '@clowdy/components/Alert';
 import { Button } from '@clowdy/components/Button';
-import { Menu, MenuItem, MenuTrigger } from '@clowdy/components/List';
-import { Modal, useModalContext } from '@clowdy/components/Modal';
-import { Popover } from '@clowdy/components/Popover';
+import { Card } from '@clowdy/components/Card';
+import { Menu, MenuItem } from '@clowdy/components/List';
+import { useModalContext } from '@clowdy/components/Modal';
+import { DialogLayout, openFormDialog } from '@clowdy/components/modals';
 import { Spinner } from '@clowdy/components/Spinner';
+import { SplitButton } from '@clowdy/components/SplitButton';
 import { Text } from '@clowdy/components/Text';
 import { toast } from '@clowdy/components/Toast';
-import { AttentionCircle, Check, ChevronDown, Close } from '@clowdy/icons/14';
+import { AttentionCircle, Check } from '@clowdy/icons/14';
 import { errorMessage } from '@clowdy/lib';
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { type Transport, TransportError } from '../../daemon/transport';
 import { tildePath } from '../../shared/displayPath';
@@ -161,14 +163,11 @@ function FailureText({ failure }: { failure: Failure }) {
 }
 
 export function openBranchMergeDialog(options: MergeOptions): void {
-    Modal.create({
+    openFormDialog({
         id: 'branch-merge',
         width: 440,
-        shadow: true,
-        handle: false,
+        // A stray click outside keeps the picked branch and its preview: Escape and the close button close it.
         clickOut: false,
-        closeButton: false,
-        closeOnEscape: false,
         component: <BranchMergeDialog {...options} />,
     });
 }
@@ -183,7 +182,6 @@ function BranchMergeDialog({
     checkoutBranch,
 }: MergeOptions) {
     const { modal } = useModalContext();
-    const headingId = useId();
     const [listing, setListing] = useState<GitBranches>();
     const [checkoutChoice, setCheckoutChoice] = useState<MergeChoice>();
     const [fetchFailed, setFetchFailed] = useState<Failure>();
@@ -453,36 +451,63 @@ function BranchMergeDialog({
         'No branches available'
     ) : undefined;
 
-    return (
-        <div
-            className={styles.form}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby={headingId}
-            onKeyDown={event => {
-                if (event.key === 'Escape' && !isWorking) {
-                    event.stopPropagation();
-                    modal.cancel();
-                }
+    // While the merge and the sync after it run, the dialog stays: Escape, an outside click and the close button wait for them.
+    useEffect(() => {
+        modal.setDismissable(!isWorking);
+    }, [modal, isWorking]);
+
+    const mergeMenu = (
+        <Menu
+            size="sm"
+            aria-label="Merge mode"
+            selectionMode="single"
+            selectedKeys={[strategy]}
+            disallowEmptySelection
+            onAction={key => {
+                const next = key as DialogStrategy;
+                if (next === strategy) return;
+                setStrategy(next);
+                if (choice) void compare(choice, next);
             }}
         >
-            <Text id={headingId} as="h2" variant="heading-3" className={styles.heading}>
-                {strategy === 'rebase'
-                    ? `${done ? 'Rebased' : 'Rebase'} ${target} onto ${source}`
-                    : `${done ? (strategy === 'squash' ? 'Squashed' : 'Merged') : 'Merge'} ${source} into ${target}`}
-            </Text>
-            <Button
-                className={styles.close}
-                size="sm"
-                variant="filling"
-                color="secondary"
-                iconOnly
-                aria-label="Close"
-                isDisabled={isWorking}
-                onPress={() => modal.cancel()}
-            >
-                <Close />
-            </Button>
+            {(Object.keys(STRATEGIES) as DialogStrategy[])
+                .filter(id => direction === 'from' || id !== 'rebase')
+                .map(id => (
+                    <MenuItem
+                        key={id}
+                        id={id}
+                        text={STRATEGIES[id].label}
+                        description={STRATEGIES[id].description}
+                        endAffix={strategy === id ? <Check aria-hidden="true" /> : undefined}
+                        stacked
+                    />
+                ))}
+        </Menu>
+    );
+    // The merge, or Sync once a merge is done; it is not shown for a merge that stopped on conflicts.
+    const primary = {
+        size: 'md',
+        color: 'contrast',
+        fullWidth: true,
+        isDisabled: !result && !canMerge,
+        isPending: pending === 'merge' || pending === 'sync',
+        onPress:
+            result?.state === 'done'
+                ? () => void run({ action: 'sync', target: result.target, commit: result.commit })
+                : merge,
+        children: result ? (pending === 'sync' ? syncLabel : `Sync ${result.target}`) : (actionStatus ?? actionLabel),
+    } as const;
+
+    return (
+        <DialogLayout
+            title={
+                <span className={styles.title}>
+                    {strategy === 'rebase'
+                        ? `${done ? 'Rebased' : 'Rebase'} ${target} onto ${source}`
+                        : `${done ? (strategy === 'squash' ? 'Squashed' : 'Merged') : 'Merge'} ${source} into ${target}`}
+                </span>
+            }
+        >
             {!result && !checkoutBranch && (loading || listing) && (
                 <div inert={isWorking}>
                     <PickerList
@@ -498,7 +523,7 @@ function BranchMergeDialog({
             )}
             {!result && fetchFailed && <FailureText failure={fetchFailed} />}
             {(!result || done) && preview && preview.mode !== 'up-to-date' && (
-                <div className={styles.detail} role="status">
+                <Card variant="filled" className={styles.detail} role="status">
                     <Text variant="sm">{mergeSummary(preview, done)}</Text>
                     {preview.mode !== 'rebase' && !blocked && (
                         <Text variant="sm" color="secondary">
@@ -510,11 +535,11 @@ function BranchMergeDialog({
                             {tildePath(preview.targetPath, homeFolder.path)}
                         </Text>
                     )}
-                </div>
+                </Card>
             )}
             {!result && blocked && <FailureText failure={blocked} />}
             {(result?.state === 'conflicts' || result?.state === 'sync-conflicts') && (
-                <div className={styles.detail} role="status">
+                <Card variant="filled" className={styles.detail} role="status">
                     <Text variant="sm" color={result.conflicts > 0 ? 'warning' : undefined}>
                         {result.conflicts === 0
                             ? `${result.state === 'conflicts' && result.operation === 'rebase' ? 'Rebase paused' : 'Complete the merge'} in ${result.target}`
@@ -535,87 +560,36 @@ function BranchMergeDialog({
                                 : 'Continue the rebase in this chat'}
                         </Text>
                     )}
-                </div>
+                </Card>
             )}
             {failure && <FailureText failure={failure} />}
             {hasActions && (
                 <div className={styles.actions}>
-                    {(!result || result.state === 'done') && (
-                        <div className={styles.split} data-mode={showMode || undefined}>
-                            {!result && (
-                                <span className={styles.visuallyHidden} role="status">
-                                    {selection ? actionStatus : undefined}
-                                </span>
-                            )}
-                            <Button
-                                size="md"
-                                color="contrast"
-                                className={styles.primary}
-                                isDisabled={!result && !canMerge}
-                                isPending={pending === 'merge' || pending === 'sync'}
-                                onPress={
-                                    result
-                                        ? () =>
-                                              void run({ action: 'sync', target: result.target, commit: result.commit })
-                                        : merge
-                                }
-                            >
-                                {result
-                                    ? pending === 'sync'
-                                        ? syncLabel
-                                        : `Sync ${result.target}`
-                                    : (actionStatus ?? actionLabel)}
-                            </Button>
-                            {showMode && (
-                                <MenuTrigger>
-                                    <Button
-                                        size="md"
-                                        color="contrast"
-                                        iconOnly
-                                        className={styles.mode}
-                                        aria-label="Choose merge mode"
-                                        isDisabled={modeDisabled}
-                                    >
-                                        <ChevronDown aria-hidden="true" />
-                                    </Button>
-                                    <Popover placement="top end" spacing="xs" width={300}>
-                                        <Menu
-                                            size="sm"
-                                            aria-label="Merge mode"
-                                            selectionMode="single"
-                                            selectedKeys={[strategy]}
-                                            disallowEmptySelection
-                                            onAction={key => {
-                                                const next = key as DialogStrategy;
-                                                if (next === strategy) return;
-                                                setStrategy(next);
-                                                if (choice) void compare(choice, next);
-                                            }}
-                                        >
-                                            {(Object.keys(STRATEGIES) as DialogStrategy[])
-                                                .filter(id => direction === 'from' || id !== 'rebase')
-                                                .map(id => (
-                                                    <MenuItem
-                                                        key={id}
-                                                        id={id}
-                                                        text={STRATEGIES[id].label}
-                                                        description={STRATEGIES[id].description}
-                                                        endAffix={
-                                                            strategy === id ? <Check aria-hidden="true" /> : undefined
-                                                        }
-                                                        stacked
-                                                    />
-                                                ))}
-                                        </Menu>
-                                    </Popover>
-                                </MenuTrigger>
-                            )}
-                        </div>
+                    {!result && (
+                        <span className={styles.visuallyHidden} role="status">
+                            {selection ? actionStatus : undefined}
+                        </span>
                     )}
+                    {(!result || result.state === 'done') &&
+                        (showMode ? (
+                            <SplitButton
+                                {...primary}
+                                wrap
+                                menuLabel="Choose merge mode"
+                                isMenuDisabled={modeDisabled}
+                                menuPlacement="top end"
+                                menuWidth={300}
+                                menu={mergeMenu}
+                            />
+                        ) : (
+                            // The button that carries the spinner takes the split button's place; it takes the focus the pressed half had.
+                            <Button {...primary} truncate autoFocus />
+                        ))}
                     {result?.state === 'conflicts' && (result.conflicts > 0 || result.operation === 'rebase') && (
                         <Button
                             size="md"
                             variant="bordered"
+                            fullWidth
                             isDisabled={isWorking}
                             isPending={pending === 'abort'}
                             onPress={() =>
@@ -638,6 +612,6 @@ function BranchMergeDialog({
                     {/* No Cancel or Done: the window's close button and Escape already close it. */}
                 </div>
             )}
-        </div>
+        </DialogLayout>
     );
 }
