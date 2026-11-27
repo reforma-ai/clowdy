@@ -1,6 +1,6 @@
 import { compareStructural, makeAutoObservable, observableShallow, reaction, when } from 'mobx';
 
-import { resolveSelection, visibleChats } from '../features/agents/agentTree';
+import { ancestorRuns, chatOfRun, resolveSelection, visibleChats } from '../features/agents/agentTree';
 
 import type { ChatId, Project, ProjectId } from '@clowdy/protocol';
 import type { ProjectState } from './ProjectState';
@@ -68,6 +68,16 @@ export class NavHistory {
 
     forward(): void {
         this.#go(1);
+    }
+
+    /** Returns to the last available place in this project after its current draft is closed. */
+    backInProject(): boolean {
+        const projectId = this.host.selectedProjectId;
+        if (!projectId) return false;
+        const target = this.#find(-1, projectId);
+        if (target === undefined) return false;
+        this.#goTo(target);
+        return true;
     }
 
     get canSwitchChat(): boolean {
@@ -171,16 +181,45 @@ export class NavHistory {
     }
 
     /** The nearest entry in the direction that can still be shown, and that shows something else than the window does now (a button that does nothing is worse than none). */
-    #find(direction: -1 | 1): number | undefined {
+    #find(direction: -1 | 1, projectId?: ProjectId): number | undefined {
         const current = this.entries[this.index];
 
         for (let at = this.index + direction; at >= 0 && at < this.entries.length; at += direction) {
             const entry = this.entries[at];
 
-            if (this.#exists(entry) && !compareStructural(entry, current)) return at;
+            if (
+                (!projectId || entry.projectId === projectId) &&
+                (projectId ? this.#availableInProject(entry) : this.#exists(entry)) &&
+                !compareStructural(entry, current)
+            )
+                return at;
         }
 
         return undefined;
+    }
+
+    /** A closed draft returns only to a place still visible in the current project. */
+    #availableInProject(entry: NavSnapshot): boolean {
+        if (!this.host.projects.some(project => project.id === entry.projectId)) return false;
+        if (entry.draft)
+            return Boolean(entry.draftId && this.host.ui.forProject(entry.projectId).newChatDrafts.get(entry.draftId));
+
+        const state = this.host.projectState(entry.projectId);
+        if (state?.status !== 'ready') return false;
+        if (entry.runId !== null) {
+            const run = state.runs.get(entry.runId);
+            const owner = run && chatOfRun(state.chats.values(), run);
+            return Boolean(
+                run &&
+                    run.archivedAt === undefined &&
+                    owner &&
+                    owner.archivedAt === undefined &&
+                    ancestorRuns(state.runs, run).every(parent => parent.archivedAt === undefined)
+            );
+        }
+        if (entry.chatId === null) return true;
+        const chat = state.chats.get(entry.chatId);
+        return chat !== undefined && chat.archivedAt === undefined;
     }
 
     /** Whether what the entry shows is still there: its project, and the chat or run it had open. */
@@ -202,6 +241,10 @@ export class NavHistory {
 
         if (target === undefined) return;
 
+        this.#goTo(target);
+    }
+
+    #goTo(target: number): void {
         const entry = this.entries[target];
         const { host } = this;
 
