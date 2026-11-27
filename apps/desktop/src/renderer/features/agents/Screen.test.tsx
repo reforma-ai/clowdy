@@ -2939,6 +2939,90 @@ describe('worktree cards', () => {
         expect(card.textContent).not.toContain('No chats');
     });
 
+    it('lists archived threads in their own worktree and restores their archived ancestors when opened', async () => {
+        const data = withFixtureWorktrees(createFixtureData());
+        const workspace = data.chats.find(chat => chat.id === FIXTURE_WORKSPACE_CHAT_ID)!.workspace;
+        const parent = data.chats.find(chat => chat.id === 'c-6')!;
+        const middle = data.chats.find(chat => chat.id === 'c-6a')!;
+        const thread = data.chats.find(chat => chat.id === 'c-6a1')!;
+        parent.archivedAt = middle.archivedAt = thread.archivedAt = Date.now();
+        thread.workspace = workspace;
+        await restart(data);
+        await draw(() => ui().setGroupByWorktree(true));
+        const card = rowOf(workspaceKey()).closest<HTMLElement>('[data-worktree-card]')!;
+        expect(card.textContent).toContain('1 archived chat, 1 archived thread');
+        await press(
+            [...card.querySelectorAll('button')].find(button => button.textContent?.includes('archived thread'))!
+        );
+        const list = document.body.querySelector<HTMLElement>('[aria-label="Archived chats"]')!;
+        expect(
+            [...list.querySelectorAll('[role="row"][data-key]')].map(row => row.getAttribute('data-key')).sort()
+        ).toEqual(['c-10', 'c-6a1']);
+        expect(list.textContent).toContain('Check the currency table — thread in Fix the price rounding');
+        await press(list.querySelector<HTMLElement>('[data-key="c-6a1"]')!);
+        await vi.waitFor(() => expect(ui().chatId).toBe('c-6a1'));
+        expect(['c-6', 'c-6a', 'c-6a1'].map(id => project().chats.get(id)?.archivedAt)).toEqual([
+            undefined,
+            undefined,
+            undefined,
+        ]);
+    });
+
+    it('opens the worktree archive with the keyboard', async () => {
+        await restart(withFixtureWorktrees(createFixtureData()));
+        await draw(() => ui().setGroupByWorktree(true));
+        const card = rowOf(workspaceKey()).closest<HTMLElement>('[data-worktree-card]')!;
+        const trigger = [...card.querySelectorAll('button')].find(button =>
+            button.textContent?.includes('archived chat')
+        )!;
+        await act(async () => {
+            trigger.focus();
+            trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+            trigger.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }));
+        });
+        expect(document.body.querySelector('[aria-label="Archived chats"] [data-key="c-10"]')).not.toBeNull();
+    });
+
+    it('offers archive actions from the worktree list', async () => {
+        await restart(withFixtureWorktrees(createFixtureData()));
+        await draw(() => ui().setGroupByWorktree(true));
+        const card = rowOf(workspaceKey()).closest<HTMLElement>('[data-worktree-card]')!;
+        await press(
+            [...card.querySelectorAll('button')].find(button => button.textContent?.includes('archived chat'))!
+        );
+        const list = document.body.querySelector<HTMLElement>('[aria-label="Archived chats"]')!;
+        await press(list.querySelector<HTMLElement>('[data-key="c-10"] button[aria-label^="Actions of"]')!);
+        await press(menuItem('Unarchive'));
+        await vi.waitFor(() => expect(project().chats.get('c-10')?.archivedAt).toBeUndefined());
+        expect(ui().chatId).not.toBe('c-10');
+    });
+
+    it('unarchives a thread and its archived ancestors without opening it', async () => {
+        const data = withFixtureWorktrees(createFixtureData());
+        const workspace = data.chats.find(chat => chat.id === FIXTURE_WORKSPACE_CHAT_ID)!.workspace;
+        const parent = data.chats.find(chat => chat.id === 'c-6')!;
+        const middle = data.chats.find(chat => chat.id === 'c-6a')!;
+        const thread = data.chats.find(chat => chat.id === 'c-6a1')!;
+        parent.archivedAt = middle.archivedAt = thread.archivedAt = Date.now();
+        thread.workspace = workspace;
+        await restart(data);
+        await draw(() => ui().setGroupByWorktree(true));
+        const card = rowOf(workspaceKey()).closest<HTMLElement>('[data-worktree-card]')!;
+        await press(
+            [...card.querySelectorAll('button')].find(button => button.textContent?.includes('archived thread'))!
+        );
+        const list = document.body.querySelector<HTMLElement>('[aria-label="Archived chats"]')!;
+        await press(list.querySelector<HTMLElement>('[data-key="c-6a1"] button[aria-label^="Actions of"]')!);
+        await press(menuItem('Unarchive'));
+        await vi.waitFor(() => expect(project().chats.get('c-6a1')?.archivedAt).toBeUndefined());
+        expect(['c-6', 'c-6a', 'c-6a1'].map(id => project().chats.get(id)?.archivedAt)).toEqual([
+            undefined,
+            undefined,
+            undefined,
+        ]);
+        expect(ui().chatId).not.toBe('c-6a1');
+    });
+
     it('starts a draft in a worktree with no chats from its own menu', async () => {
         await restart();
         await draw(() => ui().setGroupByWorktree(true));

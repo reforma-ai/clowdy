@@ -23,7 +23,7 @@ export async function unarchiveChat(root: RootStore, chat: Chat): Promise<boolea
  * Brings back what the chat needs to be listed: the chats above it that are in the archive, the farthest first, then the chat itself. A thread is a row
  * under its parent, so a thread of an archived chat comes back with the path to it. False when the daemon refused one.
  */
-async function bringBack(root: RootStore, project: ProjectState, chat: Chat): Promise<boolean> {
+export async function bringBack(root: RootStore, project: ProjectState, chat: Chat): Promise<boolean> {
     const path = [...ancestorChats(project.chats, chat.id).reverse(), chat].filter(
         candidate => candidate.archivedAt !== undefined
     );

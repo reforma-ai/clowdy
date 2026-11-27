@@ -299,6 +299,8 @@ export interface WorktreeInfo {
     base?: string;
     /** The record Clowdy keeps of it (`Chat.workspace.id`), when a chat has worked in it or the new-chat page opened it. */
     workspaceId?: WorkspaceId;
+    /** A nonterminal run has its working directory in this worktree, including an explicit thread directory. */
+    active?: boolean;
     /** Clowdy made it, under its workspaces folder. */
     managed: boolean;
     /** The chats that work in it, archived ones too, oldest first. */

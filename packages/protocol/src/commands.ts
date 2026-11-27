@@ -166,8 +166,7 @@ export const commandSchema = z.discriminatedUnion('type', [
      * with `deleteBranch`: without it the branch stays and no commit is lost. A worktree whose folder is gone has its record removed alone, and no other stale record of the
      * repository. With `chatDisposition` all linked chats and their descendants must be stopped; they are archived or permanently deleted only after the tree goes. `expectedChatIds` optionally pins the disposition to the exact set confirmed by the person.
      * `expectedBranch` pins a branch deletion to the confirmed checkout and full commit; a changed checkout or tip is refused. If the branch changes after removing the tree,
-     * the branch is kept and the partial result is reported. External Git processes can race the final checks. `tidy: true` requires a present, clean, merged, unused worktree,
-     * refuses discard and disposition, and protects the base branch. The command waits for git.
+     * the branch is kept and the partial result is reported. External Git processes can race the final checks. `tidy: true` requires a present, clean, merged worktree and protects the base branch. It refuses discard and chat deletion; optional chat archiving requires the exact confirmed chat IDs. The command waits for git.
      */
     z.object({
         ...base,

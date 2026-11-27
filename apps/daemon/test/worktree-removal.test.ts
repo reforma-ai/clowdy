@@ -1277,34 +1277,44 @@ describe('explicit worktree disposition', () => {
         ]);
     });
 
-    test('refuses an active explicit-cwd thread in a worktree with no linked chat', async () => {
-        const gate = latch();
-        const script: Script = async function* ({ number, signal }) {
-            yield { type: 'session', sessionId: `s${number}` };
-            await gate.wait(signal);
-            yield { type: 'done', result: 'Done' };
-        };
-        const { h, project, found, runOf, remove, engine } = await setup({ script });
-        const path = found('explicit-cwd');
-        const { chat } = h.ok('chat.create', { projectId: project.id }) as { chat: Chat };
-        h.ok('chat.send', { chatId: chat.id, text: 'Parent' });
-        try {
-            await waitFor(() => runOf(chat.id).status === 'running', 'the parent to run');
-            const thread = await h.daemon.services.threads.spawn(runOf(chat.id), { prompt: 'Work here', cwd: path });
-            await waitFor(
-                () => engine.turns.some(turn => turn.cwd === path) && runOf(thread.threadId).status === 'running',
-                'the thread to run in the external worktree'
-            );
-            expect(await remove(path, { tidy: true })).toMatchObject({ ok: false, error: { code: 'conflict' } });
-            expect(await remove(path, { chatDisposition: 'delete', expectedChatIds: [] })).toMatchObject({
-                ok: false,
-                error: { code: 'conflict' },
-            });
-            expect([existsSync(path), runOf(thread.threadId).status]).toEqual([true, 'running']);
-        } finally {
-            gate.release();
+    test.each(['', 'nested'] as const)(
+        'refuses an active explicit-cwd thread in a worktree with no linked chat (%s)',
+        async subdir => {
+            const gate = latch();
+            const script: Script = async function* ({ number, signal }) {
+                yield { type: 'session', sessionId: `s${number}` };
+                await gate.wait(signal);
+                yield { type: 'done', result: 'Done' };
+            };
+            const { h, project, found, runOf, remove, engine, worktrees } = await setup({ script });
+            const path = found('explicit-cwd');
+            const cwd = join(path, subdir);
+            if (subdir) mkdirSync(cwd);
+            const { chat } = h.ok('chat.create', { projectId: project.id }) as { chat: Chat };
+            h.ok('chat.send', { chatId: chat.id, text: 'Parent' });
+            try {
+                await waitFor(() => runOf(chat.id).status === 'running', 'the parent to run');
+                const thread = await h.daemon.services.threads.spawn(runOf(chat.id), { prompt: 'Work here', cwd });
+                await waitFor(
+                    () => engine.turns.some(turn => turn.cwd === cwd) && runOf(thread.threadId).status === 'running',
+                    'the thread to run in the external worktree'
+                );
+                expect(
+                    (await worktrees())[0]!.worktrees.find(
+                        row => !row.missing && realpathSync(row.path) === realpathSync(path)
+                    )?.active
+                ).toBe(true);
+                expect(await remove(path, { tidy: true })).toMatchObject({ ok: false, error: { code: 'conflict' } });
+                expect(await remove(path, { chatDisposition: 'delete', expectedChatIds: [] })).toMatchObject({
+                    ok: false,
+                    error: { code: 'conflict' },
+                });
+                expect([existsSync(path), runOf(thread.threadId).status]).toEqual([true, 'running']);
+            } finally {
+                gate.release();
+            }
         }
-    });
+    );
 
     test('a chat attached after disposition starts is not silently archived or deleted', async () => {
         const { store, found, make, remove, chatOf } = await setup();
@@ -1337,6 +1347,73 @@ describe('tidy removal', () => {
             data: { branchDeleted: true },
         });
         expect([existsSync(path), hasBranch('tidy'), chatOf(chat.id)]).toEqual([false, false, before]);
+    });
+
+    test('archives idle linked chats and their descendants after guarded tidy removal', async () => {
+        const { h, store, project, found, make, remove, chatOf } = await setup();
+        const path = found('tidy-idle');
+        const chat = await make({ mode: 'existing', path });
+        const thread = createChat(store, { projectId: project.id, parentChatId: chat.id });
+        const archived = await make({ mode: 'existing', path });
+        h.ok('chat.setArchived', { chatId: archived.id, archived: true });
+        const timestamp = chatOf(archived.id).archivedAt;
+        const fields = {
+            tidy: true,
+            chatDisposition: 'archive' as const,
+            expectedChatIds: [chat.id, thread.id, archived.id],
+        };
+        expect(await remove(path, { ...fields, expectedChatIds: [chat.id] })).toMatchObject({
+            ok: false,
+            error: { code: 'conflict' },
+        });
+        expect(existsSync(path)).toBe(true);
+        expect(await remove(path, fields)).toMatchObject({ ok: true });
+        expect([chatOf(chat.id).archivedAt, chatOf(thread.id).archivedAt, chatOf(archived.id).archivedAt]).toEqual([
+            expect.any(Number),
+            expect.any(Number),
+            timestamp,
+        ]);
+        expect(existsSync(path)).toBe(false);
+    });
+
+    test('tidy with archiving still refuses dirty or unmerged worktrees', async () => {
+        const { found, make, remove, chatOf } = await setup();
+        const path = found('tidy-archive-risk');
+        const chat = await make({ mode: 'existing', path });
+        const fields = { tidy: true, chatDisposition: 'archive' as const, expectedChatIds: [chat.id] };
+        writeFileSync(join(path, 'unsaved.txt'), 'unsaved');
+        expect(await remove(path, fields)).toMatchObject({ ok: false, error: { code: 'conflict' } });
+        rmSync(join(path, 'unsaved.txt'));
+        commit(path);
+        expect(await remove(path, fields)).toMatchObject({ ok: false, error: { code: 'conflict' } });
+        expect([existsSync(path), chatOf(chat.id).archivedAt]).toEqual([true, undefined]);
+    });
+
+    test('tidy with archiving refuses a running descendant in another place', async () => {
+        const gate = latch();
+        const script: Script = async function* ({ number, signal }) {
+            yield { type: 'session', sessionId: `s${number}` };
+            await gate.wait(signal);
+            yield { type: 'done', result: 'Done' };
+        };
+        const { h, store, project, found, make, runOf, remove, chatOf } = await setup({ script });
+        const path = found('tidy-active');
+        const chat = await make({ mode: 'existing', path });
+        const thread = createChat(store, { projectId: project.id, parentChatId: chat.id });
+        h.ok('chat.send', { chatId: thread.id, text: 'Working' });
+        try {
+            await waitFor(() => runOf(thread.id).status === 'running', 'the descendant to run');
+            expect(
+                await remove(path, { tidy: true, chatDisposition: 'archive', expectedChatIds: [chat.id, thread.id] })
+            ).toMatchObject({ ok: false, error: { code: 'conflict' } });
+            expect([existsSync(path), chatOf(chat.id).archivedAt, chatOf(thread.id).archivedAt]).toEqual([
+                true,
+                undefined,
+                undefined,
+            ]);
+        } finally {
+            gate.release();
+        }
     });
 
     test('rechecks merged state after a change to the branch', async () => {
@@ -1388,7 +1465,7 @@ describe('tidy removal', () => {
         expect([existsSync(path), getChat(store.db, chat.id)?.archivedAt]).toEqual([true, undefined]);
     });
 
-    test('refuses discard, disposition, dirty, locked, missing and in-use worktrees', async () => {
+    test('refuses discard, chat deletion, unconfirmed archiving, dirty, locked, missing and in-use worktrees', async () => {
         const { repo, found, make, remove } = await setup();
         const path = found('tidy-invalid');
         expect(await remove(path, { tidy: true, discard: true })).toMatchObject({
@@ -1396,6 +1473,10 @@ describe('tidy removal', () => {
             error: { code: 'invalid' },
         });
         expect(await remove(path, { tidy: true, chatDisposition: 'archive' })).toMatchObject({
+            ok: false,
+            error: { code: 'invalid' },
+        });
+        expect(await remove(path, { tidy: true, chatDisposition: 'delete', expectedChatIds: [] })).toMatchObject({
             ok: false,
             error: { code: 'invalid' },
         });

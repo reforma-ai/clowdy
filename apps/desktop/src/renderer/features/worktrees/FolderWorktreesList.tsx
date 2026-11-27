@@ -13,7 +13,7 @@ import { useRootStore } from '../../stores';
 import { openChat } from '../chats/archiveChat';
 import { refreshFolderGit } from '../openWith';
 import { openCreateWorktree } from './CreateWorktreeDialog';
-import { canRemove, confirmTidyWorktrees, eligible, keyOf } from './confirmTidyWorktrees';
+import { canRemove, confirmTidyWorktrees, eligible, keyOf, onTidyFinished } from './confirmTidyWorktrees';
 import styles from './ManageWorktrees.module.css';
 import { openRemoveWorktree } from './RemoveWorktreeDialog';
 import { type ProjectWorktrees, useProjectWorktrees } from './useProjectWorktrees';
@@ -47,8 +47,19 @@ export function FolderWorktreesList({
     // Hold the preview the person selected from. A background refresh must not replace a selected checkout.
     const { folders, snapshot, failed } = cleanupRead ?? read;
     const { reload } = read;
+    useEffect(
+        () =>
+            onTidyFinished((owner, id) => {
+                if (owner !== root || id !== projectId) return;
+                setTidy(false);
+                setCleanupRead(undefined);
+                setSelected(undefined);
+            }),
+        [root, projectId]
+    );
     useEffect(() => {
-        if (tidy && !cleanupRead && read.folders && read.snapshot && !read.failed) setCleanupRead(read);
+        if (tidy && !cleanupRead && read.folders && read.snapshot && !read.failed && !read.refreshing)
+            setCleanupRead(read);
     }, [tidy, cleanupRead, read]);
     const project = root.projects.find(candidate => candidate.id === projectId);
     const groups = useMemo(
@@ -229,7 +240,7 @@ export function FolderWorktreesList({
                             <Button
                                 color="danger"
                                 fullWidth
-                                isDisabled={!choices.length || !snapshot || failed}
+                                isDisabled={!choices.length || !snapshot || failed || read.refreshing}
                                 onPress={() => {
                                     if (!snapshot) return;
                                     confirmTidyWorktrees({
@@ -238,12 +249,7 @@ export function FolderWorktreesList({
                                         projectId,
                                         choices,
                                         snapshot,
-                                        reload,
-                                        onComplete: () => {
-                                            setTidy(false);
-                                            setCleanupRead(undefined);
-                                            setSelected(undefined);
-                                        },
+                                        onStart: () => void modal.cancel(),
                                     });
                                 }}
                             >
@@ -255,7 +261,7 @@ export function FolderWorktreesList({
                             ref={tidyButton}
                             color="primary"
                             fullWidth
-                            isDisabled={!groups || !snapshot || failed}
+                            isDisabled={!groups || !snapshot || failed || read.refreshing}
                             onPress={() => {
                                 setCleanupRead(read);
                                 setSelected(defaults);

@@ -720,8 +720,11 @@ export async function removeWorktree(
         throw invalid('Expected chats require a chat disposition');
     }
 
-    if (request.tidy && (request.discard || request.chatDisposition)) {
-        throw invalid('Tidy up cannot discard changes or dispose of chats');
+    if (request.tidy && (request.discard || request.chatDisposition === 'delete')) {
+        throw invalid('Tidy up cannot discard changes or delete chats');
+    }
+    if (request.tidy && request.chatDisposition === 'archive' && request.expectedChatIds === undefined) {
+        throw invalid('Tidy up requires the confirmed chat IDs when archiving');
     }
 
     const otherFolders = () => otherProjectFolders(store, project.id, folder.id);

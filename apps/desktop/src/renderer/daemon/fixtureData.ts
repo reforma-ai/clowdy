@@ -811,7 +811,7 @@ export function fixtureFolderGit(
 /** A worktree the fixture's git lists that nobody made through Clowdy: what differs from the defaults (clean, merged into `origin/main`, nobody works in it) is spelled out. */
 export interface FixtureWorktree
     extends Pick<WorktreeInfo, 'path' | 'head'>,
-        Partial<Pick<WorktreeInfo, 'branch' | 'missing' | 'locked' | 'changes' | 'submodules' | 'merged'>> {}
+        Partial<Pick<WorktreeInfo, 'branch' | 'missing' | 'locked' | 'changes' | 'submodules' | 'merged' | 'active'>> {}
 
 /** How many files the fixture's changed worktree has changed: `fixtureFolderGit` only says whether there are any. */
 const FIXTURE_CHANGES = 3;
@@ -881,6 +881,7 @@ export function fixtureProjectWorktrees(
                 ...(base !== undefined && { merged: worktree.merged ?? true, base }),
                 ...(workspace && { workspaceId: workspace.id }),
                 managed: workspace?.managed ?? worktree.path.startsWith(`${FIXTURE_WORKSPACES_ROOT}/`),
+                ...(worktree.active && { active: true }),
                 chats: chats.map(chat => ({ id: chat.id, title: chat.title, archived: chat.archivedAt !== undefined })),
                 ...(locked !== undefined
                     ? { blocked: 'locked' as const }

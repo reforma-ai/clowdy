@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useRootStore } from '../../stores';
+import { onTidyFinished } from './confirmTidyWorktrees';
 
 import type { FolderWorktrees, ProjectId, ProjectSnapshot } from '@clowdy/protocol';
 
@@ -17,6 +18,8 @@ export interface ProjectWorktrees {
     /** The last read failed: the folders, when there are any, are from an earlier read and may be out of date. */
     snapshot?: ProjectSnapshot;
     failed: boolean;
+    /** A fresh read is in progress; stale previews must not start another cleanup. */
+    refreshing: boolean;
     /** Reads again, for what changes the worktrees (a removal) and for a retry. Settles once the answer is in; never rejects. */
     reload: () => Promise<void>;
 }
@@ -29,17 +32,20 @@ export interface ProjectWorktrees {
 export function useProjectWorktrees(projectId: ProjectId): ProjectWorktrees {
     const root = useRootStore();
     const [read, setRead] = useState<Read>();
+    const [refreshing, setRefreshing] = useState(false);
     // The number of the latest read: an answer for an older one is out of date.
     const latest = useRef(0);
 
     const reload = useCallback(async () => {
         const request = ++latest.current;
+        setRefreshing(true);
 
         const [folderResult, snapshotResult] = await Promise.allSettled([
             root.transport.getProjectWorktrees(projectId),
             root.transport.getProjectSnapshot(projectId),
         ]);
         if (request !== latest.current) return;
+        setRefreshing(false);
         setRead(current => ({
             projectId,
             folders:
@@ -63,14 +69,24 @@ export function useProjectWorktrees(projectId: ProjectId): ProjectWorktrees {
 
         onFocus();
         window.addEventListener('focus', onFocus);
+        const stop = onTidyFinished((owner, id) => {
+            if (owner === root && id === projectId) void reload();
+        });
 
         return () => {
             latest.current++;
+            stop();
             window.removeEventListener('focus', onFocus);
         };
-    }, [reload]);
+    }, [reload, root, projectId]);
 
     const current = read?.projectId === projectId ? read : undefined;
 
-    return { folders: current?.folders, snapshot: current?.snapshot, failed: current?.failed ?? false, reload };
+    return {
+        folders: current?.folders,
+        snapshot: current?.snapshot,
+        failed: current?.failed ?? false,
+        refreshing,
+        reload,
+    };
 }

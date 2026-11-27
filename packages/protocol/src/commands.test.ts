@@ -345,6 +345,13 @@ describe('workspace.remove', () => {
         });
         expect(commandSchema.safeParse({ ...request, expectedChatIds: [42] }).success).toBe(false);
         expect(commandSchema.parse({ ...request, tidy: true })).toMatchObject({ tidy: true });
+        expect(
+            commandSchema.parse({ ...request, tidy: true, chatDisposition: 'archive', expectedChatIds: ['c1'] })
+        ).toMatchObject({
+            tidy: true,
+            chatDisposition: 'archive',
+            expectedChatIds: ['c1'],
+        });
         expect(commandSchema.safeParse({ ...request, chatDisposition: 'keep' }).success).toBe(false);
     });
 });
