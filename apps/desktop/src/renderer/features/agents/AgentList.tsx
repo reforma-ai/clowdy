@@ -11,7 +11,7 @@ import {
 import { Panel, PanelContent } from '@clowdy/components/Panel';
 import { Popover, PopoverTrigger, useContextMenu } from '@clowdy/components/Popover';
 import { Show } from '@clowdy/components/Show';
-import { Archive, Check, Close, Message, More, NewChat, Plus, Robot2 } from '@clowdy/icons/14';
+import { Archive, Check, Close, Message, More, NewChat, Plus, Robot2, Summary } from '@clowdy/icons/14';
 import { cn } from '@clowdy/lib';
 import { mainFolder } from '@clowdy/protocol';
 import {
@@ -638,7 +638,7 @@ export function AgentList({
                                 key={`${LINKED_THREAD_PREFIX}${chat.id}`}
                                 id={`${LINKED_THREAD_PREFIX}${chat.id}`}
                                 text={`Thread in another chat: ${chat.title}`}
-                                icon={<Message />}
+                                icon={<Summary />}
                             >
                                 <span
                                     className={styles.title}
