@@ -14,7 +14,7 @@ function showNotice({ level, text }: Notice): void {
 
 const config = resolveDaemonConfig(location.search, window.desktop?.daemon);
 
-const transport = createTransport(config);
+const transport = await createTransport(config);
 
 // A daemon that was replaced listens elsewhere: the transport follows it and its feed resumes where it was. A window that
 // loaded without one (the running daemon spoke another protocol) is handed the new one by a reload.
