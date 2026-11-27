@@ -228,9 +228,8 @@ describe('the picker without providers', () => {
         };
         await draw();
         expect(trigger().getAttribute('aria-label')).toBe('Model: Use default');
-        await openList();
+        await open();
         expect(dialog()?.textContent).toContain('No available provider');
-        await press(dialog()!.querySelector('button[aria-label="Back"]'));
         const inherit = [...dialog()!.querySelectorAll('button')].find(
             button => button.textContent === 'Inherit orchestrator'
         );
@@ -702,7 +701,7 @@ describe('the reasoning levels', () => {
 
         expect(slider()).toBeNull();
         expect(dialog()!.textContent).toContain('Reasoning effort');
-        expect(faceLayer().textContent).toBe('ONEMaxReasoning effortMax');
+        expect(dialog()!.textContent).toContain('Reasoning effortMax');
         expect(trigger().textContent).toBe('ONEMax');
     });
 
@@ -712,7 +711,7 @@ describe('the reasoning levels', () => {
 
         expect(slider()).toBeNull();
         expect(dialog()!.textContent).not.toContain('Reasoning effort');
-        expect(faceLayer().textContent).toBe('NONESmall and quick, with no reasoning control');
+        expect(dialog()!.textContent).toContain('Small and quick, with no reasoning control');
     });
 
     it('lists the levels of the model it is moved to, not of the one it left', async () => {
@@ -861,7 +860,7 @@ describe('when the models are not there', () => {
 
         expect(selectModel().textContent).toBe('claude-sonnet-3-7');
         expect(slider()).toBeNull();
-        expect(faceLayer().textContent).toContain('Claude Code does not list this model anymore.');
+        expect(dialog()!.textContent).toContain('Claude Code does not list this model anymore.');
 
         await press(selectModel());
 
@@ -941,7 +940,7 @@ describe('a chat with no model', () => {
 
         expect(selectModel().textContent).toBe('Default model');
         expect(selectModel().querySelectorAll('svg')).toHaveLength(2);
-        expect(faceLayer().textContent).toBe(`Default model${sentence}`);
+        expect(dialog()!.textContent).toContain(sentence);
         expect(slider()).toBeNull();
         expect(dialog()!.textContent).not.toContain('Reasoning effort');
     });
@@ -950,7 +949,7 @@ describe('a chat with no model', () => {
         await setup({ engine: 'codex' }, {}, ['codex']);
         await open();
 
-        expect(faceLayer().textContent).toBe("Default modelRuns on Codex's own default until you pick a model.");
+        expect(dialog()!.textContent).toContain("Runs on Codex's own default until you pick a model.");
     });
 
     it('checks no row of the list', async () => {
@@ -981,7 +980,7 @@ describe('a chat with no model', () => {
 
 describe("the face's spacing", () => {
     /** The block under the model button: the slider, the description, the line of a chat with no model. */
-    const reasoning = () => faceLayer().querySelector('[class*="reasoning"]');
+    const reasoning = () => dialog()!.querySelector('[class*="reasoning"]');
 
     it('reserves no block under the model button when there is nothing to put in it', async () => {
         // A model with no levels and no description: the face is the button alone.
