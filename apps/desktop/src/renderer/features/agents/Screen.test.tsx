@@ -24,10 +24,11 @@ import { hotkeys, installDispatcher } from '../../hotkeys';
 import { NEW_CHAT_COMMAND, shellCommands } from '../../shell/shellCommands';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { branchPullRequestsOf } from '../changes/branchPullRequests';
-import { saveDraft } from '../chats/composerDrafts';
+import { dropDraft, newChatDraftKey, saveDraft } from '../chats/composerDrafts';
 import { setFiles } from '../chats/composerFiles';
 import { refreshFolderGit } from '../openWith/useFolderGit';
 import { chatListPreferences } from './chatListPreferences';
+import { openNewChat } from './openNewChat';
 import { Screen } from './Screen';
 import { starCardPreferences } from './starCardState';
 import { chatWorktreeKey } from './worktreeCards';
@@ -147,6 +148,9 @@ beforeEach(async () => {
 
 afterEach(() => {
     act(() => reactRoot.unmount());
+    for (const id of [FIXTURE_PROJECT_ID, FIXTURE_EMPTY_PROJECT_ID, FIXTURE_PERSONAL_PROJECT_ID]) {
+        dropDraft(newChatDraftKey(id));
+    }
     container.remove();
     store.dispose();
     chatListPreferences.setShowUnusedWorktrees(false);
@@ -1951,6 +1955,28 @@ describe('a chat that works in a worktree', () => {
             const field = container.querySelector<HTMLElement & { editor: Editor }>('[contenteditable="true"]')!;
             await act(async () => {
                 field.editor.commands.insertContent('Check the worktree');
+            });
+            await act(async () => {
+                document.body.dispatchEvent(
+                    new KeyboardEvent('keydown', {
+                        key: 'n',
+                        code: 'KeyN',
+                        metaKey: hotkeys.family === 'mac',
+                        ctrlKey: hotkeys.family === 'win',
+                        bubbles: true,
+                        cancelable: true,
+                    })
+                );
+            });
+            expect(ui().draftWorkspace).toEqual({ mode: 'existing', path: workspace.path });
+            expect(field.editor.getText()).toBe('Check the worktree');
+
+            // The project may not have loaded yet when the shortcut is pressed.
+            await draw(() => openNewChat(undefined, ui()));
+            expect(ui().draftWorkspace).toEqual({ mode: 'existing', path: workspace.path });
+            expect(field.editor.getText()).toBe('Check the worktree');
+
+            await act(async () => {
                 field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
             });
             await draw();
