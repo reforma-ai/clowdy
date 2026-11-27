@@ -213,15 +213,22 @@ export function AgentList({
     const actual = useSidebarWorktrees(groupedByWorktree);
     const draftItems = ui.newChatDrafts.drafts;
     const draftFolder = (draft: NewChatDraft) => draft.folderId ?? mainFolder(project.project).id;
-    const draftCardKey = (draft: NewChatDraft) =>
+    const additionalDraftKey = (draft: NewChatDraft) =>
         draft.workspace?.mode === 'existing' ? worktreeKey(draftFolder(draft), draft.workspace.path) : undefined;
-    const cards = worktreeCards(chats, project.chats.values(), folders, actual, projectInfo, ui.worktreeOrder);
+    const additionalCards = worktreeCards(
+        chats,
+        project.chats.values(),
+        folders,
+        actual,
+        projectInfo,
+        ui.worktreeOrder
+    );
     for (const draft of draftItems) {
-        const key = draftCardKey(draft);
-        if (!key || cards.some(card => card.key === key) || draft.workspace?.mode !== 'existing') continue;
+        const key = additionalDraftKey(draft);
+        if (!key || additionalCards.some(card => card.key === key) || draft.workspace?.mode !== 'existing') continue;
         const folder = folders.find(candidate => candidate.id === draftFolder(draft));
         if (!folder) continue;
-        cards.push({
+        additionalCards.push({
             key,
             folder,
             folderName: folder.path,
@@ -234,11 +241,41 @@ export function AgentList({
         });
     }
     const { showFinishedThreads, expandRunningAgents, showUnusedWorktrees } = chatListPreferences;
-    const shownCards = cards.filter(
+    const shownAdditional = additionalCards.filter(
         card =>
-            draftItems.some(draft => draftCardKey(draft) === card.key) ||
+            draftItems.some(draft => additionalDraftKey(draft) === card.key) ||
             (card.used ? card.roots.length > 0 : showUnusedWorktrees)
     );
+    const mainCards: WorktreeCard[] = groupedByWorktree
+        ? agentGroups(chats, folders).flatMap(group => {
+              const roots = group.roots.filter(chat => !chat.workspace);
+              const hasDraft = draftItems.some(draft => !draft.workspace && draftFolder(draft) === group.folder.id);
+              if ((!roots.length && !hasDraft) || !shownAdditional.some(card => card.folder.id === group.folder.id))
+                  return [];
+              return [
+                  {
+                      key: worktreeKey(group.folder.id, group.folder.path),
+                      main: true,
+                      folder: group.folder,
+                      folderName: group.name,
+                      path: group.folder.path,
+                      missing: missing.has(group.folder.id),
+                      pending: false,
+                      used: true,
+                      roots,
+                      linkedChats: roots,
+                  },
+              ];
+          })
+        : [];
+    const draftCardKey = (draft: NewChatDraft) =>
+        additionalDraftKey(draft) ??
+        (!draft.workspace ? mainCards.find(card => card.folder.id === draftFolder(draft))?.key : undefined);
+    const rank = new Map(ui.worktreeOrder.map((key, index) => [key, index]));
+    const cards = [...mainCards, ...additionalCards].sort(
+        (a, b) => (rank.get(a.key) ?? Infinity) - (rank.get(b.key) ?? Infinity)
+    );
+    const shownCards = cards.filter(card => card.main || shownAdditional.includes(card));
     const order = useChatListOrder(chats, openChatId, cards, shownCards);
     // The sub-agents of every chat, found in one pass over the project's runs and not once per chat.
     const agentsByRoot = nativeAgentsByRoot(project.runs.values());
@@ -275,7 +312,12 @@ export function AgentList({
                 drafts: isCollapsed ? [] : draftItems.filter(draft => draftCardKey(draft) === card.key),
             };
         };
-        return [...rowEntries(roots.filter(chat => !chat.workspace)), ...scoped.map(cardEntry)];
+        return [
+            ...rowEntries(
+                roots.filter(chat => !chat.workspace && !scoped.some(card => card.main && card.roots.includes(chat)))
+            ),
+            ...scoped.map(cardEntry),
+        ];
     };
     const entries: ListEntry[] = grouped
         ? agentGroups(chats, folders).flatMap((group): ListEntry[] => {
@@ -350,7 +392,10 @@ export function AgentList({
     const ancestors = opened ? ancestorChats(project.chats, opened.id) : [];
     // An unarchived child whose parent is archived/missing is itself a visible root.
     const rootChat = opened && [opened, ...ancestors].find(chat => chats.some(root => root.id === chat.id));
-    const selectedCard = groupedByWorktree && rootChat ? chatWorktreeKey(rootChat, cards) : undefined;
+    const selectedCard =
+        groupedByWorktree && rootChat
+            ? (chatWorktreeKey(rootChat, cards) ?? mainCards.find(card => card.roots.includes(rootChat))?.key)
+            : undefined;
     const selectedFolder = selectedCard ? cards.find(card => card.key === selectedCard)?.folder.id : undefined;
     const activeDraft = ui.draftId ? ui.newChatDrafts.get(ui.draftId) : undefined;
     const activeDraftFolder = activeDraft ? draftFolder(activeDraft) : undefined;
