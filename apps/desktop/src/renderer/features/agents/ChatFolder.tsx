@@ -5,13 +5,12 @@ import { Tooltip } from '@clowdy/components/Tooltip';
 import { Folder, Version, WorktreeFolder } from '@clowdy/icons/14';
 import { mainFolder } from '@clowdy/protocol';
 
-import { tildePath } from '../../shared/displayPath';
-import { homeFolder } from '../../shared/homeFolder';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { canOpenPaths, type OpenTarget, OpenWithMenu, useFolderGit, useFolderRepair } from '../openWith';
 import { worktreeMenuExtras } from '../worktrees/worktreeMenuExtras';
 import styles from './ChatFolder.module.css';
 import { ChipTrigger } from './ChipTrigger';
+import { PlaceTooltip } from './PlaceTooltip';
 
 import type { ChatWorkspace, ProjectFolder } from '@clowdy/protocol';
 
@@ -41,16 +40,8 @@ export function ChatFolder({ name, folder, missing, workspace, showFolder = true
     const label = [showFolder || !place ? name : undefined, place].filter(Boolean).join(', ');
     const detail = branch ? (git?.detached ? `detached at ${branch}` : `branch ${branch}`) : undefined;
     const ariaLabel = `Current place: ${[showFolder || !place ? name : undefined, workspace ? 'Worktree' : undefined, detail].filter(Boolean).join(', ')}`;
-    const pathLabel = tildePath(path, homeFolder.path);
     const note = gone ? (workspace ? 'This worktree no longer exists' : 'This folder no longer exists') : undefined;
-    const tooltip = (
-        <div className={styles.tooltip}>
-            <span>{workspace ? 'Working in worktree' : 'Working in project folder'}</span>
-            <span className={styles.tooltipPath}>{pathLabel}</span>
-            {note && <span>{note}</span>}
-            {git?.detached && <span>Detached HEAD</span>}
-        </div>
-    );
+    const tooltip = <PlaceTooltip path={path} worktree={!!workspace} note={note} detached={git?.detached} />;
     const icon = workspace ? (
         <WorktreeFolder aria-hidden="true" />
     ) : branch ? (

@@ -7,7 +7,7 @@ import { useRef, useState } from 'react';
 
 import { ProjectIcon } from '../shared/ProjectIcon';
 import { SCREEN_TITLE } from '../shared/screenTitle';
-import { useRootStore } from '../stores';
+import { useProjectState, useRootStore } from '../stores';
 import { ProjectCard, useProjectRow } from './ProjectCard';
 import styles from './ProjectSelect.module.css';
 import { slotOfProject } from './projectSwitch';
@@ -57,11 +57,12 @@ function SettingsButton({
  */
 export function ProjectSelect() {
     const root = useRootStore();
+    const project = useProjectState();
     const [isOpen, setIsOpen] = useState(false);
     const cardRow = useProjectRow(isOpen);
     // A press on a row's settings button reaches the row too, which must not switch to its project.
     const held = useRef(false);
-    const selected = root.projects.find(project => project.id === root.selectedProjectId);
+    const selected = root.projects.find(candidate => candidate.id === project.id);
     const personal = root.projects.find(project => project.personal);
     const own = root.projects.filter(project => !project.personal);
     const cardProject = root.projects.find(project => project.id === cardRow?.dataset.projectRow);

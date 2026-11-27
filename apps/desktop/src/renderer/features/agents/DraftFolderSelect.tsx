@@ -4,6 +4,7 @@ import { Check, Folder } from '@clowdy/icons/14';
 import { folderNames } from '@clowdy/protocol';
 
 import { ChipTrigger } from './ChipTrigger';
+import styles from './DraftFolderSelect.module.css';
 
 import type { FolderId, ProjectFolder } from '@clowdy/protocol';
 
@@ -83,6 +84,7 @@ export function FolderTrigger({
 }) {
     return (
         <ChipTrigger
+            className={styles.folder}
             icon={<Folder aria-hidden="true" />}
             label={name}
             aria-label={`Folder: ${name}`}

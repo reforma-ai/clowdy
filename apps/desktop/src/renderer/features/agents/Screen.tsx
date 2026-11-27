@@ -11,6 +11,7 @@ import { AgentList } from './AgentList';
 import { chatFolder, orchestratorOf, resolveSelection, visibleChats } from './agentTree';
 import { ChatFolder } from './ChatFolder';
 import { DraftChat } from './DraftChat';
+import { ProjectSidebar } from './ProjectSidebar';
 import { RunDetail } from './RunDetail';
 import styles from './Screen.module.css';
 import { useSidebarWorktrees } from './useSidebarWorktrees';
@@ -79,14 +80,16 @@ export function Screen() {
             screen="agents"
             defaultWidth={270}
             sidebar={
-                <AgentList
-                    selection={selection}
-                    chats={chats}
-                    missing={missing}
-                    isCovered={expanded}
-                    projectInfo={projectInfo}
-                    sidebarWorktrees={sidebarWorktrees}
-                />
+                <ProjectSidebar info={info} covered={expanded}>
+                    <AgentList
+                        selection={selection}
+                        chats={chats}
+                        missing={missing}
+                        isCovered={expanded}
+                        projectInfo={projectInfo}
+                        sidebarWorktrees={sidebarWorktrees}
+                    />
+                </ProjectSidebar>
             }
         >
             <section

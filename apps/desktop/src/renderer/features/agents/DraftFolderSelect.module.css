@@ -1,0 +1,5 @@
+.folder[data-size] {
+    /* Give the folder priority over a long branch, but let it shrink if the row is narrow. */
+    flex-shrink: 0.001;
+    max-width: min(100%, 24rem);
+}

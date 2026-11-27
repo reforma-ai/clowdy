@@ -209,8 +209,12 @@ describe('the control', () => {
     });
 
     it.each([
-        ['main checkout', undefined, '~/car-rental'],
-        ['existing worktree', 'clowdy/ab12cd34', '~/Clowdy/workspaces/car-rental/ab12cd34/car-rental'],
+        ['main checkout', undefined, 'Working in project folder~/car-rental'],
+        [
+            'existing worktree',
+            'clowdy/ab12cd34',
+            'Working in worktree~/Clowdy/workspaces/car-rental/ab12cd34/car-rental',
+        ],
     ])('shows the selected path on the %s control', async (_name, worktree, path) => {
         if (worktree) await chooseWorktree(worktree);
         await act(async () => {
@@ -279,13 +283,13 @@ describe('the control', () => {
         expect(menuItem('Main worktree').getAttribute('aria-checked')).toBe('false');
     });
 
-    it('sends the chat into the worktree that is picked, and says its branch after the word Worktree in the dim tone', async () => {
+    it('sends the chat into the picked worktree and shows its branch', async () => {
         await chooseWorktree('clowdy/ab12cd34');
 
         expect(ui().draftWorkspace).toEqual({ mode: 'existing', path: WORKTREE });
-        expect(chip()?.textContent).toBe('Worktreeclowdy/ab12cd34');
+        expect(chip()?.textContent).toBe('clowdy/ab12cd34');
         expect(chip()?.getAttribute('aria-label')).toBe('Where it runs: Worktree, branch clowdy/ab12cd34');
-        expect(dimParts()).toEqual(['Worktree']);
+        expect(dimParts()).toEqual([]);
         expect(options()).toEqual([]);
         expect(menuItems()).toEqual([]);
 
@@ -295,6 +299,46 @@ describe('the control', () => {
         expect(menuItem('Main worktree').getAttribute('aria-checked')).toBe('false');
 
         expect(worktreeRow('clowdy/ab12cd34').getAttribute('aria-checked')).toBe('true');
+    });
+
+    it('explains a detached existing worktree in its tooltip', async () => {
+        const transport = new FixtureTransport();
+        vi.spyOn(transport, 'getFolderGit').mockResolvedValue({
+            isRepository: true,
+            branch: 'main',
+            defaultBranch: 'origin/main',
+            branches: [{ name: 'main', remote: false }],
+            worktrees: [
+                { path: '/Users/dev/car-rental', branch: 'main', head: 'a1b2c3d', main: true, dirty: false },
+                { path: WORKTREE, head: '5c4d3e2', main: false, dirty: false },
+            ],
+        });
+        await start({ transport });
+        await chooseWorktree('Detached at 5c4d3e2');
+        expect(chip()?.textContent).toBe('Detached at 5c4d3e2');
+        await act(async () => {
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+            chip()!.focus();
+        });
+        await vi.waitFor(() =>
+            expect(document.querySelector('[role="tooltip"]')?.textContent).toContain('Detached HEAD')
+        );
+    });
+
+    it('keeps the selected worktree accessible while Git is unavailable', async () => {
+        const transport = new FixtureTransport();
+        vi.spyOn(transport, 'getFolderGit').mockReturnValue(new Promise<FolderGit>(() => undefined));
+        await start({ transport });
+        await draw(() => ui().setDraftWorkspace({ mode: 'existing', path: WORKTREE }));
+        const place = container.querySelector<HTMLElement>('[role="img"][aria-label="Where it runs: Worktree"]')!;
+        expect(place.textContent).toBe('Worktree');
+        await act(async () => {
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+            place.focus();
+        });
+        await vi.waitFor(() =>
+            expect(document.querySelector('[role="tooltip"]')?.textContent).toContain('Working in worktree')
+        );
     });
 
     it('goes back to the current checkout from a worktree', async () => {
