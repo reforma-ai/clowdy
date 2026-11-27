@@ -217,10 +217,50 @@ describe('StreamStore', () => {
         await shown.load();
         first();
         first();
-        Array.from({ length: RELEASED_STREAMS_KEPT + 1 }, (_, index) => store.of(`other${index}`));
+        Array.from({ length: RELEASED_STREAMS_KEPT + 1 }, (_, index) => store.hold(store.of(`other${index}`))());
         store.applyItem({ ...item(1, 'live'), runId: 'shown' });
 
         expect(texts(shown.items)).toEqual(['live']);
+    });
+
+    it('gives every view of a run in one render the same stream, however many new streams that render asks for between them', async () => {
+        const store = new StreamStore(countingTransport(() => []).transport);
+        const firstView = store.of('r1');
+
+        Array.from({ length: RELEASED_STREAMS_KEPT + 1 }, (_, index) => store.of(`other${index}`));
+
+        const laterView = store.of('r1');
+
+        store.hold(firstView);
+        store.hold(laterView);
+        await Promise.all([firstView.load(), laterView.load()]);
+        store.applyItem(item(1, 'live'));
+
+        expect({ first: texts(firstView.items), later: texts(laterView.items) }).toEqual({
+            first: ['live'],
+            later: ['live'],
+        });
+    });
+
+    it('takes the answer of the latest fetch when an earlier one answers after it', async () => {
+        const answers: Array<(items: StreamItem[]) => void> = [];
+        const store = new StreamStore({
+            getItems: () => new Promise<StreamItem[]>(resolve => answers.push(resolve)),
+        } as unknown as Transport);
+        const stream = store.of('r1');
+        const firstLoad = stream.load();
+        const resync = stream.reload();
+
+        answers[1]!([item(1, 'after')]);
+        await resync;
+        store.applyItem(item(2, 'live'));
+        answers[0]!([item(1, 'before')]);
+        await firstLoad;
+
+        expect({ status: stream.status, texts: texts(stream.items) }).toEqual({
+            status: 'ready',
+            texts: ['after', 'live'],
+        });
     });
 
     describe('a truncation', () => {

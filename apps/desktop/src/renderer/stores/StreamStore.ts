@@ -25,6 +25,8 @@ export class RunStream {
     readonly #byId = observable.map<string, StreamItem>({}, { deep: false });
     /** Live items and cuts that arrived while the fetch was in flight, in arrival order; they are newer than, or equal to, what it returns. */
     #pending: Array<{ item: StreamItem } | { fromSeq: number }> = [];
+    /** Counts the fetches: only the latest one's answer is taken, so an earlier fetch that answers late does not bring back what it saw. */
+    #fetches = 0;
 
     constructor(
         readonly runId: RunId,
@@ -57,11 +59,15 @@ export class RunStream {
 
     /** Fetches every item again, replacing what is shown, for a stream that may have missed events. */
     async reload(): Promise<void> {
+        const fetchId = ++this.#fetches;
+
         this.status = 'loading';
         this.#pending = [];
 
         try {
             const fetched = await this.transport.getItems({ runId: this.runId });
+
+            if (fetchId !== this.#fetches) return;
 
             runInAction(() => {
                 const sorted = [...fetched].sort((a, b) => a.seq - b.seq);
@@ -76,6 +82,8 @@ export class RunStream {
                 this.error = '';
             });
         } catch (error) {
+            if (fetchId !== this.#fetches) return;
+
             runInAction(() => {
                 this.status = 'failed';
                 this.error = error instanceof Error ? error.message : String(error);
@@ -147,7 +155,9 @@ export class StreamStore {
         if (!stream) {
             stream = new RunStream(runId, this.transport);
             this.#streams.set(runId, stream);
-            this.#release(runId);
+            // Counted among the released until a view holds it, but nothing is dropped here: a render that asks for many new streams would drop one it asked
+            // for first, and a view of the same run later in that render would get a second stream, while the first view held one the feed no longer updates.
+            this.#released.add(runId);
         }
 
         return stream;
