@@ -8,6 +8,7 @@ import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { chatProgress } from './progress';
 import { TasksBanner } from './TasksBanner';
+import { TASK_REFERENCE_DRAG_TYPE } from './taskReferences';
 
 import type { ChatProgress } from './progress';
 
@@ -37,6 +38,14 @@ it('opens the task list, updates progress, and navigates to a selected task', as
     const row = [...container.querySelectorAll<HTMLElement>('[role="row"]')].find(item =>
         item.textContent?.includes(tasks[0].title)
     )!;
+    expect(row.draggable).toBe(true);
+    const payload = new Map<string, string>();
+    const drag = new Event('dragstart', { bubbles: true, cancelable: true });
+    Object.defineProperty(drag, 'dataTransfer', {
+        value: { setData: (type: string, value: string) => payload.set(type, value) },
+    });
+    await act(async () => row.dispatchEvent(drag));
+    expect(JSON.parse(payload.get(TASK_REFERENCE_DRAG_TYPE)!)).toEqual({ key: tasks[0].key, title: tasks[0].title });
     expect(row.textContent).toContain(tasks[0].key);
     expect(row.textContent).toContain(project.statuses.find(status => status.id === tasks[0].statusId)!.name);
     const done = project.statuses.find(status => status.category === 'done')!;

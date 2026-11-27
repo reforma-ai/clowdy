@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChatDropZone } from './ChatDropZone';
 import { registerComposer } from './composerBridge';
 import { FILE_REFERENCE_DRAG_TYPE } from './fileReferences';
+import { TASK_REFERENCE_DRAG_TYPE } from './taskReferences';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -70,10 +71,10 @@ describe('ChatDropZone', () => {
         try {
             await render();
             expect(dispatch('dragover').defaultPrevented).toBe(true);
-            expect(veil()).toBe(true);
+            expect(veil()).toBe(false);
             expect(dispatch('drop').defaultPrevented).toBe(true);
             expect(veil()).toBe(false);
-            expect(mention).toHaveBeenCalledExactlyOnceWith(entries);
+            expect(mention).toHaveBeenCalledExactlyOnceWith(entries, { x: undefined, y: undefined });
             expect(editorDrop).not.toHaveBeenCalled();
             expect(onFiles).not.toHaveBeenCalled();
 
@@ -82,6 +83,50 @@ describe('ChatDropZone', () => {
             expect(veil()).toBe(false);
             expect(dispatch('drop').defaultPrevented).toBe(false);
             expect(mention).toHaveBeenCalledOnce();
+        } finally {
+            unregister();
+        }
+    });
+
+    it('inserts a task reference and clears the veil on cancellation', async () => {
+        const mention = vi.fn(() => true);
+        const unregister = registerComposer(vi.fn(), vi.fn(), undefined, mention);
+        try {
+            await act(async () =>
+                root.render(
+                    <ChatDropZone onFiles={vi.fn()}>
+                        <div />
+                    </ChatDropZone>
+                )
+            );
+            const event = (type: string, value = JSON.stringify({ key: 'CLO-250', title: 'Example' })) => {
+                const drag = new Event(type, { bubbles: true, cancelable: true });
+                Object.defineProperty(drag, 'dataTransfer', {
+                    value: { types: [TASK_REFERENCE_DRAG_TYPE], getData: () => value },
+                });
+                act(() => zone().dispatchEvent(drag));
+                return drag;
+            };
+            event('dragover');
+            expect(veil()).toBe(false);
+            act(() => document.dispatchEvent(new Event('dragend', { bubbles: true })));
+            expect(veil()).toBe(false);
+            expect(mention).not.toHaveBeenCalled();
+            event('drop');
+            expect(mention).toHaveBeenCalledWith(
+                [
+                    {
+                        id: 'task:CLO-250',
+                        label: 'CLO-250',
+                        kind: 'task',
+                        trigger: '@',
+                        data: { key: 'CLO-250', title: 'Example' },
+                    },
+                ],
+                { x: undefined, y: undefined }
+            );
+            event('drop', '{');
+            expect(mention).toHaveBeenLastCalledWith([], { x: undefined, y: undefined });
         } finally {
             unregister();
         }

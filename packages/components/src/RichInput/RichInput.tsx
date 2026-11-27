@@ -688,12 +688,20 @@ export function RichInput({
             getDoc: () => (editor?.getJSON() as ComposerDoc) ?? emptyComposerDoc(),
             getPlainText: () =>
                 docToPlainText((editor?.getJSON() as ComposerDoc) ?? emptyComposerDoc(), getBridge().serializeMention),
-            insertMentions: (attrs: readonly ComposerMentionAttrs[]) => {
+            insertMentions: (attrs: readonly ComposerMentionAttrs[], point?: { x: number; y: number }) => {
                 if (!editor || attrs.length === 0) {
                     return;
                 }
 
-                const pos = clamp(1, lastPosRef.current, editor.state.doc.content.size);
+                const rect = editor.view.dom.getBoundingClientRect();
+                const inside =
+                    point &&
+                    point.x >= rect.left &&
+                    point.x <= rect.right &&
+                    point.y >= rect.top &&
+                    point.y <= rect.bottom;
+                const dropPos = inside ? editor.view.posAtCoords({ left: point.x, top: point.y })?.pos : undefined;
+                const pos = clamp(1, dropPos ?? lastPosRef.current, editor.state.doc.content.size);
 
                 editor.chain().insertContentAt(pos, attrs.flatMap(mentionNodes)).focus().run();
                 rememberPos(editor);
