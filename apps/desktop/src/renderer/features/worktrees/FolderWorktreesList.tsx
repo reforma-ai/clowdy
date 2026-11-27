@@ -4,7 +4,7 @@ import { For } from '@clowdy/components/For';
 import { useModalContext } from '@clowdy/components/Modal';
 import { DialogLayout } from '@clowdy/components/modals';
 import { PanelEmptyState } from '@clowdy/components/Panel';
-import { ArrowLeft, AttentionCircle, Mop } from '@clowdy/icons/14';
+import { ArrowLeft, AttentionCircle, Broom } from '@clowdy/icons/14';
 import { mainFolder } from '@clowdy/protocol';
 import { reaction, runInAction } from 'mobx';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -259,7 +259,7 @@ export function FolderWorktreesList({
                                 setTidy(true);
                             }}
                         >
-                            <Mop />
+                            <Broom />
                             Tidy up…
                         </Button>
                     )}
