@@ -311,11 +311,6 @@
     min-width: 0;
 }
 
-.worktreeCard .chatRow,
-.worktreeCard .agentRow {
-    padding-inline-start: calc(var(--clowdy-listbox-item-padding-inline) + (var(--depth) + 1) * var(--spacing-12));
-}
-
 .worktreeHeader[data-pending] {
     color: var(--color-secondary-muted-text);
 }
