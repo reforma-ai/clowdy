@@ -250,7 +250,7 @@
 /* Keep tooltip anchors measurable while the actions are hidden. */
 .worktreeHeader:not(:is(:hover, :focus-within, [data-open])) .worktreeActionButtons {
     position: absolute;
-    inset-inline-end: 0;
+    inset-inline-end: calc(100% + var(--spacing-xs));
     top: 50%;
     transform: translateY(-50%);
     visibility: hidden;
