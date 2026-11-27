@@ -4,10 +4,11 @@ import { useState } from 'react';
 import { Alert, AlertDescription, AlertIcon } from '../Alert';
 import { Box } from '../Box';
 import { Button } from '../Button';
-import { Modal, useModalContext } from '../Modal';
+import { Modal, useModalContext, useModalTitleId } from '../Modal';
 import { Show } from '../Show';
 import { Text } from '../Text';
 import { toast } from '../Toast';
+import { Z_INDEX } from './layers';
 
 import type { ReactNode } from 'react';
 import type { ModalOptionsRaw } from '../Modal/typings';
@@ -31,11 +32,10 @@ export type OpenConfirmModalOptions = {
      * its buttons are back, and the next press tries again.
      */
     errorIn?: 'toast' | 'dialog';
+    /** Keeps Confirm off (a choice in the message is still missing); Enter does not confirm either. */
+    isConfirmDisabled?: boolean;
     onConfirm: () => void | Promise<void>;
 };
-
-/** Keep in sync with `--z-confirm` in `@clowdy/styles`. */
-const CONFIRM_MODAL_Z_INDEX = 101100;
 
 const DEFAULT_MODAL_OPTIONS: ModalOptionsRaw = {
     shadow: true,
@@ -43,7 +43,8 @@ const DEFAULT_MODAL_OPTIONS: ModalOptionsRaw = {
     clickOut: true,
     closeOnEscape: true,
     closeButton: false,
-    zIndex: CONFIRM_MODAL_Z_INDEX,
+    role: 'alertdialog',
+    zIndex: Z_INDEX.confirm,
 };
 
 let pendingDiscard: Promise<boolean> | null = null;
@@ -110,28 +111,31 @@ export function ConfirmModalContent({
     destructive,
     initialFocus = 'confirm',
     errorIn = 'toast',
+    isConfirmDisabled = false,
     onConfirm,
 }: OpenConfirmModalOptions) {
     const { modal } = useModalContext();
+    const titleId = useModalTitleId();
     const [isPending, setIsPending] = useState(false);
     const [failure, setFailure] = useState<string | undefined>();
 
     const handleConfirm = async () => {
-        if (isPending) {
+        if (isPending || isConfirmDisabled) {
             return;
         }
 
         setFailure(undefined);
         setIsPending(true);
-        const { clickOut, closeOnEscape } = modal.currentOptions;
-        modal.updateOptions({ clickOut: false, closeOnEscape: false });
+        // Escape, an outside click or a close button would leave the action running with nothing on screen to say how it ends.
+        modal.setDismissable(false);
 
         try {
             await onConfirm();
+            modal.setDismissable(true);
             modal.cancel();
         } catch (error) {
             setIsPending(false);
-            modal.updateOptions({ clickOut, closeOnEscape });
+            modal.setDismissable(true);
 
             const message = error instanceof Error ? error.message : 'Something went wrong. Please try again.';
 
@@ -148,7 +152,13 @@ export function ConfirmModalContent({
             gap="xl"
             padding="xxl"
             onKeyDown={event => {
-                if (event.key !== 'Enter' || event.defaultPrevented || isPending || initialFocus === 'cancel') {
+                if (
+                    event.key !== 'Enter' ||
+                    event.defaultPrevented ||
+                    isPending ||
+                    isConfirmDisabled ||
+                    initialFocus === 'cancel'
+                ) {
                     return;
                 }
 
@@ -162,7 +172,7 @@ export function ConfirmModalContent({
             }}
         >
             <Box gap="md">
-                <Text variant="heading-3" wrap="anywhere">
+                <Text as="h2" variant="heading-3" id={titleId} wrap="anywhere" className="m-0">
                     {title}
                 </Text>
                 {typeof message === 'string' ? (
@@ -206,7 +216,7 @@ export function ConfirmModalContent({
                     autoFocus={initialFocus === 'confirm' || !showCancel}
                     color={destructive ? 'danger' : 'primary'}
                     isPending={isPending}
-                    isDisabled={isPending}
+                    isDisabled={isPending || isConfirmDisabled}
                     onPress={() => void handleConfirm()}
                 >
                     {confirmLabel}

@@ -58,6 +58,7 @@ export const ModalTitle = observer(
                                 className={closeClassName}
                                 data-modal-close
                                 aria-label="Close"
+                                isDisabled={!modal.dismissable}
                             >
                                 <Close />
                             </Button>
@@ -73,6 +74,7 @@ export const ModalTitle = observer(
                         className={closeClassName}
                         data-modal-close
                         aria-label="Close"
+                        isDisabled={!modal.dismissable}
                     >
                         <Close />
                     </Button>

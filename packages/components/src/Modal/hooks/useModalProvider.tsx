@@ -1,4 +1,4 @@
-import { createContext, use } from 'react';
+import { createContext, use, useId, useLayoutEffect } from 'react';
 
 import type { ReactNode } from 'react';
 import type { ModalInstance, ModalStore } from '../typings';
@@ -27,4 +27,29 @@ export function useModalContext(): ModalContextValue {
     }
 
     return context;
+}
+
+/**
+ * An id for the element that is the dialog's title: the modal it renders in is named by that element while it is mounted. Outside a modal it is just
+ * an id. `DialogLayout` and the confirmation dialog use it; a dialog with a title of its own gives the id to its heading.
+ */
+export function useModalTitleId(): string {
+    const id = useId();
+    const modal = use(ModalContext)?.modal;
+
+    useLayoutEffect(() => {
+        if (!modal) {
+            return;
+        }
+
+        modal.setLabelledBy(id);
+
+        return () => {
+            if (modal.labelledBy === id) {
+                modal.setLabelledBy(null);
+            }
+        };
+    }, [modal, id]);
+
+    return id;
 }
