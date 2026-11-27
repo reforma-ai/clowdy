@@ -16,8 +16,13 @@ export async function openInTerminal(
     root: RootStore,
     projectId: ProjectId,
     place: Place,
-    relative: string
+    relative: string,
+    isCurrent?: () => boolean
 ): Promise<boolean> {
+    const ui = root.ui.forProject(projectId);
+    const version = isCurrent ? undefined : ui.beginSidePanelNavigation();
+    const navigation = ui.navigationVersion;
+    const current = isCurrent ?? (() => ui.sidePanelPlaceVersion === version && ui.navigationVersion === navigation);
     const store = terminalsStoreOf(root.transport);
 
     if (!isPlaceReady(place)) {
@@ -29,6 +34,7 @@ export async function openInTerminal(
     // The shells the daemon already runs are read first: a read that comes after the new shell was made would not have it, and forgets what it does not find.
     await store.load(projectId);
 
+    if (!current()) return false;
     const session = await store.start(projectId, place.folder.id, relative || undefined, place.workspace?.id);
 
     if (!session) {
@@ -37,6 +43,8 @@ export async function openInTerminal(
         return false;
     }
 
+    if (!current()) return false;
+    root.ui.forProject(projectId).setSidePanelPlace(place);
     root.ui.forProject(projectId).openSidePanelTab('terminal');
 
     return true;

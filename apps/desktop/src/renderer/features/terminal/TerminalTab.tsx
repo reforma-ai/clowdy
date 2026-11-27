@@ -12,7 +12,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { codeQuote } from '../chats/codeQuote';
 import { quoteIntoComposer, useHasComposer } from '../chats/composerBridge';
-import { currentPlace, isPlaceReady } from '../sidePanel/currentPlace';
+import { isPlaceReady, panelPlace } from '../sidePanel/currentPlace';
 import { PlaceWaiting } from '../sidePanel/PlaceWaiting';
 import styles from './TerminalTab.module.css';
 import { TerminalView } from './TerminalView';
@@ -201,7 +201,7 @@ export default function TerminalTab() {
     const ui = useProjectUi();
     const store = useTerminalsStore();
     const projectId = project.project.id;
-    const place = currentPlace(project, ui);
+    const place = panelPlace(project, ui);
     const folderId = place.folder.id;
     const workspaceId = place.workspace?.id;
     const ready = isPlaceReady(place);

@@ -1,4 +1,4 @@
-import { createFixtureData, withFixtureLastRun, withFixtureWorkspace } from './fixtureData';
+import { createFixtureData, withFixtureLastRun, withFixtureWorkspace, withFixtureWorktrees } from './fixtureData';
 import { FIXTURE_BRANCH_SCRIPTS } from './fixtureGitBranches';
 import { FIXTURE_CLONE_SCRIPTS } from './fixtureGitClone';
 import { FIXTURE_REMOTE_SCRIPTS } from './fixtureGitRemote';
@@ -18,6 +18,7 @@ import type { FixtureCommitScript, FixtureDiscardScript, FixtureMessageScript } 
 export interface FixtureOptions {
     timeline: boolean;
     worktree?: true;
+    worktrees?: true;
     clean?: true;
     base?: true;
     commit?: FixtureCommitScript;
@@ -71,6 +72,7 @@ export function fixtureOptions(search: string): FixtureOptions {
     return {
         timeline: params.get('fixtures') !== 'static',
         ...(params.has('worktree') && { worktree: true as const }),
+        ...(params.has('worktrees') && { worktrees: true as const }),
         ...(params.has('clean') && { clean: true as const }),
         ...(params.has('base') && { base: true as const }),
         ...(commit && { commit }),
@@ -86,7 +88,11 @@ export function fixtureOptions(search: string): FixtureOptions {
 /** The fixture daemon, with the data and the scripted answers `options` asks for. */
 export function createFixtureTransport(options: FixtureOptions): FixtureTransport {
     const { timeline, commit, message, discard, remote, pr, branches, clean, base, clone } = options;
-    const data = options.worktree ? withFixtureLastRun(withFixtureWorkspace(createFixtureData())) : createFixtureData();
+    const data = options.worktrees
+        ? withFixtureWorktrees(createFixtureData())
+        : options.worktree
+          ? withFixtureLastRun(withFixtureWorkspace(createFixtureData()))
+          : createFixtureData();
 
     // The worktree's branch is the branch the work is compared with, which is where a commit goes straight to the base.
     if (base) for (const chat of data.chats) if (chat.workspace) chat.workspace.branch = 'main';

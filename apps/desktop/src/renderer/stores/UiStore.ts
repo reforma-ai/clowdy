@@ -16,6 +16,7 @@ import type {
     Task,
     TaskId,
 } from '@clowdy/protocol';
+import type { Place } from '../features/sidePanel/currentPlace';
 
 /** The pages of the global Settings window, in the order they appear in its sidebar. */
 export const SETTINGS_PAGES = [
@@ -158,6 +159,8 @@ export class ProjectUi {
     readonly newChatDrafts: NewChatDrafts;
     draftId: string | null = null;
     navigationVersion = 0;
+    sidePanelPlace: Place | null = null;
+    sidePanelPlaceVersion = 0;
     chatId: ChatId | null = null;
     taskId: TaskId | null = null;
     runId: RunId | null = null;
@@ -325,6 +328,7 @@ export class ProjectUi {
             projectId: false,
             draftWorkspace: observableRef,
             draftWorkspaceRow: observableRef,
+            sidePanelPlace: observableRef,
             expandedChats: observableRef,
             chatOrder: observableRef,
             collapsedFolders: observableRef,
@@ -396,6 +400,7 @@ export class ProjectUi {
     /** Shows a place kept from `view`, as one change. */
     show({ chatId, runId, draft, draftId, draftFolderId, draftWorkspace, draftEngine }: ProjectView): void {
         this.navigationVersion++;
+        this.sidePanelPlace = null;
         if (chatId !== this.chatId || runId !== this.runId || draft !== this.draft) this.showChat();
 
         this.chatId = chatId;
@@ -414,6 +419,7 @@ export class ProjectUi {
     /** Shows the chat; `null` leaves none selected. */
     openChat(chatId: ChatId | null): void {
         this.navigationVersion++;
+        this.sidePanelPlace = null;
         this.showChat();
         this.chatId = chatId;
         this.runId = null;
@@ -438,6 +444,7 @@ export class ProjectUi {
         engine: string | null = null
     ): void {
         this.navigationVersion++;
+        this.sidePanelPlace = null;
         this.showChat();
         this.runId = null;
         this.draft = true;
@@ -467,6 +474,8 @@ export class ProjectUi {
         if (!this.draft || this.draftPlaceLocked()) return;
 
         if (folderId !== this.draftFolderId) {
+            this.sidePanelPlaceVersion++;
+            this.sidePanelPlace = null;
             this.draftWorkspace = null;
             this.draftWorkspaceRow = null;
         }
@@ -478,6 +487,10 @@ export class ProjectUi {
     /** Changes where the new chat works in its folder, `null` for the folder's own checkout. Only with the new-chat page open. */
     setDraftWorkspace(choice: ChatWorkspaceChoice | null): void {
         if (!this.draft || this.draftPlaceLocked()) return;
+        if (JSON.stringify(choice) !== JSON.stringify(this.draftWorkspace)) {
+            this.sidePanelPlaceVersion++;
+            this.sidePanelPlace = null;
+        }
 
         // The row answers for one worktree: it stays only while the choice is that same worktree again.
         const same =
@@ -557,6 +570,7 @@ export class ProjectUi {
     /** Shows the run, below its chat; a root run is its chat. */
     openRun(runId: RunId | null): void {
         this.navigationVersion++;
+        this.sidePanelPlace = null;
         this.showChat();
         this.runId = runId;
         this.draft = false;
@@ -703,22 +717,35 @@ export class ProjectUi {
 
     /** Shuts the side panel; nothing when it is shut. */
     closeSidePanel(): void {
+        this.beginSidePanelNavigation();
         this.sidePanelOpen = false;
+    }
+
+    beginSidePanelNavigation(): number {
+        return ++this.sidePanelPlaceVersion;
+    }
+
+    /** Selects a place for Files, Docs and Terminal without changing the open chat. */
+    setSidePanelPlace(place: Place | null): void {
+        this.sidePanelPlace = place;
     }
 
     /** Shows a tab of the side panel. */
     showSidePanelTab(tab: SidePanelTab): void {
+        this.beginSidePanelNavigation();
         this.sidePanelTab = tab;
     }
 
     /** Opens the side panel on a tab, whether it is shut or shows another tab: what a click on the tab's item in the rail does, and the key of the tab. It never shuts the panel. */
     openSidePanelTab(tab: SidePanelTab): void {
+        this.beginSidePanelNavigation();
         this.sidePanelOpen = true;
         this.sidePanelTab = tab;
     }
 
     /** Opens the side panel on a tab, or shuts the panel when it already shows that tab: one key to get a tool and to get rid of it (the terminal's). */
     toggleSidePanelTab(tab: SidePanelTab): void {
+        this.beginSidePanelNavigation();
         if (this.sidePanelOpen && this.sidePanelTab === tab) {
             this.sidePanelOpen = false;
         } else {

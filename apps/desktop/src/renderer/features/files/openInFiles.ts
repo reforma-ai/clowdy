@@ -77,11 +77,17 @@ export async function openInFiles(
     root: RootStore,
     projectId: ProjectId,
     place: Place,
-    relative: string
+    relative: string,
+    isCurrent?: () => boolean
 ): Promise<boolean> {
+    const ui = root.ui.forProject(projectId);
+    const version = isCurrent ? undefined : ui.beginSidePanelNavigation();
+    const navigationVersion = ui.navigationVersion;
+    const current =
+        isCurrent ?? (() => ui.sidePanelPlaceVersion === version && ui.navigationVersion === navigationVersion);
     const generation = (navigation.get(root) ?? 0) + 1;
     navigation.set(root, generation);
-    const stale = () => navigation.get(root) !== generation;
+    const stale = () => navigation.get(root) !== generation || !current();
     if (!isPlaceReady(place)) return false;
 
     const initial = await filesManagerOf(root, projectId, place);
@@ -109,6 +115,7 @@ export async function openInFiles(
         if (!treeLayout.open) treeLayout.toggle();
         if (relative) initial.reveal(relative, true);
         else initial.clearReveal();
+        root.ui.forProject(projectId).setSidePanelPlace(place);
         showFilesTab(root, projectId, 'files');
         return true;
     }
@@ -127,6 +134,7 @@ export async function openInFiles(
     }
 
     // A document is shown beside the tree of documents, in the tabs of the Docs tab; any other file beside the tree of files, in the Files tab's.
+    root.ui.forProject(projectId).setSidePanelPlace(place);
     showFilesTab(root, projectId, tab);
 
     return true;
