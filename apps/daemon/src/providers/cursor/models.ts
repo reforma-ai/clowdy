@@ -1,5 +1,5 @@
-import { RpcError, RpcTimeout, withAppServer } from '../appserver';
 import { runProgram } from '../../process/run';
+import { RpcError, RpcTimeout, withAppServer } from '../appserver';
 import { text } from '../parse';
 
 import type { AgentModel, AgentModels } from '@clowdy/protocol';
