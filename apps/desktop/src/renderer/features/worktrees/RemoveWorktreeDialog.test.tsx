@@ -1,6 +1,5 @@
 // @vitest-environment happy-dom
 import { Modal } from '@clowdy/components/Modal';
-import { toast } from '@clowdy/components/Toast';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
