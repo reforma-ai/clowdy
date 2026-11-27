@@ -2385,8 +2385,9 @@ describe('worktree cards', () => {
         ).toBe(mainKey());
     });
 
-    it('keeps checkout chats grouped when only thread worktrees are hidden', async () => {
+    it('shows a linked thread in its worktree while keeping it under its parent', async () => {
         await restart();
+        const expectedWorktree = workspaceKey();
         const workspace = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
         await draw(() => {
             project().chats.delete(FIXTURE_WORKSPACE_CHAT_ID);
@@ -2395,8 +2396,40 @@ describe('worktree cards', () => {
         });
         await draw();
         expect(rowOf('c-4').closest('[data-worktree-card]')?.getAttribute('data-worktree-card')).toBe(mainKey());
-        await draw(() => chatListPreferences.setShowUnusedWorktrees(true));
-        expect(rowOf('c-4').closest('[data-worktree-card]')?.getAttribute('data-worktree-card')).toBe(mainKey());
+        const link = rowOf('@linked-thread:c-6a');
+        expect(link.closest('[data-worktree-card]')?.getAttribute('data-worktree-card')).toBe(expectedWorktree);
+        expect(link.textContent).toContain('Fix the price rounding');
+        const uninstall = installDispatcher(hotkeys);
+        try {
+            rowOf(expectedWorktree).focus();
+            await act(async () =>
+                document.activeElement!.dispatchEvent(
+                    new KeyboardEvent('keydown', { key: 'j', bubbles: true, cancelable: true })
+                )
+            );
+            expect(document.activeElement?.getAttribute('data-key')).toBe('@linked-thread:c-6a');
+        } finally {
+            uninstall();
+        }
+        await press(link);
+        expect(ui().chatId).toBe('c-6a');
+        await draw();
+        await draw();
+        expect(rowOf('c-6a').closest('[data-worktree-card]')?.getAttribute('data-worktree-card')).toBe(mainKey());
+    });
+
+    it('shows a thread in the main checkout of its own folder when its parent uses another worktree', async () => {
+        await restart();
+        const workspace = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
+        await draw(() => {
+            project().chats.set('c-6', { ...project().chats.get('c-6')!, workspace });
+            project().chats.set('c-6a', { ...project().chats.get('c-6a')!, folderId: 'fld_api', workspace: undefined });
+            ui().setGroupByWorktree(true);
+        });
+        await draw();
+        expect(rowOf('@linked-thread:c-6a').closest('[data-worktree-card]')?.getAttribute('data-worktree-card')).toBe(
+            worktreeKey('fld_api', '/Users/dev/car-rental-api')
+        );
     });
 
     it('groups each folder independently and starts a chat in the selected folder checkout', async () => {
@@ -3170,7 +3203,7 @@ describe('worktree cards', () => {
         expect(rowOf(workspaceKey()).querySelector('[aria-label="Chats waiting for you"]')).toBeNull();
     });
 
-    it('hides a worktree used only by a thread while keeping the thread under its parent', async () => {
+    it('keeps a thread-only worktree visible regardless of the unused filter', async () => {
         await restart();
         const workspace = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
         const key = workspaceKey();
@@ -3181,10 +3214,10 @@ describe('worktree cards', () => {
             ui().openChat('c-6a');
         });
         await draw();
-        expect(cardRows()).not.toContain(key);
+        expect(cardRows()).toContain(key);
         expect(rowOf('c-6a')).not.toBeNull();
         await draw(() => chatListPreferences.setShowUnusedWorktrees(true));
-        expect(cardRows()).not.toContain(key);
+        expect(cardRows()).toContain(key);
         expect(cardRows().length).toBeGreaterThan(0);
     });
 
@@ -3203,6 +3236,7 @@ describe('worktree cards', () => {
         await draw(() => ui().openChat('c-6a1'));
         await draw();
         expect(rowOf('c-6a1')).not.toBeNull();
+        expect(rowOf('@linked-thread:c-6a')).toBeNull();
         expect(ui().collapsedWorktrees).not.toContain(key);
     });
 

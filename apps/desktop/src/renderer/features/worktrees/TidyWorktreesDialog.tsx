@@ -4,6 +4,7 @@ import { Checkbox } from '@clowdy/components/Checkbox';
 import { openConfirmModal } from '@clowdy/components/modals';
 import { Text } from '@clowdy/components/Text';
 import { toast } from '@clowdy/components/Toast';
+import { errorMessage } from '@clowdy/lib';
 import { useEffect, useState } from 'react';
 
 import { useRootStore } from '../../stores';
@@ -11,8 +12,8 @@ import { worktreeLabel } from '../agents/workspaceChoice';
 import { refreshFolderGit } from '../openWith';
 import styles from './ManageWorktrees.module.css';
 import { WorktreeRowSummary } from './WorktreeRow';
-import { linkedChatIds } from './worktreeActions';
-import { removalPlan, repositoryGroups } from './worktreeView';
+import { affectedChats, affectedSummary, linkedChatIds, readRemoval, removeWorktree } from './worktreeActions';
+import { deleteBranchByDefault, removalPlan, repositoryGroups, STRANDED_WARNING } from './worktreeView';
 
 import type { FolderId, FolderWorktrees, ProjectId, ProjectSnapshot, WorktreeInfo } from '@clowdy/protocol';
 
@@ -81,31 +82,99 @@ export function TidyWorktreesMode({
 
     const remove = () => {
         if (!data || !project) return;
+        const choices = data.groups.flatMap(({ group }) =>
+            group.worktrees
+                .filter(row => selected.has(keyOf(group.folderId, row.path)))
+                .map(row => ({ folderId: group.folderId, row, safe: eligible(row, group.folderId, data.snapshot) }))
+        );
+        let previews: {
+            folderId: FolderId;
+            row: WorktreeInfo;
+            safe: boolean;
+            chats: ReturnType<typeof affectedChats>;
+        }[];
+        try {
+            previews = choices.map(choice => ({
+                ...choice,
+                chats: affectedChats(choice.row, data.snapshot, choice.folderId),
+            }));
+        } catch (error) {
+            toast.error({ message: errorMessage(error, "Couldn't read linked chats") });
+            return;
+        }
         let report: { removed: number; errors: string[] } | undefined;
         openConfirmModal(
             {
                 title: 'Remove selected worktrees?',
-                message: `Remove ${selected.size} ${selected.size === 1 ? 'worktree' : 'worktrees'}${deleteBranches ? ' and their eligible merged branches' : ''}? Archived chat history stays.`,
+                message: (
+                    <Box gap="md">
+                        <Text>
+                            Selected worktrees will be removed. Linked chats and their threads will be archived,
+                            including threads in other worktrees.
+                        </Text>
+                        {previews.map(({ folderId, row, chats }) => {
+                            const plan = removalPlan(row);
+                            const details = [
+                                ...plan.notes,
+                                ...(plan.stranded ? [STRANDED_WARNING] : []),
+                                ...(chats.ids.size
+                                    ? [`${affectedSummary(chats.ids.size, chats.outside)} will be archived`]
+                                    : []),
+                                ...(deleteBranches && deleteBranchByDefault(row)
+                                    ? [`Merged branch ${row.branch} will be deleted`]
+                                    : []),
+                                ...(chats.blocker ? [chats.blocker] : []),
+                            ];
+                            return (
+                                <Box key={keyOf(folderId, row.path)} gap="xs">
+                                    <Text weight="medium" wrap="anywhere">
+                                        {worktreeLabel(row)} — {row.path}
+                                    </Text>
+                                    {details.map(detail => (
+                                        <Text key={detail} color="secondary" variant="sm">
+                                            {detail}
+                                        </Text>
+                                    ))}
+                                </Box>
+                            );
+                        })}
+                    </Box>
+                ),
                 confirmLabel: `Remove ${selected.size} ${selected.size === 1 ? 'worktree' : 'worktrees'}`,
                 destructive: true,
                 initialFocus: 'cancel',
                 onConfirm: async () => {
                     let removed = 0;
                     const errors: string[] = [];
-                    for (const { group } of data.groups)
-                        for (const row of group.worktrees) {
-                            if (!selected.has(keyOf(group.folderId, row.path))) continue;
-                            const result = await root.command({
-                                type: 'workspace.remove',
-                                projectId,
-                                folderId: group.folderId,
-                                path: row.path,
-                                tidy: true,
-                                ...(deleteBranches && removalPlan(row).branch?.selected && { deleteBranch: true }),
-                            });
-                            if (result.ok) removed++;
-                            else errors.push(`${worktreeLabel(row)} (${row.path}): ${result.error.message}`);
+                    for (const { folderId, row, safe, chats } of previews) {
+                        try {
+                            const target = { root, projectId, folderId, path: row.path };
+                            const read = await readRemoval(target, { worktree: row, chats });
+                            if (read.drift.branch || read.drift.chats)
+                                throw new Error('The worktree or linked chats changed. Try again');
+                            if (safe) {
+                                const result = await root.command({
+                                    type: 'workspace.remove',
+                                    projectId,
+                                    folderId,
+                                    path: row.path,
+                                    tidy: true,
+                                    ...(deleteBranches && removalPlan(row).branch?.selected && { deleteBranch: true }),
+                                });
+                                if (!result.ok) throw new Error(result.error.message);
+                            } else {
+                                await removeWorktree(target, read, {
+                                    deleteBranch: deleteBranches && deleteBranchByDefault(row),
+                                    disposition: 'archive',
+                                });
+                            }
+                            removed++;
+                        } catch (error) {
+                            errors.push(
+                                `${worktreeLabel(row)} (${row.path}): ${errorMessage(error, 'Something went wrong')}`
+                            );
                         }
+                    }
                     for (const folder of project.folders) refreshFolderGit(projectId, folder.id);
                     await reload();
                     onCancel();
@@ -146,7 +215,8 @@ export function TidyWorktreesMode({
     return (
         <div className={styles.groups}>
             <Text color="secondary" variant="sm">
-                Select merged worktrees with no local changes, submodules or unarchived chats
+                Clean, merged worktrees without unarchived chats are selected for you. Review other worktrees before
+                selecting them
             </Text>
             {failed && (
                 <Text color="warning" role="alert">
@@ -168,7 +238,11 @@ export function TidyWorktreesMode({
                             <ul className={styles.card}>
                                 {group.worktrees.map(row => {
                                     const key = keyOf(group.folderId, row.path);
-                                    const canRemove = eligible(row, group.folderId, data.snapshot);
+                                    const canRemove =
+                                        !row.main &&
+                                        row.blocked !== 'main' &&
+                                        row.blocked !== 'locked' &&
+                                        row.locked === undefined;
                                     return (
                                         <li key={key} data-worktree-path={row.path}>
                                             <Checkbox
