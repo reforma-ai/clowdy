@@ -18,17 +18,19 @@ export interface SettingsSectionProps {
 export function SettingsSection({ title, aside, description, children }: SettingsSectionProps) {
     return (
         <section className={styles.section} aria-label={title}>
-            <div className={styles.heading}>
-                <Text as="h2" variant="heading-5" className={styles.title}>
-                    {title}
-                </Text>
-                {aside}
+            <div className={styles.caption}>
+                <div className={styles.heading}>
+                    <Text as="h2" variant="heading-5" className={styles.title}>
+                        {title}
+                    </Text>
+                    {aside}
+                </div>
+                {description && (
+                    <Text variant="sm" color="secondary">
+                        {description}
+                    </Text>
+                )}
             </div>
-            {description && (
-                <Text variant="sm" color="secondary">
-                    {description}
-                </Text>
-            )}
             {children}
         </section>
     );
