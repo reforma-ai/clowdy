@@ -100,6 +100,8 @@ export interface EngineStartOptions {
      */
     history?: () => string | undefined;
     model?: string;
+    /** Refuse an unavailable model instead of using the agent default. */
+    strictModel?: boolean;
     /** The reasoning level, in the agent's own spelling; applied after `model`, since a model decides which levels exist. */
     effort?: string;
     /** What to do about the title the agent gives its session; absent leaves the agent to name it and the runtime to ignore the name. */

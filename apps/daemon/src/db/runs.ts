@@ -316,6 +316,7 @@ export interface RunProcess {
 
 /** What the runtime keeps about a run besides the entity clients see. */
 export interface RunWork {
+    strictModel?: boolean;
     /** Working directory the run's engine starts in; absent, the folder its chat works in, else the project's main folder (`workingFolder` in `domain/places.ts`). */
     cwd?: string;
     /** The user message or assignment of the turn that has not started yet. */
@@ -326,6 +327,7 @@ export interface RunWork {
 }
 
 interface WorkRow {
+    strict_model: number | null;
     cwd: string | null;
     next_prompt: string | null;
     pid: number | null;
@@ -336,7 +338,9 @@ interface WorkRow {
 
 export function getRunWork(db: Database, runId: string): RunWork {
     const row = db
-        .query('SELECT cwd, next_prompt, pid, pgid, process_started_at, lost_background FROM runs WHERE id = ?')
+        .query(
+            'SELECT cwd, next_prompt, pid, pgid, process_started_at, lost_background, strict_model FROM runs WHERE id = ?'
+        )
         .get(runId) as WorkRow | null;
 
     if (!row) {
@@ -345,6 +349,7 @@ export function getRunWork(db: Database, runId: string): RunWork {
 
     return clean({
         cwd: row.cwd,
+        strictModel: row.strict_model === 1 || undefined,
         nextPrompt: row.next_prompt,
         process:
             row.pid === null ? undefined : clean({ pid: row.pid, pgid: row.pgid, startedAt: row.process_started_at }),
@@ -365,6 +370,10 @@ export function setRunWork(db: Database, runId: string, work: WorkPatch): void {
         if (work[key] !== undefined) {
             columns.push([column, work[key]]);
         }
+    }
+
+    if (work.strictModel !== undefined) {
+        columns.push(['strict_model', work.strictModel ? 1 : null]);
     }
 
     if (work.process !== undefined) {

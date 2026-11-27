@@ -76,6 +76,7 @@ export interface Choices {
     /** The options the agent opened the session with. */
     options: SelectOption[];
     model?: string;
+    strictModel?: boolean;
     effort?: string;
     /** The agent's own id of the permission mode the person's preset asks for (`ResolvedAgent.permission.mode`); absent when the preset sets none. */
     mode?: string;
@@ -86,18 +87,24 @@ export interface Choices {
 /**
  * Puts the session on the model, the reasoning level and the permission mode the run asked for, where the agent offers them. The model goes first: it
  * decides which levels (and, for Claude, which modes) the agent offers, and the answer to a change lists the options as they are now. A choice the
- * agent does not offer is logged and left to it.
+ * agent does not offer is logged and left to it unless strict model selection was requested.
  */
-export async function applyChoices({ agent, options, model, effort, mode, set }: Choices): Promise<void> {
+export async function applyChoices({ agent, options, model, strictModel, effort, mode, set }: Choices): Promise<void> {
     let current = options;
 
     if (model) {
         const choice = modelChoice(current, model);
 
         if (!choice) {
+            if (strictModel) throw new Error(`${agent} does not offer the selected model "${model}"`);
             console.warn(`[clowdy] ${agent} offers no model called "${model}"; it keeps its own choice`);
         } else if (!choice.unchanged) {
-            current = (await set(choice)) ?? current;
+            const updated = await set(choice);
+            const returnedModel = updated?.find(option => option.id === choice.configId);
+            if (strictModel && returnedModel && returnedModel.currentValue !== choice.value) {
+                throw new Error(`${agent} did not select the requested model "${model}"`);
+            }
+            current = updated ?? current;
         }
     }
 

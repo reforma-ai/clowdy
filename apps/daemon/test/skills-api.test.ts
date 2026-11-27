@@ -529,6 +529,31 @@ describe('watching the skill folders', () => {
 });
 
 describe('Briefback installation endpoint', () => {
+    test('retained backups remain visible and block installation after a daemon restart', async () => {
+        const first = tempDir();
+        const second = tempDir();
+        const backup = join(first, '.briefback-install-test', 'backup');
+        mkdirSync(backup, { recursive: true });
+        writeFileSync(join(backup, 'SKILL.md'), 'original');
+        const h = await start([first, second]);
+        await h.stop();
+        harnesses.length = 0;
+        const restarted = await restartHarness(h);
+        harnesses.push(restarted);
+        const status = (await (await restarted.fetch('/v1/skills/briefback')).json()) as {
+            backups: string[];
+            fingerprint: string;
+        };
+        expect(status.backups).toEqual([backup]);
+        const response = await restarted.fetch('/v1/skills/briefback', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ fingerprint: status.fingerprint }),
+        });
+        expect(response.status).toBe(409);
+        expect(readFileSync(join(backup, 'SKILL.md'), 'utf8')).toBe('original');
+    });
+
     test('does not claim an externally installed copy is up to date', async () => {
         const first = tempDir();
         const second = tempDir();

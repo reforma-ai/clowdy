@@ -93,8 +93,7 @@ export const claude: Provider = {
             {
                 id: 'promptSuggestions',
                 label: 'Suggest next messages',
-                description:
-                    'Let Claude Code predict your next message using its native suggestions. Applies to new sessions.',
+                description: 'Let Claude Code predict your next message using its native suggestions',
                 default: true,
                 effect: on => ({ env: { CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION: on ? null : 'false' } }),
             },

@@ -10,6 +10,7 @@ import { composerBannerPreferences } from '../chats/composerBannerPreferences';
 import { newChatDefaults } from '../chats/newChatDefaults';
 import { swipeToReply } from '../chats/swipeReplyPreference';
 import { modeOf, NewChatChoices } from './NewChatChoices';
+import { SharedAgentSwitch } from './SharedAgentSwitch';
 import { SleepSettings } from './SleepSettings';
 
 /** The other way of sending, which the row's description names: Cmd+Enter on macOS, Ctrl+Enter elsewhere. */
@@ -29,6 +30,11 @@ export function ChatPage() {
         <SettingsLayout.Page description="Choose how chats look and behave">
             <SettingsLayout.Section title="Messages">
                 <SettingsLayout.Card>
+                    <SharedAgentSwitch
+                        id="promptSuggestions"
+                        title="Suggest next messages"
+                        description="Let supported agents suggest your next message in new sessions"
+                    />
                     <SettingsLayout.Row
                         title="Send a message while the agent is working"
                         description={`Steer it into the current turn, or queue it for the next one. Press ${OTHER_KEY} to use the other option.`}

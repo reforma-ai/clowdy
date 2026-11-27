@@ -25,7 +25,10 @@ export function ProviderCard({ agent }: { agent: AgentInfo }) {
     const installed = agent.status !== 'missing' && agent.status !== 'needs-runtime';
     const isOn = agent.enabled && installed;
     const usage = isOn ? agent.usage : undefined;
-    const settings = agent.settings?.filter(setting => setting.id !== COMMIT_MESSAGE_SETTING_ID) ?? [];
+    const settings =
+        agent.settings?.filter(
+            setting => ![COMMIT_MESSAGE_SETTING_ID, 'subagents', 'promptSuggestions'].includes(setting.id)
+        ) ?? [];
 
     return (
         <SettingsLayout.Card as="section" divided aria-label={agent.name}>

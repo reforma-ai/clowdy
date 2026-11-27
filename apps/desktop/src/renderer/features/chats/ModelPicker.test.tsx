@@ -211,6 +211,34 @@ describe('the pill', () => {
     });
 });
 
+describe('the picker without providers', () => {
+    it('keeps inheritance choices available and explains why the model list is empty', async () => {
+        await setup({ engine: '' }, {}, []);
+        const choices: string[] = [];
+        props = {
+            ...props,
+            alternatives: {
+                selected: 'default',
+                options: [
+                    { id: 'default', label: 'Use default' },
+                    { id: 'inherit', label: 'Inherit orchestrator' },
+                ],
+                onPick: id => choices.push(id),
+            },
+        };
+        await draw();
+        expect(trigger().getAttribute('aria-label')).toBe('Model: Use default');
+        await openList();
+        expect(dialog()?.textContent).toContain('No available provider');
+        await press(dialog()!.querySelector('button[aria-label="Back"]'));
+        const inherit = [...dialog()!.querySelectorAll('button')].find(
+            button => button.textContent === 'Inherit orchestrator'
+        );
+        await press(inherit);
+        expect(choices).toEqual(['inherit']);
+    });
+});
+
 describe('the popover', () => {
     it('opens on a press with the model button and the reasoning slider, and closes on Escape', async () => {
         await setup(opus);

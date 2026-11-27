@@ -7,6 +7,7 @@ import { type SettingsPage, useRootStore } from '../../stores';
 import { AboutPage } from './AboutPage';
 import { AppearancePage } from './AppearancePage';
 import { ChatPage } from './ChatPage';
+import { DelegationPage } from './DelegationPage';
 import { FilesPage } from './FilesPage';
 import { AddProjectButton, ProjectsPage } from './projects';
 import { ProvidersPage } from './providers';
@@ -48,6 +49,7 @@ const PAGES: readonly PageView[] = [
     },
     { id: 'projects', label: 'Projects', group: 'Workspace', icon: <Folder />, render: () => <ProjectsPage /> },
     { id: 'providers', label: 'Providers', group: 'Agents', icon: <Robot2 />, render: () => <ProvidersPage /> },
+    { id: 'delegation', label: 'Delegation', group: 'Agents', icon: <Robot2 />, render: () => <DelegationPage /> },
     { id: 'skills', label: 'Skills', group: 'Agents', icon: <Book />, render: () => <SkillsSection /> },
     { id: 'about', label: 'About', group: 'Clowdy', icon: <Info />, render: () => <AboutPage /> },
 ];

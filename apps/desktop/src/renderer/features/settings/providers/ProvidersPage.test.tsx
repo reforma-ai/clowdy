@@ -124,7 +124,7 @@ describe('the cards', () => {
         expect(switchOf(card('Claude Code'), '1M context window').checked).toBe(true);
         expect(named(card('Claude Code'), 'input', 'Commit messages')).toBeNull();
         expect(named(card('Codex'), 'input', 'Commit messages')).toBeNull();
-        expect(switchOf(card('Cursor'), 'Suggest next messages').checked).toBe(true);
+        expect(named(card('Cursor'), 'input', 'Suggest next messages')).toBeNull();
     });
 
     it('shows a note, and no usage or sign-in, for a program that is not installed', async () => {
@@ -183,25 +183,10 @@ describe('the switch of a provider', () => {
         expect(card('Claude Code').querySelector('[aria-busy="true"]')).toBeNull();
     });
 
-    it('can turn off prompt suggestions for a provider', async () => {
+    it('leaves shared delegation and suggestion controls to global settings', async () => {
         await start();
-        const command = vi.spyOn(store, 'command');
-        await press(switchOf(card('Claude Code'), 'Suggest next messages'));
-        await vi.waitFor(() =>
-            expect(
-                store.agents
-                    .find(agent => agent.id === 'claude')
-                    ?.settings?.find(setting => setting.id === 'promptSuggestions')?.value
-            ).toBe(false)
-        );
-        await draw();
-        expect({
-            command: command.mock.calls.at(-1)?.[0],
-            visible: switchOf(card('Claude Code'), 'Suggest next messages').checked,
-        }).toEqual({
-            command: { type: 'agent.update', id: 'claude', settings: { promptSuggestions: false } },
-            visible: false,
-        });
+        expect(card('Claude Code').querySelector('[aria-label="Suggest next messages"]')).toBeNull();
+        expect(card('Claude Code').querySelector('[aria-label="Enable sub-agents"]')).toBeNull();
     });
 
     it('sends a setting by its id and shows the new value', async () => {

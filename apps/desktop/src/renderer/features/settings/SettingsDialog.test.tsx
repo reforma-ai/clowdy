@@ -72,6 +72,7 @@ describe('the Settings window', () => {
             'Shortcuts',
             'Projects',
             'Providers',
+            'Delegation',
             'Skills',
             'About',
         ]);
