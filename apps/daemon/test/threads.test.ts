@@ -2180,7 +2180,7 @@ describe('thread_spawn with a worktree', () => {
         }, 'parent to start');
         const current = getChat(restarted.store.db, chat.id)!;
         const run = restarted.run(current.orchestratorRunId!);
-        const thread = restarted.daemon.services.threads.spawn(run, {
+        const thread = await restarted.daemon.services.threads.spawn(run, {
             prompt: 'After restart thread',
             worktree: true,
             branch: 'persisted',

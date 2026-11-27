@@ -21,6 +21,7 @@ import type {
 import type { AttachmentsService } from '../attachments/service';
 import type { Config } from '../config';
 import type { Store } from '../store';
+import type { RepositoryFacts } from './workspaces';
 
 export const DEFAULT_CHAT_TITLE = 'New chat';
 
@@ -111,6 +112,8 @@ export interface NewChat extends ChatChoice {
      * with it whichever folder the project makes main later.
      */
     workspace?: ChatWorktreeChoice;
+    /** What was read of the repository for `workspace` before the transaction (`readRepository`), so none of it is read inside; read synchronously when absent. */
+    repository?: RepositoryFacts;
     /** The worktree of another chat, taken as it is (the same row): a thread's, a fork's. */
     workspaceId?: string;
 }
@@ -131,8 +134,8 @@ export function chatFolder(project: Project, folderId: string | undefined): Proj
 }
 
 /**
- * A new chat. A chat that is given a worktree is checked against the repository with a few synchronous reads of git, and nothing is made on the disk: the
- * worktree is made by its first turn.
+ * A new chat. A chat that is given a worktree is checked against the repository (`input.repository`, else a few synchronous reads of git), and nothing is made
+ * on the disk: the worktree is made by its first turn.
  */
 export function createChat(store: Store, input: NewChat, workspaces?: Pick<Config, 'workspacesDir'>): Chat {
     return store.tx(() => {
@@ -161,6 +164,7 @@ export function createChat(store: Store, input: NewChat, workspaces?: Pick<Confi
                 chatId: id,
                 folderId: input.folderId,
                 choice: input.workspace,
+                ...(input.repository && { repository: input.repository }),
             });
         } else if (input.workspaceId) {
             workspace = inheritWorkspace(store, project, input.workspaceId, input.folderId);

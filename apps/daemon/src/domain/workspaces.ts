@@ -27,7 +27,7 @@ import {
 import { conflict, errorMessage, invalid, notFound } from '../errors';
 import { baseOf, parseBranches, parseWorktrees, pickBase, pickDefaultBranch, workingTreeRoot } from '../git/state';
 import { newId } from '../ids';
-import { git, gitOutput, gitRead } from './git';
+import { git, gitLine, gitOutput, gitRead } from './git';
 import { appendItem, updateItem } from './items';
 import { runLines } from './lines';
 import { runSetup } from './workspaceSetup';
@@ -291,20 +291,104 @@ export const isStandaloneWorktree = (workspace: Pick<ChatWorkspace, 'id' | 'mana
 
 /* --------------------------- Reading a repository -------------------------- */
 
+/** Where a checkout's HEAD is: its branch, or on a detached HEAD the short hash and the full one. */
+export interface Head {
+    branch: string;
+    detached?: true;
+    commit: string;
+}
+
+/**
+ * What a new worktree is checked against in the repository of a folder, read before the transaction that writes its row, so that no git runs inside it
+ * (`readRepository`; a thread's spawn reads it so). A read that fails reads as nothing: not a root, no HEAD, no branch, which the checks refuse.
+ */
+export interface RepositoryFacts {
+    /** The folder that was read. */
+    path: string;
+    /** Whether the folder is the root of a working tree: a worktree is made of the whole repository, so a folder inside one has none of its own. */
+    root: boolean;
+    head?: Head;
+    /** The branches, local (`refs/heads/…`) and the remotes' (`refs/remotes/…`), by ref, with their commits. */
+    refs: ReadonlyMap<string, string>;
+    /** The base of a worktree whose choice names none, as `baseOf` says it. */
+    base?: string;
+}
+
+/** `for-each-ref --format='%(objectname) %(refname)'` as refs and their commits (a ref name has no space). */
+function parseRefs(output: string): Map<string, string> {
+    return new Map(
+        output.split('\n').flatMap(line => {
+            const space = line.indexOf(' ');
+
+            return space > 0 ? [[line.slice(space + 1), line.slice(0, space)] as const] : [];
+        })
+    );
+}
+
+const REFS_FORMAT = ['for-each-ref', '--format=%(objectname) %(refname)', 'refs/heads', 'refs/remotes'];
+
+/** Where the checkout at `path` has HEAD, read with the async git: nothing when it has no commit or git does not answer. */
+async function readHead(path: string): Promise<Head | undefined> {
+    const [commit, branch, short] = await Promise.all([
+        gitLine(path, ['rev-parse', 'HEAD']),
+        gitLine(path, ['branch', '--show-current']),
+        gitLine(path, ['rev-parse', '--short', 'HEAD']),
+    ]);
+
+    if (commit === undefined) {
+        return undefined;
+    }
+
+    return branch !== undefined
+        ? { branch, commit }
+        : short !== undefined
+          ? { branch: short, detached: true, commit }
+          : undefined;
+}
+
+/** Reads `RepositoryFacts` of the folder with the async git. */
+export async function readRepository(folder: ProjectFolder): Promise<RepositoryFacts> {
+    const [top, head, refs, base] = await Promise.all([
+        gitLine(folder.path, ['rev-parse', '--show-toplevel']),
+        readHead(folder.path),
+        gitOutput(folder.path, REFS_FORMAT),
+        baseOf(folder),
+    ]);
+
+    return {
+        path: folder.path,
+        root: top !== undefined && samePlace(top, folder.path),
+        ...(head && { head }),
+        refs: parseRefs(refs ?? ''),
+        ...(base !== undefined && { base }),
+    };
+}
+
+/** Where the worktree at `path` has HEAD, when it is there and the root of a checkout: what a thread of a chat that works in it starts from (`threadBase`). */
+export async function readWorktreeHead(path: string): Promise<Head | undefined> {
+    if (!existsSync(path)) {
+        return undefined;
+    }
+
+    const [top, head] = await Promise.all([gitLine(path, ['rev-parse', '--show-toplevel']), readHead(path)]);
+
+    return top !== undefined && samePlace(top, path) ? head : undefined;
+}
+
 /*
- * `chat.create` is a synchronous command, so what it checks of the repository is read with the sync `git` (a few local reads, no network). The turn that makes the
- * worktree reads with the async ones below it.
+ * `chat.create` is still a synchronous command, so it reads the facts with the sync `git` (a few local reads, no network) inside its transaction, and
+ * `workspace.open` reads what it checks the same way. The turn that makes the worktree reads with the async ones below.
  */
 
-/** Whether the folder is the root of a working tree: a worktree is made of the whole repository, so a folder inside one has none of its own. */
+/** Whether the folder is the root of a working tree, read synchronously. */
 function isRepositoryRoot(folder: string): boolean {
     const top = readGit(folder, ['rev-parse', '--show-toplevel']);
 
     return top.ok && top.stdout !== '' && samePlace(top.stdout, folder);
 }
 
-/** Where the folder's HEAD is: its branch, or on a detached HEAD the short hash and the full one. */
-function headOf(folder: string): { branch: string; detached?: true; commit: string } | undefined {
+/** `readHead`, read synchronously. */
+function headOf(folder: string): Head | undefined {
     const commit = readGit(folder, ['rev-parse', 'HEAD']);
 
     if (!commit.ok) {
@@ -322,17 +406,14 @@ function headOf(folder: string): { branch: string; detached?: true; commit: stri
     return short.ok ? { branch: short.stdout, detached: true, commit: commit.stdout } : undefined;
 }
 
-/**
- * The folder's base, as `baseOf` says it, read synchronously: its own `settings.baseBranch` when the repository has that branch (`pickBase`, the one rule), else
- * `defaultBranchOf`'s (`origin/HEAD`, `origin/main`, `main`… the branch checked out). The default is read only when it is needed.
- */
-function baseOfSync(folder: ProjectFolder): string | undefined {
-    const refs = readGit(folder.path, ['for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes']);
-    const branches = parseBranches(refs.ok ? refs.stdout : '');
-
-    return pickBase(folder.settings?.baseBranch, branches, () => {
+/** `readRepository`, read synchronously: the base by the same rule as `baseOf` (`pickBase`), the default read only when it is needed. */
+function readRepositorySync(folder: ProjectFolder): RepositoryFacts {
+    const listed = readGit(folder.path, REFS_FORMAT);
+    const refs = parseRefs(listed.ok ? listed.stdout : '');
+    const head = headOf(folder.path);
+    const branches = parseBranches([...refs.keys()].join('\n'));
+    const base = pickBase(folder.settings?.baseBranch, branches, () => {
         const remoteHead = readGit(folder.path, ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD']);
-        const head = headOf(folder.path);
 
         return pickDefaultBranch(
             remoteHead.ok && remoteHead.stdout ? remoteHead.stdout : undefined,
@@ -340,6 +421,14 @@ function baseOfSync(folder: ProjectFolder): string | undefined {
             head && { branch: head.branch, ...(head.detached && { detached: true as const }) }
         );
     });
+
+    return {
+        path: folder.path,
+        root: isRepositoryRoot(folder.path),
+        ...(head && { head }),
+        refs,
+        ...(base !== undefined && { base }),
+    };
 }
 
 /** The refs a base may be, in the order they are tried: a local branch, then a remote's (`origin/main`). Never the bare name: a tag called `main` would make it ambiguous. */
@@ -357,22 +446,14 @@ interface ResolvedBase {
     remote: boolean;
 }
 
-/** A base resolved in the folder's repository, read synchronously for `chat.create`; a hash counts only when it is the commit the folder has checked out on a detached HEAD. */
-function resolveBaseSync(folder: string, base: string): ResolvedBase | undefined {
-    for (const [ref, remote] of baseRefs(base)) {
-        // `show-ref --verify` takes the ref exactly: `rev-parse` would also read `main~1` or `main@{1}` as a branch.
-        const found = readGit(folder, ['show-ref', '--verify', '--hash', ref]);
+/** Whether a new chat's worktree can start from `base` in the repository: a branch of it, or a hash of the commit the folder has checked out on a detached HEAD. */
+function hasBase(repository: RepositoryFacts, base: string): boolean {
+    const { head } = repository;
 
-        if (found.ok && found.stdout) {
-            return { commit: found.stdout, remote };
-        }
-    }
-
-    const head = headOf(folder);
-
-    return isHash(base) && head?.detached && head.commit.startsWith(base.toLowerCase())
-        ? { commit: head.commit, remote: false }
-        : undefined;
+    return (
+        baseRefs(base).some(([ref]) => repository.refs.has(ref)) ||
+        (isHash(base) && head?.detached === true && head.commit.startsWith(base.toLowerCase()))
+    );
 }
 
 /** A base resolved in the repository when the worktree is made. A hash is any commit of it: it was checked when the chat was made. */
@@ -408,6 +489,8 @@ export interface WorkspaceRequest {
     /** The folder the chat works in; the project's main folder when absent. */
     folderId?: string;
     choice: ChatWorktreeChoice;
+    /** What was read of the folder's repository before the transaction (`readRepository`); read synchronously when absent. */
+    repository?: RepositoryFacts;
 }
 
 /** Checks out and applies the folder's setup before returning a new standalone worktree. */
@@ -461,7 +544,9 @@ export async function createStandaloneWorktree(
                 }
             }
 
-            if (branchTaken(store, project, folder, branch)) throw conflict(`The branch name ${branch} is taken`);
+            const refs = parseRefs((await gitOutput(root, REFS_FORMAT)) ?? '');
+
+            if (branchTaken(store, project, folder, refs, branch)) throw conflict(`The branch name ${branch} is taken`);
 
             // A chat that picks the worktree during setup must share its pending row and wait on the path lock.
             store.tx(() =>
@@ -547,15 +632,26 @@ export function createWorkspace(
     request: WorkspaceRequest
 ): ChatWorkspace {
     const { project, chatId, choice } = request;
-    const folder = repositoryFolder(project, request.folderId);
+    const folder = repositoryFolder(project, request.folderId, request.repository);
 
     return choice.mode === 'new'
-        ? createNewWorkspace(store, config, project, folder, chatId, choice)
+        ? createNewWorkspace(
+              store,
+              config,
+              project,
+              folder,
+              request.repository ?? readRepositorySync(folder),
+              chatId,
+              choice
+          )
         : openExistingWorkspace(store, project, folder, choice.path);
 }
 
-/** The folder a worktree is made from: the given folder of the project, else its main one, and it has to be on the disk and the root of a repository (`invalid` otherwise). */
-function repositoryFolder(project: Project, folderId: string | undefined): ProjectFolder {
+/**
+ * The folder a worktree is made from: the given folder of the project, else its main one, and it has to be on the disk and the root of a repository (`invalid` otherwise).
+ * `repository` is what was read of it before (`readRepository`), a `conflict` when it is another folder's; without it the root is read synchronously.
+ */
+function repositoryFolder(project: Project, folderId: string | undefined, repository?: RepositoryFacts): ProjectFolder {
     const folder =
         folderId === undefined ? mainFolder(project) : project.folders.find(candidate => candidate.id === folderId);
 
@@ -567,7 +663,11 @@ function repositoryFolder(project: Project, folderId: string | undefined): Proje
         throw invalid(`The folder ${folder.path} is missing`);
     }
 
-    if (!isRepositoryRoot(folder.path)) {
+    if (repository !== undefined && repository.path !== folder.path) {
+        throw conflict('The folder changed while its repository was read: try again');
+    }
+
+    if (!(repository?.root ?? isRepositoryRoot(folder.path))) {
         throw invalid('A worktree needs the root of a git repository, and this folder is not one');
     }
 
@@ -616,6 +716,7 @@ function createNewWorkspace(
     config: Pick<Config, 'workspacesDir'>,
     project: Project,
     folder: ProjectFolder,
+    repository: RepositoryFacts,
     chatId: string,
     choice: Extract<ChatWorkspaceChoice, { mode: 'new' }>
 ): ChatWorkspace {
@@ -627,19 +728,19 @@ function createNewWorkspace(
         throw invalid(problem);
     }
 
-    const base = choice.base ?? baseOfSync(folder);
+    const base = choice.base ?? repository.base;
 
     if (!base) {
         throw invalid('The repository has no commit to start a worktree from');
     }
 
-    if (!resolveBaseSync(folder.path, base)) {
+    if (!hasBase(repository, base)) {
         throw invalid(`${base} is not a branch of this repository`);
     }
 
     const layout = workspaceLayout(config, project, folder, chatId, choice.branchPrefix, choice.branchName);
     assertWorkspaceAvailable(store, layout.path);
-    const clash = branchInTheWay(folder.path, layout.branch);
+    const clash = branchInTheWay(repository.refs, layout.branch);
 
     if (clash) {
         throw invalid(
@@ -648,7 +749,7 @@ function createNewWorkspace(
     }
 
     // The id8 is unique by itself; a name someone chose is not, and is taken by a branch of the repository or by a worktree another chat is still to make.
-    if (choice.branchName !== undefined && branchTaken(store, project, folder, layout.branch)) {
+    if (choice.branchName !== undefined && branchTaken(store, project, folder, repository.refs, layout.branch)) {
         throw invalid(
             `The branch name ${layout.branch} is taken, by a branch of the repository, one below it, or a worktree still to be made: name this one differently`
         );
@@ -674,13 +775,16 @@ function createNewWorkspace(
  * Whether `branch` cannot be made as a new branch: the repository has it, or has branches below it (`clowdy/fix` and `clowdy/fix/login` cannot both be, git keeps a branch as
  * a file), or a worktree row of the project that is not made yet is to have it or one below or above it. (`branchInTheWay` is the branches above it, in the repository.)
  */
-function branchTaken(store: Store, project: Project, folder: ProjectFolder, branch: string): boolean {
-    const found = readGit(folder.path, ['show-ref', '--verify', '--hash', `refs/heads/${branch}`]);
-    const below = readGit(folder.path, ['for-each-ref', '--count=1', '--format=%(refname)', `refs/heads/${branch}/`]);
-
+function branchTaken(
+    store: Store,
+    project: Project,
+    folder: ProjectFolder,
+    refs: RepositoryFacts['refs'],
+    branch: string
+): boolean {
     return (
-        (found.ok && found.stdout !== '') ||
-        (below.ok && below.stdout !== '') ||
+        refs.has(`refs/heads/${branch}`) ||
+        [...refs.keys()].some(ref => ref.startsWith(`refs/heads/${branch}/`)) ||
         listWorkspacesOfProject(store.db, project.id).some(
             record =>
                 record.folderId === folder.id &&
@@ -716,6 +820,7 @@ function freeBranchName(
     store: Store,
     project: Project,
     folder: ProjectFolder,
+    refs: RepositoryFacts['refs'],
     prefix: string,
     slug: string,
     chatId: string
@@ -727,21 +832,21 @@ function freeBranchName(
 
     return candidates.find(
         name =>
-            !branchTaken(store, project, folder, `${prefix}/${name}`) &&
-            branchInTheWay(folder.path, `${prefix}/${name}`) === undefined
+            !branchTaken(store, project, folder, refs, `${prefix}/${name}`) &&
+            branchInTheWay(refs, `${prefix}/${name}`) === undefined
     );
 }
 
 /**
  * What a worktree's branch may be called when it is made for a piece of work with a title: the title's words (`branchSlug`), with the end of the chat's id8 added when a
  * branch of that name is there already. `undefined` for a title that has no letter or digit in ASCII (a name in another script), so the branch keeps the id8 for a name.
- * Call it inside a transaction: the rows it reads are the ones the chat's own is written with.
+ * Call it inside a transaction: the rows it reads are the ones the chat's own is written with. `repository` is what was read of the folder before it (`readRepository`).
  */
 export function branchNameFor(
     store: Store,
-    config: Pick<Config, 'workspacesDir'>,
     project: Project,
     folderId: string | undefined,
+    repository: RepositoryFacts,
     chatId: string,
     branchPrefix: string | undefined,
     title: string
@@ -752,7 +857,8 @@ export function branchNameFor(
         ? freeBranchName(
               store,
               project,
-              repositoryFolder(project, folderId),
+              repositoryFolder(project, folderId, repository),
+              repository.refs,
               branchPrefixOf(branchPrefix),
               slug,
               chatId
@@ -846,7 +952,16 @@ export function nameWorkspaceBranch(
     }
 
     const prefix = previous.slice(0, previous.lastIndexOf('/'));
-    const name = freeBranchName(store, project, folder, prefix, slug, chat.id);
+    const listed = readGit(folder.path, REFS_FORMAT);
+    const name = freeBranchName(
+        store,
+        project,
+        folder,
+        parseRefs(listed.ok ? listed.stdout : ''),
+        prefix,
+        slug,
+        chat.id
+    );
 
     if (name === undefined) {
         throw invalid(
@@ -886,16 +1001,12 @@ export function nameWorkspaceBranch(
 }
 
 /** The branch of the repository that stands in the way of `branch`, if any: `max` for `max/ab12cd34`, since git keeps a branch as a file and cannot make a folder of it. */
-function branchInTheWay(folder: string, branch: string): string | undefined {
+function branchInTheWay(refs: RepositoryFacts['refs'], branch: string): string | undefined {
     const parents = branch.split('/').slice(0, -1);
 
     return parents
         .map((_, index) => parents.slice(0, index + 1).join('/'))
-        .find(name => {
-            const found = readGit(folder, ['show-ref', '--verify', '--hash', `refs/heads/${name}`]);
-
-            return found.ok && found.stdout !== '';
-        });
+        .find(name => refs.has(`refs/heads/${name}`));
 }
 
 function openExistingWorkspace(store: Store, project: Project, folder: ProjectFolder, path: string): ChatWorkspace {
@@ -977,16 +1088,24 @@ export function inheritWorkspace(
  * thread starts from what the parent has committed there. When the parent's worktree is not there to ask, the recorded branch stands in. A parent whose worktree
  * is not made yet has no branch: it will be made from its own base and nothing is committed in it, so that base is the same commit. Anything else (a detached
  * HEAD, a branch the repository no longer has) is `invalid` with nothing made, since a thread started from some other commit would work on a tree without the
- * parent's work.
+ * parent's work. `repository` is what was read of the worktree's folder, and `head` of the worktree itself (`readWorktreeHead`), before the transaction.
  */
-export function threadBase(store: Store, project: Project, workspace: ChatWorkspace): string {
+export function threadBase(
+    store: Store,
+    project: Project,
+    workspace: ChatWorkspace,
+    repository: RepositoryFacts,
+    head: Head | undefined
+): string {
     const folder = project.folders.find(candidate => candidate.id === workspace.folderId);
 
     if (!folder) {
         throw invalid('The folder of your worktree is no longer part of the project');
     }
 
-    const head = existsSync(workspace.path) && isRepositoryRoot(workspace.path) ? headOf(workspace.path) : undefined;
+    if (repository.path !== folder.path) {
+        throw conflict('The folder changed while its repository was read: try again');
+    }
 
     if (head?.detached || (head === undefined && workspace.branch === undefined)) {
         throw invalid(
@@ -996,12 +1115,8 @@ export function threadBase(store: Store, project: Project, workspace: ChatWorksp
 
     const branch = head?.branch ?? workspace.branch;
 
-    if (branch !== undefined) {
-        const found = readGit(folder.path, ['show-ref', '--verify', '--hash', `refs/heads/${branch}`]);
-
-        if (found.ok && found.stdout) {
-            return branch;
-        }
+    if (branch !== undefined && repository.refs.has(`refs/heads/${branch}`)) {
+        return branch;
     }
 
     const base = getWorkspace(store.db, workspace.id)?.base;
@@ -1018,10 +1133,16 @@ export function threadBase(store: Store, project: Project, workspace: ChatWorksp
 /**
  * The branch a folder's own checkout has now, which a thread made for a parent that works there starts from: what the parent has committed on it, and not the repository's
  * default branch. `undefined` for a checkout on a detached HEAD or with no commit, whose base is the folder's own (`createWorkspace` picks it). `invalid` for a folder that is no
- * repository's root, as `createWorkspace` would.
+ * repository's root, as `createWorkspace` would. `repository` is what was read of the folder before (`readRepository`).
  */
-export function checkoutBranch(project: Project, folderId: string | undefined): string | undefined {
-    const head = headOf(repositoryFolder(project, folderId).path);
+export function checkoutBranch(
+    project: Project,
+    folderId: string | undefined,
+    repository: RepositoryFacts
+): string | undefined {
+    repositoryFolder(project, folderId, repository);
+
+    const { head } = repository;
 
     return head && !head.detached ? head.branch : undefined;
 }
