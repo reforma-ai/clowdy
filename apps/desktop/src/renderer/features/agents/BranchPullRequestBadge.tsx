@@ -52,10 +52,23 @@ export function BranchPullRequestBadge({
         pullRequests.length === 1
             ? `${first.state === 'open' ? 'Open' : first.state === 'draft' ? 'Draft' : 'Merged'} pull request #${first.number}`
             : detail;
-    const label = `${crossWorktree ? 'Thread works in a different worktree; ' : ''}${summary}${fact?.stale ? ' (last known)' : ''}`;
+    const prLabel = `${summary}${fact?.stale ? ' (last known)' : ''}`;
+    const label = crossWorktree ? `Thread works in a different worktree\n${prLabel}` : prLabel;
 
     return (
-        <Tooltip content={label}>
+        <Tooltip
+            content={
+                crossWorktree ? (
+                    <>
+                        Thread works in a different worktree
+                        <br />
+                        {prLabel}
+                    </>
+                ) : (
+                    prLabel
+                )
+            }
+        >
             <span
                 className={className}
                 data-hover-only={hoverOnly || undefined}

@@ -3252,7 +3252,7 @@ describe('worktree cards', () => {
         );
         const badge = rowOf('c-6b').querySelector('[data-pr-state]')!;
         expect(badge.getAttribute('title')).toBeNull();
-        expect(badge.getAttribute('aria-label')).toBe('Thread works in a different worktree; Open pull request #42');
+        expect(badge.getAttribute('aria-label')).toBe('Thread works in a different worktree\nOpen pull request #42');
         expect(rowOf('c-6b').closest('[data-worktree-card]')?.getAttribute('data-worktree-card')).toBe(workspaceKey());
     });
 
