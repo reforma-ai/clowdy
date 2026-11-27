@@ -93,10 +93,11 @@ describe('FixtureTransport attachments', () => {
         const chat = await chatOf(transport);
         const attachment = await transport.uploadAttachment(
             FIXTURE_PROJECT_ID,
-            new File(['hello'], 'notes.txt', { type: 'text/plain' })
+            // Not `text/plain`: Node 26 reads that type back as `text/plain;charset=utf-8`.
+            new File(['hello'], 'notes.md', { type: 'text/markdown' })
         );
 
-        expect(attachment).toMatchObject({ name: 'notes.txt', mediaType: 'text/plain', size: 5 });
+        expect(attachment).toMatchObject({ name: 'notes.md', mediaType: 'text/markdown', size: 5 });
         expect(await (await transport.getAttachment(FIXTURE_PROJECT_ID, attachment.id)).text()).toBe('hello');
 
         const sent = await transport.command({

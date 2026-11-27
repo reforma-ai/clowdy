@@ -8,15 +8,17 @@ import type { ChatWorkspaceChoice } from '@clowdy/protocol';
 const STORAGE_KEY = 'clowdy:branch-prefix';
 const PENDING_KEY = 'clowdy:branch-prefix-pending';
 
+/** What the daemon did with the prefix sent to it: kept it, refused it, or could not be reached. */
+export type PrefixDelivery = 'ok' | 'refused' | 'unreachable';
+
 /** The prefix chosen on this computer, synchronized with the daemon for thread worktrees. */
 export class BranchPrefixPreference {
     value: string;
     readonly #storage: KeyValueStorage | undefined;
-    #send: ((prefix: string) => Promise<boolean>) | undefined;
+    #send: ((prefix: string) => Promise<PrefixDelivery>) | undefined;
     #sending = false;
     #pending = false;
     #revision = 0;
-    #retry: ReturnType<typeof setTimeout> | undefined;
 
     constructor(storage: KeyValueStorage | undefined) {
         const stored = readStored(storage, STORAGE_KEY);
@@ -39,53 +41,66 @@ export class BranchPrefixPreference {
         this.#revision++;
         this.value = branchPrefixOf(text);
         writeStored(this.#storage, STORAGE_KEY, this.value);
-        this.#pending = true;
-        writeStored(this.#storage, PENDING_KEY, true);
+        this.#setPending(true);
         void this.flush();
 
         return undefined;
     }
 
-    /** Reconcile the saved renderer value on upgrade, or use the daemon's durable value. */
+    /** Counts the edits made here: a snapshot asked for before an edit must not replace it. */
     get revision(): number {
         return this.#revision;
     }
 
+    /**
+     * Takes the daemon's durable prefix from its snapshot, or sends this computer's when the daemon has none (a daemon older than the setting
+     * kept it in no other place), an edit is still waiting to be delivered, or one was made since the snapshot was asked for (`revision`).
+     * A daemon without a prefix uses the default, so a default here is not sent.
+     */
     async connect(
         prefix: string | undefined,
-        send: (prefix: string) => Promise<boolean>,
+        send: (prefix: string) => Promise<PrefixDelivery>,
         revision = this.#revision
     ): Promise<void> {
         this.#send = send;
-        if (prefix === undefined || this.#pending || revision !== this.#revision) {
-            this.#pending = true;
-            writeStored(this.#storage, PENDING_KEY, true);
+
+        const unknown = prefix === undefined && this.value !== DEFAULT_BRANCH_PREFIX;
+
+        if (unknown || this.#pending || revision !== this.#revision) {
+            this.#setPending(true);
             await this.flush();
-        } else if (!branchPrefixProblem(prefix)) {
+        } else if (prefix !== undefined && !branchPrefixProblem(prefix)) {
             this.value = branchPrefixOf(prefix);
             writeStored(this.#storage, STORAGE_KEY, this.value);
         }
     }
 
+    /**
+     * Delivers a waiting edit. A daemon that cannot be reached is asked again when the feed connects (`RootStore` flushes then); a daemon that
+     * refuses the command (one older than it) is not asked again, and the prefix still goes with every new worktree the app asks for.
+     */
     async flush(): Promise<void> {
         if (this.#sending || !this.#send) return;
+
         this.#sending = true;
-        clearTimeout(this.#retry);
+
         try {
             while (this.#pending) {
                 const value = this.value;
-                if (!(await this.#send(value))) {
-                    this.#retry = setTimeout(() => void this.flush(), 2000);
-                    return;
-                }
-                if (this.value === value) {
-                    this.#pending = false;
-                    writeStored(this.#storage, PENDING_KEY, false);
-                }
+
+                if ((await this.#send(value)) === 'unreachable') return;
+
+                // Kept or refused, this edit is done with; one made meanwhile goes next.
+                if (this.value === value) this.#setPending(false);
             }
         } finally {
             this.#sending = false;
         }
+    }
+
+    #setPending(pending: boolean): void {
+        this.#pending = pending;
+        writeStored(this.#storage, PENDING_KEY, pending);
     }
 
     /**

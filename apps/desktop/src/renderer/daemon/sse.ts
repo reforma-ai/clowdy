@@ -62,3 +62,42 @@ export class SseParser {
         return frame;
     }
 }
+
+/** A stream that sent nothing, not even a heartbeat, for longer than its reader allows. */
+class SseStalledError extends Error {}
+
+/**
+ * The frames of an event stream as they arrive. However the loop over it ends (the stream closed, the consumer threw or broke out, an abort),
+ * the reader is cancelled, so no response is left open to the daemon. With `idleMs`, a stream that sends nothing for that long is cancelled
+ * and the loop throws `SseStalledError`: the daemon's heartbeats count as traffic, so silence means the connection or the daemon hangs.
+ */
+export async function* readSse(body: ReadableStream<Uint8Array>, idleMs?: number): AsyncGenerator<SseFrame> {
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    const parser = new SseParser();
+    let stalled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const arm = () => {
+        if (idleMs === undefined) return;
+
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+            stalled = true;
+            void reader.cancel().catch(() => undefined);
+        }, idleMs);
+    };
+
+    try {
+        arm();
+
+        for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
+            arm();
+            yield* parser.push(decoder.decode(chunk.value, { stream: true }));
+        }
+
+        if (stalled) throw new SseStalledError(`The stream sent nothing for ${idleMs} ms`);
+    } finally {
+        clearTimeout(timer);
+        await reader.cancel().catch(() => undefined);
+    }
+}

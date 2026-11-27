@@ -1,4 +1,4 @@
-import { reaction } from 'mobx';
+import { autorun, reaction } from 'mobx';
 import { describe, expect, it } from 'vitest';
 
 import { createFixtureData, FIXTURE_PROJECT_ID } from '../daemon/fixtureData';
@@ -188,6 +188,23 @@ describe('ProjectState', () => {
             expect(state.taskById('t-22')?.key).toBe('CAR-22');
             expect(state.taskOfKey('CAR-22')?.id).toBe('t-22');
             expect(state.taskOfKey('CAR-999')).toBeUndefined();
+        });
+
+        it('runs a reader of a key again for its own task only, not for every change of the board', async () => {
+            const { state } = await loadedProject();
+            const seen: (string | undefined)[] = [];
+            const stop = autorun(() => void seen.push(state.taskOfKey('CAR-22')?.title));
+
+            state.applyEvent(
+                event(1001, { type: 'task.upserted', task: { ...state.tasks.get('t-21')!, title: 'Other' } })
+            );
+            state.applyEvent(
+                event(1002, { type: 'task.upserted', task: { ...state.tasks.get('t-22')!, title: 'Own' } })
+            );
+            state.applyEvent(event(1003, { type: 'task.deleted', taskId: 't-22' }));
+            stop();
+
+            expect(seen.slice(1)).toEqual(['Own', undefined]);
         });
 
         it('forgets a task that is restored or deleted, so it holds archived tasks only', async () => {

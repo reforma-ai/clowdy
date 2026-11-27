@@ -114,6 +114,17 @@ export function forkPointId(items: readonly StreamItem[], atSeq: number): string
  * `active`: the run is still going, or waiting for the person, so the latest turn stays as it is.
  */
 export function foldFinishedWork(items: readonly StreamItem[], active: boolean): StreamBlock[] {
+    const turns = splitTurns(items);
+
+    return turns.flatMap((turn, index) => {
+        const latest = index === turns.length - 1;
+
+        return latest && active ? plain(turn) : foldTurn(turn, !latest);
+    });
+}
+
+/** The turns of a stream, each starting at a message of the person's (the first may start earlier). */
+function splitTurns(items: readonly StreamItem[]): StreamItem[][] {
     const turns: StreamItem[][] = [];
 
     for (const item of items) {
@@ -121,10 +132,32 @@ export function foldFinishedWork(items: readonly StreamItem[], active: boolean):
         else turns.at(-1)!.push(item);
     }
 
-    return turns.flatMap((turn, index) => {
-        const latest = index === turns.length - 1;
+    return turns;
+}
 
-        return latest && active ? plain(turn) : foldTurn(turn, !latest);
+/** The blocks of each turn the person has written past, by the turn's first item, with the items they were made of. */
+const finishedTurns = new WeakMap<StreamItem, { items: readonly StreamItem[]; blocks: StreamBlock[] }>();
+
+/**
+ * What a stream shows: `groupToolRuns(foldFinishedWork(items, active))`, made turn by turn (a turn starts with the person's message, which neither
+ * a group nor a merged thought crosses). A turn the person has written past changes only when one of its items does, so its blocks are kept and
+ * the same objects come back: a streamed chunk folds the latest turn alone, and the views of the earlier turns get the props they had.
+ */
+export function streamBlocks(items: readonly StreamItem[], active: boolean): StreamBlock[] {
+    const turns = splitTurns(items);
+
+    return turns.flatMap((turn, index) => {
+        if (index === turns.length - 1) return groupToolRuns(active ? plain(turn) : foldTurn(turn, false));
+
+        const kept = finishedTurns.get(turn[0]);
+
+        if (kept?.items.length === turn.length && kept.items.every((item, at) => item === turn[at])) return kept.blocks;
+
+        const blocks = groupToolRuns(foldTurn(turn, true));
+
+        finishedTurns.set(turn[0], { items: turn, blocks });
+
+        return blocks;
     });
 }
 

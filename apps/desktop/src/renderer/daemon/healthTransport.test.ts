@@ -60,6 +60,6 @@ describe('getHealth without a daemon', () => {
     });
 
     it('fails when none is configured, as every other read does', async () => {
-        await expect(createTransport({ kind: 'none' }).getHealth()).rejects.toThrow('No daemon is configured');
+        await expect((await createTransport({ kind: 'none' })).getHealth()).rejects.toThrow('No daemon is configured');
     });
 });
