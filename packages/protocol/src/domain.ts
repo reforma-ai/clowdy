@@ -596,6 +596,8 @@ export interface Run {
     status: RunStatus;
     /** Why it waits: a question, a dependency, a limit, background work. */
     statusReason?: string;
+    /** Epoch milliseconds when a usage-limit pause ends, including scheduler jitter. */
+    usageLimitUntil?: number;
     engine: EngineId;
     model?: string;
     /** The reasoning level, in the engine's own spelling; absent leaves the engine's own choice. */

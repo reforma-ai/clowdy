@@ -33,7 +33,7 @@ export class Scheduler {
         /** Moves a queued run to `running`. */
         private promote: (runId: string) => void,
         /** Says why a queued run still waits. */
-        private hold: (runId: string, reason: string) => void
+        private hold: (runId: string, reason: string, usageLimitUntil?: number) => void
     ) {}
 
     /** Resolves once the run has been promoted to `running`; rejects when `signal` aborts first. */
@@ -114,7 +114,7 @@ export class Scheduler {
                         ? QUEUE_REASON
                         : `${engineName(run.engine)} is at its usage limit until ${formatMoment(pausedUntil, this.limits.now())}`;
 
-                this.hold(waiter.runId, reason);
+                this.hold(waiter.runId, reason, pausedUntil);
                 continue;
             }
 

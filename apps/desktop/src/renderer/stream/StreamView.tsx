@@ -1,4 +1,4 @@
-import { Alert, AlertDescription } from '@clowdy/components/Alert';
+import { Alert, AlertAction, AlertDescription } from '@clowdy/components/Alert';
 import { Button } from '@clowdy/components/Button';
 import { ContentColumn } from '@clowdy/components/ContentColumn';
 import { useStickToBottom } from '@clowdy/components/hooks';
@@ -103,6 +103,7 @@ export interface StreamViewProps {
     working?: boolean | string;
     /** A usage limit that will resume: shown in the conversation until the run continues. */
     waitingNotice?: string;
+    waitingUntil?: number;
     /** The person answered a `question` item. */
     onAnswer?: (questionId: string, answer: string) => void | Promise<void>;
     /** The question whose form the box under the stream draws: its card is a line saying so, and the form is not drawn twice. */
@@ -145,6 +146,7 @@ export function StreamView({
     active = false,
     working,
     waitingNotice,
+    waitingUntil,
     onAnswer,
     dockedQuestionId,
     onDecide,
@@ -400,11 +402,7 @@ export function StreamView({
                             }
                         })}
                         {showWorking && <WorkingLine text={typeof working === 'string' ? working : undefined} />}
-                        {waitingNotice && (
-                            <Alert color="warning" role="status">
-                                <AlertDescription>{waitingNotice}</AlertDescription>
-                            </Alert>
-                        )}
+                        {waitingNotice && <WaitingNotice message={waitingNotice} until={waitingUntil} />}
                         {inset > 0 && <div className={styles.clearance} aria-hidden="true" />}
                     </ContentColumn>
                 </div>
@@ -431,5 +429,31 @@ export function StreamView({
                 </Button>
             </div>
         </StreamLinksContext>
+    );
+}
+
+function WaitingNotice({ message, until }: { message: string; until?: number }) {
+    const [now, setNow] = useState(() => Date.now());
+
+    useEffect(() => {
+        setNow(Date.now());
+        if (until === undefined || !Number.isFinite(until)) return;
+
+        const timer = setInterval(() => setNow(Date.now()), 1000);
+
+        return () => clearInterval(timer);
+    }, [until]);
+
+    const minutes = until !== undefined && Number.isFinite(until) ? Math.ceil((until - now) / 60_000) : undefined;
+    const remaining = minutes !== undefined && minutes > 0 ? `${minutes.toLocaleString()}m` : undefined;
+    const elapsed = minutes !== undefined && minutes <= 0;
+
+    return (
+        <Alert color="warning" role="status" className={styles.waitingNotice}>
+            <AlertDescription>{elapsed ? 'Usage limit reached, waiting to continue' : message}</AlertDescription>
+            {remaining && (
+                <AlertAction className={styles.countdown} aria-live="off">{`Continue in ${remaining}`}</AlertAction>
+            )}
+        </Alert>
     );
 }
