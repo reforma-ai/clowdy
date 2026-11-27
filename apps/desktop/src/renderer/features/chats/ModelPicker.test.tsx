@@ -37,14 +37,13 @@ let props: ModelPickerProps;
 async function setup(
     choice: ModelChoice | undefined,
     options: ModelStoreOptions = {},
-    engines: string[] = ['claude', 'codex', 'cursor'],
-    running = false
+    engines: string[] = ['claude', 'codex', 'cursor']
 ) {
     store = await modelStore(options);
 
     const providers: PickerProvider[] = engines.map(id => ({ id, name: NAMES[id]!, list: store.models.of(id) }));
 
-    props = { choice, providers, running, onPick: next => picks.push(next) };
+    props = { choice, providers, onPick: next => picks.push(next) };
     await draw();
 }
 
@@ -297,18 +296,6 @@ describe('the popover', () => {
 
         expect(onFace()).toBe(true);
         expect(onList()).toBe(false);
-    });
-
-    it('says a pick applies from the next message while the orchestrator works, and not otherwise', async () => {
-        await setup(opus, {}, undefined, true);
-        await open();
-
-        expect(dialog()!.textContent).toContain('Applies from the next message');
-
-        props = { ...props, running: false };
-        await draw();
-
-        expect(dialog()!.textContent).not.toContain('Applies from the next message');
     });
 
     it("takes the pill's rectangle once for as long as it is open, and again at the next opening", async () => {
@@ -1027,7 +1014,7 @@ describe("the face's spacing", () => {
         expect(reasoning()!.textContent).toBe("Runs on Claude Code's own default until you pick a model");
     });
 
-    it('has the block for the word that a pick applies later, and for that alone', async () => {
+    it('has no reasoning block for a model without levels or a description', async () => {
         await setup(
             { engine: 'claude', model: 'bare' },
             {
@@ -1035,12 +1022,11 @@ describe("the face's spacing", () => {
                     data.agentModels.claude = models(['bare']);
                 },
             },
-            ['claude'],
-            true
+            ['claude']
         );
         await open();
 
-        expect(reasoning()!.textContent).toBe('Applies from the next message');
+        expect(reasoning()).toBeNull();
     });
 });
 

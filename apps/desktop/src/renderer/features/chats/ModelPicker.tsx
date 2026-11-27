@@ -53,8 +53,6 @@ export interface ModelPickerProps {
     choice: ModelChoice | undefined;
     /** The providers the list offers, in order. More than one makes a strip of their marks above the list; a chat that has started has the one it runs on. */
     providers: readonly PickerProvider[];
-    /** The orchestrator is working: a pick applies from its next message, and the popover says so. */
-    running?: boolean;
     /** The person picked a model (with the level it starts on) or moved the slider (the same model and provider, another level). */
     onPick: (choice: ModelChoice) => void;
     /** Non-model choices offered in the same picker, such as a role inheriting its default. */
@@ -246,10 +244,10 @@ function Face({ choice, held, buttonRef, onOpenList }: FaceProps) {
     );
 }
 
-function EffortFooter({ held, running, onLevel }: { held: Held; running: boolean; onLevel: (level: string) => void }) {
+function EffortFooter({ held, onLevel }: { held: Held; onLevel: (level: string) => void }) {
     const note = faceNote(held);
     return (
-        <Show when={held.level !== undefined || Boolean(note) || running}>
+        <Show when={held.level !== undefined || Boolean(note)}>
             <div className={styles.reasoning}>
                 {/* The level is there for a model with levels: a slider to move along them, or its only one as text. */}
                 <Show when={held.level}>
@@ -268,10 +266,6 @@ function EffortFooter({ held, running, onLevel }: { held: Held; running: boolean
                 </Show>
 
                 <Show when={note}>{text => <Text className={styles.faceText}>{text}</Text>}</Show>
-
-                <Show when={running}>
-                    <Text className={styles.footnote}>Applies from the next message</Text>
-                </Show>
             </div>
         </Show>
     );
@@ -640,13 +634,12 @@ function ModelList({ choice, held, providers, active, onBack, onPickModel, alter
 interface PanelProps {
     choice: ModelChoice;
     providers: readonly PickerProvider[];
-    running: boolean;
     onPick: (choice: ModelChoice) => void;
     alternatives?: ModelPickerProps['alternatives'];
 }
 
 /** The two panes share a stage; delegation opens the list directly and the composer opens the face. */
-function ModelPanel({ choice, providers, running, onPick, alternatives }: PanelProps) {
+function ModelPanel({ choice, providers, onPick, alternatives }: PanelProps) {
     const overlay = use(OverlayTriggerStateContext)!;
     const direct = alternatives !== undefined;
     const [picking, setPicking] = useState(direct);
@@ -807,7 +800,7 @@ function ModelPanel({ choice, providers, running, onPick, alternatives }: PanelP
                 </div>
             </div>
             {alternatives?.selected === undefined && (
-                <EffortFooter held={held} running={running} onLevel={level => onPick({ ...choice, effort: level })} />
+                <EffortFooter held={held} onLevel={level => onPick({ ...choice, effort: level })} />
             )}
         </>
     );
@@ -818,15 +811,7 @@ function ModelPanel({ choice, providers, running, onPick, alternatives }: PanelP
  * the model as a big button over the reasoning slider, and the list of models in its place when that button is pressed. Picking a
  * row, or moving the slider, calls `onPick`; the pill shows what `choice` says, so the caller decides what a pick does.
  */
-export function ModelPicker({
-    choice,
-    providers,
-    running = false,
-    onPick,
-    alternatives,
-    label,
-    disabled,
-}: ModelPickerProps) {
+export function ModelPicker({ choice, providers, onPick, alternatives, label, disabled }: ModelPickerProps) {
     if (!choice) return null;
 
     return (
@@ -839,13 +824,7 @@ export function ModelPicker({
                 disabled={disabled}
             />
             <FrozenPopover>
-                <ModelPanel
-                    choice={choice}
-                    providers={providers}
-                    running={running}
-                    onPick={onPick}
-                    alternatives={alternatives}
-                />
+                <ModelPanel choice={choice} providers={providers} onPick={onPick} alternatives={alternatives} />
             </FrozenPopover>
         </PopoverTrigger>
     );

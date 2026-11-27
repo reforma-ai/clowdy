@@ -718,7 +718,6 @@ export function Composer({
                                             <ModelPicker
                                                 choice={model.choice}
                                                 providers={model.providers}
-                                                running={running}
                                                 onPick={model.pick}
                                             />
                                         )}

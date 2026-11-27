@@ -178,12 +178,6 @@
     color: var(--color-secondary-muted-text);
 }
 
-.footnote {
-    @ruleset typography-text-xs;
-    color: var(--color-secondary-muted-text);
-    margin-top: var(--spacing-xs);
-}
-
 /* ---------------------------------- The list ---------------------------------- */
 
 .models {
