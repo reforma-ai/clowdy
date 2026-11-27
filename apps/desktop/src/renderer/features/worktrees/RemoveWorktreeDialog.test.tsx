@@ -1,6 +1,8 @@
 // @vitest-environment happy-dom
 import { Modal } from '@clowdy/components/Modal';
+import { ToastRegion, toast } from '@clowdy/components/Toast';
 import { act } from 'react';
+import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -124,7 +126,18 @@ async function confirm(label: string) {
     await settle();
 }
 
+/** A failure must not open a modal until the person asks for details. */
+async function checkTidyFailure(path: string) {
+    expect(Modal.opened).toHaveLength(0);
+    const result = toast.queue.visibleToasts.find(item => item.content.title === 'Worktree cleanup finished');
+    expect(result?.content.message).toContain('refused or incomplete');
+    act(() => result?.content.action?.onPress());
+    await settle();
+    expect(confirmation().textContent).toContain(path);
+}
+
 beforeEach(() => {
+    toast.queue.clear();
     // The windows animate by themselves, whatever the motion setting; a test that ends while one moves leaves a cancelled animation behind.
     const create = Modal.create.bind(Modal);
 
@@ -147,6 +160,7 @@ beforeEach(() => {
 afterEach(async () => {
     for (const modal of [...Modal.opened].reverse()) await modal.close(false);
 
+    toast.queue.clear();
     vi.restoreAllMocks();
     store.dispose();
     document.body.innerHTML = '';
@@ -986,7 +1000,7 @@ describe('Remove in Manage worktrees', () => {
         expect(removals()).toEqual([
             expect.objectContaining({ folderId: 'fld_api', path: DETACHED_MERGED, tidy: true }),
         ]);
-        expect(confirmation().textContent).toContain(CLEAN_MERGED);
+        await checkTidyFailure(CLEAN_MERGED);
     });
 
     it('lets the person select changed and unmerged worktrees after showing their consequences', async () => {
@@ -1142,7 +1156,7 @@ describe('Remove in Manage worktrees', () => {
         expect(confirmation().textContent).toContain('Worktrees with running chats will be skipped');
         await confirm('Remove 1 worktree');
         expect(removals()).toEqual([]);
-        expect(confirmation().textContent).toContain(CLEAN_MERGED);
+        await checkTidyFailure(CLEAN_MERGED);
     });
 
     it('refuses a changed workspace identity during the final safety check', async () => {
@@ -1172,7 +1186,7 @@ describe('Remove in Manage worktrees', () => {
         });
         await confirm('Remove 1 worktree');
         expect(removals()).toEqual([]);
-        expect(confirmation().textContent).toContain(ONE_CHANGE);
+        await checkTidyFailure(ONE_CHANGE);
     });
 
     it('refuses to discard changes added after the selection preview', async () => {
@@ -1194,7 +1208,7 @@ describe('Remove in Manage worktrees', () => {
         data.worktrees![CAR_RENTAL]!.find(row => row.path === ONE_CHANGE)!.changes = 2;
         await confirm('Remove 1 worktree');
         expect(removals()).toEqual([]);
-        expect(confirmation().textContent).toContain(ONE_CHANGE);
+        await checkTidyFailure(ONE_CHANGE);
     });
 
     it('keeps already archived chats archived with a compact cleanup confirmation', async () => {
@@ -1226,32 +1240,82 @@ describe('Remove in Manage worktrees', () => {
         expect(snapshot.chats.find(chat => chat.id === archived.id)?.archivedAt).toBe(archived.archivedAt);
     });
 
-    it('locks the branch choice for the duration of bulk removal', async () => {
+    it('closes both windows immediately and reports progress while cleanup is running', async () => {
         const data = dataWithKinds();
-        data.worktrees!['/Users/dev/car-rental-api'] = [];
+        const base = new FixtureTransport({ data });
         let release!: () => void;
         const gate = new Promise<void>(resolve => {
             release = resolve;
         });
         const delayed = vi.fn<Transport['command']>(async input => {
-            await gate;
-            return { ok: false, requestId: 'refused', error: { code: 'conflict', message: 'Refused' } };
+            if (input.type === 'workspace.remove' && input.path === DETACHED_MERGED) await gate;
+            return base.command(input);
         });
         await open({ data, overrides: { command: delayed } });
-        await click(textButton(confirmation(), 'Tidy up…')!);
-        await click(textButton(confirmation(), 'Remove 1 worktree…')!);
-        await settle();
-        const branch = [...confirmation().querySelectorAll<HTMLInputElement>('input[type="checkbox"]')][0]!;
-        await click(branch);
-        expect(branch.checked).toBe(false);
-        act(() => textButton(confirmation(), 'Remove 1 worktree')!.click());
-        await settle();
-        expect(branch.disabled).toBe(true);
-        await click(branch);
-        expect(branch.checked).toBe(false);
-        await act(async () => release());
-        await settle();
-        expect(delayed).toHaveBeenCalledWith(expect.not.objectContaining({ deleteBranch: true }));
+        const host = document.createElement('div');
+        document.body.append(host);
+        const region = createRoot(host);
+        act(() => region.render(<ToastRegion />));
+        try {
+            await click(textButton(confirmation(), 'Tidy up…')!);
+            await click(textButton(confirmation(), 'Remove 2 worktrees…')!);
+            await settle();
+            const branch = confirmation().querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+            await click(branch);
+            expect(branch.checked).toBe(false);
+            await confirm('Remove 2 worktrees');
+            expect(Modal.opened).toHaveLength(0);
+            expect(document.body.textContent).toContain('1 of 2 processed');
+            expect(document.body.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow')).toBe('1');
+            await act(async () => release());
+            await settle();
+            expect(Modal.opened).toHaveLength(0);
+            expect(document.body.textContent).toContain('Removed 2 worktrees');
+            expect(document.body.querySelector('[role="progressbar"]')).toBeNull();
+            expect(delayed.mock.calls.filter(([input]) => input.type === 'workspace.remove')).toEqual([
+                [expect.not.objectContaining({ deleteBranch: true })],
+                [expect.not.objectContaining({ deleteBranch: true })],
+            ]);
+        } finally {
+            await act(async () => release());
+            act(() => region.unmount());
+            host.remove();
+        }
+    });
+
+    it('prevents overlapping cleanup and refreshes a reopened selection after completion', async () => {
+        const data = dataWithKinds();
+        const base = new FixtureTransport({ data });
+        let release!: () => void;
+        const gate = new Promise<void>(resolve => {
+            release = resolve;
+        });
+        const delayed = vi.fn<Transport['command']>(async input => {
+            if (input.type === 'workspace.remove' && input.path === DETACHED_MERGED) await gate;
+            return base.command(input);
+        });
+        await open({ data, overrides: { command: delayed } });
+        try {
+            await click(textButton(confirmation(), 'Tidy up…')!);
+            await click(textButton(confirmation(), 'Remove 2 worktrees…')!);
+            await confirm('Remove 2 worktrees');
+            expect(Modal.opened).toHaveLength(0);
+            act(() => openManageWorktrees({ root: store, projectId: FIXTURE_PROJECT_ID }));
+            await settle();
+            await click(textButton(confirmation(), 'Tidy up…')!);
+            await click(textButton(confirmation(), 'Remove 1 worktree…')!);
+            expect(Modal.opened).toHaveLength(1);
+            expect(
+                toast.queue.visibleToasts.some(item => item.content.message === 'Worktree cleanup is already running')
+            ).toBe(true);
+            await act(async () => release());
+            await settle();
+            expect(row(DETACHED_MERGED)).toBeNull();
+            expect(confirmation().querySelector('input[aria-label^="Remove "]')).toBeNull();
+            expect(textButton(confirmation(), 'Tidy up…')).toBeDefined();
+        } finally {
+            await act(async () => release());
+        }
     });
 
     it('clears cleanup selection after an individual removal', async () => {

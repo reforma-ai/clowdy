@@ -1,5 +1,6 @@
 import { Close as CloseIcon } from '@clowdy/icons/14';
 import { cn } from '@clowdy/lib';
+import { useSyncExternalStore } from 'react';
 import {
     UNSTABLE_Toast as AriaToast,
     UNSTABLE_ToastContent as AriaToastContent,
@@ -10,6 +11,7 @@ import {
 } from 'react-aria-components';
 
 import { Button } from '../Button';
+import { ProgressBar } from '../ProgressBar';
 import { Show } from '../Show';
 import styles from './Toast.module.css';
 
@@ -19,11 +21,35 @@ export type ToastOptions = {
     message?: string;
     type?: 'default' | 'info' | 'warning' | 'success' | 'error';
     timeout?: number;
+    progress?: ToastProgress;
     /** A button under the message. Pressing it runs `onPress` and closes the toast. */
     action?: { label: string; onPress: () => void };
     /** Dark on a light page, light on a dark page. On unless set to false. */
     contrast?: boolean;
 };
+
+interface ToastProgress {
+    total: number;
+    subscribe: (listener: () => void) => () => void;
+    getSnapshot: () => number;
+}
+
+function ToastProgressContent({ progress, title }: { progress: ToastProgress; title?: string }) {
+    const value = useSyncExternalStore(progress.subscribe, progress.getSnapshot);
+    return (
+        <>
+            <Text slot="description">
+                {value} of {progress.total} processed
+            </Text>
+            <ProgressBar
+                className={styles.progress}
+                aria-label={title ?? 'Progress'}
+                value={value}
+                maxValue={progress.total}
+            />
+        </>
+    );
+}
 
 const queue = new AriaToastQueue<ToastOptions>();
 
@@ -51,6 +77,9 @@ export function ToastRegion() {
                                 <Show when={t.content.message != null}>
                                     <Text slot="description">{t.content.message}</Text>
                                 </Show>
+                                {t.content.progress && (
+                                    <ToastProgressContent progress={t.content.progress} title={t.content.title} />
+                                )}
                             </AriaToastContent>
                         </div>
                     </div>
@@ -89,6 +118,30 @@ export function ToastRegion() {
 /** Simple imperative API: toast.show / .error / .success / .info / .warning */
 export const toast = {
     queue,
+    /** Persistent toast with a progress bar. Closing it does not cancel the operation. */
+    progress: ({ title, total }: { title: string; total: number }) => {
+        let value = 0;
+        const listeners = new Set<() => void>();
+        const key = queue.add({
+            title,
+            type: 'info',
+            progress: {
+                total,
+                subscribe: listener => {
+                    listeners.add(listener);
+                    return () => void listeners.delete(listener);
+                },
+                getSnapshot: () => value,
+            },
+        });
+        return {
+            update: (next: number) => {
+                value = next;
+                for (const listener of listeners) listener();
+            },
+            close: () => queue.close(key),
+        };
+    },
     show: (options: ToastOptions) =>
         queue.add({ ...options, type: options.type ?? 'default' }, { timeout: options.timeout ?? 3000 }),
     success: (options: ToastOptions) =>

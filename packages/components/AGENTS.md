@@ -54,7 +54,7 @@ Lists, menus, overlays
 - `Tooltip`, `TooltipTrigger`, `TooltipContent`.
 - `Modal` — `Modal.create(options)`: a dialog named by its title (`useModalTitleId`, `ariaLabel`), Tab held inside while it has a backdrop, `setDismissable(false)` while work runs. `Dialog` is the declarative form; `useModalContext`.
 - `modals` — `openFormDialog` (the app's form-dialog defaults), `DialogLayout` (title, description, body, actions), `openConfirmModal` and `ConfirmModalContent` (`isConfirmDisabled`, not dismissible while pending), `confirmDiscardChanges`, `Z_INDEX`.
-- `Lightbox` — image preview. `Toast` — `toast.show/.success/.error/.info/.warning`, `ToastRegion`.
+- `Lightbox` — image preview. `Toast` — `toast.show/.success/.error/.info/.warning`, `toast.progress({title, total})` (persistent progress toast with `update(value)` and `close()`), `ToastRegion`.
 
 Feedback and status
 - `Chip` — the chip and pill: `tone` (none, neutral, primary, accent, success, warning, danger), `size` xs|sm, `shape` squircle|pill, `icon`, `tooltip`, `onPress` (a button).

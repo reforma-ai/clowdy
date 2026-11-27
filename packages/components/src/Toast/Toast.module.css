@@ -130,6 +130,11 @@
         min-width: 0;
     }
 
+    .progress {
+        --clowdy-progress-track: color-mix(in srgb, currentColor 15%, transparent);
+        --clowdy-progress-fill: currentColor;
+    }
+
     .close {
         grid-area: 1 / 2;
     }
