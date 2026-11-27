@@ -244,8 +244,12 @@ export function lastStorySeq(db: Database, runId: string): number {
     ).seq;
 }
 
-export function updateItemBody(db: Database, runId: string, seq: number, body: StreamItemBody): void {
-    db.query('UPDATE stream_items SET body = ? WHERE run_id = ? AND seq = ?').run(JSON.stringify(body), runId, seq);
+/** Whether the run's stream had the item to change. */
+export function updateItemBody(db: Database, runId: string, seq: number, body: StreamItemBody): boolean {
+    return (
+        db.query('UPDATE stream_items SET body = ? WHERE run_id = ? AND seq = ?').run(JSON.stringify(body), runId, seq)
+            .changes > 0
+    );
 }
 
 export function nextSeq(db: Database, runId: string): number {

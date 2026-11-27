@@ -24,6 +24,7 @@ import {
     countActiveRuns,
     countRunsWithRole,
     getRun,
+    getRunStatus,
     getRunWork,
     linksOfRun,
     linksOfTask,
@@ -163,6 +164,17 @@ export class RunService {
         }
 
         return run;
+    }
+
+    /** `require(runId).status`, with nothing else of the run read. */
+    statusOf(runId: string): RunStatus {
+        const status = getRunStatus(this.store.db, runId);
+
+        if (status === undefined) {
+            throw notFound('Run', runId);
+        }
+
+        return status;
     }
 
     /* -------------------------------- Creating -------------------------------- */
@@ -463,7 +475,7 @@ export class RunService {
 
     /** A run created `blocked` waits until every dependency of its tasks is closed (done or canceled), then returns. Other runs return at once. */
     async waitUnblocked(runId: string, signal: AbortSignal): Promise<void> {
-        while (this.require(runId).status === 'blocked') {
+        while (this.statusOf(runId) === 'blocked') {
             const blockers = this.unfinishedDependencies(
                 linksOfRun(this.store.db, runId)
                     .filter(link => link.relation === 'assigned')
@@ -512,7 +524,7 @@ export class RunService {
                 throw conflict('Question is no longer pending');
             const { state: _state, ...body } = item.body;
             updateItem(this.store, runId, item.seq, body);
-            if (this.require(runId).status !== 'waiting_user') {
+            if (this.statusOf(runId) !== 'waiting_user') {
                 this.setStatus(runId, 'waiting_user', { reason: 'Waiting for your answer' });
             }
             this.setAwaitingUser(runId, true);
@@ -556,7 +568,7 @@ export class RunService {
         }
 
         // A turn the agent starts by itself while the run waits has no way to park the run for an answer (`waiting_background` does not lead to `waiting_user`).
-        if (this.require(runId).status === 'waiting_background') {
+        if (this.statusOf(runId) === 'waiting_background') {
             throw new Error("Can't ask a question while the run waits for background work");
         }
 
@@ -821,7 +833,7 @@ export class RunService {
             // Whatever the status, the run now has something open to the person: a run that keeps `waiting_background` is still told apart by it.
             this.setAwaitingUser(runId, true);
 
-            return this.require(runId).status === 'waiting_user';
+            return this.statusOf(runId) === 'waiting_user';
         });
         const entry = this.waits.get(runId) ?? { open: 0, parked: false };
 

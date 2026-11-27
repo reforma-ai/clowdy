@@ -114,7 +114,7 @@ export class NativeAgents {
             ([agentId, agent]) =>
                 (agentId === item.id || agent.run.parentToolCallId === item.id) &&
                 agent.stopReason !== undefined &&
-                this.runs.require(agent.run.id).status === 'cancelled'
+                this.runs.statusOf(agent.run.id) === 'cancelled'
         );
     }
 
@@ -231,7 +231,7 @@ export class NativeAgents {
         });
         const agent: Agent = {
             run,
-            writer: new TurnWriter(this.store, run.id, TEXT_THROTTLE_MS),
+            writer: new TurnWriter(this.store, run, TEXT_THROTTLE_MS),
             ...(starter && { parentAgentId }),
         };
 
@@ -355,7 +355,7 @@ export class NativeAgents {
 
     /** A sub-agent the user or the parent's cancellation already ended stays as it is. */
     private isRunning(agent: Agent): boolean {
-        return !isTerminalRunStatus(this.runs.require(agent.run.id).status);
+        return !isTerminalRunStatus(this.runs.statusOf(agent.run.id));
     }
 
     private close(agent: Agent, state: Exclude<SubagentState, 'running'>, summary?: string): void {

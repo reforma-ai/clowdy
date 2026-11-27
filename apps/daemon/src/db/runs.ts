@@ -80,6 +80,31 @@ export function getRun(db: Database, id: string): Run | undefined {
     return row ? toRun(row) : undefined;
 }
 
+/** A run's status alone, for the checks that read nothing else of it (the turn's hot path asks for every chunk); `undefined` when there is no such run. */
+export function getRunStatus(db: Database, id: string): Run['status'] | undefined {
+    return (db.query('SELECT status FROM runs WHERE id = ?').get(id) as Pick<RunRow, 'status'> | null)?.status;
+}
+
+/** What writing to a run's stream needs of it: where its events go and what its items may offer (`role`, `chatId`, `engine`). */
+export type StreamOwner = Pick<Run, 'id' | 'projectId' | 'role' | 'chatId' | 'engine'>;
+
+export function getStreamOwner(db: Database, id: string): StreamOwner | undefined {
+    const row = db.query('SELECT id, project_id, role, chat_id, engine FROM runs WHERE id = ?').get(id) as Pick<
+        RunRow,
+        'id' | 'project_id' | 'role' | 'chat_id' | 'engine'
+    > | null;
+
+    return row
+        ? {
+              id: row.id,
+              projectId: row.project_id,
+              role: row.role,
+              engine: row.engine,
+              ...(row.chat_id !== null && { chatId: row.chat_id }),
+          }
+        : undefined;
+}
+
 export function listRuns(db: Database, projectId: string): Run[] {
     return (db.query('SELECT * FROM runs WHERE project_id = ? ORDER BY created_at, id').all(projectId) as RunRow[]).map(
         toRun

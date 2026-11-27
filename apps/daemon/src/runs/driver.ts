@@ -315,7 +315,7 @@ export class RunDriver {
         const writer = live?.writer;
 
         // A message on its way to a session that waited is handed over first: a steer before it would start a turn of its own.
-        if (!session?.steer || !writer || live?.delivering || this.deps.runs.require(runId).status !== 'running') {
+        if (!session?.steer || !writer || live?.delivering || this.deps.runs.statusOf(runId) !== 'running') {
             return false;
         }
 
@@ -362,7 +362,7 @@ export class RunDriver {
     interrupt(runId: string): boolean {
         const live = this.live.get(runId);
 
-        if (!live?.session || !live.turn || live.ended?.aborted || this.deps.runs.require(runId).status !== 'running') {
+        if (!live?.session || !live.turn || live.ended?.aborted || this.deps.runs.statusOf(runId) !== 'running') {
             return false;
         }
 
@@ -375,7 +375,7 @@ export class RunDriver {
     /** Stops an ACP turn before making a durable question available to the person. */
     pauseQuestion(runId: string, question: { text: string; options: QuestionOption[]; recommended?: string }): void {
         const live = this.live.get(runId);
-        if (!live?.session || !live.turn || live.ended?.aborted || this.deps.runs.require(runId).status !== 'running') {
+        if (!live?.session || !live.turn || live.ended?.aborted || this.deps.runs.statusOf(runId) !== 'running') {
             throw new Error('The agent cannot be paused for a question');
         }
         live.questionPause = this.deps.runs.prepareDurableQuestion(runId, question);
@@ -570,7 +570,7 @@ export class RunDriver {
                 throw new EngineFailure('The previous agent session could not be confirmed stopped');
             }
             // Cancelled or taken over while this flight waited behind the previous one.
-            if (!['queued', 'blocked'].includes(runs.require(runId).status)) {
+            if (!['queued', 'blocked'].includes(runs.statusOf(runId))) {
                 return;
             }
 
@@ -755,7 +755,7 @@ export class RunDriver {
 
         const turnAbort = new AbortController();
         const ended = AbortSignal.any([signal, turnAbort.signal, this.stopping.signal]);
-        const writer = new TurnWriter(store, runId);
+        const writer = new TurnWriter(store, run);
         const native = new NativeAgents(store, runs, run, () => typeof live.session?.stopItem === 'function');
 
         live.engine = run.engine;
@@ -987,7 +987,7 @@ export class RunDriver {
         const { store, runs } = this.deps;
 
         store.tx(() => {
-            if (!isTerminalRunStatus(runs.require(runId).status)) {
+            if (!isTerminalRunStatus(runs.statusOf(runId))) {
                 runs.setStatus(runId, 'cancelled', { reason: STOPPED_TO_SEND_REASON });
             }
         });
@@ -1073,7 +1073,7 @@ export class RunDriver {
             await runs.acquireSlot(runId, signal);
         } catch (error) {
             // Stopped while it waited for a slot: the flight ends the session. Anything else leaves the message for a new session.
-            if (!signal.aborted && !isTerminalRunStatus(runs.require(runId).status)) {
+            if (!signal.aborted && !isTerminalRunStatus(runs.statusOf(runId))) {
                 console.warn(`[clowdy] run ${runId} did not get a slot for its message: ${errorMessage(error)}`);
                 this.refuse(live);
             }
@@ -1166,7 +1166,7 @@ export class RunDriver {
                         event.state === 'running' &&
                         event.agentId === undefined &&
                         event.name !== ASK_USER);
-                if (advances && !live.questionPause && runs.require(run.id).status === 'waiting_user') {
+                if (advances && !live.questionPause && runs.statusOf(run.id) === 'waiting_user') {
                     const questionId = runs.prepareLiveQuestion(run.id);
                     if (questionId) {
                         live.questionPause = questionId;
@@ -1362,7 +1362,7 @@ export class RunDriver {
             return;
         }
 
-        if (this.deps.runs.require(run.id).status !== 'waiting_background') {
+        if (this.deps.runs.statusOf(run.id) !== 'waiting_background') {
             return;
         }
 
@@ -1539,7 +1539,7 @@ export class RunDriver {
 
         for (const [runId, live] of this.live) {
             // A run that waits for an answer or a slot is not using the engine; the scheduler holds it until the reset.
-            if (live.engine === run.engine && live.session && runs.require(runId).status === 'running') {
+            if (live.engine === run.engine && live.session && runs.statusOf(runId) === 'running') {
                 live.pausedUntil = until;
                 live.turn?.abort();
             }
@@ -1585,7 +1585,7 @@ export class RunDriver {
         return store.tx(() => {
             live.native?.finish(undefined, lingers);
 
-            if (isTerminalRunStatus(runs.require(runId).status)) {
+            if (isTerminalRunStatus(runs.statusOf(runId))) {
                 return false;
             }
 
@@ -1654,7 +1654,7 @@ export class RunDriver {
         const failureCode = error instanceof EngineFailure ? error.code : undefined;
 
         store.tx(() => {
-            if (isTerminalRunStatus(runs.require(runId).status)) {
+            if (isTerminalRunStatus(runs.statusOf(runId))) {
                 return;
             }
 
