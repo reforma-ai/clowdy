@@ -39,6 +39,8 @@ export interface BriefbackStatus {
     copies: { exists: boolean; installed: boolean }[];
     /** Snapshot to confirm before replacing existing copies. */
     fingerprint: string;
+    /** Retained original copies to move to safety before installing again. Optional for older daemons. */
+    backups?: string[];
 }
 
 /** Whether a known, unmodified Briefback installation differs from its upstream skill. */

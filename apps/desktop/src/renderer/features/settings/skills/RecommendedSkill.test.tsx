@@ -23,6 +23,7 @@ const missing = {
         { exists: false, installed: false },
     ],
     fingerprint: 'first',
+    backups: [],
 };
 const complete = {
     copies: [
@@ -30,6 +31,7 @@ const complete = {
         { exists: true, installed: true },
     ],
     fingerprint: 'done',
+    backups: [],
 };
 let container: HTMLDivElement;
 let root: Root;
@@ -76,6 +78,46 @@ afterEach(async () => {
 });
 
 describe('Briefback recommendation', () => {
+    it('offers recovery when the connected daemon lacks the status endpoint', async () => {
+        await act(async () => root.unmount());
+        root = createRoot(container);
+        transport.getBriefbackStatus.mockRejectedValueOnce(new TransportError('No route', 404));
+        await act(async () => root.render(<RecommendedSkill onInstalled={onInstalled} revision={1} />));
+        await settle();
+        expect(container.querySelector('[role="alert"]')?.textContent).toContain('restart Clowdy');
+        expect(button()).toBeNull();
+        const retry = [...container.querySelectorAll('button')].find(
+            candidate => candidate.textContent === 'Try again'
+        )!;
+        await press(retry);
+        await settle();
+        expect(status()).toBe('Not installed');
+    });
+
+    it('keeps retained backups visible across navigation and blocks installation until moved', async () => {
+        const recovery = { ...missing, backups: ['/tmp/skills/.briefback-install-test/backup'] };
+        transport.getBriefbackStatus.mockResolvedValue(recovery);
+        await act(async () => root.unmount());
+        root = createRoot(container);
+        await act(async () => root.render(<RecommendedSkill onInstalled={onInstalled} revision={0} />));
+        await settle();
+        expect(container.querySelector('[role="alert"]')?.textContent).toContain(recovery.backups[0]);
+        expect(button()).toBeNull();
+        await act(async () => root.unmount());
+        root = createRoot(container);
+        await act(async () => root.render(<RecommendedSkill onInstalled={onInstalled} revision={0} />));
+        await settle();
+        expect(container.querySelector('[role="alert"]')?.textContent).toContain(recovery.backups[0]);
+        transport.getBriefbackStatus.mockResolvedValue(missing);
+        const retry = [...container.querySelectorAll('button')].find(
+            candidate => candidate.textContent === 'Try again'
+        )!;
+        await press(retry);
+        await settle();
+        expect(button().disabled).toBe(false);
+        expect(transport.installBriefback).not.toHaveBeenCalled();
+    });
+
     it('asks before installing and leaves the filesystem alone when the dialog is canceled', async () => {
         await press(button());
         expect(openConfirmModal).toHaveBeenCalledOnce();
@@ -113,6 +155,7 @@ describe('Briefback recommendation', () => {
         transport.getBriefbackStatus.mockResolvedValueOnce({
             copies: [complete.copies[0], missing.copies[1]],
             fingerprint: 'changed',
+            backups: [],
         });
         await press(button());
         await act(async () => {
@@ -135,6 +178,14 @@ describe('Briefback recommendation', () => {
         await act(async () => {
             await vi.mocked(openConfirmModal).mock.lastCall![0].onConfirm();
         });
+        expect(container.querySelector('[role="alert"]')?.textContent).toContain('/tmp/briefback');
+        transport.getBriefbackStatus.mockRejectedValue(new Error('offline'));
+        await act(async () => root.render(<RecommendedSkill onInstalled={onInstalled} revision={1} />));
+        await settle();
+        expect(container.querySelector('[role="alert"]')?.textContent).toContain('/tmp/briefback');
+        transport.getBriefbackStatus.mockResolvedValue(missing);
+        await act(async () => root.render(<RecommendedSkill onInstalled={onInstalled} revision={2} />));
+        await settle();
         expect(container.querySelector('[role="alert"]')?.textContent).toContain('/tmp/briefback');
     });
 
