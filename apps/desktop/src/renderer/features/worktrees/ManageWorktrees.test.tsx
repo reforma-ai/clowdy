@@ -128,7 +128,7 @@ async function openMore(path: string) {
 }
 
 async function openChats() {
-    await click(textButton(row(CLOWDY_WORKTREE), '2 chats (1 archived)')!);
+    await click(textButton(row(CLOWDY_WORKTREE), '1 chat + 1 archived chat')!);
     await settle();
 }
 
@@ -235,6 +235,35 @@ describe('Manage worktrees', () => {
         expect(groups()).toHaveLength(3);
     });
 
+    it('clears cleanup selection after creating a worktree', async () => {
+        vi.spyOn(Element.prototype, 'getClientRects').mockReturnValue([{}] as unknown as DOMRectList);
+        vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
+            x: 0,
+            y: 0,
+            top: 0,
+            left: 0,
+            right: 640,
+            bottom: 480,
+            width: 640,
+            height: 480,
+            toJSON: () => ({}),
+        });
+        await open();
+        await click(textButton(dialog()!, 'Tidy up…')!);
+        expect(document.querySelector('input[aria-label^="Remove "]')).not.toBeNull();
+        await click(textButton(group('car-rental-api'), 'New worktree')!);
+        await settle();
+        const input = document.querySelector<HTMLInputElement>('input[aria-label="Worktree name"]')!;
+        act(() => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'new-tree');
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        await click(textButton(input.closest('form')!, 'Create worktree')!);
+        await settle();
+        expect(document.querySelector('input[aria-label^="Remove "]')).toBeNull();
+        expect(textButton(dialog()!, 'Tidy up…')).toBeDefined();
+    });
+
     it('shows worktrees for all project repositories in one window', async () => {
         await open({ folderId: 'fld_api' });
         expect(groups().map(section => section.querySelector('h3')!.textContent)).toEqual([
@@ -259,7 +288,7 @@ describe('Manage worktrees', () => {
         expect(main.dataset.main).toBe('true');
         expect(main.textContent).toContain('main');
         expect(main.textContent).toContain('Project checkout');
-        expect(main.textContent).toContain('No local changes');
+        expect(main.textContent).not.toContain('No local changes');
         // The base is no place to compare the folder's own checkout with.
         expect(main.textContent).not.toContain('merged');
         expect(removeOf(await moreMenu('/Users/dev/car-rental'))).toBeUndefined();
@@ -284,7 +313,7 @@ describe('Manage worktrees', () => {
         const locked = row(LOCKED_WORKTREE);
 
         expect(locked.textContent).toContain('hotfix/invoice');
-        expect(locked.textContent).toContain('No local changes');
+        expect(locked.textContent).not.toContain('No local changes');
     });
 
     it('has the path of a worktree in the tooltip of its name, and in no line of the row', async () => {
@@ -344,10 +373,10 @@ describe('Manage worktrees', () => {
         await open();
 
         const worktree = row(CLOWDY_WORKTREE);
-        const count = textButton(worktree, '2 chats (1 archived)')!;
+        const count = textButton(worktree, '1 chat + 1 archived chat')!;
 
         expect(worktree.textContent).toContain('3 changes');
-        expect(worktree.textContent).toContain('2 chats');
+        expect(worktree.textContent).toContain('1 chat + 1 archived chat');
         expect(worktree.textContent).not.toContain('·');
         expect(worktree.textContent).not.toContain('Weekend surcharge in a worktree');
         expect(textButton(row(FOUND_WORKTREE), '0 chats')).toBeUndefined();
@@ -479,7 +508,7 @@ describe('Manage worktrees', () => {
         data.chats.find(chat => chat.id === FIXTURE_WORKSPACE_CHAT_ID)!.archivedAt = Date.now();
         await open({ data });
 
-        expect(row(CLOWDY_WORKTREE).textContent).toContain('2 chats');
+        expect(row(CLOWDY_WORKTREE).textContent).toContain('2 archived chats');
         expect(removeOf(await moreMenu(CLOWDY_WORKTREE))?.text).toBe('Remove…');
     });
 
@@ -785,6 +814,33 @@ describe('Manage worktrees', () => {
 
         expect(dialog()!.textContent).not.toContain("Couldn't load the worktrees");
         expect(groups()).toHaveLength(3);
+    });
+
+    it('keeps worktree management available when the chat snapshot fails and retries cleanup', async () => {
+        const base = new FixtureTransport({ data: withFixtureWorktrees(createFixtureData()) });
+        let failSnapshot = false;
+        store = new RootStore(
+            overrideTransport(base, {
+                getProjectSnapshot: projectId =>
+                    failSnapshot
+                        ? Promise.reject(new Error('snapshot unavailable'))
+                        : base.getProjectSnapshot(projectId),
+            }),
+            { storage: memoryStorage() }
+        );
+        await store.load();
+        store.selectProject(FIXTURE_PROJECT_ID);
+        await flush();
+        failSnapshot = true;
+        act(() => openManageWorktrees({ root: store, projectId: FIXTURE_PROJECT_ID }));
+        await settle();
+        expect(row(FOUND_WORKTREE)).not.toBeNull();
+        expect(textButton(dialog()!, 'Tidy up…')!.disabled).toBe(true);
+        expect(textButton(dialog()!, 'Try again')).toBeDefined();
+        failSnapshot = false;
+        await click(textButton(dialog()!, 'Try again')!);
+        await settle();
+        expect(textButton(dialog()!, 'Tidy up…')!.disabled).toBe(false);
     });
 
     it('keeps the list it has and says so when a later read fails', async () => {
