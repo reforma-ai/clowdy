@@ -1,4 +1,5 @@
 import { Button } from '@clowdy/components/Button';
+import { SettingsLayout } from '@clowdy/components/SettingsLayout';
 import { Text } from '@clowdy/components/Text';
 import { GITHUB_URL, LICENSE_URL, LICENSES_URL, RELEASES_URL } from '@clowdy/constants';
 import { ArrowUpRight } from '@clowdy/icons/14';
@@ -6,10 +7,6 @@ import { Github } from '@clowdy/icons/logo';
 import { useEffect, useState } from 'react';
 
 import { useRootStore } from '../../stores';
-import { SettingsCard } from './ui/SettingsCard';
-import { SettingsPage } from './ui/SettingsPage';
-import { SettingsRow } from './ui/SettingsRow';
-import { SettingsSection } from './ui/SettingsSection';
 
 import type { ReactNode } from 'react';
 import type { UpdateStatus } from '../../../shared/bridge';
@@ -33,38 +30,41 @@ export function AboutPage() {
     const update = useUpdateStatus();
 
     return (
-        <SettingsPage description="Links, versions and credits of Clowdy">
-            <SettingsSection title="Clowdy">
-                <SettingsCard divided>
-                    <SettingsRow title="Repository" description="Source code, issues and stars">
+        <SettingsLayout.Page description="Links, versions and credits of Clowdy">
+            <SettingsLayout.Section title="Clowdy">
+                <SettingsLayout.Card divided>
+                    <SettingsLayout.Row title="Repository" description="Source code, issues and stars">
                         <LinkButton href={GITHUB_URL} icon={<Github size={14} />}>
                             Open in GitHub
                         </LinkButton>
-                    </SettingsRow>
-                    <SettingsRow title="Download" description="The installers of the latest release">
+                    </SettingsLayout.Row>
+                    <SettingsLayout.Row title="Download" description="The installers of the latest release">
                         <LinkButton href={RELEASES_URL}>Open releases</LinkButton>
-                    </SettingsRow>
-                    <SettingsRow title="License" description="Clowdy is open source under the Apache License 2.0">
+                    </SettingsLayout.Row>
+                    <SettingsLayout.Row
+                        title="License"
+                        description="Clowdy is open source under the Apache License 2.0"
+                    >
                         <LinkButton href={LICENSE_URL}>Apache-2.0</LinkButton>
-                    </SettingsRow>
-                </SettingsCard>
-            </SettingsSection>
+                    </SettingsLayout.Row>
+                </SettingsLayout.Card>
+            </SettingsLayout.Section>
 
-            <SettingsSection title="Updates" description="The versions running on your hosts">
+            <SettingsLayout.Section title="Updates" description="The versions running on your hosts">
                 <HostCard host={LOCAL_HOST} transport={transport} update={update} />
-            </SettingsSection>
+            </SettingsLayout.Section>
 
-            <SettingsSection title="Credits">
-                <SettingsCard>
-                    <SettingsRow
+            <SettingsLayout.Section title="Credits">
+                <SettingsLayout.Card>
+                    <SettingsLayout.Row
                         title="Open source licenses"
                         description="The libraries, fonts and icons Clowdy is built with"
                     >
                         <LinkButton href={LICENSES_URL}>Open licenses</LinkButton>
-                    </SettingsRow>
-                </SettingsCard>
-            </SettingsSection>
-        </SettingsPage>
+                    </SettingsLayout.Row>
+                </SettingsLayout.Card>
+            </SettingsLayout.Section>
+        </SettingsLayout.Page>
     );
 }
 
@@ -97,22 +97,22 @@ function HostCard({ host, transport, update }: { host: Host; transport: Transpor
     const reading = useDaemonReading(transport);
 
     return (
-        <SettingsCard as="section" divided aria-label={host.name}>
-            <SettingsRow title={host.name} description={host.detail} />
+        <SettingsLayout.Card as="section" divided aria-label={host.name}>
+            <SettingsLayout.Row title={host.name} description={host.detail} />
             {update && (
-                <SettingsRow title="Clowdy app" description="The installed app and its interface">
+                <SettingsLayout.Row title="Clowdy app" description="The installed app and its interface">
                     <Text variant="sm" color="secondary">
                         {appText(update)}
                     </Text>
-                </SettingsRow>
+                </SettingsLayout.Row>
             )}
-            <SettingsRow title="Daemon" description="Runs the agents and keeps the chats">
+            <SettingsLayout.Row title="Daemon" description="Runs the agents and keeps the chats">
                 <Text variant="sm" color="secondary" role="status">
                     {readingText(reading)}
                 </Text>
-            </SettingsRow>
+            </SettingsLayout.Row>
             {update?.ready != null && (
-                <SettingsRow title="Update ready" description="Starts the next time Clowdy opens">
+                <SettingsLayout.Row title="Update ready" description="Starts the next time Clowdy opens">
                     <Button
                         variant="filling"
                         color="secondary"
@@ -121,10 +121,10 @@ function HostCard({ host, transport, update }: { host: Host; transport: Transpor
                     >
                         Restart
                     </Button>
-                </SettingsRow>
+                </SettingsLayout.Row>
             )}
             {update?.daemonWaiting && (
-                <SettingsRow
+                <SettingsLayout.Row
                     title="Daemon update"
                     description="Waits for the agent runs to finish. Restarting now stops them, and they continue when you send a message."
                 >
@@ -136,9 +136,9 @@ function HostCard({ host, transport, update }: { host: Host; transport: Transpor
                     >
                         Restart now
                     </Button>
-                </SettingsRow>
+                </SettingsLayout.Row>
             )}
-        </SettingsCard>
+        </SettingsLayout.Card>
     );
 }
 

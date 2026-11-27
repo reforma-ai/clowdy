@@ -17,21 +17,6 @@
     padding: var(--spacing-lg) var(--spacing-lg) 0;
 }
 
-.key {
-    @ruleset typography-text-xs;
-
-    display: inline-flex;
-    align-items: center;
-    gap: var(--spacing-xs);
-    height: var(--spacing-20);
-    padding-inline: var(--spacing-md);
-    border-radius: calc(var(--radius-sm) * var(--squircle-radius-factor));
-    corner-shape: superellipse(var(--squircle-value));
-    background-color: var(--color-secondary-muted-light);
-    color: var(--color-secondary-muted-content);
-    font-weight: 500;
-}
-
 .body {
     display: flex;
     flex: 1;

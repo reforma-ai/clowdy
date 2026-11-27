@@ -1,6 +1,7 @@
+import { autorun } from 'mobx';
 import { describe, expect, it } from 'vitest';
 
-import { StreamStore } from './StreamStore';
+import { RELEASED_STREAMS_KEPT, StreamStore } from './StreamStore';
 
 import type { StreamItem } from '@clowdy/protocol';
 import type { StreamTarget, Transport } from '../daemon/transport';
@@ -30,6 +31,20 @@ function slowTransport(fetched: StreamItem[]) {
     } as unknown as Transport;
 
     return { transport, calls, finish: () => release(fetched) };
+}
+
+/** A transport that answers every item fetch at once and records the runs it was asked for. */
+function countingTransport(items: () => StreamItem[]) {
+    const calls: string[] = [];
+    const transport = {
+        getItems: async (target: StreamTarget) => {
+            calls.push('runId' in target ? target.runId : target.chatId);
+
+            return items();
+        },
+    } as unknown as Transport;
+
+    return { transport, calls };
 }
 
 describe('StreamStore', () => {
@@ -113,16 +128,139 @@ describe('StreamStore', () => {
         expect(texts(stream.items)).toEqual(['a']);
     });
 
-    it('reloads every opened stream after a resync', async () => {
-        let version = 'before';
-        const store = new StreamStore({ getItems: async () => [item(1, version)] } as unknown as Transport);
+    it('puts a live item that arrives out of order at its seq', async () => {
+        const store = new StreamStore({ getItems: async () => [item(1, 'a'), item(4, 'd')] } as unknown as Transport);
         const stream = store.of('r1');
 
         await stream.load();
+        store.applyItem(item(3, 'c'));
+        store.applyItem(item(2, 'b'));
+        store.applyItem(item(5, 'e'));
+
+        expect(texts(stream.items)).toEqual(['a', 'b', 'c', 'd', 'e']);
+    });
+
+    it('tells a reader of one item about that item only, and a reader of the ids only when an item comes or goes', async () => {
+        const store = new StreamStore({
+            getItems: async () => [item(1, 'a'), item(2, 'partial', false)],
+        } as unknown as Transport);
+        const stream = store.of('r1');
+        const seen: string[] = [];
+        const idLists: (readonly string[])[] = [];
+
+        await stream.load();
+
+        const stopItem = autorun(() => {
+            const first = stream.item('i1');
+
+            seen.push(first?.body.kind === 'assistant' ? first.body.text : '');
+        });
+        const stopIds = autorun(() => void idLists.push(stream.ids));
+
+        store.applyItem(item(2, 'partial, longer', false));
+        store.applyItem(item(1, 'a, edited'));
+        store.applyItem(item(3, 'next'));
+        stopItem();
+        stopIds();
+
+        expect({ seen, idLists }).toEqual({
+            seen: ['a', 'a, edited'],
+            idLists: [
+                ['i1', 'i2'],
+                ['i1', 'i2', 'i3'],
+            ],
+        });
+    });
+
+    it('fetches the held streams again after a resync and drops the others, which are fetched again when shown', async () => {
+        let version = 'before';
+        const { transport, calls } = countingTransport(() => [item(1, version)]);
+        const store = new StreamStore(transport);
+        const held = store.of('r1');
+        const released = store.of('r2');
+
+        store.hold(held);
+        await Promise.all([held.load(), released.load()]);
         version = 'after';
         await store.reloadAll();
 
-        expect(texts(stream.items)).toEqual(['after']);
+        const shownAgain = store.of('r2');
+
+        await shownAgain.load();
+
+        expect({
+            held: texts(held.items),
+            shownAgain: texts(shownAgain.items),
+            replaced: shownAgain !== released,
+            calls,
+        }).toEqual({ held: ['after'], shownAgain: ['after'], replaced: true, calls: ['r1', 'r2', 'r1', 'r2'] });
+    });
+
+    it('keeps the streams let go last, up to its limit, current, and drops the older ones', async () => {
+        const store = new StreamStore(countingTransport(() => []).transport);
+        const streams = Array.from({ length: RELEASED_STREAMS_KEPT + 2 }, (_, index) => store.of(`r${index}`));
+        const releases = streams.map(stream => store.hold(stream));
+
+        await Promise.all(streams.map(stream => stream.load()));
+        releases.forEach(release => release());
+        streams.forEach(stream => store.applyItem({ ...item(1, 'live'), runId: stream.runId }));
+
+        expect(streams.map(stream => stream.items.length)).toEqual([0, 0, ...Array(RELEASED_STREAMS_KEPT).fill(1)]);
+    });
+
+    it('keeps a stream current while any view holds it, and a release called twice counts once', async () => {
+        const store = new StreamStore(countingTransport(() => []).transport);
+        const shown = store.of('shown');
+        const first = store.hold(shown);
+
+        store.hold(shown);
+        await shown.load();
+        first();
+        first();
+        Array.from({ length: RELEASED_STREAMS_KEPT + 1 }, (_, index) => store.hold(store.of(`other${index}`))());
+        store.applyItem({ ...item(1, 'live'), runId: 'shown' });
+
+        expect(texts(shown.items)).toEqual(['live']);
+    });
+
+    it('gives every view of a run in one render the same stream, however many new streams that render asks for between them', async () => {
+        const store = new StreamStore(countingTransport(() => []).transport);
+        const firstView = store.of('r1');
+
+        Array.from({ length: RELEASED_STREAMS_KEPT + 1 }, (_, index) => store.of(`other${index}`));
+
+        const laterView = store.of('r1');
+
+        store.hold(firstView);
+        store.hold(laterView);
+        await Promise.all([firstView.load(), laterView.load()]);
+        store.applyItem(item(1, 'live'));
+
+        expect({ first: texts(firstView.items), later: texts(laterView.items) }).toEqual({
+            first: ['live'],
+            later: ['live'],
+        });
+    });
+
+    it('takes the answer of the latest fetch when an earlier one answers after it', async () => {
+        const answers: Array<(items: StreamItem[]) => void> = [];
+        const store = new StreamStore({
+            getItems: () => new Promise<StreamItem[]>(resolve => answers.push(resolve)),
+        } as unknown as Transport);
+        const stream = store.of('r1');
+        const firstLoad = stream.load();
+        const resync = stream.reload();
+
+        answers[1]!([item(1, 'after')]);
+        await resync;
+        store.applyItem(item(2, 'live'));
+        answers[0]!([item(1, 'before')]);
+        await firstLoad;
+
+        expect({ status: stream.status, texts: texts(stream.items) }).toEqual({
+            status: 'ready',
+            texts: ['after', 'live'],
+        });
     });
 
     describe('a truncation', () => {
@@ -228,6 +366,7 @@ describe('StreamStore', () => {
             const store = new StreamStore({ getItems: async () => fetched } as unknown as Transport);
             const stream = store.of('r1');
 
+            store.hold(stream);
             await stream.load();
             store.applyTruncation('r1', 2);
             // The feed dropped the event that carries the new message; the resync reads it.

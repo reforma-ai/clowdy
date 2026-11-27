@@ -1,14 +1,12 @@
 import { Button } from '@clowdy/components/Button';
+import { Chip } from '@clowdy/components/Chip';
 import { openConfirmModal } from '@clowdy/components/modals';
-import { Badge } from '@clowdy/components/Tag';
+import { SettingsLayout } from '@clowdy/components/SettingsLayout';
 import { Text } from '@clowdy/components/Text';
 import { useCallback, useEffect, useState } from 'react';
 
 import { TransportError } from '../../../daemon/transport';
 import { useRootStore } from '../../../stores';
-import { SettingsBlock } from '../ui/SettingsBlock';
-import { SettingsCard } from '../ui/SettingsCard';
-import { SettingsSection } from '../ui/SettingsSection';
 import styles from './RecommendedSkill.module.css';
 
 type Status = import('@clowdy/protocol').BriefbackStatus;
@@ -150,15 +148,15 @@ export function RecommendedSkill({ onInstalled, revision }: { onInstalled: () =>
                       : 'Not installed';
 
     return (
-        <SettingsSection title="Recommended skills">
-            <SettingsCard>
-                <SettingsBlock className={styles.row}>
+        <SettingsLayout.Section title="Recommended skills">
+            <SettingsLayout.Card>
+                <SettingsLayout.Block className={styles.row}>
                     <div className={styles.body}>
                         <div className={styles.heading}>
                             <Text weight="medium">Briefback</Text>
-                            <Badge size="xs" color="secondary" textValue={label} data-testid="briefback-status">
+                            <Chip size="xs" data-testid="briefback-status">
                                 {label}
-                            </Badge>
+                            </Chip>
                         </div>
                         {needsRecovery ? (
                             <div className={styles.recovery} role="alert">
@@ -226,8 +224,8 @@ export function RecommendedSkill({ onInstalled, revision }: { onInstalled: () =>
                             {installing ? (installed ? 'Updating…' : 'Installing…') : installed ? 'Update' : 'Install'}
                         </Button>
                     ) : null}
-                </SettingsBlock>
-            </SettingsCard>
-        </SettingsSection>
+                </SettingsLayout.Block>
+            </SettingsLayout.Card>
+        </SettingsLayout.Section>
     );
 }

@@ -103,8 +103,7 @@
     }
 
     .tag[data-focus-visible] {
-        outline: var(--spacing-4) solid var(--color-primary-muted-border);
-        outline-offset: 0;
+        @ruleset focus-ring;
     }
 
     .icon {

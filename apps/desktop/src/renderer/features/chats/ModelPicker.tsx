@@ -23,6 +23,7 @@ import {
 } from 'react';
 
 import { ProviderIcon } from '../settings/providers/ProviderIcon';
+import { ComposerPill } from './ComposerPill';
 import styles from './ModelPicker.module.css';
 import {
     choiceForModel,
@@ -127,9 +128,9 @@ function noteOf(provider: PickerProvider): { busy: true } | { busy: false; text:
 
     if (!answer) return { busy: true };
 
-    if (answer.state !== 'ok') return { busy: false, text: answer.detail ?? `${name} cannot list its models.` };
+    if (answer.state !== 'ok') return { busy: false, text: answer.detail ?? `${name} cannot list its models` };
 
-    return answer.models.length === 0 ? { busy: false, text: `${name} lists no models.` } : undefined;
+    return answer.models.length === 0 ? { busy: false, text: `${name} lists no models` } : undefined;
 }
 
 function Trigger({
@@ -145,18 +146,12 @@ function Trigger({
     label?: string;
     disabled?: boolean;
 }) {
-    const isOpen = use(OverlayTriggerStateContext)!.isOpen;
     const held = holdOf(choice, providers);
     const modelLabel = held.level ? `${held.title}, ${levelLabel(held.level)}` : held.title;
 
     return (
-        <Button
-            size="sm"
-            variant="filling"
-            rounded
+        <ComposerPill
             className={styles.trigger}
-            contentClassName={styles.triggerContent}
-            data-open={isOpen || undefined}
             aria-label={label ? `${label}: ${alternative ?? modelLabel}` : `Model: ${alternative ?? modelLabel}`}
             isDisabled={disabled}
         >
@@ -170,8 +165,7 @@ function Trigger({
             <Show when={!alternative && held.loading}>
                 <Spinner size="xs" />
             </Show>
-            <ChevronDown aria-hidden="true" />
-        </Button>
+        </ComposerPill>
     );
 }
 
@@ -223,11 +217,11 @@ interface FaceProps {
 function faceNote(held: Held): string | undefined {
     if (held.levels.length > 0) return undefined;
 
-    if (held.defaulted) return `Runs on ${held.provider?.name ?? 'the provider'}'s own default until you pick a model.`;
+    if (held.defaulted) return `Runs on ${held.provider?.name ?? 'the provider'}'s own default until you pick a model`;
 
     return (
         held.model?.description ??
-        (held.missing ? `${held.provider?.name ?? 'The provider'} does not list this model anymore.` : undefined)
+        (held.missing ? `${held.provider?.name ?? 'The provider'} does not list this model anymore` : undefined)
     );
 }
 
@@ -844,19 +838,8 @@ export function ModelPicker({
 /** The pill of a composer with no provider to pick from: off, and the caller says why (see `Unavailable` in the composer). */
 export function ModelPickerOff() {
     return (
-        <Button
-            size="sm"
-            variant="filling"
-            rounded
-            isDisabled
-            className={styles.trigger}
-            contentClassName={styles.triggerContent}
-            aria-label="No provider"
-        >
-            <span className={styles.modelLabel}>
-                <Text truncate>No provider</Text>
-            </span>
-            <ChevronDown aria-hidden="true" />
-        </Button>
+        <ComposerPill className={styles.trigger} isDisabled aria-label="No provider">
+            <Text truncate>No provider</Text>
+        </ComposerPill>
     );
 }

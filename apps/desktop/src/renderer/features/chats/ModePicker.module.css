@@ -1,26 +1,4 @@
-/*
- * The mode pill and its list, as Reforma's "Create a new project" composer draws them: a rounded pill with the mode's name and a chevron,
- * and a list of two rows, each a name over a line of what it does, the chosen one ticked.
- */
-
-/* Open, the plate of a pressed button stays and the label goes muted, as the model picker's pill does. */
-.trigger[data-open] {
-    --clowdy-button-color: var(--color-secondary-muted-text);
-    --clowdy-button-color--hover: var(--color-secondary-muted-text);
-
-    border-color: var(--clowdy-button-border--hover);
-    background-color: var(--clowdy-button-bg--hover);
-    opacity: var(--clowdy-button-opacity--hover);
-}
-
-.triggerContent {
-    justify-content: flex-start;
-    min-width: 0;
-}
-
-.triggerContent svg {
-    flex-shrink: 0;
-}
+/* The mode pill's list, as Reforma's "Create a new project" composer draws it: two rows, each a name over a line of what it does, the chosen one ticked. */
 
 /* Hug the longer description. Shared rows use flex-basis 0 and ellipsize. */
 .menu {

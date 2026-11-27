@@ -102,19 +102,19 @@ describe('Markdown', () => {
             taskOfKey: key => (key === 'CAR-24' ? { id: 't-24', key, title: 'Rebuild the form' } : undefined),
         };
 
-        it('draws a path in code as a file chip with the whole path on hover', () => {
+        it('draws a path in code as a file chip named by the whole path', () => {
             const out = html('Edit `src/booking/price.ts` next.');
 
             expect(out).toContain('data-streamdown="inline-code-chip"');
             expect(out).toContain('>price.ts<');
-            expect(out).toContain('title="src/booking/price.ts"');
+            expect(out).toContain('aria-label="Open src/booking/price.ts"');
         });
 
         it('draws a task of the project as a task chip, and any other key as code', () => {
             const out = html('See `CAR-24`.', links);
             expect(out).not.toContain('title="Rebuild the form"');
             expect(out).toContain('data-tone="accent"');
-            expect(out).toContain('aria-description="In progress"');
+            expect(out).toContain('aria-label="CAR-24, In progress"');
             expect(html('See `CAR-99`.', links)).toContain('data-streamdown="inline-code"');
             expect(html('See `CAR-24`.')).toContain('data-streamdown="inline-code"');
         });

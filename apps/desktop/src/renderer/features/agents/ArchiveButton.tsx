@@ -8,6 +8,8 @@ import {
     Menu,
     MenuItem,
     MenuSeparator,
+    RowActionButton,
+    RowControls,
 } from '@clowdy/components/List';
 import { Popover, PopoverScroll, PopoverTrigger } from '@clowdy/components/Popover';
 import { Text } from '@clowdy/components/Text';
@@ -134,31 +136,18 @@ interface ArchivedEndProps {
  */
 function ArchivedEnd({ chat, isOpen, onOpenChange, ago, onUnarchive, onDelete }: ArchivedEndProps) {
     return (
-        // The button and its popover are React children of the row, so their clicks and keys would reach the row through the tree.
-        <span
-            className={styles.end}
-            onClick={event => event.stopPropagation()}
-            onDoubleClick={event => event.stopPropagation()}
-            onPointerDown={event => event.stopPropagation()}
-            onKeyDown={event => event.stopPropagation()}
-            onContextMenu={event => event.stopPropagation()}
-        >
+        <RowControls className={styles.end}>
             <Text variant="xs" color="secondary" className={styles.time} data-show={listBoxItemDataShow.itemRest}>
                 {ago}
             </Text>
             <PopoverTrigger isOpen={isOpen} onOpenChange={onOpenChange}>
-                <Button
-                    variant="filling"
-                    color="secondary"
-                    size="xs"
-                    iconOnly
-                    aria-label={`Actions of ${chat.title}`}
-                    preventFocusOnPress
+                <RowActionButton
+                    icon={<More />}
+                    label={`Actions of ${chat.title}`}
+                    tooltip={null}
                     // Kept while the menu is open, though the pointer has left the row.
                     data-show={isOpen ? undefined : listBoxItemDataShow.itemBoth}
-                >
-                    <More />
-                </Button>
+                />
                 <Popover placement="bottom end" spacing="xs">
                     <PopoverScroll>
                         <Menu
@@ -182,6 +171,6 @@ function ArchivedEnd({ chat, isOpen, onOpenChange, ago, onUnarchive, onDelete }:
                     </PopoverScroll>
                 </Popover>
             </PopoverTrigger>
-        </span>
+        </RowControls>
     );
 }

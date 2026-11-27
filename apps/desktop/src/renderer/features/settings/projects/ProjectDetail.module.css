@@ -1,11 +1,11 @@
+@reference '@clowdy/styles/rulesets';
+
 /* A path or an address is one long word: let it break anywhere rather than push the row wide. */
 .value {
     overflow-wrap: anywhere;
 }
 
 .nameField {
-    width: 18rem;
-    max-width: 100%;
     /* The reset sits half outside the field, on the icon's corner. */
     overflow: visible;
 }
@@ -39,8 +39,7 @@
 }
 
 .choose:focus-visible {
-    outline: 2px solid var(--color-focus-ring, currentcolor);
-    outline-offset: -2px;
+    @ruleset focus-ring;
 }
 
 .choose:disabled {
@@ -56,7 +55,6 @@
     position: absolute;
     top: 0;
     right: 0;
-    z-index: 1;
     display: grid;
     place-items: center;
     width: var(--spacing-14);
@@ -66,7 +64,7 @@
     border: 0;
     border-radius: 50%;
     background: var(--color-surface-float);
-    color: var(--color-secondary-text);
+    color: var(--color-secondary-muted-text);
     box-shadow: 0 0 0 1px var(--color-secondary-muted-border);
     cursor: pointer;
     opacity: 0;
@@ -80,6 +78,5 @@
 }
 
 .reset:focus-visible {
-    outline: 2px solid var(--color-focus-ring, currentcolor);
-    outline-offset: 1px;
+    @ruleset focus-ring;
 }

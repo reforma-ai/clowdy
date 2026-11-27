@@ -1,7 +1,7 @@
 import { PROTOCOL_HEADER, PROTOCOL_VERSION } from '@clowdy/protocol';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { HttpTransport, RECONNECT_MAX_MS, RECONNECT_MIN_MS } from './httpTransport';
+import { FEED_IDLE_MS, HttpTransport, RECONNECT_MAX_MS, RECONNECT_MIN_MS } from './httpTransport';
 import { type FeedStatus, TransportError } from './transport';
 
 import type { ClowdyEvent } from '@clowdy/protocol';
@@ -54,6 +54,25 @@ function sseResponse(chunks: string[], status = 200) {
         }),
         { status, headers: { 'content-type': 'text/event-stream' } }
     );
+}
+
+/** An event stream that stays open: `send` writes to it, and `cancelled` says whether the reader let it go. */
+function openSse() {
+    const encoder = new TextEncoder();
+    const state = { cancelled: false, send: (_text: string) => undefined as void };
+    const response = new Response(
+        new ReadableStream({
+            start(controller) {
+                state.send = text => controller.enqueue(encoder.encode(text));
+            },
+            cancel() {
+                state.cancelled = true;
+            },
+        }),
+        { status: 200, headers: { 'content-type': 'text/event-stream' } }
+    );
+
+    return { response, state };
 }
 
 const settled = () => new Promise(resolve => setTimeout(resolve, 0));
@@ -321,6 +340,113 @@ describe('HttpTransport event feed', () => {
         stop();
 
         expect(sleeps.slice(0, 5)).toEqual([500, 1000, 500, 1000, 2000]);
+    });
+
+    it('goes on with the next event when a handler throws, on the same connection', async () => {
+        const feed = openSse();
+        const { fetchImpl, calls } = scriptedFetch([feed.response]);
+        const events: number[] = [];
+        const statuses: FeedStatus[] = [];
+        const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        const transport = new HttpTransport({
+            url: 'http://d',
+            token: 't',
+            fetch: fetchImpl,
+            sleep: async () => undefined,
+        });
+        const stop = transport.subscribe(
+            0,
+            event => {
+                events.push(event.cursor);
+
+                if (event.cursor === 2) throw new Error('A store action that fails');
+            },
+            status => statuses.push(status)
+        );
+
+        await settled();
+        feed.state.send(eventFrame(1) + eventFrame(2) + 'event: clowdy\ndata: not json\n\n' + eventFrame(3));
+        await settled();
+        stop();
+
+        const logged = error.mock.calls.length;
+
+        error.mockRestore();
+
+        expect({ events, statuses, calls: calls.length, logged }).toEqual({
+            events: [1, 2, 3],
+            statuses: ['connected'],
+            calls: 1,
+            logged: 2,
+        });
+    });
+
+    describe('a silent feed', () => {
+        afterEach(() => {
+            vi.useRealTimers();
+        });
+
+        it('is let go and connected again from its cursor once nothing came for twice the heartbeat', async () => {
+            vi.useFakeTimers();
+
+            const feed = openSse();
+            const { fetchImpl, calls } = scriptedFetch([feed.response]);
+            const statuses: FeedStatus[] = [];
+            const transport = new HttpTransport({
+                url: 'http://d',
+                token: 't',
+                fetch: fetchImpl,
+                sleep: async () => undefined,
+            });
+            const stop = transport.subscribe(
+                0,
+                () => undefined,
+                status => statuses.push(status)
+            );
+
+            await vi.advanceTimersByTimeAsync(0);
+            feed.state.send(eventFrame(4));
+            await vi.advanceTimersByTimeAsync(FEED_IDLE_MS);
+            stop();
+
+            expect({ cancelled: feed.state.cancelled, statuses, cursors: calls.map(call => call.url) }).toEqual({
+                cancelled: true,
+                statuses: ['connected', 'reconnecting'],
+                cursors: ['http://d/v1/events?cursor=0', 'http://d/v1/events?cursor=4'],
+            });
+        });
+
+        it('is kept while the heartbeats come', async () => {
+            vi.useFakeTimers();
+
+            const feed = openSse();
+            const { fetchImpl, calls } = scriptedFetch([feed.response]);
+            const statuses: FeedStatus[] = [];
+            const transport = new HttpTransport({
+                url: 'http://d',
+                token: 't',
+                fetch: fetchImpl,
+                sleep: async () => undefined,
+            });
+            const stop = transport.subscribe(
+                0,
+                () => undefined,
+                status => statuses.push(status)
+            );
+
+            for (let beat = 0; beat < 4; beat++) {
+                await vi.advanceTimersByTimeAsync(15_000);
+                feed.state.send(': heartbeat\n\n');
+            }
+            await vi.advanceTimersByTimeAsync(0);
+            stop();
+
+            expect({ cancelled: feed.state.cancelled, statuses, calls: calls.length }).toEqual({
+                cancelled: false,
+                statuses: ['connected'],
+                calls: 1,
+            });
+        });
     });
 
     it('asks for a full resync, and stops, when the daemon answers 410', async () => {

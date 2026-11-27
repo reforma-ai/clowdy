@@ -13,7 +13,8 @@ import {
 } from '../db/pullRequests';
 import { gitAnswer, gitLine, gitRead } from '../domain/git';
 import { CommandError, conflict, invalid, unavailable } from '../errors';
-import { runProgram } from '../providers/exec';
+import { TtlCache } from '../lib/cache';
+import { runProgram } from '../process/run';
 import { parseRemote } from './githubRemote';
 import { asObject, asString, assemblePullRequest, choosePullRequest, readPullRequest } from './pullRequestRollup';
 import { workingTreeRoot } from './state';
@@ -28,7 +29,7 @@ import type {
     GitPullRequestSummary,
 } from '@clowdy/protocol';
 import type { Place } from '../domain/places';
-import type { RunResult } from '../providers/exec';
+import type { RunResult } from '../process/run';
 import type { Store } from '../store';
 import type { Json } from './pullRequestRollup';
 
@@ -152,58 +153,6 @@ type Found = { signedIn: false } | { signedIn: true; defaultBranch?: string; pul
 /** What is known about reaching a host: `gh` and its path, or why not. */
 type Access = { kind: 'ready'; gh: string } | { kind: Exclude<GitHubAccess, 'ready' | 'no_remote'> };
 
-/** Values kept for a time, by key, each asked for once at a time however many ask. */
-class Cache<V> {
-    readonly #kept = new Map<string, { value: V; until: number }>();
-    readonly #pending = new Map<string, Promise<V>>();
-
-    constructor(
-        private readonly now: () => number,
-        private readonly limit: number
-    ) {}
-
-    /** The value kept for `key`, else what `load` finds, asked once for everyone who asks meanwhile. `load` says how long the value is kept (0: not at all); one that throws keeps nothing and fails all of them. */
-    get(key: string, load: () => Promise<{ value: V; keepMs: number }>): Promise<V> {
-        const kept = this.#kept.get(key);
-
-        if (kept && kept.until > this.now()) return Promise.resolve(kept.value);
-
-        let pending = this.#pending.get(key);
-
-        if (!pending) {
-            pending = load()
-                .then(({ value, keepMs }) => {
-                    if (keepMs > 0) this.set(key, value, keepMs);
-
-                    return value;
-                })
-                .finally(() => this.#pending.delete(key));
-            this.#pending.set(key, pending);
-        }
-
-        return pending;
-    }
-
-    /** The value kept for `key`, if it is still good. */
-    peek(key: string): V | undefined {
-        const kept = this.#kept.get(key);
-
-        return kept && kept.until > this.now() ? kept.value : undefined;
-    }
-
-    set(key: string, value: V, keepMs: number): void {
-        this.#kept.delete(key);
-
-        while (this.#kept.size >= this.limit) this.#kept.delete(this.#kept.keys().next().value as string);
-
-        this.#kept.set(key, { value, until: this.now() + keepMs });
-    }
-
-    delete(key: string): void {
-        this.#kept.delete(key);
-    }
-}
-
 export interface PullRequestsOptions {
     /** The environment `gh` runs in, and the `PATH` it is looked for on: the daemon's own, which already has the login shell's `PATH`. Read at each call. */
     env?: () => Env;
@@ -295,6 +244,17 @@ function summaryOf(node: unknown, repo: GitHubRepo, branch: string): GitPullRequ
     };
 }
 
+/** Whether the repository has `ref` as a commit (`commitAt`); nothing when git did not answer, which the judgements below take for "the pull request stays". */
+async function hasCommit(cwd: string, ref: string): Promise<boolean | undefined> {
+    try {
+        return (await commitAt(cwd, ref)) !== undefined;
+    } catch (error) {
+        if (error instanceof CommandError) return undefined;
+
+        throw error;
+    }
+}
+
 /**
  * Whether the local branch has commits of its own since a pull request's branch was at `headCommit`: commits that are on neither that branch nor the pull request's base (as
  * `origin` has it, or as the local branch of that name has it), merges left out. So a squash or rebase merge (the branch's own commits are still on the branch's side), a base that
@@ -305,11 +265,12 @@ async function branchMovedPast(cwd: string, branch: string, headCommit: string, 
     if (!COMMIT_HASH.test(headCommit)) return false;
 
     // Only a base the repository has is left out of the count, since git refuses a revision it does not know. For the commit and the branch git's refusal is the answer: no count is "no".
-    const bases = await Promise.all(
-        [`refs/remotes/origin/${base}`, `refs/heads/${base}`].map(async ref =>
-            (await commitAt(cwd, ref)) ? [ref] : []
-        )
-    );
+    const refs = [`refs/remotes/origin/${base}`, `refs/heads/${base}`];
+    const has = await Promise.all(refs.map(ref => hasCommit(cwd, ref)));
+
+    // A base git could not say it has would be counted as the branch's own work.
+    if (has.includes(undefined)) return false;
+
     const count = await gitLine(cwd, [
         'rev-list',
         '--count',
@@ -317,7 +278,7 @@ async function branchMovedPast(cwd: string, branch: string, headCommit: string, 
         `refs/heads/${branch}`,
         '--not',
         headCommit,
-        ...bases.flat(),
+        ...refs.filter((_, index) => has[index]),
     ]);
 
     return count !== undefined && Number(count) > 0;
@@ -328,7 +289,7 @@ async function branchMovedPast(cwd: string, branch: string, headCommit: string, 
  * not have (the person has not fetched it), a git that cannot say, and a hash that is not one count as "not moved past", so the pull request stays.
  */
 async function movedPast(cwd: string, headCommit: string): Promise<boolean> {
-    if (!COMMIT_HASH.test(headCommit) || !(await commitAt(cwd, headCommit))) return false;
+    if (!COMMIT_HASH.test(headCommit) || !(await hasCommit(cwd, headCommit))) return false;
 
     const read = await gitRead(cwd, ['merge-base', '--is-ancestor', 'HEAD', headCommit]);
 
@@ -344,14 +305,14 @@ async function movedPast(cwd: string, headCommit: string): Promise<boolean> {
 export class PullRequests {
     readonly #env: () => Env;
     readonly #fallbackPaths?: readonly string[];
-    readonly #presence: Cache<string | undefined>;
-    readonly #logins: Cache<boolean>;
-    readonly #answers: Cache<GitPullRequestInfo>;
-    readonly #historyAnswers: Cache<GitBranchPullRequests>;
+    readonly #presence: TtlCache<string | undefined>;
+    readonly #logins: TtlCache<boolean>;
+    readonly #answers: TtlCache<GitPullRequestInfo>;
+    readonly #historyAnswers: TtlCache<GitBranchPullRequests>;
     #historyRunning = 0;
     readonly #historyWaiting: Array<() => void> = [];
     /** The base of the pull request last found for a place, and the branch it was found for. */
-    readonly #hints: Cache<{ branch: string; base: string }>;
+    readonly #hints: TtlCache<{ branch: string; base: string }>;
     /** What a host's server does not have of `OPTIONAL_FIELDS`. */
     readonly #omitted = new Map<string, Set<string>>();
     readonly #stopper = new AbortController();
@@ -359,11 +320,11 @@ export class PullRequests {
     constructor({ env = () => process.env, fallbackPaths, now = Date.now, keep = MAX_KEPT }: PullRequestsOptions = {}) {
         this.#env = env;
         this.#fallbackPaths = fallbackPaths;
-        this.#presence = new Cache(now, keep);
-        this.#logins = new Cache(now, keep);
-        this.#answers = new Cache(now, keep);
-        this.#historyAnswers = new Cache(now, keep);
-        this.#hints = new Cache(now, keep);
+        this.#presence = new TtlCache({ limit: keep, now });
+        this.#logins = new TtlCache({ limit: keep, now });
+        this.#answers = new TtlCache({ limit: keep, now });
+        this.#historyAnswers = new TtlCache({ limit: keep, now });
+        this.#hints = new TtlCache({ limit: keep, now });
     }
 
     /** Ends the `gh` runs that are going on, and refuses new ones. */

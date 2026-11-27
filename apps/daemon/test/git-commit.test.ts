@@ -435,8 +435,8 @@ withScripts('POST /v1/projects/:id/git/commit', () => {
         const { project } = h.ok('project.add', { folders: [path] });
         const folderId = project.folders[0].id as string;
         const workspaceId = (
-            h.ok('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: tree } }).chat
-                .workspace as { id: string }
+            (await h.okAsync('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: tree } }))
+                .chat.workspace as { id: string }
         ).id;
         const checkoutHead = git(path, 'rev-parse', 'HEAD');
         const response = await h.fetch(`/v1/projects/${project.id}/git/commit`, {

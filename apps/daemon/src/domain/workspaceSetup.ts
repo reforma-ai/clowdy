@@ -4,7 +4,8 @@ import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { STOPPED_TOOL } from '@clowdy/protocol';
 
 import { DEFAULT_TIMINGS } from '../config';
-import { NEVER_INHERITED } from '../engine/acp/env';
+import { isBelow, isGitName } from '../fs/paths';
+import { inheritedEnv } from '../process/env';
 import { runLines } from './lines';
 
 import type { WorkspaceSetup } from '@clowdy/protocol';
@@ -36,21 +37,7 @@ export interface SetupRun {
 
 /* ------------------------------- Copying files ------------------------------- */
 
-/** A name git keeps its data in, or that Windows reads as one (a trailing dot or space is dropped, `GIT~1` is its short name): never a file to copy. */
-const isGitName = (part: string): boolean => {
-    const name = part.replace(/[. ]+$/, '').toLowerCase();
-
-    return name === '.git' || /^git~\d+$/.test(name);
-};
-
-/** Whether `path` is not `base` or something below it. Both are real paths (links followed): the answer says where a file really is, whatever it was called. */
-function leavesFolder(base: string, path: string): boolean {
-    const inside = relative(base, path);
-
-    return inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside);
-}
-
-/** Whether the way from `base` down to `path` goes through a git name. */
+/** Whether the way from `base` down to `path` goes through a git name (`isGitName`: never a file to copy). */
 const reachesGit = (base: string, path: string): boolean => relative(base, path).split(sep).some(isGitName);
 
 const realOf = (path: string): Promise<string> => realpath(path);
@@ -177,7 +164,7 @@ class Copier {
             return;
         }
 
-        if (leavesFolder(this.root, place) || reachesGit(this.root, place)) {
+        if (!isBelow(this.root, place, { allowSelf: true }) || reachesGit(this.root, place)) {
             this.log(`Skipped ${entry}: it leads out of the folder`);
 
             return;
@@ -239,7 +226,7 @@ class Copier {
             return;
         }
 
-        if (leavesFolder(this.root, source) || reachesGit(this.root, source)) {
+        if (!isBelow(this.root, source, { allowSelf: true }) || reachesGit(this.root, source)) {
             this.log(`Skipped ${name}: it leads out of the folder`);
 
             return;
@@ -262,7 +249,7 @@ class Copier {
         // The worktree may have a link on the way (a tracked one): the file lands where the links lead, which has to be inside it.
         const outOfTree = `Skipped ${name}: the worktree has a link on its way that leads out of it`;
 
-        if (leavesFolder(this.workspace, await nearestReal(dirname(to)))) {
+        if (!isBelow(this.workspace, await nearestReal(dirname(to)), { allowSelf: true })) {
             this.log(outOfTree);
 
             return;
@@ -283,7 +270,7 @@ class Copier {
             throw error;
         }
 
-        if (leavesFolder(this.workspace, await realpath(dirname(to)))) {
+        if (!isBelow(this.workspace, await realpath(dirname(to)), { allowSelf: true })) {
             this.log(outOfTree);
 
             return;
@@ -350,16 +337,8 @@ export function setupShell(
  * them), so no variable of the daemon can stand in for the three set here, then the three.
  */
 function setupEnvironment(run: Pick<SetupRun, 'root' | 'workspace' | 'branch'>): Record<string, string> {
-    const env: Record<string, string> = {};
-
-    for (const [name, value] of Object.entries(process.env)) {
-        if (value !== undefined && !NEVER_INHERITED.some(pattern => pattern.test(name))) {
-            env[name] = value;
-        }
-    }
-
     return {
-        ...env,
+        ...inheritedEnv(),
         CLOWDY_ROOT_PATH: run.root,
         CLOWDY_WORKSPACE_PATH: run.workspace,
         CLOWDY_BRANCH: run.branch ?? '',

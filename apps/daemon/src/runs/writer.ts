@@ -1,7 +1,7 @@
 import { nextSeq } from '../db/items';
-import { appendItem, updateItem } from '../domain/items';
+import { appendItem, rewriteItem } from '../domain/items';
 
-import type { MessageSource, StreamItemBody } from '@clowdy/protocol';
+import type { MessageSource, Run, StreamItem, StreamItemBody } from '@clowdy/protocol';
 import type { EngineEvent } from '../engine/types';
 import type { Store } from '../store';
 
@@ -19,12 +19,13 @@ type ToolBody = Extract<StreamItemBody, { kind: 'tool' }>;
 /**
  * Turns one turn's engine events into stream items. Streaming text updates a single `assistant` item in place,
  * throttled, and a thought is a `reasoning` item that streams the same way; a tool call is one item that changes state. Anything that is not text ends
- * the open message, and anything that is not a thought ends the open thought, so a thought, a message and a call are items of their own.
+ * the open message, and anything that is not a thought ends the open thought, so a thought, a message and a call are items of their own. Each item is kept as
+ * it was published, so writing it again reads nothing back (`rewriteItem`).
  */
 export class TurnWriter {
-    private message?: { seq?: number; text: string; messageId?: string };
+    private message?: { item?: StreamItem; text: string; messageId?: string };
     /** The open thought, which is never open together with a message: each ends the other. */
-    private thought?: { seq?: number; text: string; startedAt: number };
+    private thought?: { item?: StreamItem; text: string; startedAt: number };
     /**
      * When the writer last heard from the agent. A thought is dated from here, not from its first piece: an agent sends the thought whole once it has finished
      * thinking, so the time between its last word or step and the thought is the time it thought.
@@ -36,12 +37,12 @@ export class TurnWriter {
     private closed?: { seq: number; text: string };
     private flushedAt = 0;
     private timer?: ReturnType<typeof setTimeout>;
-    /** Each call's item and what it holds now. */
-    private tools = new Map<string, { seq: number; body: ToolBody }>();
+    /** Each call's item as it was last published, and what it holds now. */
+    private tools = new Map<string, { item: StreamItem; body: ToolBody }>();
 
     constructor(
         private store: Store,
-        private runId: string,
+        private run: Pick<Run, 'id' | 'projectId'>,
         private throttleMs = TEXT_THROTTLE_MS
     ) {}
 
@@ -53,8 +54,8 @@ export class TurnWriter {
     brief(text: string, from: MessageSource): void {
         const trimmed = text.trim();
 
-        if (trimmed !== '' && nextSeq(this.store.db, this.runId) === 1) {
-            appendItem(this.store, this.runId, { kind: 'user', text: trimmed, from });
+        if (trimmed !== '' && nextSeq(this.store.db, this.run.id) === 1) {
+            appendItem(this.store, this.run.id, { kind: 'user', text: trimmed, from });
         }
     }
 
@@ -141,10 +142,10 @@ export class TurnWriter {
         const known = this.tools.get(event.toolCallId);
 
         if (known === undefined) {
-            this.tools.set(event.toolCallId, { seq: appendItem(this.store, this.runId, body).seq, body });
+            this.tools.set(event.toolCallId, { item: appendItem(this.store, this.run.id, body), body });
         } else {
             known.body = body;
-            updateItem(this.store, this.runId, known.seq, body);
+            known.item = this.write(known.item, body);
         }
     }
 
@@ -159,7 +160,7 @@ export class TurnWriter {
             for (const [toolCallId, tool] of this.tools) {
                 if (tool.body.state === 'running' && !keep?.has(toolCallId)) {
                     tool.body = { ...tool.body, state: 'error', error: reason };
-                    updateItem(this.store, this.runId, tool.seq, tool.body);
+                    tool.item = this.write(tool.item, tool.body);
                 }
             }
         });
@@ -220,24 +221,20 @@ export class TurnWriter {
 
         const message = this.message;
 
-        if (!message || (message.text === '' && message.seq === undefined)) {
+        if (!message || (message.text === '' && message.item === undefined)) {
             return;
         }
 
-        const body = { kind: 'assistant' as const, text: message.text, done };
+        message.item = this.write(message.item, { kind: 'assistant', text: message.text, done });
 
-        if (message.seq === undefined) {
-            message.seq = appendItem(this.store, this.runId, body).seq;
-        } else {
-            updateItem(this.store, this.runId, message.seq, body);
-        }
+        const { seq } = message.item;
 
         if (done) {
             this.answer =
                 message.messageId !== undefined && message.text.trim() !== ''
-                    ? { seq: message.seq, ref: message.messageId }
+                    ? { seq, ref: message.messageId }
                     : undefined;
-            this.closed = { seq: message.seq, text: message.text };
+            this.closed = { seq, text: message.text };
         }
 
         this.flushedAt = Date.now();
@@ -247,24 +244,24 @@ export class TurnWriter {
     private flushThought(thought: NonNullable<TurnWriter['thought']>, done: boolean): void {
         const text = thought.text.trim();
 
-        if (text === '' && thought.seq === undefined) {
+        if (text === '' && thought.item === undefined) {
             return;
         }
 
         // The agents pad a thought with line breaks (a section break before Codex's, after Claude's): they are no part of it.
-        const body = {
-            kind: 'reasoning' as const,
+        thought.item = this.write(thought.item, {
+            kind: 'reasoning',
             text,
             done,
             ...(done && { durationMs: Date.now() - thought.startedAt }),
-        };
-
-        if (thought.seq === undefined) {
-            thought.seq = appendItem(this.store, this.runId, body).seq;
-        } else {
-            updateItem(this.store, this.runId, thought.seq, body);
-        }
-
+        });
         this.flushedAt = Date.now();
+    }
+
+    /** Publishes `body` as a new item, or as what the item the writer holds says now. */
+    private write(item: StreamItem | undefined, body: StreamItemBody): StreamItem {
+        return item === undefined
+            ? appendItem(this.store, this.run.id, body)
+            : rewriteItem(this.store, this.run.projectId, item, body);
     }
 }

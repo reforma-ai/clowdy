@@ -1,7 +1,6 @@
 import { Button } from '@clowdy/components/Button';
 import { Plus } from '@clowdy/icons/14';
 
-import { Unavailable } from '../../shared/Unavailable';
 import { None, Section } from './DetailSections';
 import styles from './SubtasksSection.module.css';
 import { StatusIcon } from './status';
@@ -72,12 +71,17 @@ export function SubtasksSection({
 
             {/* Its own line, so the stand-in that carries the hint is as wide as the button and not as wide as the section. */}
             <div className={styles.action}>
-                <Unavailable label="New sub-task" hint={canHaveChildren ? undefined : DEPTH_LIMIT_HINT}>
-                    <Button variant="bordered" size="sm" isDisabled={!canHaveChildren} onPress={onCreate}>
-                        <Plus />
-                        New sub-task
-                    </Button>
-                </Unavailable>
+                <Button
+                    variant="bordered"
+                    size="sm"
+                    aria-label="New sub-task"
+                    isDisabled={!canHaveChildren}
+                    disabledReason={DEPTH_LIMIT_HINT}
+                    onPress={onCreate}
+                >
+                    <Plus />
+                    New sub-task
+                </Button>
             </div>
         </Section>
     );

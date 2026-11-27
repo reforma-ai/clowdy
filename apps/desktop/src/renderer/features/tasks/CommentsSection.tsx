@@ -1,6 +1,4 @@
-import { Button } from '@clowdy/components/Button';
-import { Loader } from '@clowdy/components/Loader';
-import { Text } from '@clowdy/components/Text';
+import { PanelLoadingState } from '@clowdy/components/Panel';
 import { useLayoutEffect, useRef, useState } from 'react';
 
 import { useRunLabel } from '../../shared';
@@ -10,7 +8,7 @@ import { Comment } from './Comment';
 import { CommentEditor } from './CommentEditor';
 import styles from './CommentsSection.module.css';
 import { sendCommand } from './commands';
-import { None, Section } from './DetailSections';
+import { InlineRetry, None, Section } from './DetailSections';
 import { createdCommentId } from './taskView';
 import { MAX_COMMENTS, useTaskComments } from './useTaskComments';
 
@@ -100,21 +98,9 @@ export function CommentsSection({ taskId, onOpenRun, onOpenTask, isReadOnly = fa
 
     return (
         <Section title="Comments" count={state.status === 'ready' ? state.total : undefined}>
-            {state.status === 'loading' && (
-                <div className={styles.loading}>
-                    <Loader size="xs" />
-                    <Text color="secondary">Loading comments…</Text>
-                </div>
-            )}
+            {state.status === 'loading' && <PanelLoadingState label="Loading comments…" />}
 
-            {state.status === 'failed' && (
-                <div className={styles.failed}>
-                    <None>Comments did not load</None>
-                    <Button size="xs" variant="bordered" onPress={retry}>
-                        Retry
-                    </Button>
-                </div>
-            )}
+            {state.status === 'failed' && <InlineRetry message="Comments did not load" onRetry={retry} />}
 
             {state.status === 'ready' && state.comments.length === 0 && <None>No comments yet</None>}
 
@@ -138,12 +124,7 @@ export function CommentsSection({ taskId, onOpenRun, onOpenTask, isReadOnly = fa
             {state.status === 'ready' && state.isCut && <None>{`Showing the first ${MAX_COMMENTS} comments`}</None>}
 
             {state.status === 'ready' && state.refreshError !== undefined && (
-                <div className={styles.failed} role="alert">
-                    <None>Comments did not refresh</None>
-                    <Button size="xs" variant="bordered" onPress={retry}>
-                        Retry
-                    </Button>
-                </div>
+                <InlineRetry message="Comments did not refresh" onRetry={retry} role="alert" />
             )}
 
             {!isReadOnly && (

@@ -7,19 +7,6 @@
     list-style: none;
 }
 
-.systemControl {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--spacing-xl);
-}
-
-.systemLabel {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-xs);
-}
-
 .select {
     margin-left: auto;
     width: min(240px, 55%);

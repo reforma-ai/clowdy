@@ -1,7 +1,8 @@
 import { Alert, AlertDescription, AlertIcon } from '@clowdy/components/Alert';
-import { Button } from '@clowdy/components/Button';
 import { ListBoxItem } from '@clowdy/components/List';
+import { PanelEmptyState } from '@clowdy/components/Panel';
 import { Select } from '@clowdy/components/Select';
+import { SettingsLayout } from '@clowdy/components/SettingsLayout';
 import { ShimmerBlock } from '@clowdy/components/Shimmer';
 import { Switch } from '@clowdy/components/Switch';
 import { Text } from '@clowdy/components/Text';
@@ -10,11 +11,7 @@ import { observer } from 'mobx-react-lite';
 import { useState } from 'react';
 
 import { useRootStore } from '../../../stores';
-import { SettingsBlock } from '../ui/SettingsBlock';
-import { SettingsCard } from '../ui/SettingsCard';
-import { SettingsEmpty } from '../ui/SettingsEmpty';
-import { SettingsPage } from '../ui/SettingsPage';
-import { SettingsSection } from '../ui/SettingsSection';
+import { ReadFailed } from '../ReadFailed';
 import { RecommendedSkill } from './RecommendedSkill';
 import { SkillRow } from './SkillRow';
 import styles from './SkillsSection.module.css';
@@ -65,19 +62,12 @@ export const SkillsSection = observer(function SkillsSection() {
             />
         ));
     const error = (message: string) => (
-        <SettingsCard>
-            <SettingsBlock>
-                <span role="alert">Skills could not be loaded: {message}</span>{' '}
-                <Button variant="bordered" size="sm" onPress={reload}>
-                    Try again
-                </Button>
-            </SettingsBlock>
-        </SettingsCard>
+        <ReadFailed message={`Skills could not be loaded: ${message}`} onRetry={reload} />
     );
     const warnings = active.status === 'ready' ? active.catalog.warnings : [];
 
     return (
-        <SettingsPage description="Skills give agents instructions for specific kinds of work">
+        <SettingsLayout.Page description="Skills give agents instructions for specific kinds of work">
             <RecommendedSkill onInstalled={reload} revision={root.skillsRevision} />
             {warnings.length > 0 && (
                 <Alert color="warning" role="status">
@@ -93,7 +83,7 @@ export const SkillsSection = observer(function SkillsSection() {
                     </AlertDescription>
                 </Alert>
             )}
-            <SettingsSection
+            <SettingsLayout.Section
                 title="System skills"
                 aside={
                     system && (
@@ -109,16 +99,12 @@ export const SkillsSection = observer(function SkillsSection() {
                 ) : global.status === 'failed' ? (
                     error(global.message)
                 ) : (
-                    <SettingsCard as="ul" divided>
-                        <SettingsBlock as="li" className={styles.systemControl}>
-                            <div className={styles.systemLabel}>
-                                <Text variant="sm" weight="medium">
-                                    Enable system skills
-                                </Text>
-                                <Text variant="sm" color="secondary">
-                                    Changes apply to new agent sessions
-                                </Text>
-                            </div>
+                    <SettingsLayout.Card as="ul" divided>
+                        <SettingsLayout.Row
+                            as="li"
+                            title="Enable system skills"
+                            description="Changes apply to new agent sessions"
+                        >
                             <Switch
                                 size="sm"
                                 aria-label="Enable system skills"
@@ -126,12 +112,12 @@ export const SkillsSection = observer(function SkillsSection() {
                                 isPending={pending.has('clowdy:*')}
                                 onChange={enabled => void toggle('clowdy:*', enabled)}
                             />
-                        </SettingsBlock>
+                        </SettingsLayout.Row>
                         {rows(system ?? [])}
-                    </SettingsCard>
+                    </SettingsLayout.Card>
                 )}
-            </SettingsSection>
-            <SettingsSection
+            </SettingsLayout.Section>
+            <SettingsLayout.Section
                 title="Skills"
                 aside={
                     <Select
@@ -154,43 +140,44 @@ export const SkillsSection = observer(function SkillsSection() {
             >
                 {active.status === 'loading' ? (
                     <div role="status" aria-label="Loading skills">
-                        <SettingsCard>
-                            <SettingsBlock>
+                        <SettingsLayout.Card>
+                            <SettingsLayout.Block>
                                 <ShimmerBlock className={styles.skeletonLine} />
-                            </SettingsBlock>
-                        </SettingsCard>
+                            </SettingsLayout.Block>
+                        </SettingsLayout.Card>
                     </div>
                 ) : active.status === 'failed' ? (
                     error(active.message)
                 ) : shown?.length ? (
-                    <SettingsCard as="ul" divided>
+                    <SettingsLayout.Card as="ul" divided>
                         {rows(shown)}
-                    </SettingsCard>
+                    </SettingsLayout.Card>
                 ) : (
-                    <SettingsEmpty>
-                        {project ? `No skills found in ${project.name}` : 'No global skills found'}
-                    </SettingsEmpty>
+                    <PanelEmptyState
+                        fill={false}
+                        label={project ? `No skills found in ${project.name}` : 'No global skills found'}
+                    />
                 )}
-            </SettingsSection>
-        </SettingsPage>
+            </SettingsLayout.Section>
+        </SettingsLayout.Page>
     );
 });
 
 function SystemSkeleton() {
     return (
         <div role="status" aria-label="Loading system skills">
-            <SettingsCard divided>
+            <SettingsLayout.Card divided>
                 {[0, 1, 2].map(row => (
-                    <SettingsBlock key={row} className={styles.skeletonRow}>
+                    <SettingsLayout.Block key={row} className={styles.skeletonRow}>
                         <div className={styles.skeletonBody}>
                             <ShimmerBlock className={styles.skeletonTitle} />
                             <ShimmerBlock className={styles.skeletonLine} />
                             {row > 0 && <ShimmerBlock className={styles.skeletonLineShort} />}
                         </div>
                         <ShimmerBlock className={styles.skeletonSwitch} />
-                    </SettingsBlock>
+                    </SettingsLayout.Block>
                 ))}
-            </SettingsCard>
+            </SettingsLayout.Card>
         </div>
     );
 }

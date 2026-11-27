@@ -118,28 +118,6 @@ describe('GET /v1/skills', () => {
 });
 
 describe('what the engines are given', () => {
-    test('skills in a folder that did not exist at start reach the engines when the catalog next shows them', async () => {
-        const root = join(tempDir(), 'later');
-        const h = await start([root]);
-
-        h.openRepo();
-
-        const before = h.store.headCursor();
-
-        writeSkill(root, 'deploy');
-
-        const catalog = await catalogOf(h);
-
-        // Announced once to each project: the personal space and the one opened here.
-        expect(catalog.entries.find(entry => entry.name === 'user:deploy')?.enabled).toBe(true);
-        expect(readdirSync(join((h.config.extraPluginDirs as string[])[0], 'skills'))).toEqual(['deploy']);
-        expect(skillEvents(h, before)).toHaveLength(2);
-
-        await catalogOf(h);
-
-        expect(skillEvents(h, before)).toHaveLength(2);
-    });
-
     test('the system skills plugin is copied to the data folder and named in the config', async () => {
         const h = await start();
         const dir = h.config.systemSkillsDir as string;
@@ -162,38 +140,6 @@ describe('what the engines are given', () => {
 
         expect(second.config.systemSkillsDir).toBe(dir as string);
         expect(readdirSync(join(first.config.dataDir, 'system-skills'))).toHaveLength(1);
-    });
-
-    test('the enabled user skills are carried by one plugin folder in extraPluginDirs, none when there are none', async () => {
-        const user = tempDir();
-        const none = await start();
-        const h = await start([user]);
-
-        expect(none.config.extraPluginDirs).toEqual([]);
-        expect(h.config.extraPluginDirs).toEqual([]);
-
-        writeSkill(user, 'deploy');
-        await h.fetch('/v1/skills');
-        await waitFor(() => h.config.extraPluginDirs?.length, 'the user plugin');
-
-        const [dir] = h.config.extraPluginDirs as string[];
-
-        expect(dir.startsWith(join(h.config.dataDir, 'user-skills-plugin'))).toBe(true);
-        expect(readdirSync(join(dir, 'skills'))).toEqual(['deploy']);
-    });
-
-    test('user skills that exist at start are in the plugin at once', async () => {
-        const user = tempDir();
-
-        writeSkill(user, 'deploy');
-        writeSkill(user, 'lint');
-
-        const h = await start([user]);
-
-        expect(readdirSync(join((h.config.extraPluginDirs as string[])[0], 'skills')).sort()).toEqual([
-            'deploy',
-            'lint',
-        ]);
     });
 });
 
@@ -238,7 +184,11 @@ describe('skills.setEnabled', () => {
         expect(thread).not.toContain('clowdy:orchestrate');
         expect(thread).toContain('Your parent reads only your reports');
         expect(existsSync(join(original, 'skills', 'orchestrate', 'SKILL.md'))).toBe(true);
-        expect(readdirSync(join((first.config.extraPluginDirs as string[])[0], 'skills'))).toEqual(['orchestrate']);
+        expect(
+            (await catalogOf(first)).entries
+                .filter(entry => entry.source === 'user')
+                .map(entry => [entry.name, entry.enabled])
+        ).toEqual([['user:orchestrate', true]]);
         first.ok('skills.setEnabled', { name: 'clowdy:*', enabled: false });
         expect(readdirSync(join(first.config.systemSkillsDir as string, 'skills'))).toEqual([]);
         await first.stop();
@@ -255,14 +205,13 @@ describe('skills.setEnabled', () => {
         expect(second.config.systemSkillsDir).toBe(original);
     });
 
-    test('switches a user skill off and on, keeps it in skills.json, and rebuilds the plugin', async () => {
+    test('switches a user skill off and on, keeps it in skills.json, and the catalog follows', async () => {
         const user = tempDir();
 
         writeSkill(user, 'deploy');
         writeSkill(user, 'lint');
 
         const h = await start([user]);
-        const carried = () => readdirSync(join((h.config.extraPluginDirs as string[])[0], 'skills')).sort();
 
         expect(h.ok('skills.setEnabled', { name: 'user:deploy', enabled: false })).toEqual({
             name: 'user:deploy',
@@ -271,7 +220,6 @@ describe('skills.setEnabled', () => {
         expect(JSON.parse(readFileSync(join(h.config.dataDir, 'skills.json'), 'utf8'))).toEqual({
             disabled: ['deploy'],
         });
-        expect(carried()).toEqual(['lint']);
         expect(
             (await catalogOf(h)).entries
                 .filter(entry => entry.source === 'user')
@@ -283,11 +231,10 @@ describe('skills.setEnabled', () => {
 
         h.ok('skills.setEnabled', { name: 'user:deploy', enabled: true });
 
-        expect(carried()).toEqual(['deploy', 'lint']);
         expect((await catalogOf(h)).entries.find(entry => entry.name === 'user:deploy')?.enabled).toBe(true);
     });
 
-    test('switching off every skill leaves no plugin, and the choice survives a restart', async () => {
+    test('a user skill switched off stays off after a restart', async () => {
         const user = tempDir();
 
         writeSkill(user, 'deploy');
@@ -295,7 +242,6 @@ describe('skills.setEnabled', () => {
         const first = await start([user]);
 
         first.ok('skills.setEnabled', { name: 'user:deploy', enabled: false });
-        expect(first.config.extraPluginDirs).toEqual([]);
 
         await first.stop();
         harnesses.length = 0;
@@ -304,7 +250,6 @@ describe('skills.setEnabled', () => {
 
         harnesses.push(second);
 
-        expect(second.config.extraPluginDirs).toEqual([]);
         expect((await catalogOf(second)).entries.find(entry => entry.name === 'user:deploy')?.enabled).toBe(false);
     });
 
@@ -425,7 +370,6 @@ describe('watching the skill folders', () => {
         expect((await catalogOf(h)).entries.find(entry => entry.name === 'user:deploy')?.description).toBe(
             'First version'
         );
-        expect(readdirSync(join((h.config.extraPluginDirs as string[])[0], 'skills'))).toEqual(['deploy']);
 
         const afterAdd = h.store.headCursor();
 
@@ -435,6 +379,27 @@ describe('watching the skill folders', () => {
         expect((await catalogOf(h)).entries.find(entry => entry.name === 'user:deploy')?.description).toBe(
             'Second version, a little longer'
         );
+    });
+
+    test('skills in a folder that did not exist at start are announced once when the catalog next shows them', async () => {
+        const root = join(tempDir(), 'later');
+        const h = await start([root]);
+
+        h.openRepo();
+
+        const before = h.store.headCursor();
+
+        writeSkill(root, 'deploy');
+
+        const catalog = await catalogOf(h);
+
+        // Announced once to each project: the personal space and the one opened here.
+        expect(catalog.entries.find(entry => entry.name === 'user:deploy')?.enabled).toBe(true);
+        expect(skillEvents(h, before)).toHaveLength(2);
+
+        await catalogOf(h);
+
+        expect(skillEvents(h, before)).toHaveLength(2);
     });
 
     test('a burst of writes is one announcement', async () => {
@@ -454,7 +419,6 @@ describe('watching the skill folders', () => {
 
         // One announcement per project: the personal space and the one opened here.
         expect(skillEvents(h, before)).toHaveLength(2);
-        expect(readdirSync(join((h.config.extraPluginDirs as string[])[0], 'skills'))).toHaveLength(5);
     });
 
     test('a project skill is announced to that project only', async () => {

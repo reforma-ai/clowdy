@@ -99,7 +99,7 @@ afterEach(() => {
 });
 
 describe('FileChip', () => {
-    it('shows the name of the file, with the whole path on hover', async () => {
+    it('shows the name of the file, and names the chip by the whole path', async () => {
         act(() =>
             root.render(
                 <RootStoreProvider value={store}>
@@ -108,8 +108,10 @@ describe('FileChip', () => {
             )
         );
 
-        expect(chip().textContent).toBe('price.ts (12-20)');
-        expect(chip().title).toBe('src/booking/price.ts');
+        expect([chip().textContent, chip().getAttribute('aria-label')]).toEqual([
+            'price.ts (12-20)',
+            'Open src/booking/price.ts',
+        ]);
     });
 
     it('opens the file in the Files tab when it is pressed, and shows no menu', async () => {
@@ -362,7 +364,6 @@ describe('FileChip', () => {
                         metaKey: true,
                         clientX: 12,
                         clientY: 8,
-                        detail: 1,
                     })
                 )
         );
@@ -381,7 +382,6 @@ describe('FileChip', () => {
                         ctrlKey: true,
                         clientX: 12,
                         clientY: 8,
-                        detail: 1,
                     })
                 )
         );

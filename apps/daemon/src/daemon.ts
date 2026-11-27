@@ -84,6 +84,8 @@ export interface DaemonOptions {
 /** Wires everything and starts serving. Throws `AlreadyRunningError` when another daemon owns the data directory. */
 export async function startDaemon(config: Config, options: DaemonOptions = {}): Promise<Daemon> {
     const releaseLock = acquireLock(config.dataDir);
+    /** Closes what startup has made when a later step throws: it grows with the steps, and is `stop` once the services exist. */
+    let undo: () => unknown = releaseLock;
 
     try {
         const startedAt = Date.now();
@@ -95,6 +97,13 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
         const shim = installShimOrWarn(config.dataDir);
         const created = options.engines ? undefined : createEngines(config, agents, process.env, shim);
         const engines = options.engines ?? (created as EngineRegistry);
+
+        undo = () => {
+            created?.stop();
+            skills.stop();
+            store.db.close();
+            releaseLock();
+        };
 
         if (!engines.has(config.engine)) {
             throw new Error(
@@ -182,25 +191,21 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
             commitMessages: new CommitMessages({ store, agents, providers, generation: textGeneration }),
         };
 
-        await runs.recover();
-        attachments.sweep();
         // Expire legacy recovery copies in the background; new discards never create them.
         const pruning = pruneDiscardCopies(config.dataDir).catch(() => undefined);
-        // Before the watchers, so the personal space is watched like any project.
-        ensurePersonalProject(store, config);
-        skills.watchFolders(listProjects(store.db));
-        driver.resumeWaiting();
-        queue.resumePending();
-
+        // Made once startup has got that far; a startup that fails before has none to close.
+        let server: ReturnType<typeof startServer> | undefined;
+        let removeInfo: (() => void) | undefined;
+        let unsubscribePower: (() => void) | undefined;
         let stopping: Promise<void> | undefined;
 
         const stop = () =>
             (stopping ??= (async () => {
                 // Notices still in their window are lost: their timers must not write to a store that is closing.
                 notices.stop();
-                unsubscribePower();
+                unsubscribePower?.();
                 power.stop();
-                await server.stop(true);
+                await server?.stop(true);
                 // A clone that is stopped takes away what it made before the process may go.
                 await services.gitClone.stop();
                 services.terminals.stop();
@@ -219,10 +224,20 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
                 services.fs.stop();
                 skills.stop();
                 store.db.close();
-                removeInfo();
+                removeInfo?.();
                 releaseLock();
             })());
-        const server = startServer({
+
+        undo = stop;
+
+        await runs.recover();
+        attachments.sweep();
+        // Before the watchers, so the personal space is watched like any project.
+        ensurePersonalProject(store, config);
+        skills.watchFolders(listProjects(store.db));
+        driver.resumeWaiting();
+        queue.resumePending();
+        server = startServer({
             services,
             version: VERSION,
             startedAt,
@@ -237,8 +252,8 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
             protocol: PROTOCOL_VERSION,
             startedAt,
         };
-        const removeInfo = writeDaemonInfo(config.dataDir, info);
-        const unsubscribePower = store.subscribe(events => {
+        removeInfo = writeDaemonInfo(config.dataDir, info);
+        unsubscribePower = store.subscribe(events => {
             if (events.some(event => ['run.upserted', 'chat.deleted', 'project.deleted'].includes(event.data.type)))
                 power.refresh();
         });
@@ -246,7 +261,13 @@ export async function startDaemon(config: Config, options: DaemonOptions = {}): 
 
         return { info, services, stop };
     } catch (error) {
-        releaseLock();
+        try {
+            await undo();
+        } catch (cleanup) {
+            console.error('[clowdy] closing after a failed start failed:', cleanup);
+            releaseLock();
+        }
+
         throw error;
     }
 }

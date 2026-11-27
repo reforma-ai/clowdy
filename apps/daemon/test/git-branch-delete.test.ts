@@ -219,7 +219,7 @@ describe('POST /v1/projects/:id/git/branch-delete', () => {
         const plan = await api.preview('feature/delete');
         expect(plan.blocked).toBeUndefined();
 
-        api.h.ok('chat.create', {
+        await api.h.okAsync('chat.create', {
             projectId: api.project.id,
             workspace: { mode: 'new', base: 'feature/delete' },
         });
@@ -279,10 +279,12 @@ describe('POST /v1/projects/:id/git/branch-delete', () => {
         commitFile(tree, 'worktree.txt');
 
         const api = await open(path);
-        const { id: workspaceId } = api.h.ok('chat.create', {
-            projectId: api.project.id,
-            workspace: { mode: 'existing', path: tree },
-        }).chat.workspace as { id: string };
+        const { id: workspaceId } = (
+            await api.h.okAsync('chat.create', {
+                projectId: api.project.id,
+                workspace: { mode: 'existing', path: tree },
+            })
+        ).chat.workspace as { id: string };
         const extra = { workspaceId };
         const blocked = await api.preview('chat-branch', false, extra);
         expect(blocked.blocked).toContain('before switching');

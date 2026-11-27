@@ -27,24 +27,6 @@
         width: var(--panel-width, 15.625rem); /* 250px */
     }
 
-    .panelSearch {
-        padding: var(--spacing-xs);
-        border-bottom: 1px solid var(--color-surface-border);
-    }
-
-    /* The inline variant has no radius; the clear button's corners are derived from it. */
-    .panelSearchInput[data-size][data-variant] {
-        --clowdy-input-radius: var(--radius-md);
-        --clowdy-input-height: var(--spacing-30);
-        --clowdy-input-padding-block: var(--spacing-10);
-        --clowdy-input-padding-inline: var(--spacing-md);
-
-        @ruleset typography-text-sm;
-
-        width: 100%;
-        min-width: 0;
-    }
-
     .title {
         @ruleset typography-heading-6;
 
@@ -78,31 +60,6 @@
         height: 100%;
     }
 
-    .headerTabs {
-        flex: 1 1 auto;
-        align-self: stretch;
-        min-width: 0;
-        margin-right: var(--spacing-10);
-    }
-
-    /* Full header height, so the tab underline sits on the header border.
-       Must outrank ToggleButtonGroup's `.item[data-size][data-variant]` height. */
-    .headerTabs button[data-size][data-variant] {
-        height: 100%;
-    }
-
-    /* Same slot as the tabs: arrow + label, tab weight, truncates before the search icon. */
-    .headerBack[data-size][data-variant] {
-        @ruleset typography-tab-tab-sm;
-
-        justify-content: flex-start;
-        align-self: center;
-        flex-shrink: 1;
-        min-width: 0;
-        max-width: 100%;
-        padding-inline: var(--spacing-2) var(--spacing-10);
-    }
-
     .tab {
         display: flex;
         flex: 1;
@@ -114,6 +71,13 @@
     /* Same height as one style control row, so an empty section doesn't collapse. */
     .emptyRow {
         min-height: 50px;
+    }
+
+    .foldButton[data-fold-size='xxs'] {
+        --clowdy-button-size: var(--spacing-16);
+
+        border-radius: calc(var(--radius-sm) * var(--squircle-radius-factor));
+        corner-shape: superellipse(var(--squircle-value));
     }
 
     /* Out of flow — indent is the row's paddingLeft only; icons stay aligned.

@@ -9,21 +9,6 @@
     list-style: none;
 }
 
-/* The switch is centred on the title and its line, as in a SettingsRow. */
-.setting {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--spacing-xl);
-}
-
-.text {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-2);
-    min-width: 0;
-}
-
 /* An inline button takes the size of the text around it; Advanced is in the size of the settings. */
 .trigger {
     @ruleset typography-text-sm;
@@ -37,12 +22,6 @@
     padding-top: var(--spacing-xl);
 }
 
-.field {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-sm);
-}
-
 .inputs {
     display: flex;
     align-items: center;
@@ -54,11 +33,12 @@
     min-width: 0;
 }
 
-/* The presets stand under their title and hint, one radio each, the radio at the top line of its text. */
-.permissions {
+/* The reason a value is refused, then Save at the start of its own line. */
+.envFooter {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-lg);
+    align-items: flex-start;
+    gap: var(--spacing-sm);
 }
 
 .presets {
@@ -67,10 +47,12 @@
     gap: var(--spacing-lg);
 }
 
+/* The presets read as off while a choice is saved. */
 .permissions[aria-busy] .presets {
-    opacity: 0.6;
+    opacity: var(--opacity-inactive);
 }
 
+/* The radio at the top line of its text. */
 .preset {
     align-items: flex-start;
 }
@@ -86,15 +68,4 @@
     display: flex;
     align-items: center;
     gap: var(--spacing-md);
-}
-
-/* The provider's default, named quietly: it is not a recommendation. */
-.defaultTag {
-    @ruleset typography-text-xs;
-
-    padding: var(--spacing-2) var(--spacing-md);
-    border-radius: var(--radius-full);
-    background-color: var(--color-secondary-muted-light);
-    color: var(--color-secondary-muted-text);
-    font-weight: 500;
 }

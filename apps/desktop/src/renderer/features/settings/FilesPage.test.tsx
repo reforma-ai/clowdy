@@ -8,6 +8,7 @@ import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { treeLayout } from '../files';
 import { openWithPreferences } from '../openWith';
+import { named } from './accessibleName';
 import { FilesPage } from './FilesPage';
 
 import type { OpenApps } from '../../../shared/bridge';
@@ -90,7 +91,7 @@ describe('FilesPage', () => {
     it('has the switch for the hidden files of the file tree, off to start, which is the same choice as the key of the Files tab', async () => {
         await draw({ getOpenApps: async () => APPS });
 
-        const hidden = () => container.querySelector<HTMLInputElement>('input[aria-label="Show hidden files"]')!;
+        const hidden = () => named<HTMLInputElement>(container, 'input', 'Show hidden files')!;
 
         expect(container.textContent).toContain('Files that start with a dot, and node_modules');
         expect(hidden().checked).toBe(false);

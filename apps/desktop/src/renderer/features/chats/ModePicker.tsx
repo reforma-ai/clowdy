@@ -1,11 +1,9 @@
-import { Button } from '@clowdy/components/Button';
 import { Menu, MenuItem, MenuTrigger } from '@clowdy/components/List';
 import { Popover } from '@clowdy/components/Popover';
 import { Text } from '@clowdy/components/Text';
-import { Check, ChevronDown } from '@clowdy/icons/14';
-import { use } from 'react';
-import { OverlayTriggerStateContext } from 'react-aria-components';
+import { Check } from '@clowdy/icons/14';
 
+import { ComposerPill } from './ComposerPill';
 import styles from './ModePicker.module.css';
 
 import type { ChatMode } from '@clowdy/protocol';
@@ -24,9 +22,13 @@ export interface ModePickerProps {
 
 /** The pill at the end of the line under the message box that says how the orchestrator works, and opens the two modes with what each does. */
 export function ModePicker({ mode, isDisabled, onPick }: ModePickerProps) {
+    const label = MODES.find(option => option.id === mode)?.label ?? mode;
+
     return (
         <MenuTrigger>
-            <Trigger label={MODES.find(option => option.id === mode)?.label ?? mode} isDisabled={isDisabled} />
+            <ComposerPill isDisabled={isDisabled} aria-label={`Mode: ${label}`}>
+                <Text truncate>{label}</Text>
+            </ComposerPill>
             <Popover className={styles.menu} placement="top" spacing="xs">
                 <Menu
                     aria-label="How the orchestrator works"
@@ -55,25 +57,5 @@ export function ModePicker({ mode, isDisabled, onPick }: ModePickerProps) {
                 </Menu>
             </Popover>
         </MenuTrigger>
-    );
-}
-
-function Trigger({ label, isDisabled }: { label: string; isDisabled?: boolean }) {
-    const isOpen = use(OverlayTriggerStateContext)!.isOpen;
-
-    return (
-        <Button
-            size="sm"
-            variant="filling"
-            rounded
-            className={styles.trigger}
-            contentClassName={styles.triggerContent}
-            data-open={isOpen || undefined}
-            isDisabled={isDisabled}
-            aria-label={`Mode: ${label}`}
-        >
-            <Text truncate>{label}</Text>
-            <ChevronDown aria-hidden="true" />
-        </Button>
     );
 }

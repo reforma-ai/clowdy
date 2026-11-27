@@ -2,7 +2,7 @@ import { For } from '@clowdy/components/For';
 import { Menu, MenuItem, MenuSeparator, SubmenuTrigger } from '@clowdy/components/List';
 import { Popover, PopoverScroll } from '@clowdy/components/Popover';
 import { ChevronRight } from '@clowdy/icons/8';
-import { Copy, Follow, NewChat, Trash } from '@clowdy/icons/14';
+import { Follow, NewChat, Trash } from '@clowdy/icons/14';
 
 import { worktreeLabel } from '../agents/workspaceChoice';
 import { actionIcon, chosenPrograms, openActions, openEffects, useFolderGit, useOpenApps } from '../openWith';

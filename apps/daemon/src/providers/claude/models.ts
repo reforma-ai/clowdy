@@ -1,4 +1,4 @@
-import { runProgram } from '../exec';
+import { runProgram } from '../../process/run';
 import { jsonObject, text } from '../parse';
 
 import type { AgentModel, AgentModels } from '@clowdy/protocol';

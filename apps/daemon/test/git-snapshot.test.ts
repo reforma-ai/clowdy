@@ -474,9 +474,12 @@ async function setup(script: Script, options: { repo?: string; plain?: boolean }
     const repo = options.repo ?? (options.plain ? tempDir('git-snapshot') : work());
     const { project } = h.ok('project.add', { name: 'Shop', folders: [repo] }) as { project: Project };
     const chatOf = (chatId: string) => getChat(h.store.db, chatId) as Chat;
-    const make = (workspace?: unknown) =>
+    const make = async (workspace?: unknown) =>
         (
-            h.ok('chat.create', { projectId: project.id, ...(workspace !== undefined && { workspace }) }) as {
+            (await h.okAsync('chat.create', {
+                projectId: project.id,
+                ...(workspace !== undefined && { workspace }),
+            })) as {
                 chat: Chat;
             }
         ).chat;
@@ -517,7 +520,7 @@ describe("a chat's turn", () => {
                 put(cwd, { 'a.ts': lines('a1', 'by the agent', 'a3'), 'agent-made.ts': lines('new', 'file') });
             })
         );
-        const chat = make();
+        const chat = await make();
 
         // Work the person left in the tree before the turn.
         put(repo, { 'b.ts': lines('b1', 'b2', 'the person was here') });
@@ -565,7 +568,7 @@ describe("a chat's turn", () => {
                 if (turn === 3) put(cwd, { 'a.ts': lines('third turn') });
             })
         );
-        const chat = make();
+        const chat = await make();
 
         await send(chat, 'First');
 
@@ -603,7 +606,7 @@ describe("a chat's turn", () => {
             }),
             { plain: true }
         );
-        const chat = make();
+        const chat = await make();
 
         await send(chat, 'Write a note');
         expect(chatOf(chat.id).lastRun).toBeUndefined();
@@ -622,7 +625,7 @@ describe("a chat's turn", () => {
             throw new Error('stopped');
         };
         const { h, repo, chatOf, make, read } = await setup(hold);
-        const chat = make();
+        const chat = await make();
 
         h.ok('chat.send', { chatId: chat.id, text: 'Start and be stopped' });
         await waitFor(() => existsSync(join(repo, 'half-done.ts')), 'the agent to write its file');
@@ -724,7 +727,7 @@ describe("a chat's turn", () => {
             }),
             { repo }
         );
-        const chat = make({ mode: 'existing', path: tree });
+        const chat = await make({ mode: 'existing', path: tree });
 
         // The checkout has an edit of its own while the chat works.
         put(repo, { 'in-checkout.ts': lines("not the chat's") });
@@ -762,8 +765,8 @@ describe("a chat's turn", () => {
             yield { type: 'done', result: 'Done' };
         };
         const { h, engine, chatOf, make, send, read } = await setup(script);
-        const slow = make();
-        const quick = make();
+        const slow = await make();
+        const quick = await make();
 
         h.ok('chat.send', { chatId: slow.id, text: 'slow work' });
         await waitFor(() => engine.turns.length === 1, 'the slow turn to start');
@@ -789,7 +792,7 @@ describe("a chat's turn", () => {
                 put(cwd, { 'a.ts': lines('changed') });
             })
         );
-        const chat = make();
+        const chat = await make();
         const stale = chatOf(chat.id);
 
         await send(chat, 'Change a file');
@@ -818,7 +821,7 @@ describe('TurnSnapshots', () => {
             doing(() => undefined),
             { plain: true }
         );
-        const chat = make();
+        const chat = await make();
 
         h.ok('chat.send', { chatId: chat.id, text: 'Make the run' });
         await waitFor(() => chatOf(chat.id).orchestratorRunId, 'the run');

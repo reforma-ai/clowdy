@@ -1,36 +1,8 @@
 @reference '@clowdy/styles/rulesets';
 
-.form {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-xxl);
+/* The Worktrees tab has the inset of the Settings tab's dialog layout. */
+.worktrees {
     padding: var(--spacing-20);
-}
-
-.fields {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-xxl);
-}
-
-.heading {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-xxs);
-    min-width: 0;
-}
-
-/* The same rhythm as a `FormField` with a description above its control: the label and its hint are one caption (close), and the field stands a little apart from both. */
-.field {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-sm);
-}
-
-.copy {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-xxs);
 }
 
 /* A script and a list of paths read better in the code face. */

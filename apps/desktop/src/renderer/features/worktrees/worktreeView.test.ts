@@ -3,15 +3,19 @@ import { describe, expect, it } from 'vitest';
 import {
     branchWarning,
     changesLabel,
+    confirmedRemovalDrift,
+    deleteBranchByDefault,
     lockTip,
     mergedMark,
+    reconcileChoice,
+    removalDrift,
     removalPlan,
     removeHint,
     repositoryGroups,
     worktreeMark,
 } from './worktreeView';
 
-import type { FolderWorktrees, ProjectFolder } from '@clowdy/protocol';
+import type { FolderWorktrees, ProjectFolder, WorktreeInfo } from '@clowdy/protocol';
 
 describe('changesLabel', () => {
     it('says a tree with nothing changed has no local changes, and else how many changes', () => {
@@ -241,5 +245,130 @@ describe('repositoryGroups', () => {
 
     it('drops a group whose folder left the project since the read', () => {
         expect(repositoryGroups([group('gone', true)], [{ id: 'a', path: '/a' }])).toEqual([]);
+    });
+});
+
+/** A clean worktree on a merged branch, as Git's list reads it. */
+const tree = (fields: Partial<WorktreeInfo> = {}): WorktreeInfo => ({
+    path: '/Users/dev/worktrees/car-rental/done',
+    branch: 'feature/done',
+    head: 'aaa1111',
+    headOid: 'aaa1111000000000000000000000000000000000',
+    main: false,
+    missing: false,
+    changes: 0,
+    submodules: false,
+    merged: true,
+    base: 'origin/main',
+    managed: false,
+    chats: [],
+    ...fields,
+});
+
+const chats = (ids: string[], outside = 0) => ({ ids: new Set(ids), outside });
+
+describe('deleteBranchByDefault', () => {
+    it('turns the branch switch on only for a clean worktree on disk whose branch is merged', () => {
+        expect([
+            deleteBranchByDefault(tree()),
+            deleteBranchByDefault(tree({ merged: false })),
+            deleteBranchByDefault(tree({ changes: 1 })),
+            deleteBranchByDefault(tree({ submodules: true })),
+            deleteBranchByDefault(tree({ missing: true })),
+            deleteBranchByDefault(tree({ branch: undefined })),
+        ]).toEqual([true, false, false, false, false, false]);
+    });
+});
+
+describe('removalDrift', () => {
+    it('finds nothing changed when Git reads the worktree and chats as previewed', () => {
+        expect(removalDrift({ worktree: tree(), chats: chats(['c-1']) }, tree(), chats(['c-1']))).toEqual({
+            branch: false,
+            chats: false,
+        });
+    });
+
+    it('sees a new commit on the previewed branch as a branch change', () => {
+        expect(removalDrift({ worktree: tree() }, tree({ headOid: 'bbb' }), chats([]))).toEqual({
+            branch: true,
+            chats: false,
+        });
+    });
+
+    it('compares only the branch name when the list showed no row', () => {
+        expect(removalDrift({ label: 'feature/done' }, tree({ branch: 'feature/other' }), chats([]))).toEqual({
+            branch: true,
+            chats: false,
+        });
+    });
+
+    it('sees a chat swapped for another one of the same count as a chat change', () => {
+        expect(removalDrift({ worktree: tree(), chats: chats(['c-1']) }, tree(), chats(['c-2']))).toEqual({
+            branch: false,
+            chats: true,
+        });
+    });
+
+    it('takes a different workspace record at the same path for a change of both', () => {
+        expect(
+            removalDrift({ worktree: tree({ workspaceId: 'w-1' }) }, tree({ workspaceId: 'w-2' }), chats([]))
+        ).toEqual({ branch: true, chats: true });
+    });
+});
+
+describe('reconcileChoice', () => {
+    const nothing = { branch: false, chats: false };
+
+    it('lets an untouched branch switch follow the worktree read now', () => {
+        expect(
+            reconcileChoice({ deleteBranch: true, disposition: 'archive' }, tree({ merged: false }), nothing)
+        ).toEqual({ deleteBranch: false, disposition: 'archive' });
+    });
+
+    it("keeps the person's choice when nothing changed", () => {
+        const choice = { deleteBranch: true, disposition: 'delete', branchTouched: true, chatsTouched: true } as const;
+
+        expect(reconcileChoice(choice, tree({ merged: false }), nothing)).toEqual(choice);
+    });
+
+    it('turns both switches off when anything changed after the person touched one', () => {
+        expect(
+            reconcileChoice({ deleteBranch: true, disposition: 'delete', chatsTouched: true }, tree(), {
+                branch: false,
+                chats: true,
+            })
+        ).toEqual({ deleteBranch: false, disposition: 'archive', chatsTouched: true });
+    });
+});
+
+describe('confirmedRemovalDrift', () => {
+    const plain = { deleteBranch: false, discard: false, noChats: false };
+
+    it('lets a removal go when what it authorised is unchanged', () => {
+        expect(
+            confirmedRemovalDrift(tree(), tree(), 0, { deleteBranch: true, discard: false, noChats: true })
+        ).toBeUndefined();
+    });
+
+    it('refuses a removal that named no chat once a chat is linked', () => {
+        expect(confirmedRemovalDrift(tree(), tree(), 1, { ...plain, noChats: true })).toBe(
+            'The chats linked to this worktree changed. Try again'
+        );
+    });
+
+    it('never deletes a branch other than the one shown', () => {
+        expect(
+            confirmedRemovalDrift(tree(), tree({ branch: 'feature/other' }), 0, { ...plain, deleteBranch: true })
+        ).toBe('The branch changed. Try again');
+    });
+
+    it('keeps the branch question out of a removal that keeps the branch', () => {
+        expect(confirmedRemovalDrift(tree(), tree({ branch: 'feature/other' }), 0, plain)).toBeUndefined();
+    });
+
+    it('does not discard changes made after they were counted', () => {
+        expect(confirmedRemovalDrift(tree({ changes: 1 }), tree({ changes: 2 }), 0, { ...plain, discard: true })).toBe(
+            'The local changes in this worktree changed. Try again'
+        );
     });
 });

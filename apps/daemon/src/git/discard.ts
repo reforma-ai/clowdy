@@ -6,14 +6,14 @@ import { gitRead } from '../domain/git';
 import { exclusive } from '../domain/workspaces';
 import { conflict, invalid, unavailable } from '../errors';
 import { fsFailure, locate, normalizeFsPath } from '../fs/paths';
-import { LEFTOVER_GRACE_MS, runProgram } from '../providers/exec';
+import { LEFTOVER_GRACE_MS, runProgram } from '../process/run';
 import { failureLine, writeLine } from './commit';
 import { selectChanged } from './selection';
 import { WriteEnvironment } from './writeEnv';
 
 import type { GitChangedFile, GitDiscardedFile, GitDiscardResult } from '@clowdy/protocol';
 import type { Place } from '../domain/places';
-import type { RunResult } from '../providers/exec';
+import type { RunResult } from '../process/run';
 import type { Store } from '../store';
 
 /** A restore or a removal of a few files is quick; this is for a smudge filter (Git LFS) that has to be fetched, and for a disk that is slow to answer. */

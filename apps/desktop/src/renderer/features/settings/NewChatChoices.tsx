@@ -1,11 +1,9 @@
+import { SettingsLayout } from '@clowdy/components/SettingsLayout';
 import { ToggleButtonGroup, ToggleButtonGroupItem } from '@clowdy/components/ToggleButtonGroup';
 import { LAST_USED } from '@clowdy/protocol';
 
 import { useAgents } from '../../stores';
 import { providerAgents } from './providers/providerView';
-import { SettingsCard } from './ui/SettingsCard';
-import { SettingsRow } from './ui/SettingsRow';
-import { SettingsSection } from './ui/SettingsSection';
 
 import type { ChatMode } from '@clowdy/protocol';
 
@@ -49,15 +47,14 @@ export function NewChatChoices({
     const defaultHint = followsApp ? 'Default follows Settings > Chat, ' : '';
 
     return (
-        <SettingsSection title="New chats">
-            <SettingsCard divided>
-                <SettingsRow
+        <SettingsLayout.Section title="New chats">
+            <SettingsLayout.Card divided>
+                <SettingsLayout.Row
                     title="Agent"
                     description={`The agent a new chat starts with. ${defaultHint}Last used keeps the one you picked in your previous chat.`}
                     stacked
                 >
                     <ToggleButtonGroup
-                        aria-label="Agent for new chats"
                         size="sm"
                         selectedKeys={[engine]}
                         onSelectionChange={keys => {
@@ -79,15 +76,14 @@ export function NewChatChoices({
                         ))}
                         {unlisted && <ToggleButtonGroupItem value={unlisted}>{unlisted}</ToggleButtonGroupItem>}
                     </ToggleButtonGroup>
-                </SettingsRow>
+                </SettingsLayout.Row>
 
-                <SettingsRow
+                <SettingsLayout.Row
                     title="Mode"
                     description={`How much a new chat decides on its own. ${defaultHint}Last used keeps the mode of your previous chat.`}
                     stacked
                 >
                     <ToggleButtonGroup
-                        aria-label="Mode for new chats"
                         size="sm"
                         selectedKeys={[mode]}
                         onSelectionChange={keys => {
@@ -104,9 +100,9 @@ export function NewChatChoices({
                             </ToggleButtonGroupItem>
                         ))}
                     </ToggleButtonGroup>
-                </SettingsRow>
-            </SettingsCard>
-        </SettingsSection>
+                </SettingsLayout.Row>
+            </SettingsLayout.Card>
+        </SettingsLayout.Section>
     );
 }
 

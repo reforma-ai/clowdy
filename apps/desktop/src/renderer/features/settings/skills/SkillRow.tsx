@@ -1,9 +1,9 @@
+import { SettingsLayout } from '@clowdy/components/SettingsLayout';
 import { Switch } from '@clowdy/components/Switch';
 import { Text } from '@clowdy/components/Text';
 import { Lock } from '@clowdy/icons/12';
 
 import { PathText } from '../../../shared/PathText';
-import { SettingsBlock } from '../ui/SettingsBlock';
 import styles from './SkillRow.module.css';
 import { tokenLabel } from './skillView';
 
@@ -23,7 +23,7 @@ export function SkillRow({ skill, isPending, isDisabled, sourceFolder, onToggle 
     const { name, source, description, enabled, path, tokens } = skill;
 
     return (
-        <SettingsBlock as="li" className={styles.row} data-off={!enabled || undefined}>
+        <SettingsLayout.Block as="li" className={styles.row} data-off={!enabled || undefined}>
             <div className={styles.body}>
                 <div className={styles.titleLine}>
                     <Text variant="md" weight="medium" truncate className={styles.name}>
@@ -69,6 +69,6 @@ export function SkillRow({ skill, isPending, isDisabled, sourceFolder, onToggle 
                     </span>
                 )}
             </div>
-        </SettingsBlock>
+        </SettingsLayout.Block>
     );
 }

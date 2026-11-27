@@ -1,0 +1,31 @@
+/*
+ * A row with lines below it: the chevron is drawn over the icon and takes its place while the row is hovered, so the row keeps the one
+ * room for both and the icon of every row stays where the list puts it. The icon goes out (`item-rest`) as the chevron comes in (`item-hover`).
+ */
+.foldIcon {
+    position: relative;
+    display: inline-flex;
+    flex-shrink: 0;
+}
+
+.restIcon {
+    display: inline-flex;
+}
+
+/* The button is the size of the row's Archive button, so it is wider than the icon it covers and is centred on it. */
+.fold {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    display: flex;
+    transform: translate(-50%, -50%);
+}
+
+[role='row']:focus-within .foldIcon[data-reveal-on-focus] .restIcon {
+    opacity: 0;
+}
+
+[role='row']:focus-within .foldIcon[data-reveal-on-focus] .fold {
+    opacity: 1;
+    pointer-events: auto;
+}

@@ -177,7 +177,122 @@ export function branchWarning({ standing }: BranchChoice): string | undefined {
 /** What a detached HEAD whose commits are not in the base says: git may know no branch that keeps them once the worktree is gone. */
 export const STRANDED_WARNING = 'Commits that aren’t on a branch may be lost';
 
+/** What the person chose in a removal's confirmation besides removing. `branchTouched` and `chatsTouched` say they changed a switch themselves. */
+export interface RemoveChoice {
+    deleteBranch: boolean;
+    disposition: 'archive' | 'delete';
+    branchTouched?: boolean;
+    chatsTouched?: boolean;
+}
+
+type RemovedWorktree = Pick<WorktreeInfo, 'branch' | 'base' | 'merged' | 'missing' | 'changes' | 'submodules'>;
+
+/** Whether the branch switch starts on: only for a clean worktree still on disk whose branch's work is in the base. */
+export function deleteBranchByDefault(worktree: RemovedWorktree): boolean {
+    return (
+        !worktree.missing && worktree.changes === 0 && !worktree.submodules && !!removalPlan(worktree).branch?.selected
+    );
+}
+
+/** The chats a removal takes with it, as counted: their ids and how many of them are threads in other places. */
+export interface RemovedChats {
+    ids: ReadonlySet<string>;
+    outside: number;
+}
+
+/** What the confirmation showed before Git was read again: the row of the list, or only the branch name it showed, and the chats counted from the store. */
+export interface RemovalPreview {
+    worktree?: WorktreeInfo;
+    label?: string;
+    chats?: RemovedChats;
+}
+
+/** What changed between the preview and the worktree read now: the branch or its work, or the chats a removal takes. */
+export interface RemovalDrift {
+    branch: boolean;
+    chats: boolean;
+}
+
+/** Compares the preview the person saw with the worktree and chats read now. Nothing previewed is nothing changed. */
+export function removalDrift(preview: RemovalPreview, worktree: WorktreeInfo, chats: RemovedChats): RemovalDrift {
+    const shown = preview.worktree;
+    const identity = !!shown && (shown.path !== worktree.path || shown.workspaceId !== worktree.workspaceId);
+    const branch = shown
+        ? identity ||
+          shown.headOid !== worktree.headOid ||
+          shown.branch !== worktree.branch ||
+          shown.head !== worktree.head ||
+          shown.base !== worktree.base ||
+          shown.merged !== worktree.merged ||
+          shown.missing !== worktree.missing ||
+          shown.changes !== worktree.changes ||
+          shown.submodules !== worktree.submodules
+        : preview.label !== undefined && preview.label !== worktree.branch;
+    const before = preview.chats;
+    const chatsChanged =
+        identity ||
+        (!!before &&
+            (before.outside !== chats.outside ||
+                before.ids.size !== chats.ids.size ||
+                [...before.ids].some(id => !chats.ids.has(id))));
+
+    return { branch, chats: chatsChanged };
+}
+
 /**
+ * The choice once the worktree is read again. An untouched branch switch follows the worktree read now. A change the person did not see turns off what they chose:
+ * the branch switch when the branch changed, and both switches when anything changed after they touched one.
+ */
+export function reconcileChoice(choice: RemoveChoice, worktree: RemovedWorktree, drift: RemovalDrift): RemoveChoice {
+    if ((drift.branch || drift.chats) && (choice.branchTouched || choice.chatsTouched))
+        return { ...choice, deleteBranch: false, disposition: 'archive' };
+
+    if (!choice.branchTouched) return { ...choice, deleteBranch: deleteBranchByDefault(worktree) };
+
+    return drift.branch ? { ...choice, deleteBranch: false } : choice;
+}
+
+/** What a confirmed removal still needs to hold when it is sent, beyond what the daemon checks itself. */
+export interface ConfirmedRemoval {
+    deleteBranch: boolean;
+    discard: boolean;
+    /** The confirmation counted no linked chat, so it asked nothing about chats. */
+    noChats: boolean;
+}
+
+/**
+ * Why a confirmed removal must not be sent now that the worktree reads as `current`, or `undefined` when it may. The branch switch authorises deleting the branch that was
+ * shown, not a different checkout or new commits; the red confirmation discards the changes that were counted, not new ones; a confirmation that named no chat archives none.
+ */
+export function confirmedRemovalDrift(
+    shown: WorktreeInfo,
+    current: WorktreeInfo,
+    linkedNow: number,
+    { deleteBranch, discard, noChats }: ConfirmedRemoval
+): string | undefined {
+    if (noChats && linkedNow > 0) return 'The chats linked to this worktree changed. Try again';
+
+    if (
+        deleteBranch &&
+        (current.branch !== shown.branch ||
+            current.head !== shown.head ||
+            current.base !== shown.base ||
+            current.merged !== shown.merged)
+    )
+        return 'The branch changed. Try again';
+
+    if (
+        discard &&
+        (current.changes !== shown.changes ||
+            current.submodules !== shown.submodules ||
+            current.branch !== shown.branch ||
+            current.head !== shown.head)
+    )
+        return 'The local changes in this worktree changed. Try again';
+
+    return undefined;
+}
+
 /** The groups of the project that are repositories and whose folder is still in the project, each with its folder, in the project's order. */
 export function repositoryGroups(
     groups: readonly FolderWorktrees[],

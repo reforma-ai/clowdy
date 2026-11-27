@@ -1,3 +1,5 @@
+import { errorMessage } from '@clowdy/lib';
+
 import { absolutePath } from '../openWith';
 
 import type { ClipboardEntry, FileClipboard } from '@clowdy/file-manager';
@@ -28,7 +30,7 @@ export function pathInside(root: string, file: string): string | undefined {
 
 /** What main said, without the wrapper Electron puts around an error that crossed the bridge (`Error invoking remote method 'desktop:paste-files': Error: <message>`). */
 function unwrapped(error: unknown): Error {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error, 'Something went wrong');
 
     return new Error(message.replace(/^Error invoking remote method '[^']*': (?:Error: )?/, ''));
 }

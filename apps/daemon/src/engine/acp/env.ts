@@ -1,23 +1,11 @@
 import { delimiter } from 'node:path';
 
+import { inheritedEnv } from '../../process/env';
+
 import type { Shim } from '../../cli/shim';
 import type { CliAccess } from './bridge';
 
 type Env = Record<string, string | undefined>;
-
-/**
- * Variables an agent, and a terminal's shell, never inherit from the daemon. The daemon's own settings and secrets (`CLOWDY_TOKEN`, an API key
- * meant for something else), markers of the app or terminal that started it (`ELECTRON_RUN_AS_NODE` would make a
- * Node-based agent run as Electron, `CLAUDECODE` makes a nested Claude Code behave as a sub-session), and Node flags aimed at the daemon.
- */
-export const NEVER_INHERITED = [
-    /^CLOWDY_/i,
-    /^ELECTRON_/i,
-    /^NODE_OPTIONS$/i,
-    /^CLAUDECODE$/i,
-    /^CLAUDE_CODE_(ENTRYPOINT|SSE_PORT|EXECPATH)$/i,
-    /^CLAUDE_AGENT_SDK_/i,
-];
 
 export interface AgentEnvInput {
     /** The daemon's own environment. */
@@ -35,24 +23,13 @@ export interface AgentEnvInput {
  * variables all pass, because the point is to use what the user has installed and logged in), minus the daemon's secrets.
  */
 export function buildAgentEnv({ daemonEnv, path, scrub = [], set = {} }: AgentEnvInput): Record<string, string> {
-    const env: Record<string, string> = {};
+    const env = Object.fromEntries(
+        Object.entries(inheritedEnv(daemonEnv)).filter(
+            ([name]) => !/^path$/i.test(name) && !scrub.some(pattern => pattern.test(name))
+        )
+    );
 
-    for (const [name, value] of Object.entries(daemonEnv)) {
-        if (
-            value === undefined ||
-            /^path$/i.test(name) ||
-            NEVER_INHERITED.some(pattern => pattern.test(name)) ||
-            scrub.some(pattern => pattern.test(name))
-        ) {
-            continue;
-        }
-
-        env[name] = value;
-    }
-
-    env.PATH = path;
-
-    return { ...env, ...set };
+    return { ...env, PATH: path, ...set };
 }
 
 /**

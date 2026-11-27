@@ -599,6 +599,28 @@ describe('placeStatus', () => {
 });
 
 describe('the base', () => {
+    onPosix('is unavailable when git does not answer for HEAD, never an unborn branch', async () => {
+        const repo = makeRepo(tempDir('git-changes'));
+        const bin = tempDir('git-changes-bin');
+        const path = process.env.PATH;
+
+        // A git that dies without an answer when it is asked for a commit, as one that is killed for the time does.
+        writeFileSync(
+            join(bin, 'git'),
+            `#!/bin/sh\ncase "$1" in rev-parse) kill -9 $$ ;; esac\nexec ${Bun.which('git')} "$@"\n`
+        );
+        chmodSync(join(bin, 'git'), 0o755);
+        process.env.PATH = `${bin}:${path}`;
+
+        try {
+            expect(await mergeBaseOf(placeAt(repo)).catch((error: unknown) => error)).toMatchObject({
+                code: 'unavailable',
+            });
+        } finally {
+            process.env.PATH = path;
+        }
+    });
+
     test("is origin's branch when the local one is equal to it, behind it or not there, and the local one when it is ahead or has diverged", async () => {
         const { work: path, seed } = clone();
         const origin = git(path, 'rev-parse', 'origin/main');
@@ -1701,12 +1723,16 @@ describe('over HTTP', () => {
         const { project: other } = h.ok('project.add', { name: 'Other', folders: [stranger] });
         const folderId = project.folders[0].id as string;
         const workspaceId = (
-            h.ok('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: tree } }).chat
-                .workspace as { id: string }
+            (await h.okAsync('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: tree } }))
+                .chat.workspace as { id: string }
         ).id;
         const otherId = (
-            h.ok('chat.create', { projectId: other.id, workspace: { mode: 'existing', path: strangerTree } }).chat
-                .workspace as { id: string }
+            (
+                await h.okAsync('chat.create', {
+                    projectId: other.id,
+                    workspace: { mode: 'existing', path: strangerTree },
+                })
+            ).chat.workspace as { id: string }
         ).id;
         const base = `/v1/projects/${project.id}/git`;
         const at = (query: string) => `?folderId=${folderId}&workspaceId=${workspaceId}${query}`;

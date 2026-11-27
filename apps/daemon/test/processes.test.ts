@@ -187,6 +187,46 @@ describe('a daemon that crashed', () => {
         ]);
         expect(runs.map(id => getRunWork(second.store.db, id).process)).toEqual([undefined, undefined]);
     });
+
+    test('kills the survivors that ignore SIGTERM at the same time, so startup waits one grace period, not one each', async () => {
+        const engine = new ScriptEngine(async function* ({ signal }) {
+            yield { type: 'session', sessionId: 's1' };
+            await untilAborted(signal);
+        });
+        const first = await startHarness({}, { engines: scriptEngines(engine) });
+        const project = first.openRepo();
+        const runs = ['A', 'B', 'C'].map(
+            title =>
+                first.ok('task.start', { taskId: first.ok('task.create', { projectId: project.id, title }).task.id })
+                    .runId as string
+        );
+
+        await waitFor(() => runs.every(id => first.run(id).status === 'running'), 'three live runs');
+        await first.stop();
+
+        const survivors = runs.map(() => startProcess('trap "" TERM; while true; do sleep 1; done'));
+        const db = new Database(join(first.config.dataDir, 'clowdy.db'));
+        const record = db.query(
+            "UPDATE runs SET pid = ?, pgid = ?, process_started_at = ?, status = 'running' WHERE id = ?"
+        );
+
+        survivors.forEach((pid, index) => record.run(pid, pid, startTimeOf(pid)!, runs[index]));
+        db.close();
+
+        const graceMs = 1000;
+        const restartedAt = Date.now();
+        const second = await restartHarness(
+            first,
+            { engines: scriptEngines(engine) },
+            { timings: { ...first.config.timings, killGraceMs: graceMs } }
+        );
+
+        harnesses.push(second);
+        expect(Date.now() - restartedAt).toBeLessThan(2 * graceMs);
+        // SIGKILL went out during startup; the test's own process reaps them when it gets the turn.
+        await waitFor(() => survivors.every(gone), 'the survivors to be reaped', 1000);
+        expect(runs.map(id => second.run(id).status)).toEqual(['interrupted', 'interrupted', 'interrupted']);
+    });
 });
 
 describe('the process guard', () => {

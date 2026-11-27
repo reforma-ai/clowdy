@@ -1,4 +1,5 @@
 import { Button } from '@clowdy/components/Button';
+import { PanelEmptyState } from '@clowdy/components/Panel';
 import { SettingsLayout } from '@clowdy/components/SettingsLayout';
 import { SortableList } from '@clowdy/components/SortableList';
 import { Plus } from '@clowdy/icons/14';
@@ -7,8 +8,6 @@ import { useMemo } from 'react';
 import { openAddProject } from '../../../shell/projectDialogs';
 import { slotOfProject } from '../../../shell/projectSwitch';
 import { useRootStore } from '../../../stores';
-import { SettingsEmpty } from '../ui/SettingsEmpty';
-import { SettingsPage } from '../ui/SettingsPage';
 import { ProjectDetail } from './ProjectDetail';
 import { ProjectRow } from './ProjectRow';
 import styles from './ProjectsPage.module.css';
@@ -42,7 +41,7 @@ export function ProjectsPage() {
                     </>
                 )}
             </SettingsLayout.Pane>
-            <SettingsPage description="A project can hold several folders, so keep the repos that belong together in one">
+            <SettingsLayout.Page description="A project can hold several folders, so keep the repos that belong together in one">
                 <div className={styles.list}>
                     {personal && (
                         <ProjectRow
@@ -55,9 +54,10 @@ export function ProjectsPage() {
                     )}
 
                     {own.length === 0 ? (
-                        <SettingsEmpty>
-                            No projects yet. Add the folders you work in, or start one in a new folder.
-                        </SettingsEmpty>
+                        <PanelEmptyState
+                            fill={false}
+                            label="No projects yet. Add the folders you work in, or start one in a new folder."
+                        />
                     ) : (
                         <SortableList
                             aria-label="Projects"
@@ -80,7 +80,7 @@ export function ProjectsPage() {
                         </SortableList>
                     )}
                 </div>
-            </SettingsPage>
+            </SettingsLayout.Page>
         </>
     );
 }

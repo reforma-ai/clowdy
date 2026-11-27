@@ -95,8 +95,8 @@ export function threadTools({ threads }: ToolDeps, run: Run): ToolDefinition[] {
                         "With worktree: the name of the thread's branch after the configured Branch prefix/, lower-case words joined with dashes, such as fix-login-redirect; default made of title when you give one in English words, else the thread's id. Refused when a branch of that name exists"
                     ),
             }),
-            input => {
-                const { worktree, ...spawned } = threads.spawn(run, input);
+            async input => {
+                const { worktree, ...spawned } = await threads.spawn(run, input);
 
                 return {
                     ...spawned,

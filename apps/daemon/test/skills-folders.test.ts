@@ -1,11 +1,9 @@
 import { afterAll, describe, expect, test } from 'bun:test';
 import {
     existsSync,
-    lstatSync,
     mkdirSync,
     readdirSync,
     readFileSync,
-    realpathSync,
     statSync,
     symlinkSync,
     utimesSync,
@@ -15,7 +13,6 @@ import { join } from 'node:path';
 
 import { buildCatalog, estimateTokens, mergeUserSkills } from '../src/skills/catalog';
 import { defaultSystemSkillsSource, materializeSystemSkills } from '../src/skills/materialize';
-import { buildUserMirror } from '../src/skills/mirror';
 import { SkillScanner } from '../src/skills/scan';
 import { SkillSettings } from '../src/skills/settings';
 import { cleanTempDirs, tempDir } from './helpers';
@@ -243,7 +240,7 @@ describe('which user skills are on', () => {
         expect(settings.setEnabled('a', true)).toBe(true);
     });
 
-    test('a damaged file leaves every skill on and warns, and the next change repairs it', () => {
+    test('a damaged file leaves every skill on and warns, and the next change repairs it and keeps the damaged one beside it', () => {
         const dir = tempDir();
         const settings = new SkillSettings(dir);
 
@@ -260,74 +257,7 @@ describe('which user skills are on', () => {
         settings.setEnabled('a', false);
 
         expect(settings.read()).toEqual({ disabled: new Set(['a']), systemDisabled: new Set() });
-    });
-});
-
-describe('the user plugin', () => {
-    const skillsOf = (dir: string) => readdirSync(join(dir, 'skills')).sort();
-
-    test('is a plugin named user with a link to each enabled skill', () => {
-        const dataDir = tempDir();
-        const user = tempDir();
-
-        ['deploy', 'lint'].forEach(folder => writeSkill(user, folder));
-
-        const dir = buildUserMirror(dataDir, mergeUserSkills([labeled('u', user)]).skills) as string;
-
-        expect(dir.startsWith(join(dataDir, 'user-skills-plugin'))).toBe(true);
-        expect(JSON.parse(readFileSync(join(dir, '.claude-plugin', 'plugin.json'), 'utf8')).name).toBe('user');
-        expect(skillsOf(dir)).toEqual(['deploy', 'lint']);
-        expect(lstatSync(join(dir, 'skills', 'deploy')).isSymbolicLink()).toBe(true);
-        expect(realpathSync(join(dir, 'skills', 'deploy'))).toBe(realpathSync(join(user, 'deploy')));
-        expect(readFileSync(join(dir, 'skills', 'lint', 'SKILL.md'), 'utf8')).toContain('description');
-    });
-
-    test('has no folder when there is no skill to carry', () => {
-        const dataDir = tempDir();
-
-        expect(buildUserMirror(dataDir, [])).toBeUndefined();
-        expect(existsSync(join(dataDir, 'user-skills-plugin'))).toBe(false);
-    });
-
-    test('is reused for the same skills and new for a change, and old ones are pruned', () => {
-        const dataDir = tempDir();
-        const user = tempDir();
-        const mirrors: string[] = [];
-
-        for (const folder of ['s1', 's2', 's3', 's4', 's5', 's6', 's7']) {
-            writeSkill(user, folder);
-
-            const skills = mergeUserSkills([{ label: 'u', scan: new SkillScanner().scan(user) }]).skills;
-            const dir = buildUserMirror(dataDir, skills) as string;
-
-            expect(buildUserMirror(dataDir, skills)).toBe(dir);
-
-            // Folders made in the same millisecond must still have an order.
-            utimesSync(dir, new Date(1_000_000 + mirrors.length * 1000), new Date(1_000_000 + mirrors.length * 1000));
-            mirrors.push(dir);
-        }
-
-        expect(new Set(mirrors).size).toBe(7);
-        expect(readdirSync(join(dataDir, 'user-skills-plugin')).sort()).toEqual(
-            mirrors
-                .slice(2)
-                .map(dir => dir.split('/').at(-1) as string)
-                .sort()
-        );
-    });
-
-    test('a skill that was edited gets a new plugin folder, so a link to old content is never reused', () => {
-        const dataDir = tempDir();
-        const user = tempDir();
-        const dir = writeSkill(user, 'deploy', 'Before');
-        const before = buildUserMirror(dataDir, mergeUserSkills([labeled('u', user)]).skills);
-
-        writeSkill(user, 'deploy', 'A longer description than before');
-        utimesSync(join(dir, 'SKILL.md'), new Date(Date.now() + 5000), new Date(Date.now() + 5000));
-
-        expect(
-            buildUserMirror(dataDir, mergeUserSkills([{ label: 'u', scan: new SkillScanner().scan(user) }]).skills)
-        ).not.toBe(before);
+        expect(readFileSync(join(dir, 'skills.json.damaged'), 'utf8')).toBe('[]');
     });
 });
 

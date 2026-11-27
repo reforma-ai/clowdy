@@ -1,0 +1,12 @@
+/* The same plate the file editor draws around this button. The button itself is transparent, so without the plate it sits on the terminal. */
+.quote {
+    position: absolute;
+    z-index: var(--z-raised);
+    padding: var(--spacing-xs);
+    border: 1px solid var(--color-surface-border);
+    border-radius: calc(var(--radius-md) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+    background-color: var(--color-surface-float);
+    box-shadow: var(--shadow-float);
+    user-select: none;
+}

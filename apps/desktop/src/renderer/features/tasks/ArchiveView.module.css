@@ -77,7 +77,7 @@
     padding-inline-start: calc(var(--spacing-md) + var(--depth, 0) * var(--spacing-xxl));
     border-radius: calc(var(--radius-md) * var(--squircle-radius-factor));
     corner-shape: superellipse(var(--squircle-value));
-    transition: background-color 150ms ease-out;
+    transition: background-color var(--transition-duration-fast) ease-out;
 }
 
 .row:hover,
@@ -100,33 +100,8 @@
     height: var(--spacing-16);
 }
 
-.chevron {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: var(--spacing-16);
-    height: var(--spacing-16);
-    padding: 0;
-    border: 0;
-    border-radius: calc(var(--radius-sm) * var(--squircle-radius-factor));
-    corner-shape: superellipse(var(--squircle-value));
-    background: none;
-    color: var(--color-secondary-muted-text);
-    cursor: pointer;
-}
-
-.chevron:hover {
-    background-color: var(--color-secondary-muted);
-    color: var(--color-text);
-}
-
-.chevron:focus-visible,
 .open:focus-visible {
-    outline: var(--spacing-2) solid var(--color-primary-muted-border);
-}
-
-.chevron svg path {
-    fill: currentColor;
+    @ruleset focus-ring;
 }
 
 /* The press that opens the task: its key and title, filling the row up to the status. */

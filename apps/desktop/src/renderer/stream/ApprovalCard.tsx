@@ -5,6 +5,7 @@ import { Check, Close, Page, Terminal, Tool } from '@clowdy/icons/14';
 import { Fragment, useState } from 'react';
 
 import styles from './ApprovalCard.module.css';
+import { StreamPlate } from './StreamCard';
 
 import type { ApprovalDecision, ApprovalSubject, StreamItemBody } from '@clowdy/protocol';
 import type { ComponentType, SVGProps } from 'react';
@@ -178,12 +179,7 @@ export function ApprovalCard({ approval, onDecide }: ApprovalCardProps) {
 
     return (
         // A group, not a `section`: a labelled section is a landmark, and a chat holds many cards.
-        <div
-            role="group"
-            className={styles.card}
-            data-settled={isOpen ? undefined : ''}
-            aria-label={headingOf(subject)}
-        >
+        <StreamPlate role="group" size="lg" settled={!isOpen} aria-label={headingOf(subject)}>
             <div className={styles.heading}>
                 <Icon className={styles.headingIcon} aria-hidden />
                 <Text weight="medium">{headingOf(subject)}</Text>
@@ -216,6 +212,6 @@ export function ApprovalCard({ approval, onDecide }: ApprovalCardProps) {
                     )}
                 </div>
             )}
-        </div>
+        </StreamPlate>
     );
 }

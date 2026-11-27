@@ -446,6 +446,20 @@ describe('the plain log of a terminal', () => {
         s.dispose();
     });
 
+    test('writes what the shell printed last as soon as it exits, not a second later', async () => {
+        const logPath = join(tempDir('terminal-log'), 'exit.log');
+        const { session: s, pty } = session({ logPath });
+
+        pty.emit('bye\r\n');
+        pty.exit(0);
+
+        // Well inside the second that the output of a running shell waits before it is written.
+        expect(await waitFor(() => existsSync(logPath) && readFileSync(logPath, 'utf8'), 'the log', 500)).toContain(
+            'bye'
+        );
+        s.dispose();
+    });
+
     test('names the file under the project, and a write still in flight does not bring it back', async () => {
         const root = tempDir('terminal-home');
         const logs = tempDir('terminal-logs');
@@ -462,9 +476,10 @@ describe('the plain log of a terminal', () => {
         const logPath = join(logs, 'prj_1', `${info.id}.log`);
 
         expect(info.logPath).toBe(logPath);
-        // At least one burst, so the flush and the log write start before remove returns.
-        pty.emit('x'.repeat(64 * 1024));
-        service.remove(info.id);
+        // The shell ends, so the log is rewritten at once (a timer of 0 ms); the terminal is removed on the next timer, while that write is on the disk.
+        pty.emit('last words\r\n');
+        pty.exit(0);
+        setTimeout(() => service.remove(info.id), 0);
         await tick(300);
 
         expect(existsSync(logPath)).toBe(false);

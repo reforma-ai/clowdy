@@ -1,8 +1,10 @@
 import { SYSTEM_PLUGIN_NAME } from './materialize';
-import { USER_PLUGIN_NAME } from './mirror';
 
 import type { SkillCatalog, SkillEngine, SkillEntry } from '@clowdy/protocol';
 import type { RootScan, ScannedSkill } from './scan';
+
+/** The prefix of the person's own skills: `user:<skill>` in the catalog and in `skills.setEnabled`. */
+export const USER_PLUGIN_NAME = 'user';
 
 const ENGINES: SkillEngine[] = ['claude', 'codex'];
 /** Both engines start shortening skill descriptions past about this many tokens (1% to 2% of a typical context window). */
@@ -58,8 +60,8 @@ export interface CatalogInput {
 }
 
 /**
- * The catalog the API serves. Names are the ones the engines use: `clowdy:` for system skills, `user:` for the
- * person's own (both are plugins), plain for project skills. A user skill that is off still shows, with the cost it would have.
+ * The catalog the API serves. Names: `clowdy:` for system skills (the plugin's name in the engines), `user:` for the
+ * person's own, plain for project skills. A user skill that is off still shows, with the cost it would have.
  */
 export function buildCatalog({
     system,

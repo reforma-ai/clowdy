@@ -12,10 +12,8 @@
         ".": {
             "types": "./src/index.ts",
             "import": "./src/index.ts",
-            "style": "./src/index.css",
             "default": "./src/index.ts"
         },
-        "./css": "./src/index.css",
         "./*": {
             "types": "./src/*/index.ts",
             "import": "./src/*/index.ts",
@@ -39,7 +37,6 @@
         "@codemirror/lang-json": "^6",
         "@codemirror/lang-markdown": "^6.5.2",
         "@codemirror/language": "^6.13.1",
-        "@codemirror/view": "^6.43.15",
         "@dnd-kit/react": "0.5.0",
         "@lezer/highlight": "1.2.5",
         "@react-stately/utils": "^3.11.0",
@@ -64,8 +61,6 @@
         "@tiptap/react": "3.32.2",
         "@tiptap/starter-kit": "3.32.2",
         "@tiptap/suggestion": "3.32.2",
-        "@uiw/react-codemirror": "^4.25.11",
-        "anser": "2.3.5",
         "lottie-react": "2.4.1",
         "marked": "17.0.6",
         "material-icon-theme": "^5.40.0",

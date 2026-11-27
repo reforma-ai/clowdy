@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { projectChatMode } from '@clowdy/protocol';
 
 import { setRunWork } from '../db/runs';
@@ -14,6 +15,7 @@ import {
 import { resolvePlace } from '../domain/places';
 import { requireProject } from '../domain/projects';
 import { removeChatWorkspace } from '../domain/workspaceRemoval';
+import { readRepository } from '../domain/workspaces';
 import { invalid } from '../errors';
 import { prepareEdit } from '../runs/edit';
 import { prepareFork } from '../runs/fork';
@@ -21,6 +23,7 @@ import { requireEnabled, sendMessage } from '../runs/messages';
 import { isAtRest } from '../runs/queue';
 
 import type { ChatWorkspaceChoice, ChatWorktreeChoice } from '@clowdy/protocol';
+import type { RepositoryFacts } from '../domain/workspaces';
 import type { AsyncHandlers, CommandOf, Handlers, Services } from './context';
 
 type ChatCommand =
@@ -41,10 +44,10 @@ const worktreeOf = (choice: ChatWorkspaceChoice | undefined): ChatWorktreeChoice
     choice?.mode === 'main' ? undefined : choice;
 
 /**
- * Makes the chat of a `chat.create`: the project and the agent are judged, the worktree row is made (a `main` choice has none: the chat works in the folder as it is, and what the
- * choice asks of git is done before this runs, by the async handler). In a transaction, as every handler is.
+ * Makes the chat of a `chat.create`: the project and the agent are judged, the worktree row is made from what the async handler read of the repository (a `main` choice has none: the
+ * chat works in the folder as it is, and what the choice asks of git is done before this runs). In a transaction, as every handler is.
  */
-function makeChat({ store, runs, config }: Services, command: CommandOf<'chat.create'>) {
+function makeChat({ store, runs, config }: Services, command: CommandOf<'chat.create'>, repository?: RepositoryFacts) {
     const project = requireProject(store, command.projectId);
 
     // An unknown agent is refused here; one that is switched off waits for the first message, which says so.
@@ -57,19 +60,21 @@ function makeChat({ store, runs, config }: Services, command: CommandOf<'chat.cr
 
     return createChat(
         store,
-        { ...rest, ...(worktree && { workspace: worktree }), mode: command.mode ?? projectChatMode(project.settings) },
+        {
+            ...rest,
+            ...(worktree && { workspace: worktree }),
+            ...(repository && { repository }),
+            mode: command.mode ?? projectChatMode(project.settings),
+        },
         config
     );
 }
 
 export const chatHandlers: Pick<Handlers, ChatCommand> = {
-    /**
-     * A `workspace` is checked here and its row made; the worktree itself is made by the chat's first turn (`prepareWorkspace`). A choice of a branch of the folder's own checkout
-     * (`mode: 'main'`) waits for git and is the async handler's: `executeCommand` never gives it to this one.
-     */
+    /** A chat with no `workspace`, which works in the folder as it is. Any `workspace` waits for git and is the async handler's: `executeCommand` never gives it to this one. */
     'chat.create': (services, command) => {
-        if (command.workspace?.mode === 'main') {
-            throw new Error('chat.create on a branch waits for git: run it with executeCommandAsync');
+        if (command.workspace !== undefined) {
+            throw new Error('chat.create with a workspace waits for git: run it with executeCommandAsync');
         }
 
         return { chat: makeChat(services, command) };
@@ -170,18 +175,22 @@ export const chatHandlers: Pick<Handlers, ChatCommand> = {
  */
 export const chatAsyncHandlers: Pick<AsyncHandlers, 'chat.create' | 'chat.fork' | 'chat.edit' | 'chat.delete'> = {
     /**
-     * A chat in the folder's own checkout **on a branch** (`workspace: { mode: 'main', branch }`): the checkout is switched first, by the Changes sidebar's own switch (`GitSwitch`, with
-     * all of its refusals, on the folder's line of writes), and the chat is made only once git is done, in the transaction, so a refusal leaves no chat and the repository as it was, and the
-     * first turn can only start on the branch the person chose. The agent, the folder and the project are judged before git runs, so that what is left to go wrong after the switch is the
-     * store itself. A switch that was made with something to tell (a failing `post-checkout` hook, commits a detached HEAD left on no branch) gives it back as `warning`. A branch the
-     * checkout is on is the answer it already is, and no git changes anything. Anything else (`chat.create` waits only for this) is not given to this handler: `waitsWhen`.
+     * A chat with a `workspace`, which waits for git; one with none is not given to this handler (`waitsWhen`). The agent, the folder and the project are judged before git runs.
+     *
+     * A worktree, new or existing: the repository is read first (`readRepository`), and the transaction checks the choice against what was read and makes the row, with no git inside
+     * it. The worktree itself is made by the chat's first turn (`prepareWorkspace`).
+     *
+     * The folder's own checkout **on a branch** (`{ mode: 'main', branch }`): the checkout is switched first, by the Changes sidebar's own switch (`GitSwitch`, with all of its
+     * refusals, on the folder's line of writes), and the chat is made only once git is done, in the transaction, so a refusal leaves no chat and the repository as it was, and the first
+     * turn can only start on the branch the person chose. What is left to go wrong after the switch is the store itself. A switch that was made with something to tell (a failing
+     * `post-checkout` hook, commits a detached HEAD left on no branch) gives it back as `warning`. A branch the checkout is on is the answer it already is, and no git changes anything.
      */
     'chat.create': async (services, command) => {
         const { store, runs, gitSwitch } = services;
         const choice = command.workspace;
 
-        if (choice?.mode !== 'main') {
-            throw new Error('chat.create waits for git only for a branch of the folder');
+        if (choice === undefined) {
+            throw new Error('chat.create waits for git only with a workspace');
         }
 
         const project = requireProject(store, command.projectId);
@@ -191,6 +200,17 @@ export const chatAsyncHandlers: Pick<AsyncHandlers, 'chat.create' | 'chat.fork' 
         }
 
         const folder = chatFolder(project, command.folderId);
+
+        if (choice.mode !== 'main') {
+            if (!existsSync(folder.path)) {
+                throw invalid(`The folder ${folder.path} is missing`);
+            }
+
+            const repository = await readRepository(folder);
+
+            return () => ({ chat: makeChat(services, command, repository) });
+        }
+
         const { warning } = await gitSwitch.switch(project, resolvePlace(store, project, folder.id), {
             branch: choice.branch,
         });
