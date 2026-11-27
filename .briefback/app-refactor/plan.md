@@ -29,6 +29,13 @@
 
 **Scope change (2026-11-27, 08:00 UTC).** The subscription's 5-hour usage limit stopped every agent from about 04:20 to 08:00 UTC, leaving about 3.5 hours and one quota window. Stages 5 and 6 are deferred untouched (`CLO-230`, `CLO-231`). Stage 1 Part 2 (dead forked code, design-system docs) is dropped unless time remains. Stages 2, 3 and 4 are narrowed to defects, freezes and hot paths (the thread messages list the kept findings; the big file splits are left). Stages 7-9 keep design-system adoption and the top performance items. Stage 10 is deferred. Stage 11 keeps the final verification; the guide rewrite is reduced to what time allows.
 
+**Checkpoint (2026-11-27, 14:30 UTC).** A second usage-limit stop cut wave 2 short; the owner asked to stop at a testable step and ship the frontend first. Two branches result:
+
+- `clowdy/refactor-frontend` (worktree `../clowdy-frontend`, from `origin/next` `54d3a6b4`): Stages 1 (both parts) and 2 merged, Stages 7, 8 and 9 cherry-picked as far as their threads got, review fixes. No daemon change except one test line (`threads.test.ts`, the renderer's `PrefixDelivery` type). Ships as an OTA bundle; no stored-data change.
+- `clowdy/full-app-refactor`: the frontend branch plus Stages 3 and 4 (daemon only). Merge it after the frontend one.
+
+Stage state: 1, 2 done; 3, 4 done in their narrowed scope (follow-ups `CLO-240`, `CLO-241`, `CLO-243`); 7, 8, 9 done to the checkpoint (remainders `CLO-244`, `CLO-239`, `CLO-245`); design-system follow-ups `CLO-242`; 5, 6 deferred (`CLO-230`, `CLO-231`); 10 and 11 (lint, guides) not started. Details and checks: `handoff.md`.
+
 ## Out of scope
 
 - Event log retention and delta events (follow-up).
