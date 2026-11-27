@@ -11,7 +11,7 @@ export interface ClampProps {
     lines: number;
     /** The toggle's words while the text is clamped (`Show full message`); open, it says `Show less`. */
     moreLabel: string;
-    /** Where the toggle sits: under the end of a bubble, under the start of a text, or a bar across the foot of a card, pressed anywhere along its width. */
+    /** Where the toggle sits: under the end of a bubble, under the start of a text, or centred across the foot of a card, pressed anywhere along its width. */
     align?: 'start' | 'end' | 'full';
 }
 
