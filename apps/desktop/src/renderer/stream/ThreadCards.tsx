@@ -2,7 +2,7 @@ import { Button } from '@clowdy/components/Button';
 import { Shimmer } from '@clowdy/components/Shimmer';
 import { Text } from '@clowdy/components/Text';
 import { ProgressLoader } from '@clowdy/icons/assets';
-import { type ReactNode, use, useId } from 'react';
+import { Children, type ReactNode, use, useId } from 'react';
 
 import { AgentMark } from '../features/agents/AgentMark';
 import { Clamp } from './Clamp';
@@ -58,9 +58,9 @@ function ChatName({ chatId, title }: { chatId: ChatId; title: string }) {
 interface CardFrameProps {
     /** What a test or a style finds the card by: `agent-card` or `thread-message`. */
     slot: string;
-    /** The mark that opens the title line: the title and the mark are one line, and what is under it starts at the card's edge. */
+    /** The mark that opens the header: the title and the mark are one line, and the body under the rule starts at the card's edge. */
     icon: ReactNode;
-    /** The title line's words (a press, a link, a shimmer). */
+    /** The header's words (a press, a link, a shimmer). */
     title: ReactNode;
     /** How it ended, for the colour of its mark. */
     outcome?: ThreadOutcome;
@@ -68,11 +68,11 @@ interface CardFrameProps {
     busy?: boolean;
     /** The stream item the card is, so the turn rail can scroll to it. */
     turn?: string;
-    /** What is under the title line. */
+    /** What is under the header, past its rule. A card with nothing to say has no body and no rule. */
     children?: ReactNode;
 }
 
-/** The one frame of every card of other work in a stream: the plate, a title line that holds the icon, and the rows under it. */
+/** The one frame of every card of other work in a stream, built as an answered question is: the plate, a header that holds the icon, and under a rule the rows of the body. */
 function CardFrame({ slot, icon, title, outcome, pressable, busy, turn, children }: CardFrameProps) {
     return (
         <div
@@ -89,7 +89,7 @@ function CardFrame({ slot, icon, title, outcome, pressable, busy, turn, children
                 </span>
                 <span className={styles.title}>{title}</span>
             </div>
-            {children}
+            {Children.toArray(children).length > 0 && <div className={styles.body}>{children}</div>}
         </div>
     );
 }
@@ -153,7 +153,7 @@ export function AgentCard({ name, outcome, activity, report, open = [], onOpen }
                             Not the final result
                         </Text>
                     )}
-                    <Clamp lines={REPORT_LINES} moreLabel={MORE_LABEL} align="start">
+                    <Clamp lines={REPORT_LINES} moreLabel={MORE_LABEL} align="full">
                         <Markdown text={text} />
                     </Clamp>
                 </div>
@@ -198,7 +198,7 @@ export function ThreadMessageCard({ chatId, title, text, turn }: ThreadMessageCa
             turn={turn}
         >
             {text.trim() !== '' && (
-                <Clamp lines={MESSAGE_LINES} moreLabel={MORE_LABEL} align="start">
+                <Clamp lines={MESSAGE_LINES} moreLabel={MORE_LABEL} align="full">
                     <Markdown text={text} />
                 </Clamp>
             )}

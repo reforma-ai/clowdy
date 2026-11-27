@@ -2,8 +2,8 @@
 
 /*
  * The cards of other work in a stream, one family: a message another thread wrote, a thread that stopped and a sub-agent, running or over (`AgentCard`). A bordered plate
- * in the stream for words an agent wrote and not the person: a title line that opens with an icon, and under it, flush with the plate's own padding and not pushed in
- * by the icon, what the work says.
+ * in the stream for words an agent wrote and not the person, built as an answered question is: a header that opens with an icon, and under a rule, flush with the plate's
+ * own padding and not pushed in by the icon, what the work says.
  */
 .card {
     @ruleset typography-text-md;
@@ -11,10 +11,8 @@
     position: relative;
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-xs);
     width: 100%;
     max-width: 100%;
-    padding: var(--spacing-md) var(--spacing-lg);
     border: 1px solid var(--color-secondary-muted-border);
     border-radius: calc(var(--radius-lg) * var(--squircle-radius-factor));
     corner-shape: superellipse(var(--squircle-value));
@@ -30,12 +28,41 @@
     gap: var(--spacing-sm);
 }
 
-/* The title line: the icon belongs to the title, so what is under it starts at the plate's edge. */
+/* The header: the icon belongs to the title, so what is under the rule starts at the plate's edge. */
 .head {
+    @ruleset typography-text-sm;
+
     display: flex;
     align-items: flex-start;
     gap: var(--spacing-sm);
     min-width: 0;
+    min-height: var(--spacing-36);
+    padding: var(--spacing-md) var(--spacing-lg);
+}
+
+/* The rule stands in from the card's edges, as in the answered question and the tool cards. A bar across the foot of a clamp runs out to the edges, so it gets the padding to reach past. */
+.body {
+    --clamp-bleed-inline: var(--spacing-lg);
+
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+    padding: var(--spacing-md) var(--spacing-lg) var(--spacing-lg);
+}
+
+.body::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: var(--spacing-md);
+    right: var(--spacing-md);
+    height: 1px;
+    background-color: var(--color-secondary-muted-border);
+}
+
+.body > :last-child {
+    --clamp-bleed-bottom: var(--spacing-lg);
 }
 
 .icon {
@@ -99,6 +126,11 @@
     flex-direction: column;
     gap: var(--spacing-xs);
     cursor: auto;
+}
+
+/* A report with a bar under it is as wide as the card, so the bar can run out to its edges. */
+.report:has([data-clipped='true']) {
+    align-self: stretch;
 }
 
 .open {

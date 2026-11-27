@@ -149,6 +149,31 @@ describe('a message from another thread', () => {
         expect(linkNamed(cards('thread-message')[0], 'Show less')?.getAttribute('aria-expanded')).toBe('true');
     });
 
+    it("puts the toggle across the foot of a card, as a bar the card's whole width presses, centred in a message and in a report", async () => {
+        layout = { scrollHeight: 900, clientHeight: 300 };
+        await draw([message, notice]);
+
+        for (const card of [...cards('thread-message'), ...cards('agent-card')]) {
+            const toggle = linkNamed(card, 'Show full message');
+
+            if (toggle) expect(toggle.getAttribute('data-align')).toBe('full');
+        }
+
+        expect(linkNamed(cards('thread-message')[0], 'Show full message')).toBeDefined();
+        expect(linkNamed(cards('agent-card')[0], 'Show full message')).toBeDefined();
+    });
+
+    it('draws the words of a card in a body under the header, and no body for a card with nothing to say', async () => {
+        await draw([message, notice]);
+
+        const [refunds, , login] = cards('agent-card');
+
+        expect(cards('thread-message')[0].children).toHaveLength(2);
+        expect(refunds.children).toHaveLength(2);
+        expect(refunds.children[1].textContent).toContain('14 cases, all passing.');
+        expect(login.children).toHaveLength(1);
+    });
+
     it('has no toggle for a message that fits', async () => {
         await draw([message]);
 
