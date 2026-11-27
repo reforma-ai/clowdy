@@ -1,5 +1,6 @@
 import { CopyButton } from '@clowdy/components/CopyButton';
 import { Panel, PanelHeader } from '@clowdy/components/Panel';
+import { Scrollable } from '@clowdy/components/Scrollable';
 import { Text } from '@clowdy/components/Text';
 import { Version } from '@clowdy/icons/14';
 import { Github } from '@clowdy/icons/logo';
@@ -136,7 +137,7 @@ export function ChangesSidebar({
                 </PanelHeader.Actions>
             </PanelHeader>
 
-            <div className={styles.body}>
+            <Scrollable className={styles.body} contentClass={styles.bodyContent}>
                 {(rows.length > 0 || hint || status?.isRepository === true) && (
                     <div className={styles.facts}>
                         {!git?.gone && <RemoteMenu facts={facts} checkoutBranch={git?.checkoutBranch} />}
@@ -156,7 +157,7 @@ export function ChangesSidebar({
                 )}
 
                 {!git?.gone && <CommitBox model={model} place={place} />}
-            </div>
+            </Scrollable>
         </Panel>
     );
 }
