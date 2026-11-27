@@ -27,6 +27,8 @@
 
 **Reuse:** `packages/components` (catalog in `research/design-system.md`), `packages/styles` tokens, `@clowdy/lib` (`errorMessage`, `isRecord`), `domain/workspaces.ts` `SYNC_READ_TIMEOUT_MS`, `files/service.ts` TTL cache.
 
+**Scope change (2026-11-27, 08:00 UTC).** The subscription's 5-hour usage limit stopped every agent from about 04:20 to 08:00 UTC, leaving about 3.5 hours and one quota window. Stages 5 and 6 are deferred untouched (`CLO-230`, `CLO-231`). Stage 1 Part 2 (dead forked code, design-system docs) is dropped unless time remains. Stages 2, 3 and 4 are narrowed to defects, freezes and hot paths (the thread messages list the kept findings; the big file splits are left). Stages 7-9 keep design-system adoption and the top performance items. Stage 10 is deferred. Stage 11 keeps the final verification; the guide rewrite is reduced to what time allows.
+
 ## Out of scope
 
 - Event log retention and delta events (follow-up).
