@@ -75,6 +75,7 @@ import { ProjectMenu } from './ProjectMenu';
 import { RowFold } from './RowFold';
 import { StarCard } from './StarCard';
 import { SubagentMenu } from './SubagentMenu';
+import { TidyWorktreesButton } from './TidyWorktreesButton';
 import { useChatListOrder } from './useChatListOrder';
 import { useSidebarWorktrees } from './useSidebarWorktrees';
 import { WorktreeCardHeader } from './WorktreeCardHeader';
@@ -762,6 +763,7 @@ export function AgentList({
     return (
         <Panel side="left" className={isCovered ? styles.covered : undefined}>
             <SidebarHeading ref={heading} title={<ProjectSelect />} className={styles.heading}>
+                <TidyWorktreesButton />
                 <ArchiveButton anchor={heading} />
                 <ProjectMenu />
             </SidebarHeading>

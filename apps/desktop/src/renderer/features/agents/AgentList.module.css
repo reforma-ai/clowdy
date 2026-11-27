@@ -211,6 +211,8 @@
 
 .worktreeCard {
     position: relative;
+    /* The shared header already supplies the space above each group. */
+    margin-block-start: 0;
     gap: 0;
 }
 
