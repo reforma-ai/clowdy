@@ -37,5 +37,19 @@
 }
 
 .triggerContent {
+    min-width: 0;
+    overflow: hidden;
     justify-content: flex-start;
+}
+
+.search {
+    padding: var(--spacing-xs);
+}
+
+.triggerLabel {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }

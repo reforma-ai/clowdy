@@ -1461,6 +1461,25 @@ describe('the archive', () => {
         expect(popover.style.width).toBe('280px');
     });
 
+    it('filters history by title and shows no matches', async () => {
+        await archive('c-2', true);
+        await archive('c-4', true);
+        await press(buttonNamed('History'));
+        const input = document.querySelector<HTMLInputElement>('input[aria-label="Search archived chats"]')!;
+        await draw(() => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'FIRST VERSION');
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        expect(document.querySelector('[aria-label="Archived chats"] [data-key="c-2"]')).not.toBeNull();
+        expect(document.querySelector('[aria-label="Archived chats"] [data-key="c-4"]')).toBeNull();
+        await draw(() => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'no such title');
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        expect(document.querySelector('[aria-label="Archived chats"]')).toBeNull();
+        expect(document.body.textContent).toContain('No matching chats');
+    });
+
     it('groups the chats by the day they were put away', async () => {
         await archive('c-2', true);
         await archive('c-4', true);
@@ -2966,6 +2985,30 @@ describe('worktree cards', () => {
             undefined,
             undefined,
         ]);
+    });
+
+    it('filters worktree archives by thread parent and resets the search on reopening', async () => {
+        const data = withFixtureWorktrees(createFixtureData());
+        const thread = data.chats.find(chat => chat.id === 'c-6a1')!;
+        thread.archivedAt = Date.now();
+        thread.workspace = data.chats.find(chat => chat.id === FIXTURE_WORKSPACE_CHAT_ID)!.workspace;
+        await restart(data);
+        await draw(() => ui().setGroupByWorktree(true));
+        const card = rowOf(workspaceKey()).closest<HTMLElement>('[data-worktree-card]')!;
+        const trigger = [...card.querySelectorAll('button')].find(button =>
+            button.textContent?.includes('archived thread')
+        )!;
+        await press(trigger);
+        const input = document.querySelector<HTMLInputElement>('input[aria-label="Search archived chats"]')!;
+        await draw(() => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'PRICE ROUNDING');
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        expect(document.querySelector('[aria-label="Archived chats"] [data-key="c-6a1"]')).not.toBeNull();
+        expect(document.querySelector('[aria-label="Archived chats"] [data-key="c-10"]')).toBeNull();
+        await press(trigger);
+        await press(trigger);
+        expect(document.querySelector<HTMLInputElement>('input[aria-label="Search archived chats"]')!.value).toBe('');
     });
 
     it('opens the worktree archive with the keyboard', async () => {

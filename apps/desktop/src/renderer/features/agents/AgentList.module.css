@@ -206,6 +206,10 @@
     color: var(--color-secondary-muted-text);
 }
 
+.empty[data-open]::before {
+    background-color: var(--clowdy-listbox-item-bg--hover);
+}
+
 .worktreeCard {
     position: relative;
     /* The shared header already supplies the space above each group. */
