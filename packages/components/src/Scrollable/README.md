@@ -15,7 +15,7 @@ import {
   ScrollChromeBars,
   SCROLLABLE_OVERLAY_SLOT,
   type ScrollAxisSource,
-} from "@clowdy/components";
+} from "@clowdy/components/Scrollable";
 ```
 
 ## Pieces
@@ -83,7 +83,7 @@ const { rootRef, setScrollbarV, handlePointerDown, rootPointerHandlers } =
 
 Hide the native bar on the external element yourself.
 
-**In Clowdy:** `LayersPanel`, `CodeTextarea` (CodeMirror `.cm-scroller`).
+**In Clowdy:** file-manager's `Explorer` (the tree's list element), `CodeEditor` (CodeMirror `.cm-scroller`, both axes), `DiffView` (horizontal), and `Autocomplete` (its list).
 
 ## Custom / remote source
 
@@ -100,7 +100,7 @@ type ScrollAxisSource = {
 
 Prefer optimistic `setOffset` (update local metrics immediately, then push remote) so the thumb stays under the pointer.
 
-**In Clowdy:** `FramePageScrollChrome` (preview iframe page scroll).
+No Clowdy code uses a remote source yet.
 
 ## Split axes
 
@@ -111,7 +111,7 @@ useScrollChrome({
 });
 ```
 
-**In Clowdy:** PanZoom H = local `Scrollable`; V = frame remote source.
+`CodeEditor` gives both axes the same element; nothing splits them across sources yet.
 
 ## Stick-to-bottom
 
@@ -132,5 +132,3 @@ useScrollChrome({
 | `gap` / `alwaysShowScrollbar`         | Same as `Scrollable`                            |
 
 Returns `rootRef`, `setScrollbarV/H`, `handlePointerDown`, `rootPointerHandlers`, `edgesRef`, `redraw`.
-
-Storybook: `Components/Layout/Scrollable`.

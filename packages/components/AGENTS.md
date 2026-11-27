@@ -1,103 +1,80 @@
 # @clowdy/components
 
-Import: `import { Box, Show, For, Text, Button, ... } from '@clowdy/components';`
-Subpaths: `@clowdy/components/Box` etc.
+Clowdy's design system: React components on React Aria Components, styled with `@clowdy/styles` tokens. Forked from Reforma; the fork is Clowdy's own (`NOTICE`), so unused parts are deleted, not kept for parity.
 
-## Prefer For, Show, Box, Text
+## Rules
 
-**For** — lists. Use instead of `.map()`. `each: T[]`, `children: (item, index) => ReactNode`. Add `key` on root.
+- **Import by subpath only:** `import { Button } from '@clowdy/components/Button'`. Each folder under `src/` is a subpath (`./*` in `package.json`), plus `hooks`, `modals` and `codeLanguages`. Never import the root `@clowdy/components`: its barrel pulls TipTap, CodeMirror and Shiki into the bundle.
+- **Extend, do not parallel.** A pattern the app repeats becomes a prop or a component here; an existing component gets the option (`PanelEmptyState` got `label`) instead of a second component beside it.
+- **CSS modules** wrap their rules in `@layer components` (only this package uses that layer; app CSS stays unlayered so it wins). Use tokens only: no raw colours, durations, z-index or shadows. Type through `@ruleset typography-*`, the focus ring through `@ruleset focus-ring`, screen-reader text through `@ruleset visually-hidden` (all need `@reference '@clowdy/styles/rulesets'`). Radii are squircles: `calc(var(--radius-X) * var(--squircle-radius-factor))` with `corner-shape: superellipse(var(--squircle-value))`.
+- **Customise a component through its props or its documented `--clowdy-*` variables**, never by out-ranking `[data-size][data-variant]` selectors from outside.
+- **Refs:** merge refs with `useMergedRef` (`hooks/useMergedRef.ts`), not `mergeRefs(...)` in render, so a callback ref keeps its identity.
+- **Tests:** Vitest with happy-dom (`// @vitest-environment happy-dom`), `bun run test` here. Test what a caller sees (roles, names, focus, what a press does) through the public component.
+- **UI text** that is one phrase has no final period (root `AGENTS.md`).
 
-```tsx
-<For each={items}>{(item, index) => <div key={item.id}>{item.name}</div>}</For>
-```
+List row actions (rename, overflow menu) stay hidden until the row is hovered: put `data-show={listBoxItemDataShow.itemHover}` on the control.
 
-**Show** — conditionals. Use instead of `&&` or ternary. `when`, `children`, `fallback?`. Avoids `0`/`''` hiding content.
+## Catalog
 
-```tsx
-<Show when={ok} fallback={<Spinner />}>
-  <Content />
-</Show>
-```
+Layout and text
+- `Box` — flex `div`: `direction` (default column), `align`, `justify`, `gap`, `padding`/`paddingX`/`paddingY`, `wrap`, `fullWidth`, `fullHeight`, `grow`, `equalWidth`, `as`.
+- `Text` — typographic span: `variant` (`xl`…`xs`, `heading-1`…`heading-6`, `label`, `code`), `color`, `weight`, `truncate`, `wrap`, `whitespace`, `select`, `as`.
+- `Show`, `For` — conditional and list rendering helpers.
+- `ContentColumn` — holds content at `--content-width`; put it inside the scroll container.
+- `Separator` — divider: `orientation`, `spacing`.
+- `Card` — plate on `Box`: `variant` filled|bordered|transparent, `color`, `size`, `hoverable`, `isActive`.
+- `Resizable` — `ResizablePanelGroup`, `ResizablePanel`, `ResizableHandle`, `usePanelRef`.
+- `Scrollable` — custom scroll chrome; headless `useScrollChrome`, `ScrollChromeRoot`, `ScrollChromeBars`, `elementScrollAxisSource` (see `src/Scrollable/README.md`).
+- `Panel` — side panel: `Panel`, `PanelHeader` (`.Actions`, `.Button`), `PanelContent`, `PanelTab`, `PanelEmptyState` (`icon`, `title` or one-line `label`, `description`, `action`, `fill`), `PanelEmptyRow`, `PanelLoadingState` (`label`), `TreeChevron`, `FoldButton` (chevron toggle with `aria-expanded`).
+- `TabStrip`, `Tab` — 40px scrolling tab row.
+- `SettingsLayout` — the settings window and the only settings kit: `.Sidebar`, `.Content`, `.Pane`, `.Intro`, `.Empty`, `.Page`, `.Section`, `.Card`, `.Block`, `.Row` (labels and describes its control).
+- `Slot`, `AsChild`, `Pressable` — slot plumbing and React Aria's press wrapper.
 
-**Box** — layout. Use instead of layout divs.
-Props:
-`direction` (default `column`),
-`align`,
-`justify`,
-`gap`,
-`padding`/`paddingX`/`paddingY` (`xxs`|`xs`|`sm`|`md`|`lg`|`xl`),
-`wrap`,
-`fullWidth`,
-and any div attrs
+Actions
+- `Button` — `variant` filled|filling|ghost|bordered|transparent|inline, `color`, `size` xs|sm|md|lg|unset, `iconOnly`, `rounded`, `tooltip`, `disabledReason` (shown while disabled), `isPending` + `spinnerPlacement`, `href`.
+- `SplitButton` — main action plus a menu of related ones (`menu`, `menuLabel`, `wrap`, `fullWidth`).
+- `ConfirmButton` — arms on press, then Confirm + cancel.
+- `CopyButton` — copies `value`; `copyText`, `copyWithFeedback`, `useCopyFeedback`.
+- `ToggleButtonGroup`, `ToggleButtonGroupItem` — segmented control.
+- `List` row controls: `RowControls` (stops a row from taking its buttons' events), `RowActionButton` (`icon` + `label`).
 
-**Text** — typography and inline text. Use instead of raw `<span>` when you want design-system typography, color, or behavior (truncate, decoration, etc.). Omit `variant` for a plain span that inherits from parent.
-Props: `variant` (body/heading/label/code), `color`, `truncate`, `italic`, `bold`, `decoration`, `transform`, `select`, `align`, `wrap`, `whitespace`, `as`, and any span attrs.
+Forms
+- `Input` (`type` required; `prefix`/`suffix`, `hug`, `autoSelect`, `onSubmit`), `SearchInput`.
+- `Textarea` — `autoResize`, `isResizable`, `endAction`.
+- `Select` — `items` + `children(item)`, `showSearch`, `isVirtualized`.
+- `Checkbox`, `Radio`/`RadioGroup`, `Switch`.
+- `FormField` — `.Label`, `.Description`, `.Error` wired to the control.
+- `Autocomplete` — search field and list inside a popover; `useAutocompleteEnterAction`.
+- `RichInput` — TipTap message box and composer doc helpers.
+- `MarkdownEditor` — TipTap markdown file editor.
 
-```tsx
-<Box direction="row" gap="sm" align="center">
-  <Avatar />
-  <Text>Name</Text>
-</Box>
-```
+Lists, menus, overlays
+- `List` — `Menu`, `MenuItem`, `MenuTrigger`, `MenuSection`, `MenuSeparator`, `MenuHeader`, `SubmenuTrigger`; `ListBox` family; `GridList` family; `useCellEditMode`, `useListHoverHighlight`, `listBoxItemDataShow`.
+- `Popover`, `PopoverTrigger`, `PopoverScroll`; `useContextMenu` (right click, `openAt`), `useRowContextMenu` (rows of a list, ContextMenu key and Shift+F10), `installLongPressContextMenu`.
+- `Tooltip`, `TooltipTrigger`, `TooltipContent`.
+- `Modal` — `Modal.create(options)`: a dialog named by its title (`useModalTitleId`, `ariaLabel`), Tab held inside while it has a backdrop, `setDismissable(false)` while work runs. `Dialog` is the declarative form; `useModalContext`.
+- `modals` — `openFormDialog` (the app's form-dialog defaults), `DialogLayout` (title, description, body, actions), `openConfirmModal` and `ConfirmModalContent` (`isConfirmDisabled`, not dismissible while pending), `confirmDiscardChanges`, `Z_INDEX`.
+- `Lightbox` — image preview. `Toast` — `toast.show/.success/.error/.info/.warning`, `ToastRegion`.
 
-## Components
+Feedback and status
+- `Chip` — the chip and pill: `tone` (none, neutral, primary, accent, success, warning, danger), `size` xs|sm, `shape` squircle|pill, `icon`, `tooltip`, `onPress` (a button).
+- `Tag` — `TagGroup` and `Tag` for selectable or removable tags; `Badge` is a `Chip` with the tag colour names.
+- `Alert` (+ `AlertIcon`, `AlertTitle`, `AlertDescription`, `AlertAction`) — in-page callout.
+- `Marker` — inline status or labelled divider.
+- `Spinner` (inline wait) and `Loader` (Lottie brand mark for a waiting page, with a line of text; uses `Lottie`).
+- `ProgressBar`, `Meter` — 6px bar; `tone`, `--clowdy-progress-fill`.
+- `Shimmer`, `ShimmerBlock` — sweeping text and blocks.
+- `Hotkey` — key capsules; `hotkeysToSymbols`, `tooltipWithHotkey`, `tooltipWithSequence`.
+- `Breadcrumb` — `.Link`, `.Page`.
+- `Collapsible` — `CollapsibleTrigger`, `CollapsibleContent`, `CollapsibleMotionContent`, `useCollapsible`.
+- `SortableList` — drag to reorder (pointer only).
+- `Table` family — React Aria table.
+- `DiffStat` — `+N −M`. `PathText` — a path cut at its start.
+- `Attachment` — `Attachments`, `Attachment`, `PreviewableAttachment`. `FileIcon` (+ `FileIconColorScheme`, which no one provides yet: icons use their dark variants). `FileDropOverlay`. `Image`.
+- `CodeHighlighter` — Shiki block. `codeLanguages` — `codeLanguage`, `codeHighlighter` for CodeMirror.
 
-| Component         | Use                                                                                                                                                                                                                                                                                                                                  | Exports                                                                                     |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
-| AppearanceSubmenu | Theme fly-out inside `Menu` (Light / Dark / System)                                                                                                                                                                                                                                                                                  | AppearanceSubmenu                                                                           |
-| Alert             | In-page callout. `AlertIcon` + `AlertTitle` + `AlertDescription` + optional `AlertAction`. `color` tints the plate (`danger` / `warning` / `success` / …).                                                                                                                                                   | Alert, AlertIcon, AlertTitle, AlertDescription, AlertAction                                 |
-| Attachment        | File cards for a composer or sent message: `Attachments` (wrapping row of cards, each with preview, name and size, as tall as its text needs; `size` sm/md, `defaultLimitCount` + "+N"), `Attachment` (image preview or file icon; `loading`, `error` + `onRetry`, `onRemove`, `onPress`), `PreviewableAttachment` (image opens in `Lightbox`). Data is a local `AttachmentData`, no protocol types. | Attachments, Attachment, PreviewableAttachment, AttachmentData                              |
-| Avatar            | Image + fallback, title, description; sizes sm/md                                                                                                                                                                                                                                                                                    | Avatar                                                                                      |
-| Autocomplete      | Searchable list shell in Popover (filter input + Separator + scroll); list is children. Enter → `useAutocompleteEnterAction` (RAC often skips ListBox `onAction`)                                                                                                                                                                    | Autocomplete, useAutocompleteEnterAction, autocompleteOptionKey                             |
-| Box               | Flex layout container                                                                                                                                                                                                                                                                                                                | Box                                                                                         |
-| Breadcrumb        | Path to the current view (`nav`/`ol`). `Link` = ancestor, `Page` = current; a `Page` slides in as it is added and out as it is removed, so keep the `Breadcrumb` mounted while the path changes and give each crumb a `key`. `variant` = Text tokens (or inherit).                                                                                                                                                                                       | Breadcrumb                                                                                  |
-| Button            | Actions/links; variant, color, size, href, iconOnly, tooltip A `Hotkey` (capsule or sequence) that ends the button's content sits as far from its right edge as from its top and bottom (the button works it out from `--hotkey-height`), so a key hint in a button needs no styling of its own. | Button                                                                                      |
-| ConfirmButton     | Button that arms on press, then splits into Confirm + cancel. `confirmColor` optional. Leave / outside click / Escape resets.                                                                                                                                                                        | ConfirmButton                                                                               |
-| ContentColumn     | Holds content at the app's reading width (`--content-width` from `@clowdy/styles`) centred in its parent. Put it directly **inside** a scroll container (`Scrollable`, a native `overflow-y` div), never around one, so the scrollbar stays at the container's edge. Width and centring only; padding and layout are the caller's. | ContentColumn |
-| CopyButton        | Icon button that copies `value`. Success: Check + **Copied** tooltip. Menus close — toast, not this.                                                                                                                                                                                                    | CopyButton, copyText, copyWithFeedback, useCopyFeedback                                     |
-| ColorArea         | 2D interactive color plane based on React Aria color state                                                                                                                                                                                                                                                                           | ColorArea                                                                                   |
-| ColorInput        | Hex color input with swatch and optional opacity segment                                                                                                                                                                                                                                                                             | ColorInput                                                                                  |
-| ColorSlider       | Interactive single-channel color slider for hue/alpha/RGB channels                                                                                                                                                                                                                                                                   | ColorSlider                                                                                 |
-| ControlGroup      | Compact grouped controls with optional bottom labels (`ControlGroupField.Label`)                                                                                                                                                                                                                                                     | ControlGroup, ControlGroupControl, ControlGroupField, ControlGroupInput, ControlGroupSelect |
-| CodeTextarea      | CodeMirror editor with Textarea chrome (variants/sizes, auto-height)                                                                                                                                                                                                                                                                 | CodeTextarea                                                                                |
-| codeLanguages     | CodeMirror support by file extension or fence name, lazy and cached; `codeHighlighter` holds the syntax colors the Code view and rich text code blocks share. Subpath import (`@clowdy/components/codeLanguages`)                                                                                                                   | codeLanguage, codeHighlighter                                                               |
-| FileIcon          | Material Icon Theme icon for a file or folder path. Light variants follow `FileIconColorScheme`, which the app provides                                                                                                                                                                                                 | FileIcon, FileIconColorScheme                                                               |
-| For               | List render                                                                                                                                                                                                                                                                                                                          | For                                                                                         |
-| FormField         | Label + description + control as slots (`FormField.Label`, `FormField.Description`, optional `FormField.Error` under the control). `isDisabled` / `isInvalid` flow via SlotContext. Sizes, layout, placement; in a vertical layout a description hugs its label and the control stands a little apart. Inspector / compact forms.                                                                 | FormField, FormField.Label, FormField.Description, FormField.Error                          |
-| Image             | Native `<img>` with safe defaults; sizing left to callers                                                                                                                                                                                                                                                                            | Image                                                                                       |
-| Lightbox          | Image preview via `Modal/Dialog` (scrollable overlay)                                                                                                                                                                                                                                                                                | Lightbox                                                                                    |
-| Modal             | `Modal.create`, `Dialog`, overlay/window chrome                                                                                                                                                                                                                                                                                      | Modal, Dialog, useModalContext                                                              |
-| Input             | Text input; prefix/suffix; `hug` sizes to the typed value (works with `type="number"`); variant, size; unit and angle variants. Flush control buttons: `data-input-affix={INPUT_CONTROL_AFFIX}` on slotted prefix/suffix. `SearchInput` = search type + default search icon + clear (override via `slot="prefix"` / `slot="suffix"`) | Input, INPUT_CONTROL_AFFIX, PasswordInput, SearchInput, UnitInput, AngleUnitInput           |
-| List              | ListBox (Select), Menu, GridList; shared row slots in `List/`                                                                                                                                                                                                                                                                        | AppearanceSubmenu, GridList, GridListItem, ListBox, ListBoxItem, Menu, useCellEditMode      |
-| Loader            | Brand-mark loading animation (Lottie, lazy), for a screen, page or panel that waits; sizes as Spinner, but pair it with a line of body text at `xs` (16px), not bigger; `PanelLoadingState` is that pair. Forked from Reforma, `reforma-loader.json` is Reforma's mark until Clowdy has its own. Inline waits (buttons, a line of text) use `Spinner`.                                                                                  | Loader                                                                                      |
-| MarkdownEditor    | Rich markdown file editor (TipTap). `value` in, `onChange` out on user edits. Optional `placeholder` (read when the editor is created): a hint on the empty document's paragraph, drawn by CSS and never in the text; without it the editor is as before. Lossy content shows read-only with its reason and `unsupportedAction`; over 256 KB calls `onUnsupported(reason)` instead. `editable={false}` is read-only. Fills its parent as a page; in a panel set `--clowdy-markdown-height` (`auto`), `--clowdy-markdown-page-padding` and `--clowdy-markdown-page-width` on its `className`. Subpath import (`@clowdy/components/MarkdownEditor`).     | MarkdownEditor, ResolveImageSrc                                                             |
-| Marker            | Inline status, system note, or labeled divider (chat day). `MarkerIcon` + `MarkerContent`; variants `default` / `separator`. `shimmer` on content; `Loader`/`Spinner` in the icon slot. `role="status"` while live.                                                                                         | Marker, MarkerIcon, MarkerContent                                                           |
-| Panel             | Editor side panel: `Panel` (left/right, 250px), 40px `PanelHeader` (`.Actions`, `.Button`) with `PanelTabHeader` or `PanelHeaderBack`, `PanelContent` body, `PanelTab` (the body of a tab), `PanelSearch` toggled by `PanelSearchButton`. States: `PanelEmptyState`, `PanelEmptyRow`, `PanelLoadingState`. `TreeChevron`: tree row toggle  | Panel*, TreeChevron                                                                         |
-| Popover           | Floating panel; scroll shell for list/menu inside popover. `useContextMenu` (right-click; `openAt(x, y)` for another press); `installLongPressContextMenu` makes a touch held still send a right-click to what is under it, once per window                                                                                          | Popover, PopoverTrigger, PopoverScroll                                                      |
-| PreviewInput      | Read-only input-like value with preview and action slots                                                                                                                                                                                                                                                                             | PreviewInput                                                                                |
-| Pressable         | Press behavior (RAC)                                                                                                                                                                                                                                                                                                                 | Pressable                                                                                   |
-| Select            | Dropdown; items + children(item); `showSearch` overlays like Omnibox                                                                                                                                                                                                                                                                 | Select                                                                                      |
-| SettingsField     | Settings page row: `SettingsField.Label` + control; `Description` under the label; `Error` under the control. `FormField` md. Padding scales with `size`.                                                                                                                                              | SettingsField, SettingsField.Label, SettingsField.Description, SettingsField.Error          |
-| SettingsLayout    | Settings window chrome, for the near-full-window `Dialog` of `type="overlay"`: sidebar nav (items may carry a `group`, a heading over a run of them), title/crumbs, animated panes, optional save. The layout holds the section and the stack of nested views itself, or the host does: `selectedId` + `onSelectedChange`, `stack` + `onStackChange`. `Intro` is what a section or a pane is for: write it first in the content and it is drawn in the header under the title, as one block with the title and the action that does not move when the section changes (only the top layer's: the page's, or the last pane's). `Empty` centers coming-soon / loaders in the pane. Use it for any window of this kind so it is not built again.                                                                                                                                                                  | SettingsLayout, useSettingsLayout, useSettingsSave                                          |
-| Separator         | Divider; orientation, spacing                                                                                                                                                                                                                                                                                                        | Separator                                                                                   |
-| Scrollable        | Custom scroll chrome. Already 3 nodes: `className` / `containerClass` / `contentClass` — don't wrap it in extra layout divs. Docs: `src/Scrollable/README.md` / `AGENTS.md`. Headless: `useScrollChrome` + `ScrollAxisSource`                                                                                                        | Scrollable, useScrollChrome, elementScrollAxisSource, ScrollChromeRoot, ScrollChromeBars    |
-| Show              | Conditional render                                                                                                                                                                                                                                                                                                                   | Show                                                                                        |
-| Spinner           | Small inline loading indicator (a button, a line of text, a field); size xs/sm/md/lg (aligns with Button). The arc takes the text colour (`currentColor`), so it contrasts with what it sits on; paint it with `--spinner-color`. A screen, page or panel that waits uses `Loader`                                                                                                                                                                                                                                                                             | Spinner, SpinnerLabel                                                                       |
-| Swatch            | Preview square for color and image values                                                                                                                                                                                                                                                                                            | Swatch, ColorSwatch, ImageSwatch                                                            |
-| Switch            | Toggle; sizes                                                                                                                                                                                                                                                                                                                        | Switch                                                                                      |
-| Table             | Tabular data (RAC). No chrome of its own — optional `Card` (`filled` padded, `bordered` flush). Horizontal scroll via `Scrollable`; `maxHeight` also enables vertical scroll and a sticky header. One head `isRowHeader`.                                                                                    | Table, TableHeader, TableBody, TableFooter, TableHead, TableRow, TableCell                  |
-| TabStrip          | Tabs over a body, as the file manager's editor and the side panel's terminals have them: `TabStrip` (40px row with a rule under it, the tabs scroll sideways with faded edges, `end` stays at the right: a view switch, a button that adds a tab) with `Tab`s (`label`, 14px `icon`, `active`, `dirty` shows a dot in place of the cross, `deleted` strikes the label, `closeLabel`, `onSelect`, `onClose`; a middle click closes, a chosen tab scrolls into view). | TabStrip, Tab |
-| Text              | Typography; variant (`xl`…`xs`, `heading-1`…`heading-6`, `label`, …; see `TextVariant`), optional color                                                                                                                                                                                                                                                                        | Text                                                                                        |
-| Toast             | ToastRegion + toast.show/.success/.error/.info/.warning                                                                                                                                                                                                                                                                              | Toast, ToastRegion, toast                                                                   |
-| ToggleButtonGroup | Toggle group; use ToggleButtonGroupItem                                                                                                                                                                                                                                                                                              | ToggleButtonGroup, ToggleButtonGroupItem                                                    |
-| Tooltip           | Hover tooltip; `HelpTip` for “?” help near labels                                                                                                                                                                                                                                                                                    | Tooltip, TooltipTrigger, TooltipContent, HelpTip                                            |
-
-List row actions (rename, overflow menu) stay hidden until the row is hovered. Put `data-show={listBoxItemDataShow.itemHover}` on the control. Do not leave them always visible.
-
-## CSS modules
-
-Wrap design-system styles in `@layer components`. That layer is for **this package only** — apps (e.g. `apps/desktop`) must not wrap feature CSS modules in `@layer components`.
+Hooks (`@clowdy/components/hooks`): `useStickToBottom`, `useFileDrag`, `useFilePaste`, `useClickout`, `useControlledState`.
 
 ## Left out of the Reforma copy
 
-`chat` (Reforma's `packages/components/src/chat`: message and tool-call UI, tied to Reforma's sandbox tool types and the `ai` SDK), `openui`, and the Storybook stories. The chat UI can be ported when Clowdy's own message and tool-event model exists.
+Reforma's `chat` and `openui` folders and its Storybook stories were never copied. Its design-tool controls (angle, color, gradient, layout grid, unit inputs, CodeTextarea, Terminal, Avatar, HoverCard and others) were copied and later deleted unused; copy one again from Reforma if a feature needs it.

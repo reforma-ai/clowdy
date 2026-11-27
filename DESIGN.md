@@ -13,10 +13,10 @@ colors:
   danger: "#d96c5f"
   surface: "#f8f7f5"
   background: "#f0ece8"
-  secondary: "#e9e5df"
-  secondary-content: "#282522"
-  text: "#191715"
-  contrast: "#191715"
+  secondary: "#e9e7df"
+  secondary-content: "#242526"
+  text: "#1b1c1d"
+  contrast: "#1b1c1d"
   contrast-content: "#f8f7f5"
   surface-float: "#ffffff"
   white: "#ffffff"
@@ -25,13 +25,13 @@ typography:
   display:
     fontFamily: "Onest, sans-serif"
     fontSize: "2.25rem"
-    fontWeight: 600
+    fontWeight: 500
     lineHeight: "2.5rem"
     letterSpacing: "0"
   headline:
     fontFamily: "Onest, sans-serif"
     fontSize: "1.5rem"
-    fontWeight: 600
+    fontWeight: 500
     lineHeight: "1.75rem"
     letterSpacing: "0"
   title:
@@ -181,7 +181,7 @@ Warm paper and clay. Accents are semantic, not a rainbow.
 - **Ink** (`{colors.text}`): default copy. **Contrast** (`{colors.contrast}`) is the loud neutral fill (near-black in light); content on it is `{colors.contrast-content}`.
 - **Float** (`{colors.surface-float}`): modal/popover sheets. Overlay is `--color-black-a60`.
 
-Dark mode (`.dark`) remaps the same names: surface goes to `--color-secondary-950`, text to Warm Paper, contrast to a light stone fill. Do not author a second palette.
+Dark mode (`.dark`) remaps the same names: surface goes to `--color-secondary-900` (floats to `--color-secondary-950`), text to Warm Paper, contrast to a light stone fill. Do not author a second palette.
 
 The composer uses `--color-chat-composer`, an alias of `--color-surface-float` in both themes. The user bubble uses `--color-chat-message` (Terracotta at low alpha in light).
 
@@ -195,13 +195,13 @@ The composer uses `--color-chat-composer`, an alias of `--color-surface-float` i
 **Body Font:** Onest (sans-serif fallback)
 **Label/Mono Font:** Onest for labels; Menlo for code (`--typography-text-code-sm` / `code-xs`)
 
-**Character:** One family, tight and even. No display serif, no Inter, no letter-spacing theater. Weight does the hierarchy: 600 on heading 1–2, 500 on heading 3–6 and buttons, 400 on body.
+**Character:** One family, tight and even. No display serif, no Inter, no letter-spacing theater. Size does the hierarchy; weight only parts headings and buttons (500) from body (400).
 
 ### Hierarchy
 
-- **Display** (`heading-1`, `{typography.display}`): rare chrome titles. 36px / 40px, semibold.
-- **Headline** (`heading-2`, `{typography.headline}`): 24px / 28px, semibold. Page-level in settings/empty states.
-- **Title** (`heading-3`–`heading-6`, `{typography.title}` at lg): 18px down to 13px, medium. Section labels in panels.
+- **Display** (`heading-1`, `{typography.display}`): rare chrome titles. 36px / 40px, medium.
+- **Headline** (`heading-2`, `{typography.headline}`): 24px / 28px, medium. Page-level in settings/empty states.
+- **Title** (`heading-3`–`heading-6`, `{typography.title}` at lg): 18px down to 12px, medium. Section labels in panels.
 - **Body** (`text-md`, `{typography.body}`): default UI copy. 13px / 18px. `text-sm` (12px) and `text-xs` (11px) are the two steps down; `text-lg` (16px) and `text-xl` (18px) are the two steps up — not a second body.
 - **Label** (`label-sm`, `{typography.label}`): 12px / 16px. Field labels, helper text.
 - **Button** (`{typography.button}`): 13px medium on `md`. Size `sm`/`xs` drop to 12px; `lg` is 16px.
@@ -229,7 +229,8 @@ Buttons, cards, inputs, and rails are flat at rest. Depth is a darker or lighter
 
 ### Shadow Vocabulary
 
-- **xs–xl** (`--shadow-xs` … `--shadow-xl`): increasing offset and blur, all `black-a5` except xl at `black-a8`. **xl** is the modal/popover lift (`--modal-box-shadow: var(--shadow-xl)`).
+- **xs–xl** (`--shadow-xs` … `--shadow-xl`): increasing offset and blur, all `black-a5` except xl at `black-a8`. **xl** is the modal lift (`--modal-box-shadow: var(--shadow-xl)`).
+- **Float** (`--shadow-float`, remapped in dark): the lift of a small float — popovers, menus, a button over a selection — with a 1px `--color-surface-border`.
 - **AI glow** (`--effect-ai`): 20px Terracotta-alpha bloom. For AI-authored moments, not for every button.
 - Dark modal: a 1px light hairline plus a 20px dark wash — not the light-mode xl recipe.
 
@@ -253,7 +254,7 @@ Primitives live in `@clowdy/components`. Variant APIs are data attributes, not n
 
 Refined and restrained. Fill is the one action; ghost and filling do the rest.
 
-- **Shape:** squircle; radius tracks size (`sm` 8px, `md` 10px, `lg` 12px). Press scale `0.97` (icon-only `0.92`). 150ms ease-out. Focus: 4px Terracotta-muted ring, no offset.
+- **Shape:** squircle; radius tracks size (`sm` 8px, `md` 10px, `lg` 12px). Press scale `0.97` (icon-only `0.92`). 150ms ease-out. Focus: 4px Terracotta-muted ring, no offset (`@ruleset focus-ring`, `--color-focus-ring`), the one ring of the app.
 - **Primary filled:** Terracotta plate, white label. Hover: `{colors.primary-light}`.
 - **Secondary filled (default):** Warm Stone plate. Default when `color` is omitted (except `inline` / `transparent`, which inherit).
 - **Contrast filled:** Ink plate, paper label. Used for the commit button and other prominent neutral actions.
@@ -264,7 +265,7 @@ Refined and restrained. Fill is the one action; ghost and filling do the rest.
 
 ### Chips
 
-Chat chips: 20px tall, `sm` squircle, muted stone fill, 12px type. Interactive hover darkens the plate. Focus uses the same Terracotta-muted ring as buttons.
+Chat chips: 20px tall, `sm` squircle, muted stone fill, 11px type (`text-xs`); a status pill is the same chip fully round. Interactive hover darkens the plate. Focus uses the same Terracotta-muted ring as buttons. Build them with `Chip` from `@clowdy/components/Chip`, which holds the one tone map.
 
 ### Cards / Containers
 
@@ -291,14 +292,6 @@ Workspace and editor chrome are toolbars and rails, not a marketing nav. Items a
 Float plate: `{colors.surface-float}`, 1px muted border, `--shadow-xl`, `--radius-xl` squircle. Overlay `--color-modal-overlay`. Title row 40px. This is the only place large radius + shadow stack by default.
 
 ## Do's and Don'ts
-
-### Variable galleries
-
-View and mode controls belong to the Variables header and preserve their selection across scopes, including All variables. Gallery/Table uses labeled icon controls. Table retains its mode columns; the mode switch selects the gallery's mode. Types without a gallery retain their table representation.
-
-Color sections are display groups, independent of token source files and canonical paths. The starter assigns its colors explicitly with `$extensions["dev.reforma"].colorSection` in the base definition. The gallery reads that assignment from the default mode, so Light/Dark changes and renames do not move cards; duplication copies the assignment. New colors can choose a section in the creation form, and section headers add directly into that section. Moving a card changes only its section metadata. Other colors remain visible in Other colors. Never infer a section from the token name during normal rendering or create an On section.
-
-Color cards show name, optional alias badge above the resolved value, and the current-mode fill. Selection and keyboard focus use a neutral outline on this surface, overriding the generic Terracotta active-card rule. Transparent swatches are composited over the project scope’s background in the selected mode (neutral gray if absent), with alpha shown as a separate percentage. Display the token’s native color space rather than converting every value to HEX. Avoid full-card checkerboards. Card text contrast is measured against this composited fill; choose black or white by the stronger minimum ratio, with a solid text backing below 4.5:1. Clicking a direct color opens the paint editor; clicking an alias opens its binding editor. The card action menu supports renaming.
 
 ### Do:
 
