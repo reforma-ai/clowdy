@@ -15,7 +15,7 @@ import { commitMessageAgent, writesCommitMessages } from '@clowdy/protocol';
 import { type MouseEvent, type KeyboardEvent as ReactKeyboardEvent, useEffect, useState } from 'react';
 
 import { useAgents, useProjectUi, useRootStore } from '../../stores';
-import { quoteIntoComposer } from '../chats/composerBridge';
+import { appendTextIntoComposer } from '../chats/composerBridge';
 import { PathMenu, placeTarget } from '../openWith';
 import { ChangeKindGlyph } from './ChangeKindGlyph';
 import styles from './CommitBox.module.css';
@@ -247,24 +247,11 @@ function CommitFileList({
     );
 }
 
-function ConflictActions({
-    conflicts,
-    writing,
-    remote,
-}: {
-    conflicts: readonly CommitFile[];
-    writing: boolean;
-    remote: RemoteActions;
-}) {
+function ConflictActions({ writing, remote }: { writing: boolean; remote: RemoteActions }) {
     const ui = useProjectUi();
 
     const ask = () => {
-        const quote =
-            conflicts.length === 0
-                ? 'Resolve the merge conflicts'
-                : `Resolve the merge conflicts in:\n${conflicts.map(({ path }) => `- \`${path}\``).join('\n')}`;
-
-        if (quoteIntoComposer(quote)) ui.showChat();
+        if (appendTextIntoComposer('Resolve the merge conflicts')) ui.showChat();
     };
 
     return (
@@ -468,9 +455,7 @@ export function CommitBox({ model, place }: { model: PlaceChanges; place: Place 
                     )
                 }
             />
-            {showConflicts && (
-                <ConflictActions conflicts={mergeFiles.conflicts} writing={draft.writing} remote={remote} />
-            )}
+            {showConflicts && <ConflictActions writing={draft.writing} remote={remote} />}
 
             {(hasFiles || conflicts > 0) && (
                 <Scrollable className={styles.list} contentClass={styles.rows}>

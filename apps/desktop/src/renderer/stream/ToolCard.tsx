@@ -80,16 +80,17 @@ function Header({ call }: { call: ToolBody }) {
     const { state } = useCollapsible();
     const view = describeTool(call.name, call.input, call.output, call);
     const Icon = ICONS[view.icon];
+    const target = view.icon === 'terminal' && view.verb ? undefined : view.target;
 
     return (
         <CollapsibleTrigger as="button" className={styles.header}>
             <span className={cn(styles.icon, call.state === 'error' && styles.failedIcon)} aria-hidden>
                 <Icon />
             </span>
-            {(view.verb || view.target) && (
+            {(view.verb || target) && (
                 <span className={styles.headerText}>
                     <Title verb={view.verb} state={call.state} reason={call.error} />
-                    {view.target && <code className={styles.chip}>{view.target}</code>}
+                    {target && <code className={styles.chip}>{target}</code>}
                 </span>
             )}
             {view.diff && (
