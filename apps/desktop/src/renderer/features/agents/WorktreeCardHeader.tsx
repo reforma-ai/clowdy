@@ -9,7 +9,9 @@ import { StatusDot } from '../../shared';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { BranchPicker } from '../changes/BranchPicker';
 import { gitFactsOf } from '../changes/gitFacts';
+import { openInFiles } from '../files/openInFiles';
 import { OpenWithMenu, useFolderGit, useFolderRepair } from '../openWith';
+import { openInTerminal } from '../terminal/openInTerminal';
 import { worktreeMenuExtras } from '../worktrees/worktreeMenuExtras';
 import styles from './AgentList.module.css';
 import { GroupHeader } from './GroupHeader';
@@ -21,6 +23,7 @@ import type { ThreadsActivity } from './agentTree';
 import type { WorktreeCard } from './worktreeCards';
 
 let previewGeneration = 0;
+const placeRequests = new WeakMap<object, number>();
 
 export function WorktreeCardHeader({
     card,
@@ -241,6 +244,44 @@ function WorktreeCardMenu({
             ready: !card.pending,
         };
     const git = { remoteUrl: folderGit?.remoteUrl, branch: card.branch, detached: card.branch === undefined };
+    const openPlace = async (tab: 'files' | 'terminal') => {
+        if (card.missing || card.pending || card.workspace?.ready === false) return;
+        const navigation = ui.navigationVersion;
+        const placeVersion = ui.beginSidePanelNavigation();
+        const request = (placeRequests.get(root) ?? 0) + 1;
+        placeRequests.set(root, request);
+        const isCurrent = () =>
+            placeRequests.get(root) === request &&
+            ui.navigationVersion === navigation &&
+            ui.sidePanelPlaceVersion === placeVersion &&
+            root.selectedProject?.id === project.id;
+        let selected = card.main ? undefined : card.workspace;
+        if (!card.main && !selected) {
+            const result = await root.command({
+                type: 'workspace.open',
+                projectId: project.id,
+                folderId: card.folder.id,
+                path: card.path,
+            });
+            if (!isCurrent()) return;
+            if (!result.ok) {
+                toast.error({ message: result.error.message });
+                return;
+            }
+            selected = (result.data as { workspace: ChatWorkspace }).workspace;
+        }
+        if (
+            !isCurrent() ||
+            (!card.main &&
+                (!selected?.ready || selected.folderId !== card.folder.id || !samePath(selected.path, card.path)))
+        )
+            return;
+        const place = selected ? { folder: card.folder, workspace: selected } : { folder: card.folder };
+        if (tab === 'files') {
+            if (!(await openInFiles(root, project.id, place, '', isCurrent)))
+                toast.error({ message: 'Couldn’t open this path' });
+        } else await openInTerminal(root, project.id, place, '', isCurrent);
+    };
     return (
         <OpenWithMenu
             target={{
@@ -256,6 +297,7 @@ function WorktreeCardMenu({
             notReady={card.pending || card.workspace?.ready === false}
             git={git}
             onNewChat={onNewChat}
+            onOpenPlace={tab => void openPlace(tab)}
             onClose={onClose}
             extra={[
                 ...(!card.missing &&

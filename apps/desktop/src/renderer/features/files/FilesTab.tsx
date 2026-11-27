@@ -8,7 +8,16 @@ import { mentionFilesIntoComposer, useCanMentionFiles } from '../chats/composerB
 import { FILE_REFERENCE_DRAG_TYPE, fileReferences } from '../chats/fileReferences';
 import { useAddToChat } from '../chats/useAddToChat';
 import { chosenPrograms, useFolderGit, useOpenApps } from '../openWith';
-import { currentPlace, isPlaceReady, type Place, placeKey } from '../sidePanel/currentPlace';
+import { absolutePath } from '../openWith/openTarget';
+import {
+    currentPlace,
+    isPlaceReady,
+    isSamePlace,
+    type Place,
+    panelPlace,
+    placeKey,
+    placePath,
+} from '../sidePanel/currentPlace';
 import { PlaceWaiting } from '../sidePanel/PlaceWaiting';
 import { openInTerminal } from '../terminal/openInTerminal';
 import { docsScopeOf } from './docsScope';
@@ -28,7 +37,10 @@ function PlaceFiles({ place, variant }: { place: Place; variant: 'files' | 'docs
     const apps = useOpenApps();
     const git = useFolderGit(project.id, place.folder.id, place.workspace);
     // Add to chat over words selected in the open file's source; the file is read when the words are quoted, since the one editor shows every tab.
-    const addToChat = useAddToChat(() => manager.tabs.active?.path);
+    const addToChat = useAddToChat(() => {
+        const path = manager.tabs.active?.path;
+        return path && !isSamePlace(place, currentPlace(project, ui)) ? absolutePath(placePath(place), path) : path;
+    });
     const canMentionFiles = useCanMentionFiles();
     const openItems = openInMenuItems({
         projectId: project.id,
@@ -98,7 +110,7 @@ function PlaceFiles({ place, variant }: { place: Place; variant: 'files' | 'docs
 export default function FilesTab({ variant = 'files' }: { variant?: 'files' | 'docs' }) {
     const project = useProjectState();
     const ui = useProjectUi();
-    const place = currentPlace(project, ui);
+    const place = panelPlace(project, ui);
 
     return isPlaceReady(place) ? <PlaceFiles place={place} variant={variant} /> : <PlaceWaiting />;
 }

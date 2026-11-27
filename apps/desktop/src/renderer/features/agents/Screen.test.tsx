@@ -27,6 +27,7 @@ import { branchPullRequestsOf } from '../changes/branchPullRequests';
 import { dropDraft, newChatDraftKey, saveDraft } from '../chats/composerDrafts';
 import { setFiles } from '../chats/composerFiles';
 import { refreshFolderGit } from '../openWith/useFolderGit';
+import { terminalsStoreOf } from '../terminal/useTerminalsStore';
 import { chatListPreferences } from './chatListPreferences';
 import { openNewChat } from './openNewChat';
 import { Screen } from './Screen';
@@ -750,7 +751,17 @@ describe('grouped by folder', () => {
 
             // The folder is there, and the page is not taken from the chat: nothing to start in a folder that is gone.
             expect(ui().draft).toBe(false);
-            expect(menuItems()).toEqual(['Locate…', 'Remove from project', 'New chat', 'Copy path', 'Open in…']);
+            expect(menuItems()).toEqual([
+                'Locate…',
+                'Remove from project',
+                'New chat',
+                'Open in Files',
+                'Open in Terminal',
+                'Copy path',
+                'Open in…',
+            ]);
+            expect(item('Open in Files').getAttribute('aria-disabled')).toBe('true');
+            expect(item('Open in Terminal').getAttribute('aria-disabled')).toBe('true');
             expect(item('New chat').getAttribute('aria-disabled')).toBe('true');
             await press(item('New chat'));
             expect(ui().draft).toBe(false);
@@ -2624,14 +2635,95 @@ describe('worktree cards', () => {
         expect(document.querySelector('input[placeholder="Filter branches"]')).not.toBeNull();
     });
 
+    it.each(['Open in Files', 'Open in Terminal'] as const)(
+        'opens %s in another worktree without changing the active draft',
+        async action => {
+            await restart();
+            await draw(() => {
+                ui().setGroupByWorktree(true);
+                ui().openDraft([], 'fld_api');
+            });
+            const draft = ui().draftId;
+            const workspace = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
+            await press(rowOf(workspaceKey()).querySelector<HTMLElement>('button[aria-label^="Worktree actions:"]')!);
+            await press(menuItem(action));
+            await vi.waitFor(() => expect(ui().sidePanelPlace?.workspace?.id).toBe(workspace.id));
+            expect([ui().draftId, ui().draftFolderId, ui().sidePanelTab]).toEqual([
+                draft,
+                'fld_api',
+                action === 'Open in Files' ? 'files' : 'terminal',
+            ]);
+            if (action === 'Open in Terminal') {
+                expect(
+                    terminalsStoreOf(store.transport).activeOf(FIXTURE_PROJECT_ID, workspace.folderId, workspace.id)
+                        ?.info.cwd
+                ).toBe(workspace.path);
+            }
+            await draw(() => ui().openChat('c-4'));
+            expect(ui().sidePanelPlace).toBeNull();
+        }
+    );
+
+    it.each(['Open in Files', 'Open in Terminal'] as const)(
+        'opens %s in another folder without changing the active chat',
+        async action => {
+            await restart();
+            await draw(() => {
+                ui().setGroupByWorktree(true);
+                ui().openChat(FIXTURE_WORKSPACE_CHAT_ID);
+            });
+            const api = worktreeKey('fld_api', '/Users/dev/car-rental-api');
+            await press(rowOf(api).querySelector<HTMLElement>('button[aria-label^="Worktree actions:"]')!);
+            await press(menuItem(action));
+            await vi.waitFor(() => expect(ui().sidePanelPlace?.folder.id).toBe('fld_api'));
+            expect([ui().chatId, ui().sidePanelPlace?.workspace, ui().sidePanelTab]).toEqual([
+                FIXTURE_WORKSPACE_CHAT_ID,
+                undefined,
+                action === 'Open in Files' ? 'files' : 'terminal',
+            ]);
+            if (action === 'Open in Terminal') {
+                expect(terminalsStoreOf(store.transport).activeOf(FIXTURE_PROJECT_ID, 'fld_api')?.info.cwd).toBe(
+                    '/Users/dev/car-rental-api'
+                );
+            }
+        }
+    );
+
+    it('does not reopen the panel when a delayed worktree selection finishes after it was closed', async () => {
+        await restart();
+        await draw(() => {
+            ui().setGroupByWorktree(true);
+            chatListPreferences.setShowUnusedWorktrees(true);
+        });
+        const original = store.transport.command.bind(store.transport);
+        let finish!: () => void;
+        const gate = new Promise<void>(resolve => {
+            finish = resolve;
+        });
+        vi.spyOn(store.transport, 'command').mockImplementation(async input => {
+            if (input.type === 'workspace.open') await gate;
+            return original(input);
+        });
+        const card = cardRows().find(key => key?.includes('search-filters'))!;
+        await press(rowOf(card).querySelector<HTMLElement>('button[aria-label^="Worktree actions:"]')!);
+        await press(menuItem('Open in Files'));
+        await draw(() => ui().closeSidePanel());
+        await act(async () => {
+            finish();
+            await gate;
+        });
+        await new Promise(resolve => setTimeout(resolve, 30));
+        expect([ui().sidePanelOpen, ui().sidePanelPlace]).toEqual([false, null]);
+    });
+
     it('starts a draft in a worktree with no chats from its own menu', async () => {
         await restart();
         await draw(() => ui().setGroupByWorktree(true));
         await draw(() => chatListPreferences.setShowUnusedWorktrees(true));
         const card = cardRows().find(key => key?.includes('search-filters'))!;
         await press(rowOf(card).querySelector<HTMLElement>('button[aria-label^="Worktree actions:"]')!);
-        expect(menuItem('Open in Files')).toBeUndefined();
-        expect(menuItem('Open in Terminal')).toBeUndefined();
+        expect(menuItem('Open in Files')).toBeDefined();
+        expect(menuItem('Open in Terminal')).toBeDefined();
         await press(menuItem('New chat'));
         expect([ui().draft, ui().draftWorkspace]).toEqual([
             true,

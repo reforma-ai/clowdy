@@ -79,3 +79,13 @@ export function currentPlace(
         ? chatPlace(folders, chat, chatFolder(project.chats, folders, chat.id)?.folder)
         : { folder: mainFolder(project.project) };
 }
+
+/** Place explicitly opened in the side panel, falling back when its folder was removed. */
+export function panelPlace(project: Pick<ProjectState, 'chats' | 'project'>, ui: ProjectUi): Place {
+    const selected = ui.sidePanelPlace;
+    const folder = selected && project.project.folders.find(candidate => candidate.id === selected.folder.id);
+    if (folder && (!selected?.workspace || selected.workspace.folderId === folder.id)) {
+        return selected?.workspace ? { folder, workspace: selected.workspace } : { folder };
+    }
+    return currentPlace(project, ui);
+}
