@@ -3033,6 +3033,36 @@ describe('worktree cards', () => {
         expect(cardRows().slice(0, 3)).toEqual([cards[0], cards[2], cards[1]]);
     });
 
+    it('keeps a canonical worktree in its dragged place when its chat is archived and restored', async () => {
+        await restart();
+        const chat = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!;
+        const pending = worktreeKey(chat.workspace!.folderId, chat.workspace!.path);
+        const canonical = worktreeKey(chat.workspace!.folderId, '/canonical/tree');
+        const read = store.transport.getProjectWorktrees.bind(store.transport);
+        vi.spyOn(store.transport, 'getProjectWorktrees').mockImplementation(async projectId =>
+            (await read(projectId)).map(folder => ({
+                ...folder,
+                worktrees: folder.worktrees.map(tree =>
+                    tree.workspaceId === chat.workspace!.id ? { ...tree, path: '/canonical/tree' } : tree
+                ),
+            }))
+        );
+        await draw(() => {
+            ui().setWorktreeOrder([pending]);
+            ui().setGroupByWorktree(true);
+            chatListPreferences.setShowUnusedWorktrees(true);
+        });
+        await draw();
+        const cards = cardRows();
+        expect(cards[1]).toBe(canonical);
+        await drag(canonical, cards[2]!);
+        expect(cardRows().slice(0, 3)).toEqual([cards[0], cards[2], canonical]);
+        await draw(() => project().chats.set(chat.id, { ...chat, archivedAt: 1 }));
+        expect(cardRows().slice(0, 3)).toEqual([cards[0], cards[2], canonical]);
+        await draw(() => project().chats.set(chat.id, chat));
+        expect(cardRows().slice(0, 3)).toEqual([cards[0], cards[2], canonical]);
+    });
+
     it('uses the whole visible worktree group as the drag image', async () => {
         await restart();
         await draw(() => ui().setGroupByWorktree(true));

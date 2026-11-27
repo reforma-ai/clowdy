@@ -16,6 +16,7 @@ import { RootStore, RootStoreProvider } from '../../stores';
 import { currentPlace } from '../sidePanel/currentPlace';
 import { openManageWorktrees } from '../worktrees';
 import { DraftChat } from './DraftChat';
+import { worktreeKey } from './worktreeCards';
 
 import type { Chat, CommandResult, CreatedWorktree, FolderGit } from '@clowdy/protocol';
 import type { Editor } from '@tiptap/core';
@@ -731,6 +732,22 @@ describe('Folder settings…', () => {
 
         return data;
     };
+
+    it('places a new worktree in the selected folder without changing the other saved order', async () => {
+        await start({ data: twoFolders() });
+        const before = new Set(store.selectedProject!.chats.keys());
+        ui().setWorktreeOrder(['main-second', 'main-first', 'api-older']);
+        await press(chip()!);
+        await press(menuItem('car-rental-api'));
+        await settle();
+        await chooseMode('New worktree');
+        await send('Work in API');
+        const workspace = made(before)[0]!.workspace!;
+        expect([workspace.folderId, ui().worktreeOrder]).toEqual([
+            API.id,
+            [worktreeKey(API.id, workspace.path), 'main-second', 'main-first', 'api-older'],
+        ]);
+    });
     const key = async (target: HTMLElement, name: string, code: string) =>
         act(async () => {
             target.focus();
@@ -1061,11 +1078,15 @@ describe('the first message', () => {
 
     it('makes a chat in a new worktree that starts from the base that was picked', async () => {
         const before = new Set(store.selectedProject!.chats.keys());
+        ui().setWorktreeOrder(['folder-b', 'older-2', 'older-1']);
 
         await pickBase('dev');
         await send('Fix the price');
 
         const [chat] = made(before);
+
+        expect(ui().worktreeOrder[0]).toBe(worktreeKey(chat!.workspace!.folderId, chat!.workspace!.path));
+        expect(ui().worktreeOrder.slice(1)).toEqual(['folder-b', 'older-2', 'older-1']);
 
         // The fixture daemon makes the worktree at the first message, as the daemon does: it is ready, on the branch of its own, with the step in the chat's stream.
         expect(chat?.workspace).toMatchObject({
@@ -1081,6 +1102,38 @@ describe('the first message', () => {
         ).toEqual(['user', 'workspace']);
     });
 
+    it('keeps a manual order made before a delayed creation response arrives', async () => {
+        const transport = new FixtureTransport();
+        const original = transport.command.bind(transport);
+        let release!: () => void;
+        const gate = new Promise<void>(resolve => {
+            release = resolve;
+        });
+        const before = new Set<string>();
+        vi.spyOn(transport, 'command').mockImplementation(async command => {
+            const result = await original(command);
+            if (command.type === 'chat.create') await gate;
+            return result;
+        });
+        await start({ transport });
+        for (const id of store.selectedProject!.chats.keys()) before.add(id);
+        await chooseMode('New worktree');
+        await act(async () => {
+            editor().commands.insertContent('Work here');
+            field()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+        });
+        await vi.waitFor(() => expect(made(before)).toHaveLength(1));
+        const workspace = made(before)[0]!.workspace!;
+        const pending = worktreeKey(workspace.folderId, workspace.path);
+        const canonical = worktreeKey(workspace.folderId, '/canonical/tree');
+        await draw(() => ui().setWorktreeOrder(['older', canonical, pending]));
+        await act(async () => {
+            release();
+        });
+        await settle();
+        expect(ui().worktreeOrder).toEqual(['older', canonical, pending]);
+    });
+
     it('makes a chat in the existing worktree that was picked, sharing the worktree with the chats that have it', async () => {
         const before = new Set(store.selectedProject!.chats.keys());
 
@@ -1088,6 +1141,7 @@ describe('the first message', () => {
         await send('Fix the price');
 
         expect(made(before)[0]?.workspace).toMatchObject({ path: WORKTREE, ready: true, branch: 'clowdy/ab12cd34' });
+        expect(ui().worktreeOrder).toEqual([]);
     });
 
     it('shows the chat that was made, and the page that made it starts over in Project checkout', async () => {
@@ -1119,9 +1173,12 @@ describe('the first message', () => {
         await send('First try');
         expect(made(before)).toHaveLength(1);
         expect(ui().draft).toBe(true);
+        const key = worktreeKey(made(before)[0]!.workspace!.folderId, made(before)[0]!.workspace!.path);
+        ui().setWorktreeOrder(['other', key]);
 
         commands.mockRestore();
         await send('Second try');
+        expect(ui().worktreeOrder).toEqual(['other', key]);
         // The retry goes to the chat that was made, which has its worktree.
         expect(made(before)).toHaveLength(1);
         expect(made(before)[0]?.workspace?.managed).toBe(true);

@@ -79,7 +79,7 @@ import { TidyWorktreesButton } from './TidyWorktreesButton';
 import { useChatListOrder } from './useChatListOrder';
 import { useSidebarWorktrees } from './useSidebarWorktrees';
 import { WorktreeCardHeader } from './WorktreeCardHeader';
-import { chatWorktreeKey, type WorktreeCard, worktreeCards, worktreeKey } from './worktreeCards';
+import { chatWorktreeKey, type WorktreeCard, worktreeCards, worktreeKey, worktreeRank } from './worktreeCards';
 
 import type { Chat, ChatId, FolderId, ProjectInfo, Run } from '@clowdy/protocol';
 import type { NewChatDraft } from '../../stores/NewChatDrafts';
@@ -209,6 +209,17 @@ export function AgentList({
         projectInfo,
         ui.worktreeOrder
     );
+    // Remember Git's canonical path as soon as it is known, including for archived chats.
+    useEffect(() => {
+        const aliases = new Map(
+            additionalCards.flatMap(card => (card.orderAliases ?? []).map(alias => [alias, card.key] as const))
+        );
+        const next = [
+            ...new Set(ui.worktreeOrder.flatMap(key => (aliases.has(key) ? [aliases.get(key)!, key] : [key]))),
+        ];
+        if (next.length !== ui.worktreeOrder.length || next.some((key, index) => key !== ui.worktreeOrder[index]))
+            ui.setWorktreeOrder(next);
+    });
     for (const draft of draftItems) {
         const key = additionalDraftKey(draft);
         if (!key || additionalCards.some(card => card.key === key) || draft.workspace?.mode !== 'existing') continue;
@@ -261,7 +272,7 @@ export function AgentList({
         (a, b) =>
             folders.indexOf(a.folder) - folders.indexOf(b.folder) ||
             Number(Boolean(b.main)) - Number(Boolean(a.main)) ||
-            (rank.get(a.key) ?? Infinity) - (rank.get(b.key) ?? Infinity)
+            worktreeRank(a, rank) - worktreeRank(b, rank)
     );
     const shownCards = cards.filter(card => card.main || shownAdditional.includes(card));
     const order = useChatListOrder(chats, openChatId, cards, shownCards);

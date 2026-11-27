@@ -18,6 +18,7 @@ import { useFolderRepository } from './useFolderRepository';
 import { useMainBranch } from './useMainBranch';
 import { WorkspaceChips } from './WorkspaceChips';
 import { effectiveChoice } from './workspaceChoice';
+import { worktreeKey } from './worktreeCards';
 
 import type { FolderId } from '@clowdy/protocol';
 
@@ -72,15 +73,28 @@ export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
             firstMessage?: import('../../stores/NewChatDrafts').NewChatDraft['firstMessage'],
             attachments?: readonly import('@clowdy/protocol').Attachment[],
             reply?: import('../../stream/MessageActions').ReplyMessage
-        ) =>
-            ui.newChatDrafts.updateOperation(
+        ) => {
+            const previous = ui.newChatDrafts.get(id);
+            const saved = ui.newChatDrafts.updateOperation(
                 id,
                 operation as import('../../stores/NewChatDrafts').NewChatDraft['operation'],
                 chat,
                 firstMessage,
                 attachments,
                 reply
-            ),
+            );
+            if (
+                saved &&
+                chat?.workspace &&
+                !previous?.createdChat &&
+                previous?.operation?.type === 'chat.create' &&
+                previous.operation.workspace?.mode === 'new'
+            ) {
+                const key = worktreeKey(chat.workspace.folderId, chat.workspace.path);
+                if (!ui.worktreeOrder.includes(key)) ui.setWorktreeOrder([key, ...ui.worktreeOrder]);
+            }
+            return saved;
+        },
         setAttachments: (attachments: readonly import('@clowdy/protocol').Attachment[]) =>
             ui.newChatDrafts.updateAttachments(id, attachments),
         clearRefused: () => ui.newChatDrafts.clearRefused(id),
