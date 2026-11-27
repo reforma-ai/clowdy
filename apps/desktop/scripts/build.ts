@@ -17,7 +17,7 @@
  * - `CLOWDY_RELEASE_REPO`: `owner/name` of the GitHub repository with the releases. Without it the app never updates.
  * - `CLOWDY_SIGNED`: `true` when the macOS build gets a Developer ID signature, so it can install the next one itself;
  *   an ad-hoc build offers the release page instead.
- * - `CLOWDY_OTA_PUBLIC_KEY`: the Ed25519 key OTA bundles are signed with (SPKI PEM). Without it the app ignores them.
+ * - `CLOWDY_OTA_PUBLIC_KEY`: the Ed25519 key OTA bundles are signed with (SPKI PEM). Required for release builds.
  */
 import { createPublicKey } from 'node:crypto';
 import { rm } from 'node:fs/promises';
@@ -80,10 +80,14 @@ function releaseConstants(): Record<string, string> {
     if (repo && !/^[\w.-]+\/[\w.-]+$/.test(repo))
         throw new Error(`CLOWDY_RELEASE_REPO must be owner/name, got ${repo}`);
 
+    const publicKey = otaPublicKey();
+
+    if (repo && !publicKey) throw new Error('CLOWDY_OTA_PUBLIC_KEY is required for a release build');
+
     return {
         __CLOWDY_RELEASE_REPO__: JSON.stringify(repo),
         __CLOWDY_SIGNED__: JSON.stringify(process.env.CLOWDY_SIGNED === 'true'),
-        __CLOWDY_OTA_PUBLIC_KEY__: JSON.stringify(otaPublicKey()),
+        __CLOWDY_OTA_PUBLIC_KEY__: JSON.stringify(publicKey),
     };
 }
 
