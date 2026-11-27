@@ -55,7 +55,7 @@ typography:
   button:
     fontFamily: "Onest, sans-serif"
     fontSize: "0.8125rem"
-    fontWeight: 500
+    fontWeight: 400
     lineHeight: "1.125rem"
     letterSpacing: "0"
   code:
@@ -195,7 +195,7 @@ The composer uses `--color-chat-composer`, an alias of `--color-surface-float` i
 **Body Font:** Onest (sans-serif fallback)
 **Label/Mono Font:** Onest for labels; Menlo for code (`--typography-text-code-sm` / `code-xs`)
 
-**Character:** One family, tight and even. No display serif, no Inter, no letter-spacing theater. Size does the hierarchy; weight only parts headings and buttons (500) from body (400).
+**Character:** One family, tight and even. No display serif, no Inter, no letter-spacing theater. Size does the hierarchy; weight only parts headings (500) from body (400). Buttons are 400 up to `md` and 500 at `lg`.
 
 ### Hierarchy
 
@@ -204,7 +204,7 @@ The composer uses `--color-chat-composer`, an alias of `--color-surface-float` i
 - **Title** (`heading-3`–`heading-6`, `{typography.title}` at lg): 18px down to 12px, medium. Section labels in panels.
 - **Body** (`text-md`, `{typography.body}`): default UI copy. 13px / 18px. `text-sm` (12px) and `text-xs` (11px) are the two steps down; `text-lg` (16px) and `text-xl` (18px) are the two steps up — not a second body.
 - **Label** (`label-sm`, `{typography.label}`): 12px / 16px. Field labels, helper text.
-- **Button** (`{typography.button}`): 13px medium on `md`. Size `sm`/`xs` drop to 12px; `lg` is 16px.
+- **Button** (`{typography.button}`): 13px regular on `md`. Size `sm`/`xs` drop to 12px; `lg` is 16px medium.
 - **Code** (`{typography.code}`): Menlo, 11px default.
 
 Use `<Text variant="…">` from `@clowdy/components`. Do not invent a type ramp in a feature file.
@@ -232,7 +232,7 @@ Buttons, cards, inputs, and rails are flat at rest. Depth is a darker or lighter
 - **xs–xl** (`--shadow-xs` … `--shadow-xl`): increasing offset and blur, all `black-a5` except xl at `black-a8`. **xl** is the modal lift (`--modal-box-shadow: var(--shadow-xl)`).
 - **Float** (`--shadow-float`, remapped in dark): the lift of a small float — popovers, menus, a button over a selection — with a 1px `--color-surface-border`.
 - **AI glow** (`--effect-ai`): 20px Terracotta-alpha bloom. For AI-authored moments, not for every button.
-- Dark modal: a 1px light hairline plus a 20px dark wash — not the light-mode xl recipe.
+- Dark modal: a 1px light hairline (white at 12%) plus a `0 16px 40px` `black-a50` shadow — not the light-mode xl recipe.
 
 **The Float-Only Shadow Rule.** If it does not overlay the page (modal, popover, tooltip, menu), it does not get a shadow. No ambient card shadows. No glass.
 
@@ -254,7 +254,7 @@ Primitives live in `@clowdy/components`. Variant APIs are data attributes, not n
 
 Refined and restrained. Fill is the one action; ghost and filling do the rest.
 
-- **Shape:** squircle; radius tracks size (`sm` 8px, `md` 10px, `lg` 12px). Press scale `0.97` (icon-only `0.92`). 150ms ease-out. Focus: 4px Terracotta-muted ring, no offset (`@ruleset focus-ring`, `--color-focus-ring`), the one ring of the app.
+- **Shape:** squircle; radius tracks size (`sm` 8px, `md` 10px, `lg` 12px). Icon-only buttons scale to `0.92` while pressed; text buttons do not scale. 150ms ease-out. Focus: 4px Terracotta-muted ring, no offset (`@ruleset focus-ring`, `--color-focus-ring`), the one ring of the app.
 - **Primary filled:** Terracotta plate, white label. Hover: `{colors.primary-light}`.
 - **Secondary filled (default):** Warm Stone plate. Default when `color` is omitted (except `inline` / `transparent`, which inherit).
 - **Contrast filled:** Ink plate, paper label. Used for the commit button and other prominent neutral actions.

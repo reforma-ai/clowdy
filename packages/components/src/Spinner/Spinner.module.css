@@ -26,23 +26,6 @@
         justify-content: center;
     }
 
-    .labelRoot {
-        --spinner-foreground: color-mix(in srgb, var(--spinner-color) 18%, transparent);
-        --spinner-color: currentColor;
-        --spinner-size: 1em;
-        --spinner-width: 0.15em;
-
-        display: inline-flex;
-        align-items: center;
-        gap: 1ex;
-        @ruleset typography-text-sm;
-        color: var(--color-secondary-muted-text);
-    }
-
-    .label {
-        min-width: 0;
-    }
-
     .spinner {
         container-type: inline-size;
         width: var(--spinner-size);
@@ -80,44 +63,37 @@
             spinner-travel 2s linear infinite;
     }
 
-    .root[data-size='xxs'],
-    .labelRoot[data-size='xxs'] {
+    .root[data-size='xxs'] {
         --spinner-size: var(--spacing-12);
         --spinner-width: 1px;
     }
 
-    .root[data-size='xs'],
-    .labelRoot[data-size='xs'] {
+    .root[data-size='xs'] {
         --spinner-size: var(--spacing-16);
         --spinner-width: 2px;
     }
 
-    .root[data-size='sm'],
-    .labelRoot[data-size='sm'] {
+    .root[data-size='sm'] {
         --spinner-size: var(--spacing-20);
         --spinner-width: 2px;
     }
 
-    .root[data-size='md'],
-    .labelRoot[data-size='md'] {
+    .root[data-size='md'] {
         --spinner-size: var(--spacing-24);
         --spinner-width: 3px;
     }
 
-    .root[data-size='lg'],
-    .labelRoot[data-size='lg'] {
+    .root[data-size='lg'] {
         --spinner-size: var(--spacing-28);
         --spinner-width: 3px;
     }
 
-    .root[data-size='xl'],
-    .labelRoot[data-size='xl'] {
+    .root[data-size='xl'] {
         --spinner-size: var(--spacing-32);
         --spinner-width: 4px;
     }
 
-    .root[data-size='xxl'],
-    .labelRoot[data-size='xxl'] {
+    .root[data-size='xxl'] {
         --spinner-size: var(--spacing-36);
         --spinner-width: 4px;
     }

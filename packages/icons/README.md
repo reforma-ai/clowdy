@@ -19,9 +19,9 @@ Import icons from their pack, by subpath. Each pack is a folder of `src/` and a 
 
 ```tsx
 import { ChevronDown } from '@clowdy/icons/8';
-import { Add, Close } from '@clowdy/icons/14';
+import { Close, Plus } from '@clowdy/icons/14';
 
-<Add className="text-primary" />
+<Plus className="text-primary" />
 <Close size={20} />
 ```
 

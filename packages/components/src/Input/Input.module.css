@@ -297,7 +297,7 @@
     /*
      * Flush control affix — opt-in on the slotted child:
      *   <Button slot="suffix" data-input-affix="control">Apply</Button>
-     * Insets the field edge and sizes the control to the inner track (like UnitInput chevron density).
+     * Insets the field edge and sizes the control to the inner track.
      */
     .field:has([slot='suffix'][data-input-affix='control']) {
         --clowdy-input-control-affix-inset: var(--spacing-2);
