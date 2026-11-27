@@ -42,14 +42,13 @@ describe('UserBubble', () => {
     });
 
     it('shows a mentioned file as a chip, and does not read its name as emphasis', () => {
-        const page = document.createElement('div');
+        const out = bubble('Check @pkg/__init__.py and @src/__tests__/a.ts');
+        // The chips are buttons named by the whole path; the static page has no DOM to ask for roles.
+        const chips = [...out.matchAll(/<button\b[^>]*\baria-label="([^"]*)"/g)].map(([, name]) => name);
 
-        page.innerHTML = bubble('Check @pkg/__init__.py and @src/__tests__/a.ts');
-        const chips = [...page.querySelectorAll('button')].map(button => button.getAttribute('aria-label'));
-
-        expect([chips, page.querySelectorAll('strong, em').length]).toEqual([
+        expect([chips, /data-streamdown="(strong|em)"/.test(out)]).toEqual([
             ['Open pkg/__init__.py', 'Open src/__tests__/a.ts'],
-            0,
+            false,
         ]);
     });
 
