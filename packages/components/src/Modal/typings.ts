@@ -27,6 +27,10 @@ export interface ModalOptions<Props extends ModalComponentProps = any> {
     overlayClass?: string | string[];
 
     title?: string | false | null;
+    /** `alertdialog` for a confirmation that interrupts; `dialog` by default. */
+    role?: 'dialog' | 'alertdialog';
+    /** The dialog's name when nothing in it is its title (no `title`, no `DialogLayout`, no `useModalTitleId`). */
+    ariaLabel?: string;
     closeButton?: boolean;
     handle?: string | boolean; // true = whole modal window, string = selector, false = disabled
 

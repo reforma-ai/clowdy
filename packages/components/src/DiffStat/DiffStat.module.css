@@ -1,0 +1,20 @@
+@reference '@clowdy/styles/rulesets';
+
+@layer components {
+    .diffStat {
+        @ruleset typography-text-code-sm;
+
+        display: inline-flex;
+        flex-shrink: 0;
+        gap: var(--spacing-sm);
+        white-space: nowrap;
+    }
+
+    .added {
+        color: var(--color-success-text);
+    }
+
+    .removed {
+        color: var(--color-danger-text);
+    }
+}

@@ -43,6 +43,18 @@ interface CloseOptions {
 const CLOSE_BUTTON_DISTANCE_THRESHOLD = 35;
 const CLICKOUT_CLOSE_DELAY = 100;
 const CLICKOUT_BLOCKING_LAYER_SELECTOR = '[data-modal-clickout-layer]';
+/** What Tab can reach inside a window. */
+const TABBABLE_SELECTOR = [
+    'a[href]',
+    'button:not([disabled])',
+    'input:not([disabled]):not([type="hidden"])',
+    'select:not([disabled])',
+    'textarea:not([disabled])',
+    '[contenteditable="true"]',
+    '[tabindex]',
+]
+    .map(selector => `${selector}:not([tabindex^="-"])`)
+    .join(', ');
 const MODAL_OPEN_DURATION_S = 0.2;
 const MODAL_CLOSE_DURATION_S = 0.15;
 
@@ -147,6 +159,10 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
     @observableRef accessor tabOptions: Partial<Opts> = {};
     @observable accessor responsiveMode: ModalResponsiveMode | null = null;
     @observable accessor contentRevision = 0;
+    /** The id of the element that names the dialog (its title), set by `useModalTitleId`. */
+    @observable accessor labelledBy: string | null = null;
+    /** While false, Escape, an outside click and the close button leave the modal open (an action in it is running). */
+    @observable accessor dismissable = true;
 
     @computed get currentOptions(): Opts {
         const tabOptions = this.tabOptions;
@@ -777,6 +793,10 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
         const windowEl = this.windowEl;
 
         const handleClose = () => {
+            if (!this.dismissable) {
+                return false;
+            }
+
             const modals = Modal.visible;
 
             // close all nested modals
@@ -812,11 +832,19 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
             (e: KeyboardEvent) => {
                 const options = this.currentOptions;
 
+                if (e.key === 'Tab') {
+                    this.#containTab(e);
+
+                    return;
+                }
+
                 if (!options.closeOnEscape || e.key !== 'Escape') {
                     return;
                 }
 
-                this.cancel();
+                if (this.dismissable) {
+                    this.cancel();
+                }
 
                 e.preventDefault();
                 e.stopImmediatePropagation();
@@ -967,7 +995,7 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
             }
 
             // Closing by outside click is disabled - animate
-            if (!options.clickOut) {
+            if (!options.clickOut || !this.dismissable) {
                 if (options.animate && windowEl) {
                     animate(
                         windowEl,
@@ -1592,6 +1620,57 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
 
             this.options.onShow?.(this);
             this.triggerEvent('show');
+        }
+    }
+
+    /** Names the dialog by the element with this id, or by nothing (`null`). */
+    @action
+    setLabelledBy(id: string | null) {
+        this.labelledBy = id;
+    }
+
+    /** Blocks (false) or allows (true) closing by Escape, an outside click and the close button, for the time an action in the modal runs. */
+    @action
+    setDismissable(dismissable: boolean) {
+        this.dismissable = dismissable;
+    }
+
+    /** Whether the modal holds the page behind it: it has a backdrop. A window without one is a float the page stays usable beside. */
+    get isModal(): boolean {
+        const options = this.currentOptions;
+
+        return options.type === 'overlay' || options.overlay || options.shadow;
+    }
+
+    /** Keeps Tab and Shift+Tab inside a modal that holds the page: from the last control to the first and back, and from the window itself into it. */
+    #containTab(e: KeyboardEvent) {
+        const windowEl = this.windowEl;
+
+        if (!windowEl || !this.isModal) {
+            return;
+        }
+
+        const tabbable = [...windowEl.querySelectorAll<HTMLElement>(TABBABLE_SELECTOR)].filter(
+            element => !element.closest('[inert], [hidden]') && element.getClientRects().length > 0
+        );
+        const first = tabbable[0];
+        const last = tabbable[tabbable.length - 1];
+        const active = document.activeElement;
+
+        if (!first || !last) {
+            e.preventDefault();
+
+            return;
+        }
+
+        const inside = active instanceof HTMLElement && windowEl.contains(active) && active !== windowEl;
+
+        if (e.shiftKey && (!inside || active === first)) {
+            e.preventDefault();
+            last.focus();
+        } else if (!e.shiftKey && (!inside || active === last)) {
+            e.preventDefault();
+            first.focus();
         }
     }
 

@@ -1,0 +1,104 @@
+@layer components {
+    /* The sections of a page, at least 24px apart. The window's scroll gives the padding around them. */
+    .page {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-24);
+    }
+
+    .section {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-md);
+        min-width: 0;
+    }
+
+    .caption {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-xxs);
+    }
+
+    .heading {
+        display: flex;
+        align-items: baseline;
+        gap: var(--spacing-md);
+    }
+
+    .title {
+        margin: 0;
+    }
+
+    /* The one surface of Settings. Its blocks and rows are padded by `--settings-inset`, the same on all four sides. */
+    .card {
+        --settings-inset: var(--spacing-xl);
+
+        min-width: 0;
+        margin: 0;
+        padding: 0;
+        border: 1px solid var(--color-secondary-muted-border);
+        border-radius: calc(var(--radius-xl) * var(--squircle-radius-factor));
+        corner-shape: superellipse(var(--squircle-value));
+        background-color: var(--color-surface-float);
+        list-style: none;
+    }
+
+    .card[data-divided] > * + * {
+        border-top: 1px solid var(--color-secondary-muted-border);
+    }
+
+    .block {
+        padding: var(--settings-inset, var(--spacing-xl));
+    }
+
+    .row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--spacing-md) var(--spacing-xl);
+    }
+
+    .text {
+        display: flex;
+        flex: 1 1 14rem;
+        flex-direction: column;
+        gap: var(--spacing-xxs);
+        min-width: 0;
+    }
+
+    .control {
+        display: flex;
+        flex: 0 1 auto;
+        align-items: center;
+        gap: var(--spacing-md);
+        min-width: 0;
+        overflow-wrap: anywhere;
+    }
+
+    .row[data-control-width] .control {
+        width: var(--settings-control-width);
+    }
+
+    .row[data-control-width] .control > * {
+        flex: 1;
+        min-width: 0;
+    }
+
+    /* The control under the text, as wide as the row: a segmented control or a field that wants room. */
+    .row[data-stacked] .text {
+        flex-basis: 100%;
+    }
+
+    .row[data-stacked] .control {
+        flex: 1 1 100%;
+    }
+
+    .row[data-stacked] .control > * {
+        flex: 1;
+    }
+
+    .footer {
+        flex-basis: 100%;
+    }
+}

@@ -39,6 +39,11 @@ export interface ButtonProps extends RACButtonProps {
     tooltipPlacement?: 'top' | 'bottom' | 'left' | 'right';
     /** Extra px between the tooltip and the button, past the default gap. */
     tooltipOffset?: number;
+    /**
+     * Why the button is off. Shown as a tooltip while `isDisabled`: a disabled button takes no pointer or focus, so the button sits in a focusable
+     * stand-in that does. `tooltip` is not shown while the button is disabled.
+     */
+    disabledReason?: ReactNode;
     isPressed?: boolean;
     tabIndex?: number;
     /** Where the pending spinner goes: over the hidden label, before the label it keeps, or nowhere (the label stays as it is and the caller animates it). */
@@ -61,6 +66,7 @@ export function Button(props: ButtonProps) {
         tooltip,
         tooltipPlacement,
         tooltipOffset,
+        disabledReason,
         isPressed,
         truncate,
         tabIndex,
@@ -170,6 +176,23 @@ export function Button(props: ButtonProps) {
             {content}
         </RACButton>
     );
+
+    if (buttonStateProps.isDisabled && disabledReason != null) {
+        return (
+            <Tooltip content={disabledReason} placement={tooltipPlacement} offset={tooltipOffset}>
+                <span
+                    className={styles.unavailable}
+                    role="button"
+                    tabIndex={0}
+                    aria-disabled="true"
+                    aria-label={restProps['aria-label'] ?? (typeof children === 'string' ? children : undefined)}
+                    data-full-width={fullWidth || undefined}
+                >
+                    {racButton}
+                </span>
+            </Tooltip>
+        );
+    }
 
     return tooltip != null ? (
         <Tooltip content={tooltip} placement={tooltipPlacement} offset={tooltipOffset}>

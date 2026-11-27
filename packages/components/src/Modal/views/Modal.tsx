@@ -57,9 +57,17 @@ export const Modal = observer(({ modal, className: classNameProp, style: stylePr
         options.height === 'min-content' ||
         options.height === 'max-content';
 
+    // Named by its title element when one registered (`useModalTitleId`), else by `ariaLabel` or the modal's own `title`.
+    const labelledBy = options.ariaLabel ? undefined : (modal.labelledBy ?? undefined);
+    const ariaLabel = options.ariaLabel ?? (labelledBy || !options.title ? undefined : options.title);
+
     return (
         <div
             className={className}
+            role={options.role ?? 'dialog'}
+            aria-modal={modal.isModal || undefined}
+            aria-labelledby={labelledBy}
+            aria-label={ariaLabel}
             data-modal-window
             data-modal-height={contentSized ? 'content' : undefined}
             data-name={modal.name}

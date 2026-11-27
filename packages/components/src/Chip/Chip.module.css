@@ -1,0 +1,116 @@
+@reference '@clowdy/styles/rulesets';
+
+@layer components {
+    /* The chat chip: 20px, small squircle, muted stone plate. A tone tints the plate and the label; a pressable chip darkens on hover. */
+    .chip {
+        --clowdy-chip-bg: var(--color-secondary-muted-light);
+        --clowdy-chip-bg--hover: var(--color-secondary-muted);
+        --clowdy-chip-color: var(--color-secondary-muted-content);
+        --clowdy-chip-icon-color: var(--color-secondary-muted-text);
+
+        @ruleset typography-text-xs;
+
+        display: inline-flex;
+        align-items: center;
+        gap: var(--spacing-xs);
+        min-width: 0;
+        max-width: 100%;
+        height: var(--spacing-20);
+        margin: 0;
+        padding-inline: var(--spacing-md);
+        border: 0;
+        border-radius: calc(var(--radius-sm) * var(--squircle-radius-factor));
+        corner-shape: superellipse(var(--squircle-value));
+        background-color: var(--clowdy-chip-bg);
+        color: var(--clowdy-chip-color);
+        font-family: inherit;
+        font-weight: 500;
+        white-space: nowrap;
+        outline: none;
+        transition: background-color var(--transition-duration-fast) ease-out;
+    }
+
+    .chip[data-size='sm'] {
+        @ruleset typography-text-sm;
+
+        height: var(--spacing-24);
+    }
+
+    .chip[data-shape='pill'] {
+        border-radius: var(--radius-full);
+        corner-shape: round;
+    }
+
+    .chip[data-interactive] {
+        cursor: pointer;
+        user-select: none;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    .chip[data-interactive][data-hovered],
+    .chip[data-interactive][data-pressed] {
+        background-color: var(--clowdy-chip-bg--hover);
+    }
+
+    .chip[data-focus-visible],
+    .chip:not([data-interactive]):focus-visible {
+        @ruleset focus-ring;
+    }
+
+    .chip[data-disabled],
+    .chip[aria-disabled='true'] {
+        cursor: default;
+        opacity: var(--opacity-disabled);
+    }
+
+    /* The one tone map of the app's statuses. */
+    .chip[data-tone] {
+        --clowdy-chip-icon-color: currentColor;
+    }
+
+    .chip[data-tone='neutral'] {
+        --clowdy-chip-color: var(--color-secondary-muted-text);
+    }
+
+    .chip[data-tone='primary'] {
+        --clowdy-chip-bg: var(--color-primary-muted-light);
+        --clowdy-chip-bg--hover: var(--color-primary-muted);
+        --clowdy-chip-color: var(--color-primary-text);
+    }
+
+    .chip[data-tone='accent'] {
+        --clowdy-chip-bg: var(--color-accent-muted-light);
+        --clowdy-chip-bg--hover: var(--color-accent-muted);
+        --clowdy-chip-color: var(--color-accent-text);
+    }
+
+    .chip[data-tone='success'] {
+        --clowdy-chip-bg: var(--color-success-muted-light);
+        --clowdy-chip-bg--hover: var(--color-success-muted);
+        --clowdy-chip-color: var(--color-success-text);
+    }
+
+    .chip[data-tone='warning'] {
+        --clowdy-chip-bg: var(--color-warning-muted-light);
+        --clowdy-chip-bg--hover: var(--color-warning-muted);
+        --clowdy-chip-color: var(--color-warning-text);
+    }
+
+    .chip[data-tone='danger'] {
+        --clowdy-chip-bg: var(--color-danger-muted-light);
+        --clowdy-chip-bg--hover: var(--color-danger-muted);
+        --clowdy-chip-color: var(--color-danger-text);
+    }
+
+    .icon {
+        display: inline-flex;
+        flex-shrink: 0;
+        color: var(--clowdy-chip-icon-color);
+    }
+
+    .label {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+}
