@@ -1570,11 +1570,12 @@ describe('the archive', () => {
         expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe('c-5');
     });
 
-    it('shows a green status in place of the archive shortcut while the chat works', () => {
+    it('shows a green status in place of the archive shortcut while the chat works, its agent icon when agents work inside it', () => {
         const busyActions = rowOf('c-1').querySelector('[slot="endAffix"]');
 
         expect(busyActions?.querySelector('button[aria-label="Archive"]')).toBeNull();
-        expect(busyActions?.querySelector('[aria-label="Working"] [data-tone="success"]')).not.toBeNull();
+        expect(busyActions?.querySelector('[aria-label="3 agents work inside"]')).not.toBeNull();
+        expect(busyActions?.querySelector('[aria-label="Working"]')).toBeNull();
         expect(rowOf('c-4').querySelector('button[aria-label="Archive"]')?.hasAttribute('disabled')).toBe(false);
     });
 
@@ -1624,6 +1625,11 @@ describe('the archive', () => {
 
 describe('chat completion dots', () => {
     const dotOf = (key: string) => rowOf(key).querySelector('[role="img"]')?.getAttribute('aria-label');
+    // The sub-agents that work for c-1 in the fixture end with it: a chat with an agent working inside keeps its agent icon, over a completion.
+    const endAgentsOfC1 = () => {
+        for (const id of ['r-na-02', 'r-na-03', 'r-na-05'])
+            project().runs.set(id, { ...project().runs.get(id)!, status: 'succeeded', finishedAt: Date.now() });
+    };
 
     it('starts without dots for past successes and clears a new completion when its row is opened', async () => {
         const focus = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
@@ -1631,7 +1637,10 @@ describe('chat completion dots', () => {
         try {
             expect(dotOf('c-2')).toBeUndefined();
             const run = project().runs.get('r-orch-1')!;
-            await draw(() => project().runs.set(run.id, { ...run, status: 'succeeded', finishedAt: Date.now() + 1 }));
+            await draw(() => {
+                endAgentsOfC1();
+                project().runs.set(run.id, { ...run, status: 'succeeded', finishedAt: Date.now() + 1 });
+            });
             expect(dotOf('c-1')).toBe('Done');
             await press(rowOf('c-1'));
             await draw();
@@ -1653,7 +1662,10 @@ describe('chat completion dots', () => {
         try {
             const run = project().runs.get('r-orch-1')!;
             await draw(() => ui().openChat('c-1'));
-            await draw(() => project().runs.set(run.id, { ...run, status: 'succeeded', finishedAt: Date.now() + 1 }));
+            await draw(() => {
+                endAgentsOfC1();
+                project().runs.set(run.id, { ...run, status: 'succeeded', finishedAt: Date.now() + 1 });
+            });
             expect(dotOf('c-1')).toBe('Done');
             focus.mockReturnValue(true);
             await draw(() => window.dispatchEvent(new Event('focus')));
@@ -1672,7 +1684,10 @@ describe('chat completion dots', () => {
                 ui().openChat('c-1');
                 store.ui.openSettings();
             });
-            await draw(() => project().runs.set(run.id, { ...run, status: 'succeeded', finishedAt: Date.now() + 1 }));
+            await draw(() => {
+                endAgentsOfC1();
+                project().runs.set(run.id, { ...run, status: 'succeeded', finishedAt: Date.now() + 1 });
+            });
             expect(dotOf('c-1')).toBe('Done');
             await draw(() => store.ui.closeSettings());
             await draw();
@@ -1828,11 +1843,10 @@ describe('threads', () => {
         expect(ui().expandedChats).not.toContain('c-6');
     });
 
-    it('marks a chat at rest whose threads work with the count of the agents inside and no dot, and each thread with its own state', async () => {
+    it('marks a chat at rest whose threads work with the agent icon, and each thread with its own state', async () => {
         await draw(() => ui().toggleChatExpanded('c-6'));
 
-        expect(dotOf('c-6')).toBeUndefined();
-        expect(rowOf('c-6').textContent).toContain('2 agents');
+        expect(dotOf('c-6')).toBe('2 agents work inside');
         expect(dotOf('c-6a')).toBe('Working');
         expect(dotOf('c-6c')).toBe('Failed');
         expect(dotOf('c-6b')).toBeUndefined();
@@ -1868,14 +1882,13 @@ describe('threads', () => {
             'c-2',
         ]);
 
-        // Decided: the thread goes back behind the fold, and the chat's dot goes: the count of what works inside is what says it.
+        // Decided: the thread goes back behind the fold, and the chat's dot gives way to the agent icon.
         await act(async () => foldOf('c-6')!.click());
         await draw(() =>
             project().runs.set('r-orch-6e', { ...project().runs.get('r-orch-6e')!, awaitingUser: undefined })
         );
         expect(rowKeys()).not.toContain('c-6e');
-        expect(dotOf('c-6')).toBeUndefined();
-        expect(rowOf('c-6').textContent).toContain('2 agents');
+        expect(dotOf('c-6')).toBe('2 agents work inside');
     });
 
     it('offers no Archive on a chat whose threads work, and offers it on a finished thread', async () => {
@@ -1884,7 +1897,7 @@ describe('threads', () => {
         const busyActions = rowOf('c-6').querySelector('[slot="endAffix"]');
 
         expect(busyActions?.querySelector('button[aria-label="Archive"]')).toBeNull();
-        expect(busyActions?.textContent).toBe('2 agents');
+        expect(busyActions?.querySelector('[aria-label="2 agents work inside"]')).not.toBeNull();
         expect(rowOf('c-6b').querySelector('button[aria-label="Archive"]')?.hasAttribute('disabled')).toBe(false);
 
         await press(rowOf('c-6').querySelector<HTMLElement>('button[aria-label="Chat actions"]')!);

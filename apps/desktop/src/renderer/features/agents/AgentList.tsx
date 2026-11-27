@@ -713,18 +713,27 @@ export function AgentList({
         const run = runOf(chat);
         const busy = actions.busy(chat);
         const below = project.threadsBelow(chat.id);
-        // The dot tells that a thread below waits for the person. A native sub-agent never asks for the chat's dot or counts as unread: its question is a card in the stream.
+        // The agents that work inside the chat, its sub-agents and its threads with theirs, whether its row is folded or not and whether the chat works itself. The row says it with
+        // an agent icon where its dot would be: a chat with an agent inside and a working dot (or a command's icon) shows the agent icon only, and only what needs the person
+        // (a failure, a question, a request) is shown over it. A native sub-agent never asks for the chat's dot or counts as unread: its question is a card in the stream.
+        const agentsInside = agentsWorkingInside(chat, below, project.runs, agentsOf);
         const threads = below.some(thread => thread.archivedAt === undefined && asksThePerson(thread, project.runs))
             ? ('asking' as const)
-            : undefined;
-        // What works inside the chat is told by this count, whether its row is folded or not and whether the chat works itself. It takes the place of the green dot that working
-        // threads gave, which looked like the dot of the chat working itself and said nothing of how many.
-        const agentsInside = agentsWorkingInside(chat, below, project.runs, agentsOf);
+            : agentsInside > 0
+              ? ('working' as const)
+              : undefined;
         const draft = messageOf(draftOf(chat.id)) !== '' || filesOf(chat.id).length > 0;
         const unread = ui.hasUnreadCompletion(run);
         const showPullRequests = chatDotTone(run, threads, draft, unread) === undefined;
         const status = (
-            <ChatStatus run={run} threads={threads} draft={draft} unread={unread} className={styles.archiveStatus} />
+            <ChatStatus
+                run={run}
+                threads={threads}
+                agentsInside={agentsInside}
+                draft={draft}
+                unread={unread}
+                className={styles.archiveStatus}
+            />
         );
         const icon = <ChatIcon chat={chat} run={run} threads={threads} showStatus={false} />;
         const parent = chat.parentChatId ? project.chats.get(chat.parentChatId) : undefined;
@@ -768,7 +777,6 @@ export function AgentList({
                             chat={chat}
                             actions={actions}
                             busy={busy}
-                            agentsInside={agentsInside}
                             status={status}
                             showPullRequests={showPullRequests}
                             crossWorktree={
@@ -994,7 +1002,6 @@ function RowEnd({
     chat,
     actions,
     busy,
-    agentsInside,
     status,
     isOpen,
     onOpenChange,
@@ -1005,8 +1012,6 @@ function RowEnd({
     chat: Chat;
     actions: ChatActions;
     busy: string | undefined;
-    /** How many agents work inside the chat (`agentsWorkingInside`); none draws nothing. */
-    agentsInside: number;
     status: ReactNode;
     isOpen: boolean;
     onOpenChange: (isOpen: boolean) => void;
@@ -1019,14 +1024,6 @@ function RowEnd({
     return (
         // The buttons and the popover are React children of the row, so their clicks and keys would reach the row through the tree.
         <span className={styles.chatActions} {...ownEvents}>
-            {agentsInside > 0 && (
-                <span
-                    className={styles.agentsInside}
-                    title={`${agentsInside} ${agentsInside === 1 ? 'agent works' : 'agents work'} inside`}
-                >
-                    {agentsInside} {agentsInside === 1 ? 'agent' : 'agents'}
-                </span>
-            )}
             {status}
             <BranchPullRequestBadge branchKey={branchKey} visible={showPullRequests} crossWorktree={crossWorktree} />
             {!busy && (
