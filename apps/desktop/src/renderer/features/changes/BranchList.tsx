@@ -122,13 +122,7 @@ export function BranchList({
                 </div>
             )}
             {hasUnavailable && !showUnavailable && !query.trim() && (
-                <Button
-                    variant="ghost"
-                    color="secondary"
-                    size="sm"
-                    className={styles.reveal}
-                    onPress={() => setShowUnavailable(true)}
-                >
+                <Button variant="ghost" color="secondary" size="xs" fullWidth onPress={() => setShowUnavailable(true)}>
                     Show unavailable branches
                 </Button>
             )}

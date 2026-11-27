@@ -59,11 +59,6 @@
     padding: var(--spacing-xs) var(--spacing-lg);
 }
 
-.reveal[data-size][data-variant] {
-    align-self: flex-start;
-    margin-inline: var(--spacing-xs);
-}
-
 .footer {
     display: flex;
     flex-direction: column;
