@@ -12,8 +12,6 @@ export interface DialogLayoutProps {
     title: ReactNode;
     /** A line under the title on what the dialog does. */
     description?: ReactNode;
-    /** Actions beside the title; leaves room for the modal close button. */
-    headerActions?: ReactNode;
     children?: ReactNode;
     /** The buttons at the end of the bottom row: Cancel, then the primary action. */
     actions?: ReactNode;
@@ -23,25 +21,14 @@ export interface DialogLayoutProps {
 }
 
 /** The body of a dialog: a title (an `h2` that names the modal), an optional description, the content, and the actions row, with the dialog's padding and rhythm. */
-export function DialogLayout({
-    title,
-    description,
-    headerActions,
-    children,
-    actions,
-    onSubmit,
-    className,
-}: DialogLayoutProps) {
+export function DialogLayout({ title, description, children, actions, onSubmit, className }: DialogLayoutProps) {
     const titleId = useModalTitleId();
     const body = (
         <>
             <div className={styles.header}>
-                <div className={cn(styles.titleRow, headerActions && styles.titleRowWithActions)}>
-                    <Text as="h2" variant="heading-3" id={titleId} wrap="anywhere" className={styles.title}>
-                        {title}
-                    </Text>
-                    {headerActions}
-                </div>
+                <Text as="h2" variant="heading-3" id={titleId} wrap="anywhere" className={styles.title}>
+                    {title}
+                </Text>
                 <Show when={description}>
                     <Text variant="md" color="secondary">
                         {description}

@@ -1223,7 +1223,8 @@ describe('Remove in Manage worktrees', () => {
         ];
         for (const choice of choices) await click(choice);
         expect(textButton(confirmation(), 'Remove 0 worktrees…')?.disabled).toBe(true);
-        await click(textButton(confirmation(), 'Cancel')!);
+        await click(confirmation().querySelector<HTMLButtonElement>('button[aria-label="Back to worktrees"]')!);
+        expect(document.activeElement).toBe(textButton(confirmation(), 'Tidy up…'));
         expect(removals()).toEqual([]);
     });
 

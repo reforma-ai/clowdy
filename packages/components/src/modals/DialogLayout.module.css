@@ -14,18 +14,6 @@
         min-width: 0;
     }
 
-    .titleRow {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: var(--spacing-md);
-        min-width: 0;
-    }
-
-    .titleRowWithActions {
-        padding-inline-end: var(--spacing-32);
-    }
-
     .title {
         margin: 0;
     }

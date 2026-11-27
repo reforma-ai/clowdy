@@ -7,7 +7,7 @@ import { PanelEmptyState } from '@clowdy/components/Panel';
 import { AttentionCircle, Mop } from '@clowdy/icons/14';
 import { mainFolder } from '@clowdy/protocol';
 import { reaction, runInAction } from 'mobx';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useRootStore } from '../../stores';
 import { openChat } from '../chats/archiveChat';
@@ -31,6 +31,14 @@ export function FolderWorktreesList({
     initialTidy?: boolean;
 }) {
     const [tidy, setTidy] = useState(initialTidy);
+    const tidyButton = useRef<HTMLButtonElement>(null);
+    const restoreTidyFocus = useRef(false);
+    useEffect(() => {
+        if (!tidy && restoreTidyFocus.current) {
+            restoreTidyFocus.current = false;
+            tidyButton.current?.focus();
+        }
+    }, [tidy]);
     const root = useRootStore();
     const { modal } = useModalContext();
     const { folders, failed, reload } = useProjectWorktrees(projectId);
@@ -101,56 +109,61 @@ export function FolderWorktreesList({
     };
 
     return (
-        <DialogLayout
-            title="Worktrees"
-            headerActions={
-                !tidy && (
-                    <Button size="sm" variant="bordered" onPress={() => setTidy(true)}>
-                        <Mop />
-                        Tidy up…
-                    </Button>
-                )
-            }
-        >
+        <DialogLayout title="Worktrees">
             {tidy ? (
-                <TidyWorktreesMode projectId={projectId} reload={reload} onCancel={() => setTidy(false)} />
+                <TidyWorktreesMode
+                    projectId={projectId}
+                    reload={reload}
+                    onCancel={restoreFocus => {
+                        restoreTidyFocus.current = restoreFocus === true;
+                        setTidy(false);
+                    }}
+                />
             ) : (
                 <div className={styles.groups}>
-                    {failed && (
-                        <Alert color={groups ? 'warning' : 'danger'} role={groups ? 'status' : 'alert'}>
-                            <AlertIcon>
-                                <AttentionCircle />
-                            </AlertIcon>
-                            <AlertDescription>
-                                {groups ? "Couldn't refresh the list" : "Couldn't load the worktrees"}
-                            </AlertDescription>
-                            <AlertAction>
-                                <Button size="xs" onPress={() => void reload()}>
-                                    Try again
-                                </Button>
-                            </AlertAction>
-                        </Alert>
-                    )}
-
-                    <div className={styles.groups}>
-                        {groups === undefined && !failed && <WorktreesSkeleton />}
-                        {groups && groups.length === 0 && (
-                            <PanelEmptyState fill={false} label="No git repositories in this project" />
+                    <div className={`${styles.groups} ${styles.worktreeRows}`}>
+                        {failed && (
+                            <Alert color={groups ? 'warning' : 'danger'} role={groups ? 'status' : 'alert'}>
+                                <AlertIcon>
+                                    <AttentionCircle />
+                                </AlertIcon>
+                                <AlertDescription>
+                                    {groups ? "Couldn't refresh the list" : "Couldn't load the worktrees"}
+                                </AlertDescription>
+                                <AlertAction>
+                                    <Button size="xs" onPress={() => void reload()}>
+                                        Try again
+                                    </Button>
+                                </AlertAction>
+                            </Alert>
                         )}
-                        <For each={groups ?? []}>
-                            {({ group, folder }) => (
-                                <WorktreeGroup
-                                    key={group.folderId}
-                                    projectId={projectId}
-                                    group={group}
-                                    folder={folder}
-                                    onCreate={() =>
-                                        openCreateWorktree({ root, projectId, folderId: group.folderId, reload })
-                                    }
-                                    {...actions}
-                                />
+
+                        <div className={styles.groups}>
+                            {groups === undefined && !failed && <WorktreesSkeleton />}
+                            {groups && groups.length === 0 && (
+                                <PanelEmptyState fill={false} label="No git repositories in this project" />
                             )}
-                        </For>
+                            <For each={groups ?? []}>
+                                {({ group, folder }) => (
+                                    <WorktreeGroup
+                                        key={group.folderId}
+                                        projectId={projectId}
+                                        group={group}
+                                        folder={folder}
+                                        onCreate={() =>
+                                            openCreateWorktree({ root, projectId, folderId: group.folderId, reload })
+                                        }
+                                        {...actions}
+                                    />
+                                )}
+                            </For>
+                        </div>
+                    </div>
+                    <div className={styles.footer}>
+                        <Button ref={tidyButton} color="primary" fullWidth onPress={() => setTidy(true)}>
+                            <Mop />
+                            Tidy up…
+                        </Button>
                     </div>
                 </div>
             )}
