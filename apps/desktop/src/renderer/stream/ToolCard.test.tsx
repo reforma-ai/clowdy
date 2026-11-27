@@ -54,7 +54,7 @@ describe('ToolCard', () => {
         expect(header().textContent).toContain('src/form.tsx');
     });
 
-    it('titles a command by what the agent says it does, with the command beside it', async () => {
+    it('shows only the description in the header and keeps the command in the details', async () => {
         await draw({
             name: 'Bash',
             input: { command: 'bun install', description: 'Install package dependencies' },
@@ -62,7 +62,16 @@ describe('ToolCard', () => {
         });
 
         expect(header().textContent).toContain('Install package dependencies');
-        expect(header().querySelector('code')?.textContent).toBe('bun install');
+        expect(header().querySelector('code')).toBeNull();
+        await act(async () => header().click());
+        expect(container.textContent).toContain('bun install');
+    });
+
+    it('shows the command in the header when the description is missing or blank', async () => {
+        for (const description of [undefined, '   ']) {
+            await draw({ name: 'Bash', input: { command: 'bun install', description } });
+            expect(header().querySelector('code')?.textContent).toBe('bun install');
+        }
     });
 
     it('keeps input and output away until the line is opened', async () => {
