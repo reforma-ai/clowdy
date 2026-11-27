@@ -112,38 +112,8 @@
         margin-block: -9999px;
     }
 
-    .saveEnter {
-        display: grid;
-        flex-shrink: 0;
-        animation: settings-save-in var(--transition-duration) var(--ease-in-out) both;
-    }
-
-    .saveClip {
-        min-height: 0;
-        overflow: hidden;
-        padding: 0 0 0 var(--spacing-xs);
-    }
-
     .title {
         min-width: 0;
         flex: 1;
-    }
-}
-
-@keyframes settings-save-in {
-    from {
-        grid-template-rows: 0fr;
-        opacity: 0;
-    }
-
-    to {
-        grid-template-rows: 1fr;
-        opacity: 1;
-    }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .saveEnter {
-        animation: none;
     }
 }

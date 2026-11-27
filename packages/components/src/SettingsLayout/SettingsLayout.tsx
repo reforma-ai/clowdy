@@ -1,40 +1,23 @@
-import { AttentionCircle } from '@clowdy/icons/14';
 import { cn } from '@clowdy/lib';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { createContext, use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, use, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
-import { Alert, AlertAction, AlertIcon, AlertTitle } from '../Alert';
 import { Box } from '../Box';
 import { Breadcrumb } from '../Breadcrumb';
-import { Button } from '../Button';
 import { For } from '../For';
-import { tooltipWithHotkey } from '../Hotkey';
 import { ListBox, ListBoxHeader, ListBoxItem, ListBoxSection } from '../List';
-import { ModalContext } from '../Modal/hooks/useModalProvider';
-import { confirmDiscardChanges } from '../modals/ConfirmModal';
 import { Scrollable } from '../Scrollable';
 import { Show } from '../Show';
 import { Text } from '../Text';
-import { toast } from '../Toast';
 import { layerRest, paneTransition, SLIDE_IN } from './motion';
 import { Block, Card, Row, Section } from './SettingsKit';
 import kitStyles from './SettingsKit.module.css';
 import styles from './SettingsLayout.module.css';
 
-import type { ReactNode, RefObject } from 'react';
+import type { ReactNode } from 'react';
 
 const MotionScrollable = motion.create(Scrollable);
-
-const SAVE_HOTKEY = ['mod', 's'] as const;
-
-function isSaveHotkey(event: KeyboardEvent): boolean {
-    if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) {
-        return false;
-    }
-
-    return event.key === 's' || event.key === 'S';
-}
 
 export interface SettingsNavItem {
     id: string;
@@ -66,59 +49,11 @@ const SettingsOverlayContext = createContext<HTMLElement | null>(null);
 const SettingsDescriptionContext = createContext<HTMLElement | null>(null);
 /** The key of the pane whose content is being drawn, so an `Intro` in it knows it belongs to that pane and not to the page under it. */
 const SettingsPaneContext = createContext<string | undefined>(undefined);
-const SettingsLeaveGuardContext = createContext<RefObject<(() => boolean | Promise<boolean>) | null> | null>(null);
-
-function settleLeave(decision: boolean | Promise<boolean>, apply: () => void) {
-    if (decision === true) {
-        apply();
-
-        return;
-    }
-
-    if (decision === false) {
-        return;
-    }
-
-    void decision.then(allowed => {
-        if (allowed) {
-            apply();
-        }
-    });
-}
-
 export function useSettingsLayout(): SettingsLayoutContextValue {
     const ctx = use(SettingsLayoutContext);
 
     if (!ctx) {
         throw new Error('useSettingsLayout must be used inside SettingsLayout');
-    }
-
-    return ctx;
-}
-
-type SettingsSaveCopy = {
-    dirty: string;
-    saving: string;
-    saved: string;
-    tooltip?: string;
-};
-
-type SettingsSaveVerb = 'save' | 'add' | SettingsSaveCopy;
-
-interface SettingsSaveContextValue {
-    saveRef: RefObject<(() => Promise<boolean>) | null>;
-    discardRef: RefObject<(() => void) | null>;
-    onDirtyChange: (dirty: boolean) => void;
-    setSaveVerb: (verb: SettingsSaveVerb) => void;
-}
-
-const SettingsSaveContext = createContext<SettingsSaveContextValue | null>(null);
-
-export function useSettingsSave(): SettingsSaveContextValue {
-    const ctx = use(SettingsSaveContext);
-
-    if (!ctx) {
-        throw new Error('useSettingsSave must be used inside SettingsLayout.Content with saveable prop');
     }
 
     return ctx;
@@ -155,7 +90,6 @@ function SettingsLayoutRoot({
     );
     const selectedId = selectedIdProp ?? ownSelectedId;
     const stack = stackProp ?? ownStack;
-    const leaveGuardRef = useRef<(() => boolean | Promise<boolean>) | null>(null);
     // The stack as the last change left it, so two changes in one turn (a push, then a rename of what was pushed) build on each other whoever holds the stack.
     const latestStack = useRef(stack);
 
@@ -191,15 +125,13 @@ function SettingsLayoutRoot({
             return;
         }
 
-        settleLeave(leaveGuardRef.current?.() ?? true, () => {
-            if (changeTab) {
-                setSelectedId(id);
-            }
+        if (changeTab) {
+            setSelectedId(id);
+        }
 
-            if (clearStack) {
-                changeStack(() => []);
-            }
-        });
+        if (clearStack) {
+            changeStack(() => []);
+        }
     };
 
     const pop = () => {
@@ -207,9 +139,7 @@ function SettingsLayoutRoot({
             return;
         }
 
-        settleLeave(leaveGuardRef.current?.() ?? true, () => {
-            changeStack(current => current.slice(0, -1));
-        });
+        changeStack(current => current.slice(0, -1));
     };
 
     const reset = () => {
@@ -217,36 +147,30 @@ function SettingsLayoutRoot({
             return;
         }
 
-        settleLeave(leaveGuardRef.current?.() ?? true, () => {
-            changeStack(() => []);
-        });
+        changeStack(() => []);
     };
 
     return (
-        <SettingsLeaveGuardContext value={leaveGuardRef}>
-            <SettingsLayoutContext
-                value={{
-                    items,
-                    selectedId,
-                    select,
-                    stack,
-                    push: item => changeStack(current => [...current, item]),
-                    rename: (id, label) => {
-                        if (latestStack.current.some(item => item.id === id && item.label !== label)) {
-                            changeStack(current =>
-                                current.map(item =>
-                                    item.id === id && item.label !== label ? { ...item, label } : item
-                                )
-                            );
-                        }
-                    },
-                    pop,
-                    reset,
-                }}
-            >
-                <div className={cn(styles.root, className)}>{children}</div>
-            </SettingsLayoutContext>
-        </SettingsLeaveGuardContext>
+        <SettingsLayoutContext
+            value={{
+                items,
+                selectedId,
+                select,
+                stack,
+                push: item => changeStack(current => [...current, item]),
+                rename: (id, label) => {
+                    if (latestStack.current.some(item => item.id === id && item.label !== label)) {
+                        changeStack(current =>
+                            current.map(item => (item.id === id && item.label !== label ? { ...item, label } : item))
+                        );
+                    }
+                },
+                pop,
+                reset,
+            }}
+        >
+            <div className={cn(styles.root, className)}>{children}</div>
+        </SettingsLayoutContext>
     );
 }
 
@@ -481,20 +405,11 @@ export interface SettingsLayoutContentProps {
     headerRight?: ReactNode;
     /** Pinned under the scrolling pane. */
     footer?: ReactNode;
-    saveable?: boolean;
     className?: string;
     children: ReactNode;
 }
 
-function Content({ headerRight, footer, saveable, className, children }: SettingsLayoutContentProps) {
-    if (saveable) {
-        return (
-            <SaveableContent headerRight={headerRight} footer={footer} className={className}>
-                {children}
-            </SaveableContent>
-        );
-    }
-
+function Content({ headerRight, footer, className, children }: SettingsLayoutContentProps) {
     return (
         <Shell
             className={className}
@@ -503,253 +418,6 @@ function Content({ headerRight, footer, saveable, className, children }: Setting
         >
             {children}
         </Shell>
-    );
-}
-
-type SaveState = 'idle' | 'dirty' | 'saving' | 'saved';
-
-const SAVED_DISPLAY_DURATION = 1000;
-
-const ACTION_COPY = {
-    save: {
-        dirty: 'Save changes',
-        saving: 'Saving…',
-        saved: 'Saved',
-        tooltip: 'Save changes',
-    },
-    add: {
-        dirty: 'Add',
-        saving: 'Adding…',
-        saved: 'Added',
-        tooltip: 'Add',
-    },
-} as const satisfies Record<string, SettingsSaveCopy & { tooltip: string }>;
-
-function saveActionCopy(verb: SettingsSaveVerb): SettingsSaveCopy & { tooltip: string } {
-    if (typeof verb === 'object') {
-        return {
-            dirty: verb.dirty,
-            saving: verb.saving,
-            saved: verb.saved,
-            tooltip: verb.tooltip ?? verb.dirty,
-        };
-    }
-
-    return ACTION_COPY[verb];
-}
-
-function saveNoticeLabel(state: SaveState, copy: SettingsSaveCopy): string {
-    if (state === 'saving') {
-        return copy.saving;
-    }
-
-    if (state === 'saved') {
-        return copy.saved;
-    }
-
-    return 'You have unsaved changes';
-}
-
-function SaveNotice({
-    state,
-    copy,
-    onSave,
-    onDiscard,
-}: {
-    state: Exclude<SaveState, 'idle'>;
-    copy: SettingsSaveCopy & { tooltip: string };
-    onSave: () => void;
-    onDiscard: () => void;
-}) {
-    const label = saveNoticeLabel(state, copy);
-
-    return (
-        <div className={styles.saveEnter}>
-            <div className={styles.saveClip}>
-                <Alert>
-                    <AlertIcon>
-                        <AttentionCircle />
-                    </AlertIcon>
-                    <AlertTitle>{label}</AlertTitle>
-                    {state === 'saved' ? null : (
-                        <AlertAction>
-                            <Box direction="row" align="center" gap="sm" wrap={false}>
-                                <Button
-                                    variant="filling"
-                                    color="secondary"
-                                    size="sm"
-                                    isDisabled={state === 'saving'}
-                                    onPress={onDiscard}
-                                >
-                                    Discard
-                                </Button>
-                                <Button
-                                    color="primary"
-                                    size="sm"
-                                    isDisabled={state === 'saving'}
-                                    tooltip={
-                                        state === 'dirty' ? tooltipWithHotkey(copy.tooltip, SAVE_HOTKEY) : undefined
-                                    }
-                                    onPress={onSave}
-                                >
-                                    {state === 'saving' ? copy.saving : copy.dirty}
-                                </Button>
-                            </Box>
-                        </AlertAction>
-                    )}
-                </Alert>
-            </div>
-        </div>
-    );
-}
-
-function SaveableContent({ headerRight, footer, className, children }: Omit<SettingsLayoutContentProps, 'saveable'>) {
-    const { selectedId } = useSettingsLayout();
-    const leaveGuardRef = use(SettingsLeaveGuardContext);
-    const modal = use(ModalContext)?.modal;
-    const [saveState, setSaveState] = useState<SaveState>('idle');
-    const [saveVerb, setSaveVerb] = useState<SettingsSaveVerb>('save');
-    const saveRef = useRef<(() => Promise<boolean>) | null>(null);
-    const discardRef = useRef<(() => void) | null>(null);
-    const savedTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-    const [saveTab, setSaveTab] = useState(selectedId);
-
-    if (saveTab !== selectedId) {
-        setSaveTab(selectedId);
-        setSaveState('idle');
-        setSaveVerb('save');
-    }
-
-    const onDirtyChange = useCallback((dirty: boolean) => {
-        setSaveState(prev => {
-            if (dirty) {
-                return 'dirty';
-            }
-
-            if (prev === 'dirty') {
-                return 'idle';
-            }
-
-            return prev;
-        });
-    }, []);
-
-    const handleSave = useCallback(async () => {
-        if (!saveRef.current) {
-            return;
-        }
-
-        setSaveState('saving');
-
-        try {
-            const success = await saveRef.current();
-
-            if (success) {
-                setSaveState('saved');
-            } else {
-                setSaveState('dirty');
-            }
-        } catch {
-            toast.error({ message: 'Something went wrong while saving.' });
-            setSaveState('dirty');
-        }
-    }, []);
-
-    useEffect(() => {
-        if (saveState !== 'dirty') {
-            return;
-        }
-
-        // Window capture so Pane overlays (portaled) still hit ⌘S / Ctrl+S.
-        const onKeyDown = (event: KeyboardEvent) => {
-            if (!isSaveHotkey(event)) {
-                return;
-            }
-
-            event.preventDefault();
-            event.stopPropagation();
-            void handleSave();
-        };
-
-        window.addEventListener('keydown', onKeyDown, true);
-
-        return () => {
-            window.removeEventListener('keydown', onKeyDown, true);
-        };
-    }, [handleSave, saveState]);
-
-    useEffect(() => {
-        if (saveState === 'saved') {
-            savedTimerRef.current = setTimeout(() => {
-                setSaveState('idle');
-            }, SAVED_DISPLAY_DURATION);
-        }
-
-        return () => {
-            clearTimeout(savedTimerRef.current);
-        };
-    }, [saveState]);
-
-    useEffect(() => {
-        if (!modal) {
-            return;
-        }
-
-        if (saveState === 'dirty' || saveState === 'saving') {
-            modal.unsaved();
-
-            return;
-        }
-
-        modal.saved();
-    }, [modal, saveState]);
-
-    useEffect(() => {
-        if (!leaveGuardRef) {
-            return;
-        }
-
-        leaveGuardRef.current = () => {
-            if (saveState !== 'dirty' && saveState !== 'saving') {
-                return true;
-            }
-
-            return confirmDiscardChanges();
-        };
-
-        return () => {
-            leaveGuardRef.current = null;
-        };
-    }, [leaveGuardRef, saveState]);
-
-    const ctx = useMemo<SettingsSaveContextValue>(
-        () => ({ saveRef, discardRef, onDirtyChange, setSaveVerb }),
-        [onDirtyChange]
-    );
-
-    const copy = saveActionCopy(saveVerb);
-
-    return (
-        <SettingsSaveContext value={ctx}>
-            <Shell
-                className={className}
-                footer={
-                    saveState === 'idle' ? (
-                        footer
-                    ) : (
-                        <SaveNotice
-                            state={saveState}
-                            copy={copy}
-                            onSave={() => void handleSave()}
-                            onDiscard={() => discardRef.current?.()}
-                        />
-                    )
-                }
-                action={headerRight ? <div className={styles.headerAction}>{headerRight}</div> : undefined}
-            >
-                {children}
-            </Shell>
-        </SettingsSaveContext>
     );
 }
 
