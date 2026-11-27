@@ -64,7 +64,7 @@ export class SseParser {
 }
 
 /** A stream that sent nothing, not even a heartbeat, for longer than its reader allows. */
-export class SseStalledError extends Error {}
+class SseStalledError extends Error {}
 
 /**
  * The frames of an event stream as they arrive. However the loop over it ends (the stream closed, the consumer threw or broke out, an abort),

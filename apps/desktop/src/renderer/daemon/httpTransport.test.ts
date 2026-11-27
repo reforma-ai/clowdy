@@ -369,7 +369,11 @@ describe('HttpTransport event feed', () => {
         await settled();
         stop();
 
-        expect({ events, statuses, calls: calls.length, logged: error.mock.calls.length }).toEqual({
+        const logged = error.mock.calls.length;
+
+        error.mockRestore();
+
+        expect({ events, statuses, calls: calls.length, logged }).toEqual({
             events: [1, 2, 3],
             statuses: ['connected'],
             calls: 1,
