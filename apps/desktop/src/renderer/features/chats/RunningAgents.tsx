@@ -1,6 +1,6 @@
 import { Shimmer } from '@clowdy/components/Shimmer';
 import { Text } from '@clowdy/components/Text';
-import { BackgroundTask, Robot2, Terminal } from '@clowdy/icons/14';
+import { Robot2, Terminal } from '@clowdy/icons/14';
 import { shownRunStatus } from '@clowdy/protocol';
 import { useEffect, useState } from 'react';
 
@@ -14,7 +14,6 @@ import { perform } from './commands';
 import {
     agentRowLabel,
     backgroundItemText,
-    backgroundRows,
     canStopAlone,
     drawnRows,
     openBackground,
@@ -23,6 +22,7 @@ import {
     stripRows,
     type ThreadAtWork,
     threadsAtWork,
+    unlistedBackground,
 } from './runningAgentRows';
 
 import type { BackgroundItem, Chat, ChatId, Run, RunId } from '@clowdy/protocol';
@@ -153,24 +153,6 @@ function BackgroundItemRow({ runId, item }: { runId: RunId; item: BackgroundItem
     );
 }
 
-/**
- * Explains why some work has no individual Stop and offers Stop run, which ends the orchestrator and all background work.
- */
-function BackgroundRow({ runId }: { runId: RunId }) {
-    const root = useRootStore();
-
-    return (
-        <ComposerBannerStatus
-            icon={<BackgroundTask />}
-            action="Stop run"
-            actionLabel="Stop run and all background work"
-            onAction={() => void perform(root, { type: 'run.cancel', runId })}
-        >
-            <Shimmer duration={1}>Some work can't be stopped separately</Shimmer>
-        </ComposerBannerStatus>
-    );
-}
-
 function Row({ row, now }: { row: StripRow; now: number }) {
     return row.kind === 'agent' ? (
         <AgentRow run={row.run} now={now} />
@@ -183,7 +165,7 @@ function Row({ row, now }: { row: StripRow; now: number }) {
  * The work of the chat that goes on now, one row each above the message box (Reforma's `ChatComposerSubagents`): under the "Agents" header
  * the native sub-agents of the orchestrator and the threads of the chat that work, oldest
  * first, each with its name and available progress (a sub-agent's row opens its run, a thread's row opens the thread's chat; Stop ends that one alone), then
- * a row for each background command or task (its Stop, when available, ends that item only), then an explanation when work cannot be stopped alone. A sub-agent with a child run is shown only under Agents. Nothing while there is
+ * a row for each background command or task (its Stop, when available, ends that item only). A sub-agent with a child run is shown only under Agents. Nothing while there is
  * none of these. Agents and stoppable background work have independent disclosures.
  */
 export function RunningAgents({ chat }: { chat: Chat }) {
@@ -200,12 +182,12 @@ export function RunningAgents({ chat }: { chat: Chat }) {
     const rows = stripRows(agents, threads);
     const orchestrator = chat.orchestratorRunId === undefined ? undefined : project.runs.get(chat.orchestratorRunId);
     // A sub-agent with a child run is shown above and is not counted again here.
-    const { own, counted: background } = backgroundRows(openBackground(orchestrator), agents);
+    const background = unlistedBackground(openBackground(orchestrator), agents);
     const folded = ui.agentsFolded(chat.id) && rows.length > 0;
     // A fold hides what goes on, not what waits for the person.
     const drawn = drawnRows(rows, folded);
 
-    if (rows.length === 0 && own.length === 0 && background.length === 0) return null;
+    if (rows.length === 0 && background.length === 0) return null;
 
     return (
         <ComposerBanner role="group" aria-label="Work in progress">
@@ -217,7 +199,7 @@ export function RunningAgents({ chat }: { chat: Chat }) {
                     ))}
                 </div>
             )}
-            {(own.length > 0 || background.length > 0) && orchestrator && (
+            {background.length > 0 && orchestrator && (
                 <>
                     <ComposerBannerHeader
                         expanded={commandsExpanded}
@@ -226,17 +208,16 @@ export function RunningAgents({ chat }: { chat: Chat }) {
                             <Text
                                 variant="xs"
                                 color="secondary"
-                            >{`${new Set([...own, ...background].map(item => item.id)).size} running`}</Text>
+                            >{`${new Set(background.map(item => item.id)).size} running`}</Text>
                         }
                     >
                         Background work
                     </ComposerBannerHeader>
                     {commandsExpanded && (
                         <div className={styles.agentRows}>
-                            {own.map(item => (
+                            {background.map(item => (
                                 <BackgroundItemRow key={item.id} runId={orchestrator.id} item={item} />
                             ))}
-                            {background.length > 0 && <BackgroundRow runId={orchestrator.id} />}
                         </div>
                     )}
                 </>
