@@ -1,3 +1,5 @@
+import { Chip } from '@clowdy/components/Chip';
+import { RowControls } from '@clowdy/components/List';
 import { Checkbox, Split } from '@clowdy/icons/12';
 
 import styles from './TaskChips.module.css';
@@ -6,6 +8,9 @@ import type { Checklist, Rollup } from './taskTree';
 
 /** `2/5`. */
 const progress = ({ done, total }: Rollup | Checklist) => `${done}/${total}`;
+
+/** A finished count reads green; the rest is the plain chat chip. */
+const toneOf = ({ done, total }: Rollup | Checklist) => (done === total ? 'success' : undefined);
 
 export interface RollUpChipProps {
     rollUp: Rollup;
@@ -20,43 +25,29 @@ export interface RollUpChipProps {
  * the screen's click handler leaves it alone (`data-task-control`) and it sits above the card's hit area.
  */
 export function RollUpChip({ rollUp, taskKey, onPress }: RollUpChipProps) {
-    const content = (
-        <>
-            <Split aria-hidden className={styles.icon} />
-            <span className={styles.label}>{progress(rollUp)}</span>
-        </>
-    );
-    const done = rollUp.done === rollUp.total || undefined;
     const title = `${rollUp.done} of ${rollUp.total} sub-tasks done`;
 
     // `title` alone is not read out, and `3/8` means nothing without it.
     if (!onPress)
         return (
-            <span className={styles.chip} data-done={done} role="img" aria-label={title} title={title}>
-                {content}
-            </span>
+            <Chip icon={<Split />} tone={toneOf(rollUp)} role="img" aria-label={title} title={title}>
+                {progress(rollUp)}
+            </Chip>
         );
 
     return (
-        <button
-            type="button"
-            className={styles.chip}
-            data-pressable
-            data-done={done}
-            // `TASK_CONTROL` in `taskCommands`: the screen and the keys leave what carries it to itself.
-            data-task-control=""
-            aria-label={`Open sub-tasks of ${taskKey}, ${title}`}
-            title={title}
-            // The row and the card read pointer and key presses of their own, and a press here is not on the task.
-            onClick={event => {
-                event.stopPropagation();
-                onPress();
-            }}
-            onPointerDown={event => event.stopPropagation()}
-            onKeyDown={event => event.stopPropagation()}
-        >
-            {content}
-        </button>
+        // `TASK_CONTROL` in `taskCommands`: the screen and the keys leave what carries it to itself, and the row's own handlers never see the press.
+        <RowControls className={styles.control} data-task-control="">
+            <Chip
+                icon={<Split />}
+                tone={toneOf(rollUp)}
+                aria-label={`Open sub-tasks of ${taskKey}, ${title}`}
+                tooltip={title}
+                onPress={onPress}
+            >
+                {progress(rollUp)}
+            </Chip>
+        </RowControls>
     );
 }
 
@@ -65,15 +56,8 @@ export function ChecklistChip({ checklist }: { checklist: Checklist }) {
     const title = `${checklist.done} of ${checklist.total} steps done`;
 
     return (
-        <span
-            className={styles.chip}
-            data-done={checklist.done === checklist.total || undefined}
-            role="img"
-            aria-label={title}
-            title={title}
-        >
-            <Checkbox aria-hidden className={styles.icon} />
-            <span className={styles.label}>{progress(checklist)}</span>
-        </span>
+        <Chip icon={<Checkbox />} tone={toneOf(checklist)} role="img" aria-label={title} title={title}>
+            {progress(checklist)}
+        </Chip>
     );
 }

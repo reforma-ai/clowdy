@@ -1,4 +1,5 @@
 import { Button } from '@clowdy/components/Button';
+import { Chip } from '@clowdy/components/Chip';
 import { Spinner } from '@clowdy/components/Spinner';
 import { Text } from '@clowdy/components/Text';
 import { Box, CodeBraces, Commit, Message, Page, Terminal, Tool, User } from '@clowdy/icons/14';
@@ -7,7 +8,6 @@ import { type ComponentType, type ReactNode, type SVGProps, useEffect, useState 
 import { RunStatusPill, useRunLabel } from '../../shared';
 import { AgentAvatar } from '../../stream';
 import styles from './DetailSections.module.css';
-import { Pill, PillLabel } from './Pill';
 import { type Activity, formatAgo, type ResultRow, resultRows } from './taskView';
 import { useTaskArtifacts } from './useTaskArtifacts';
 
@@ -116,9 +116,9 @@ function ResultContent({ row }: { row: ResultRow }) {
             </span>
             {row.meta && <span className={styles.meta}>{row.meta}</span>}
             {row.verdict && (
-                <Pill tone={row.verdict.tone}>
-                    <PillLabel>{row.verdict.label}</PillLabel>
-                </Pill>
+                <Chip shape="pill" tone={row.verdict.tone}>
+                    {row.verdict.label}
+                </Chip>
             )}
         </>
     );

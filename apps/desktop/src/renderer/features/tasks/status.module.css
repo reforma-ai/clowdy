@@ -1,11 +1,10 @@
 .icon {
     display: inline-flex;
     flex-shrink: 0;
-    color: var(--clowdy-status-color);
 }
 
 .count {
-    flex-shrink: 0;
-    opacity: 0.7;
+    margin-inline-start: var(--spacing-xs);
+    opacity: var(--opacity-inactive);
     font-variant-numeric: tabular-nums;
 }
