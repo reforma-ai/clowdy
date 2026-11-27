@@ -2,19 +2,19 @@ import { Button } from '@clowdy/components/Button';
 import { Menu, MenuItem, MenuSection, MenuSeparator, MenuTrigger } from '@clowdy/components/List';
 import { Popover, PopoverScroll } from '@clowdy/components/Popover';
 import { Text } from '@clowdy/components/Text';
+import { Tooltip } from '@clowdy/components/Tooltip';
 import { ChevronRight } from '@clowdy/icons/8';
 import { GitFolder, Settings, WorktreeFolder } from '@clowdy/icons/14';
 import { capitalize } from '@clowdy/lib';
 import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { OverlayTriggerStateContext, PopoverContext, type PressEvent } from 'react-aria-components';
 
-import { tildePath } from '../../shared/displayPath';
-import { homeFolder } from '../../shared/homeFolder';
 import { isInPickerPopover, type PickerOption } from '../../shared/PickerPopover';
 import { BranchPickerWithCreate } from './BranchPickerWithCreate';
 import { ChipTrigger } from './ChipTrigger';
 import { MainBranchPicker } from './MainBranchPicker';
 import { type MainBranchBlock } from './mainBranch';
+import { PlaceTooltip } from './PlaceTooltip';
 import styles from './WorkspaceChips.module.css';
 import {
     chatsUsing,
@@ -43,16 +43,16 @@ import type { FolderRepository } from './useFolderRepository';
 /** A chosen worktree remains visible while its repository data is unavailable. */
 function WorkspaceLabel({ worktree, branch }: { worktree: string; branch?: string }) {
     return (
-        <div
-            role="group"
-            className={styles.label}
-            title={tildePath(worktree, homeFolder.path)}
-            aria-label={`Where it runs: Worktree${branch ? `, branch ${branch}` : ''}`}
-        >
-            <WorktreeFolder aria-hidden="true" />
-            <Text color="secondary">Worktree</Text>
-            {branch && <Text truncate>{branch}</Text>}
-        </div>
+        <Tooltip content={<PlaceTooltip path={worktree} worktree />}>
+            <div
+                role="img"
+                className={styles.label}
+                aria-label={`Where it runs: Worktree${branch ? `, branch ${branch}` : ''}`}
+            >
+                <WorktreeFolder aria-hidden="true" />
+                <Text truncate>{branch ?? 'Worktree'}</Text>
+            </div>
+        </Tooltip>
     );
 }
 
@@ -284,7 +284,11 @@ function WorkspaceChip({
     // The selected worktree path remains available even while its listing is refreshing.
     const path =
         choice?.mode === 'existing' ? choice.path : folders.find(folder => folder.id === selectedFolderId)?.path;
-    const placePath = path ? tildePath(path, homeFolder.path) : undefined;
+    const placeTooltip = path
+        ? (worktree: boolean, note?: string, detached?: boolean) => (
+              <PlaceTooltip path={path} worktree={worktree} note={note} detached={detached} />
+          )
+        : undefined;
     const trigger =
         choice?.mode === 'new'
             ? {
@@ -294,27 +298,31 @@ function WorkspaceChip({
               }
             : choice?.mode === 'existing'
               ? {
-                    lead: chosen ? 'Worktree' : undefined,
                     label: chosen ? worktreeLabel(chosen) : 'Worktree',
                     ariaLabel: chosen
                         ? `Where it runs: Worktree, ${chosen.branch ? `branch ${chosen.branch}` : worktreeLabel(chosen).toLowerCase()}`
                         : 'Where it runs: Worktree',
-                    tooltip: placePath,
+                    tooltip: placeTooltip?.(
+                        true,
+                        undefined,
+                        Boolean(chosen && 'head' in chosen && chosen.head && !chosen.branch)
+                    ),
                 }
               : picked !== undefined
                 ? {
                       lead: main?.running === picked ? 'Switching to' : 'Switch to',
                       label: picked,
                       ariaLabel: `Where it runs: Main worktree, ${main?.running === picked ? 'switching' : 'switch'} to branch ${picked}${whyWords ? `, ${whyWords}` : ''}`,
-                      tooltip: [placePath, whyWords ?? `The main worktree changes to ${picked} when the chat starts`]
-                          .filter(Boolean)
-                          .join('\n'),
+                      tooltip: placeTooltip?.(
+                          false,
+                          whyWords ?? `The main worktree changes to ${picked} when the chat starts`
+                      ),
                       missing: why !== undefined,
                   }
                 : {
                       label: branch ?? 'Main worktree',
                       ariaLabel: `Where it runs: Main worktree${branch ? `, ${branchWords(branch, git.detached === true)}` : ''}`,
-                      tooltip: [placePath, git.detached && 'Detached HEAD'].filter(Boolean).join('\n') || undefined,
+                      tooltip: placeTooltip?.(false, undefined, git.detached),
                   };
 
     return (
@@ -337,7 +345,7 @@ function WorkspaceChip({
                         restoreRef(element);
                     }}
                     icon={
-                        choice?.mode === 'new' || chosen ? (
+                        choice?.mode === 'new' || choice?.mode === 'existing' ? (
                             <WorktreeFolder aria-hidden="true" />
                         ) : (
                             <GitFolder aria-hidden="true" />
