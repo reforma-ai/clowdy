@@ -15,8 +15,8 @@ export interface RailItemProps {
     /** The current item is drawn in the primary colour instead of the neutral one, as Reforma's rail does for the chat that is open. */
     accent?: boolean;
     disabled?: boolean;
-    /** A dot in the primary colour on the glyph's top right corner: something wants a look while the page is not on show. `label` is what a screen reader hears after the item's own label. */
-    dot?: { label: string };
+    /** A status dot on the glyph, described after the item's label for screen readers. */
+    dot?: { label: string; tone?: 'primary' | 'neutral' | 'success' };
     /** What a tooltip says (the label is on the button already, so it is for the key that does the same); none, no tooltip. */
     tooltip?: ReactNode;
     /** Beside which edge of the item the tooltip opens: away from the rail's own edge of the window. */
@@ -55,7 +55,7 @@ export function RailItem({
             >
                 <span className={styles.glyph}>
                     <Icon width={size} height={size} aria-hidden />
-                    {dot && <span className={styles.dot} />}
+                    {dot && <span className={styles.dot} data-tone={dot.tone} />}
                 </span>
                 <span className={styles.label}>{label}</span>
             </button>

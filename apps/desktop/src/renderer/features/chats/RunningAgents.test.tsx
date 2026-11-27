@@ -252,7 +252,6 @@ describe('RunningAgents, the header', () => {
         expect(lines().map(line => line.textContent)).toEqual([
             'Command: bun run testStop',
             'Command: bun run typecheck',
-            "Some work can't be stopped separatelyStop run",
         ]);
     });
 });
@@ -374,10 +373,7 @@ describe('RunningAgents, folding the rows', () => {
         )!;
         expect(disclosure.getAttribute('aria-expanded')).toBe('false');
         await act(async () => disclosure.click());
-        expect(rows().map(row => row.textContent)).toEqual([
-            'Monitor: Build',
-            "Some work can't be stopped separatelyStop run",
-        ]);
+        expect(rows().map(row => row.textContent)).toEqual(['Monitor: Build']);
         await act(async () => disclosure.click());
         expect(rows()).toEqual([]);
     });
@@ -391,10 +387,7 @@ describe('RunningAgents, folding the rows', () => {
         const disclosure = container.querySelector<HTMLButtonElement>('button[aria-expanded]')!;
         expect(disclosure.textContent).toBe('Background work1 running');
         await act(async () => disclosure.click());
-        expect(rows().map(row => row.textContent)).toEqual([
-            'Sub-agent: Explore',
-            "Some work can't be stopped separatelyStop run",
-        ]);
+        expect(rows().map(row => row.textContent)).toEqual(['Sub-agent: Explore']);
     });
 
     it('keeps the commands section independent of the agents fold', async () => {
@@ -408,11 +401,7 @@ describe('RunningAgents, folding the rows', () => {
 
         await draw('c-5');
         expect(header()).toBeUndefined();
-        expect(rows().map(row => row.textContent)).toEqual([
-            'Command: bun run testStop',
-            'Command: bun run typecheck',
-            "Some work can't be stopped separatelyStop run",
-        ]);
+        expect(rows().map(row => row.textContent)).toEqual(['Command: bun run testStop', 'Command: bun run typecheck']);
     });
 });
 
@@ -424,7 +413,6 @@ describe('RunningAgents, a sub-agent of a session that waits', () => {
         expect(rows().map(row => row.textContent)).toEqual([
             'Find where the price is computedStop',
             'Command: bun run test',
-            "Some work can't be stopped separatelyStop run",
         ]);
         // One agent: its own Stop is enough, so there is no Stop all.
         expect(toggle().textContent).toBe('Agents1 running');
@@ -458,11 +446,7 @@ describe('RunningAgents, a sub-agent of a session that waits', () => {
         put({ ...runs().get('r-na-05')!, status: 'succeeded' });
         await draw('c-5');
 
-        expect(rows().map(row => row.textContent)).toEqual([
-            'Command: bun run test',
-            'Sub-agent: Explore',
-            "Some work can't be stopped separatelyStop run",
-        ]);
+        expect(rows().map(row => row.textContent)).toEqual(['Command: bun run test', 'Sub-agent: Explore']);
         expect(header()).toBeUndefined();
     });
 
@@ -501,50 +485,24 @@ describe('RunningAgents, the background row', () => {
             ],
         });
 
-    it('counts what the orchestrator has open in the background that cannot be stopped alone, with Stop', async () => {
+    it('counts what the orchestrator has open in the background that cannot be stopped alone', async () => {
         unstoppable();
         await draw('c-5');
 
-        expect(rows().map(row => row.textContent)).toEqual([
-            'Command: bun run test',
-            'Command: bun run typecheck',
-            "Some work can't be stopped separatelyStop run",
-        ]);
+        expect(rows().map(row => row.textContent)).toEqual(['Command: bun run test', 'Command: bun run typecheck']);
     });
 
     it('counts the rest after the commands that have a row of their own', async () => {
         await draw('c-5');
 
-        expect(rows().map(row => row.textContent)).toEqual([
-            'Command: bun run testStop',
-            'Command: bun run typecheck',
-            "Some work can't be stopped separatelyStop run",
-        ]);
+        expect(rows().map(row => row.textContent)).toEqual(['Command: bun run testStop', 'Command: bun run typecheck']);
     });
 
-    it('says it in the singular for one item', async () => {
+    it('shows one background item', async () => {
         put({ ...runs().get('r-orch-5')!, background: background('bun run test') });
         await draw('c-5');
 
-        expect(rows().map(row => row.textContent)).toEqual([
-            'Command: bun run test',
-            "Some work can't be stopped separatelyStop run",
-        ]);
-    });
-
-    it('stops the orchestrator, which ends the background work with it', async () => {
-        unstoppable();
-        await draw('c-5');
-
-        const command = vi.spyOn(store, 'command');
-
-        await act(async () => rows().at(-1)!.querySelector('button')!.click());
-        expect(command).toHaveBeenCalledWith({ type: 'run.cancel', runId: 'r-orch-5' });
-
-        // The daemon clears the list with the run, and the row goes with it.
-        await vi.waitFor(() => expect(runs().get('r-orch-5')?.status).toBe('cancelled'));
-        await draw('c-5');
-        expect(container.innerHTML).toBe('');
+        expect(rows().map(row => row.textContent)).toEqual(['Command: bun run test']);
     });
 
     it('comes after the agents at work', async () => {
@@ -555,7 +513,6 @@ describe('RunningAgents, the background row', () => {
             expect.stringContaining('Update the booking form'),
             expect.stringContaining('Find where the price is computed'),
             'Command: bun run test',
-            "Some work can't be stopped separatelyStop run",
         ]);
     });
 
@@ -564,11 +521,7 @@ describe('RunningAgents, the background row', () => {
         put({ ...runs().get('r-orch-5')!, status: 'running' });
         await draw('c-5');
 
-        expect(rows().map(row => row.textContent)).toEqual([
-            'Command: bun run test',
-            'Command: bun run typecheck',
-            "Some work can't be stopped separatelyStop run",
-        ]);
+        expect(rows().map(row => row.textContent)).toEqual(['Command: bun run test', 'Command: bun run typecheck']);
     });
 
     it('is not drawn with nothing open, whether the list is empty or absent', async () => {
@@ -847,26 +800,16 @@ describe('RunningAgents, a command that can be stopped alone', () => {
         expect(disclosure.getAttribute('aria-expanded')).toBe('false');
         expect(container.textContent).not.toContain("Some work can't be stopped separately");
         await act(async () => disclosure.click());
-        expect(rows().map(row => row.textContent)).toEqual([
-            'Command: command 1Stop',
-            'Command: command 2',
-            "Some work can't be stopped separatelyStop run",
-        ]);
+        expect(rows().map(row => row.textContent)).toEqual(['Command: command 1Stop', 'Command: command 2']);
         expect(rows()[0].querySelector('button')?.getAttribute('aria-label')).toBe('Stop command: command 1');
         expect(rows()[1].querySelector('button')).toBeNull();
-        const commandSpy = vi.spyOn(store, 'command');
-        await act(async () => rows().at(-1)!.querySelector('button')!.click());
-        expect(commandSpy).toHaveBeenCalledWith({ type: 'run.cancel', runId: 'r-orch-5' });
+        expect(container.textContent).not.toContain("Some work can't be stopped separately");
     });
 
     it('has a row of its own with the command as its title and a Stop that stops that command only', async () => {
         await draw('c-5');
 
-        expect(rows().map(row => row.textContent)).toEqual([
-            'Command: bun run testStop',
-            'Command: bun run typecheck',
-            "Some work can't be stopped separatelyStop run",
-        ]);
+        expect(rows().map(row => row.textContent)).toEqual(['Command: bun run testStop', 'Command: bun run typecheck']);
         expect(rows()[0].querySelector('svg')).not.toBeNull();
 
         const spy = vi.spyOn(store, 'command');
@@ -875,7 +818,7 @@ describe('RunningAgents, a command that can be stopped alone', () => {
         expect(spy).toHaveBeenCalledWith({ type: 'run.stopBackground', runId: 'r-orch-5', itemId: 'bg-1' });
         expect(spy).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'run.cancel' }));
 
-        // The daemon takes the command out of the list; the run, its other work and the row that counts it are untouched.
+        // The daemon takes the command out of the list; the run and its other work are untouched.
         await vi.waitFor(() =>
             expect(
                 runs()
@@ -884,10 +827,7 @@ describe('RunningAgents, a command that can be stopped alone', () => {
             ).toEqual(['bg-2'])
         );
         await draw('c-5');
-        expect(rows().map(row => row.textContent)).toEqual([
-            'Command: bun run typecheck',
-            "Some work can't be stopped separatelyStop run",
-        ]);
+        expect(rows().map(row => row.textContent)).toEqual(['Command: bun run typecheck']);
         expect(runs().get('r-orch-5')?.status).toBe('waiting_background');
     });
 
@@ -929,7 +869,6 @@ describe('RunningAgents, a command that can be stopped alone', () => {
         expect(rows().map(row => row.textContent)).toEqual([
             ...Array.from({ length: 7 }, (_, index) => `Command: command ${index + 1}Stop`),
             'Command: plain',
-            "Some work can't be stopped separatelyStop run",
         ]);
     });
 

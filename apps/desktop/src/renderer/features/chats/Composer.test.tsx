@@ -828,6 +828,14 @@ describe('Composer', () => {
             expect(button('Send')).not.toBeNull();
         });
 
+        it('stops a run waiting for background work', async () => {
+            await mount(accepted, runWith('waiting_background'));
+
+            await act(async () => button('Stop')!.click());
+
+            expect(sent).toEqual([{ type: 'run.cancel', runId: 'r-1' }]);
+        });
+
         it('stays usable while the session waits for background work, offers Stop with nothing typed, and sends a message at once', async () => {
             await mount(accepted, runWith('waiting_background'));
 

@@ -59,11 +59,11 @@
     padding: var(--spacing-xs) var(--spacing-lg);
 }
 
-.revealContent {
-    flex: 1;
-    justify-content: flex-start;
-    gap: var(--spacing-xs);
-    padding-inline: var(--spacing-4);
+.reveal {
+    @ruleset typography-label-sm;
+
+    justify-content: center;
+    padding-block: var(--spacing-md);
 }
 
 .footer {

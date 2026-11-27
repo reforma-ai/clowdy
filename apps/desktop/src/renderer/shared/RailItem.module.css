@@ -45,6 +45,14 @@
     background-color: var(--color-primary);
 }
 
+.dot[data-tone='neutral'] {
+    background-color: var(--color-secondary-muted-text);
+}
+
+.dot[data-tone='success'] {
+    background-color: var(--color-success);
+}
+
 .label {
     width: 100%;
     font-size: var(--spacing-10);

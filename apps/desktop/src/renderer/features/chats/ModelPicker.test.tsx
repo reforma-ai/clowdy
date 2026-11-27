@@ -37,14 +37,13 @@ let props: ModelPickerProps;
 async function setup(
     choice: ModelChoice | undefined,
     options: ModelStoreOptions = {},
-    engines: string[] = ['claude', 'codex', 'cursor'],
-    running = false
+    engines: string[] = ['claude', 'codex', 'cursor']
 ) {
     store = await modelStore(options);
 
     const providers: PickerProvider[] = engines.map(id => ({ id, name: NAMES[id]!, list: store.models.of(id) }));
 
-    props = { choice, providers, running, onPick: next => picks.push(next) };
+    props = { choice, providers, onPick: next => picks.push(next) };
     await draw();
 }
 
@@ -228,9 +227,8 @@ describe('the picker without providers', () => {
         };
         await draw();
         expect(trigger().getAttribute('aria-label')).toBe('Model: Use default');
-        await openList();
+        await open();
         expect(dialog()?.textContent).toContain('No available provider');
-        await press(dialog()!.querySelector('button[aria-label="Back"]'));
         const inherit = [...dialog()!.querySelectorAll('button')].find(
             button => button.textContent === 'Inherit orchestrator'
         );
@@ -298,18 +296,6 @@ describe('the popover', () => {
 
         expect(onFace()).toBe(true);
         expect(onList()).toBe(false);
-    });
-
-    it('says a pick applies from the next message while the orchestrator works, and not otherwise', async () => {
-        await setup(opus, {}, undefined, true);
-        await open();
-
-        expect(dialog()!.textContent).toContain('Applies from the next message');
-
-        props = { ...props, running: false };
-        await draw();
-
-        expect(dialog()!.textContent).not.toContain('Applies from the next message');
     });
 
     it("takes the pill's rectangle once for as long as it is open, and again at the next opening", async () => {
@@ -702,7 +688,7 @@ describe('the reasoning levels', () => {
 
         expect(slider()).toBeNull();
         expect(dialog()!.textContent).toContain('Reasoning effort');
-        expect(faceLayer().textContent).toBe('ONEMaxReasoning effortMax');
+        expect(dialog()!.textContent).toContain('Reasoning effortMax');
         expect(trigger().textContent).toBe('ONEMax');
     });
 
@@ -712,7 +698,7 @@ describe('the reasoning levels', () => {
 
         expect(slider()).toBeNull();
         expect(dialog()!.textContent).not.toContain('Reasoning effort');
-        expect(faceLayer().textContent).toBe('NONESmall and quick, with no reasoning control');
+        expect(dialog()!.textContent).toContain('Small and quick, with no reasoning control');
     });
 
     it('lists the levels of the model it is moved to, not of the one it left', async () => {
@@ -861,7 +847,7 @@ describe('when the models are not there', () => {
 
         expect(selectModel().textContent).toBe('claude-sonnet-3-7');
         expect(slider()).toBeNull();
-        expect(faceLayer().textContent).toContain('Claude Code does not list this model anymore');
+        expect(dialog()!.textContent).toContain('Claude Code does not list this model anymore');
 
         await press(selectModel());
 
@@ -941,7 +927,7 @@ describe('a chat with no model', () => {
 
         expect(selectModel().textContent).toBe('Default model');
         expect(selectModel().querySelectorAll('svg')).toHaveLength(2);
-        expect(faceLayer().textContent).toBe(`Default model${sentence}`);
+        expect(dialog()!.textContent).toContain(sentence);
         expect(slider()).toBeNull();
         expect(dialog()!.textContent).not.toContain('Reasoning effort');
     });
@@ -950,7 +936,7 @@ describe('a chat with no model', () => {
         await setup({ engine: 'codex' }, {}, ['codex']);
         await open();
 
-        expect(faceLayer().textContent).toBe("Default modelRuns on Codex's own default until you pick a model");
+        expect(dialog()!.textContent).toContain("Runs on Codex's own default until you pick a model");
     });
 
     it('checks no row of the list', async () => {
@@ -981,7 +967,7 @@ describe('a chat with no model', () => {
 
 describe("the face's spacing", () => {
     /** The block under the model button: the slider, the description, the line of a chat with no model. */
-    const reasoning = () => faceLayer().querySelector('[class*="reasoning"]');
+    const reasoning = () => dialog()!.querySelector('[class*="reasoning"]');
 
     it('reserves no block under the model button when there is nothing to put in it', async () => {
         // A model with no levels and no description: the face is the button alone.
@@ -1028,7 +1014,7 @@ describe("the face's spacing", () => {
         expect(reasoning()!.textContent).toBe("Runs on Claude Code's own default until you pick a model");
     });
 
-    it('has the block for the word that a pick applies later, and for that alone', async () => {
+    it('has no reasoning block for a model without levels or a description', async () => {
         await setup(
             { engine: 'claude', model: 'bare' },
             {
@@ -1036,12 +1022,11 @@ describe("the face's spacing", () => {
                     data.agentModels.claude = models(['bare']);
                 },
             },
-            ['claude'],
-            true
+            ['claude']
         );
         await open();
 
-        expect(reasoning()!.textContent).toBe('Applies from the next message');
+        expect(reasoning()).toBeNull();
     });
 });
 

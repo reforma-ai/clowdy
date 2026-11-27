@@ -51,20 +51,6 @@ export function unlistedBackground(
     return items.filter(item => item.kind !== 'subagent' || !shown.has(item.id));
 }
 
-/**
- * Lists background items not shown as agents and identifies work without an individual Stop.
- * Stop run remains available for that work.
- */
-export function backgroundRows(
-    items: readonly BackgroundItem[],
-    agents: readonly Pick<Run, 'parentToolCallId'>[]
-): { own: BackgroundItem[]; counted: BackgroundItem[] } {
-    const unlisted = unlistedBackground(items, agents);
-    const own = unlisted;
-
-    return { own, counted: unlisted.filter(item => item.canStopAlone !== true || item.kind === 'subagent') };
-}
-
 /** What a row of its own says of a background item: what kind it is and what it runs, `Command: bun run test`. */
 export function backgroundItemText(item: Pick<BackgroundItem, 'kind' | 'title'>): string {
     const scheduled = item.kind === 'task' ? /^(Monitor|Wakeup)(?: · |: )(.+)$/.exec(item.title) : null;

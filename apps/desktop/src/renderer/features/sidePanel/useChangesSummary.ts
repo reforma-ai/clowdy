@@ -10,13 +10,8 @@ import { currentPlace } from './currentPlace';
 export interface RailChanges extends ChangesSummary {
     /** A pull request is shown under the sync button of Source Control (an open or draft one, or the newest merged one the branch has not moved past): the tab draws the merge icon. */
     pullRequest: boolean;
-    /**
-     * The branch has work that exists nowhere else: files that are uncommitted, or commits that are not merged and are in no pull request (not an open or draft one, and not a merged one
-     * that the branch has not moved past). The tab draws a dot for it while it is not the one on show.
-     */
-    unlanded: boolean;
-    /** What the dot stands for, for a screen reader: `3 uncommitted files, 2 commits not merged`. */
-    unlandedLabel: string;
+    /** The current status of the dot and its accessible description. */
+    dot?: { tone: 'primary' | 'neutral' | 'success'; label: string };
 }
 
 /**
@@ -51,10 +46,26 @@ export function useChangesSummary(): RailChanges | undefined {
         facts.pullRequest.stale
     );
 
-    const pullRequest = partitionPullRequests(rows).visible.length > 0;
+    const visible = partitionPullRequests(rows).visible;
+    const pullRequest = visible.length > 0;
+    const open = visible.find(pr => pr.state === 'open' || pr.state === 'draft');
     const ahead = status?.isRepository === true && status.base.state === 'ready' ? status.base.ahead : 0;
-    const unmerged = ahead > 0 && !pullRequest ? `${commitsWords(ahead)} not merged` : undefined;
-    const reasons = [summary.uncommittedLine, unmerged].filter(reason => reason !== undefined);
+    const dot = summary.uncommittedLine
+        ? { tone: 'primary' as const, label: summary.uncommittedLine }
+        : open
+          ? {
+                tone: 'success' as const,
+                label: `${open.state === 'draft' ? 'Draft pull request' : 'Open pull request'} #${open.number}`,
+            }
+          : ahead > 0 || summary.syncLine || summary.stage === 'problem'
+            ? {
+                  tone: 'neutral' as const,
+                  label:
+                      (summary.stage === 'problem' || summary.stage === 'ahead' ? summary.stageLine : undefined) ??
+                      summary.syncLine ??
+                      `${commitsWords(ahead)} not merged`,
+              }
+            : undefined;
 
-    return { ...summary, pullRequest, unlanded: reasons.length > 0, unlandedLabel: reasons.join(', ') };
+    return { ...summary, pullRequest, dot };
 }

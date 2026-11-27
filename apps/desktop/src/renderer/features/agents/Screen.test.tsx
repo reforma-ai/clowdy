@@ -626,15 +626,15 @@ describe('grouped by folder', () => {
     it('offers a layout choice even for a project of one folder', async () => {
         await restart({ grouping: null, transport: new FixtureTransport() });
         // A project that kept no choice groups by folder and worktree.
-        expect(await layoutMenu()).toEqual(['Simple list', 'By folder', 'By folder and worktree']);
-        expect(menuItem('By folder and worktree').getAttribute('aria-checked')).toBe('true');
-        expect(rowKeys()).toContain(MAIN_GROUP);
+        expect(await layoutMenu()).toEqual(['Simple list', 'By folder', 'By worktree']);
+        expect(menuItem('By worktree').getAttribute('aria-checked')).toBe('true');
+        expect(rowKeys()).toContain(worktreeKey(MAIN, '/Users/dev/car-rental'));
 
         await restart({ grouping: null });
 
-        expect(await layoutMenu()).toEqual(['Simple list', 'By folder', 'By folder and worktree']);
-        expect(menuItem('By folder and worktree').getAttribute('aria-checked')).toBe('true');
-        expect(rowKeys()).toContain(head(MAIN));
+        expect(await layoutMenu()).toEqual(['Simple list', 'By folder', 'By worktree']);
+        expect(menuItem('By worktree').getAttribute('aria-checked')).toBe('true');
+        expect(rowKeys()).toContain(worktreeKey(MAIN, '/Users/dev/car-rental'));
 
         await press(menuItem('Simple list'));
         expect(ui().groupByFolder).toBe(false);
@@ -645,11 +645,11 @@ describe('grouped by folder', () => {
 
     it('switches among the three list layouts and shows the selected mode', async () => {
         await openProjectSubmenu('Layout');
-        await press(menuItem('By folder and worktree'));
+        await press(menuItem('By worktree'));
         expect([ui().groupByFolder, ui().groupByWorktree]).toEqual([true, true]);
 
         await openProjectSubmenu('Layout');
-        expect(menuItem('By folder and worktree').getAttribute('aria-checked')).toBe('true');
+        expect(menuItem('By worktree').getAttribute('aria-checked')).toBe('true');
         await press(menuItem('Simple list'));
         expect([ui().groupByFolder, ui().groupByWorktree]).toEqual([false, false]);
 
@@ -927,7 +927,7 @@ describe('grouped by folder', () => {
     it.each([
         ['simple', '@new-chat', 'c-4'],
         ['folder', MAIN_GROUP, 'c-4'],
-        ['worktree', MAIN_GROUP, 'c-4'],
+        ['worktree', worktreeKey(MAIN, '/Users/dev/car-rental'), 'c-4'],
     ] as const)('navigates the first rows in the %s layout with J and K', async (layout, first, second) => {
         await draw(() => {
             ui().setChatListLayout(layout);
@@ -1006,7 +1006,7 @@ describe('grouped by folder', () => {
         await restart();
         await draw(() => ui().openDraft([], 'fld_gone'));
 
-        expect(container.querySelector('[role="row"][data-selected]')).toBeNull();
+        expect(isSelected(`@draft:${ui().draftId}`)).toBe(true);
         expect(rowOf(head(API.id)).hasAttribute('data-open')).toBe(false);
         expect(folderSelect()?.textContent).toContain('car-rental');
         expect(container.textContent).not.toContain('fld_gone');
@@ -2287,12 +2287,28 @@ describe('worktree cards', () => {
             rowOf(key).dispatchEvent(new KeyboardEvent('keydown', { key: direction, bubbles: true, cancelable: true }));
         });
 
+    it('shows peer worktree groups in folder order and folds an empty checkout', async () => {
+        await restart();
+        await draw(() => ui().setChatListLayout('worktree'));
+        const api = worktreeKey('fld_api', '/Users/dev/car-rental-api');
+        const notes = worktreeKey('fld_notes', '/Users/dev/notes');
+        expect(cardRows()).toEqual([mainKey(), workspaceKey(), api, notes]);
+        expect(container.querySelectorAll('[data-key^="@folder:"]')).toHaveLength(0);
+        expect(rowOf(api).querySelector('button[aria-label^="Collapse "]')?.getAttribute('aria-expanded')).toBe('true');
+        await arrow(api, 'ArrowLeft');
+        await draw();
+        expect(rowOf(api).querySelector('button[aria-label^="Expand "]')?.getAttribute('aria-expanded')).toBe('false');
+        await arrow(api, 'ArrowRight');
+        await draw();
+        expect(rowOf(api).querySelector('button[aria-label^="Collapse "]')?.getAttribute('aria-expanded')).toBe('true');
+    });
+
     it('keeps flat order when disabled and puts checkout chats before worktree cards when enabled', async () => {
         await restart();
         const before = rowKeys();
         await openProjectSubmenu('Layout');
-        expect(menuItem('By folder and worktree').getAttribute('aria-checked')).toBe('false');
-        await press(menuItem('By folder and worktree'));
+        expect(menuItem('By worktree').getAttribute('aria-checked')).toBe('false');
+        await press(menuItem('By worktree'));
         await draw();
         expect(
             rowOf('c-1').compareDocumentPosition(rowOf(workspaceKey())) & Node.DOCUMENT_POSITION_FOLLOWING
@@ -2350,7 +2366,7 @@ describe('worktree cards', () => {
         ).toBe(mainKey());
     });
 
-    it('keeps ordinary chats flat when only thread worktrees are hidden and groups them when unused ones are shown', async () => {
+    it('keeps checkout chats grouped when only thread worktrees are hidden', async () => {
         await restart();
         const workspace = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
         await draw(() => {
@@ -2359,7 +2375,7 @@ describe('worktree cards', () => {
             ui().setGroupByWorktree(true);
         });
         await draw();
-        expect(rowOf('c-4').closest('[data-worktree-card]')).toBeNull();
+        expect(rowOf('c-4').closest('[data-worktree-card]')?.getAttribute('data-worktree-card')).toBe(mainKey());
         await draw(() => chatListPreferences.setShowUnusedWorktrees(true));
         expect(rowOf('c-4').closest('[data-worktree-card]')?.getAttribute('data-worktree-card')).toBe(mainKey());
     });
@@ -2397,7 +2413,7 @@ describe('worktree cards', () => {
             ui().openChat(FIXTURE_WORKSPACE_CHAT_ID);
         });
         await draw();
-        expect(cardRows()).toHaveLength(2);
+        expect(cardRows()).toHaveLength(4);
         expect(
             rowOf(FIXTURE_WORKSPACE_CHAT_ID).closest('[data-worktree-card]')?.getAttribute('data-worktree-card')
         ).toContain(encodeURIComponent('/real/path/to/worktree'));
@@ -2486,7 +2502,12 @@ describe('worktree cards', () => {
     it('shows unused worktrees in the list when enabled in Display', async () => {
         await restart();
         await draw(() => ui().setGroupByWorktree(true));
-        expect(cardRows()).toEqual([mainKey(), workspaceKey()]);
+        expect(cardRows()).toEqual([
+            mainKey(),
+            workspaceKey(),
+            worktreeKey('fld_api', '/Users/dev/car-rental-api'),
+            worktreeKey('fld_notes', '/Users/dev/notes'),
+        ]);
         expect(container.textContent).not.toContain('Unused worktrees');
         await openProjectSubmenu('Display');
         await press(menuItem('Show unused worktrees'));
@@ -2495,7 +2516,12 @@ describe('worktree cards', () => {
         expect(container.textContent).not.toContain('Unused worktrees');
         await press(menuItem('Show unused worktrees'));
         await draw();
-        expect(cardRows()).toEqual([mainKey(), workspaceKey()]);
+        expect(cardRows()).toEqual([
+            mainKey(),
+            workspaceKey(),
+            worktreeKey('fld_api', '/Users/dev/car-rental-api'),
+            worktreeKey('fld_notes', '/Users/dev/notes'),
+        ]);
     });
 
     it('shows each checkout’s pull request on its card, including unused worktrees and other folders', async () => {

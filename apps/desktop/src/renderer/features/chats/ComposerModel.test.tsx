@@ -929,25 +929,16 @@ describe('in a chat', () => {
         ]);
     });
 
-    it('is not held back while the orchestrator works, and says the pick applies from the next message', async () => {
+    it('allows changing the model while the orchestrator works', async () => {
         await mount({ chat: chatOn(), run: runOf({ status: 'running' }) });
 
         expect(trigger()!.disabled).toBe(false);
 
         await openPicker();
 
-        expect(dialog()!.textContent).toContain('Applies from the next message');
-
         await pickModel('Fable 5.2');
 
         expect(sent).toEqual([expect.objectContaining({ type: 'chat.setModel', model: 'fable' })]);
-    });
-
-    it('says nothing of the next message when the orchestrator is not working', async () => {
-        await mount({ chat: chatOn(), run: runOf({ status: 'succeeded' }) });
-        await openPicker();
-
-        expect(dialog()!.textContent).not.toContain('Applies from the next message');
     });
 
     it('shows a model the provider no longer lists by its id', async () => {

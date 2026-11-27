@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 import {
     agentRowLabel,
     backgroundItemText,
-    backgroundRows,
     canStopAlone,
     drawnRows,
     MAX_AGENT_ROWS,
@@ -130,42 +129,6 @@ describe('what the background row counts', () => {
 });
 
 describe('the rows of background items', () => {
-    const stoppable = (n: number, over: Partial<BackgroundItem> = {}): BackgroundItem => ({
-        id: `bg-${n}`,
-        kind: 'command',
-        title: `command ${n}`,
-        canStopAlone: true,
-        ...over,
-    });
-    const plain = { id: 'plain', kind: 'command' as const, title: 'plain' };
-
-    it('gives a row of its own to each item the agent lets be stopped alone, and counts the rest', () => {
-        const workflow = { id: 'wf-1', kind: 'task' as const, title: 'Workflow', canStopAlone: true };
-
-        expect(backgroundRows([stoppable(1), plain, workflow, stoppable(2)], [])).toEqual({
-            own: [stoppable(1), plain, workflow, stoppable(2)],
-            counted: [plain],
-        });
-        expect(backgroundRows([plain], [])).toEqual({ own: [plain], counted: [plain] });
-        expect(backgroundRows([], [])).toEqual({ own: [], counted: [] });
-    });
-
-    it('keeps every stoppable item in order', () => {
-        const items = Array.from({ length: MAX_AGENT_ROWS + 2 }, (_, index) => stoppable(index + 1));
-        const { own, counted } = backgroundRows([plain, ...items], []);
-
-        expect(own).toEqual([plain, ...items]);
-        expect(counted).toEqual([plain]);
-    });
-
-    it('shows a sub-agent without a child run as background work', () => {
-        const explore = { id: 'call-1', kind: 'subagent' as const, title: 'Explore', canStopAlone: true };
-        const child = run('child', 'running', { origin: 'native', parentToolCallId: 'call-1' });
-
-        expect(backgroundRows([explore], [child])).toEqual({ own: [], counted: [] });
-        expect(backgroundRows([explore], [])).toEqual({ own: [explore], counted: [explore] });
-    });
-
     it('names a row by what the item is and what it runs', () => {
         expect(backgroundItemText({ kind: 'command', title: 'bun run test' })).toBe('Command: bun run test');
         expect(backgroundItemText({ kind: 'task', title: 'Workflow: verify' })).toBe('Task: Workflow: verify');

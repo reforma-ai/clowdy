@@ -125,15 +125,14 @@ export function BranchList({
             )}
             {hasUnavailable && !showUnavailable && !query.trim() && (
                 <Button
-                    variant="filling"
+                    variant="inline"
                     color="secondary"
-                    size="xs"
                     fullWidth
-                    contentClassName={styles.revealContent}
+                    className={styles.reveal}
                     onPress={() => setShowUnavailable(true)}
                 >
-                    <ChevronDown aria-hidden="true" />
                     Show unavailable branches
+                    <ChevronDown aria-hidden="true" />
                 </Button>
             )}
             <SwitchReasons model={model} />

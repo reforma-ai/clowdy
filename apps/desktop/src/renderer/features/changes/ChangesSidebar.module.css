@@ -37,11 +37,13 @@
 
 /* The branch facts and commit box sit below the header. */
 .body {
-    display: flex;
     flex: 1;
-    flex-direction: column;
     min-height: 0;
-    overflow-y: auto;
+}
+
+.bodyContent {
+    display: flex;
+    flex-direction: column;
 }
 
 /* Sync and comparison actions, and the pull request or Create PR. */
