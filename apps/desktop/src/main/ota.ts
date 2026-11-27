@@ -66,7 +66,7 @@ const NO_STATE: OtaState = { current: null, previous: null, unconfirmed: false, 
 /** A launch waiting for a bundle: its progress, 0 to 1 once the download begins, and how long it waits. */
 interface Waiting {
     onProgress: (fraction: number) => void;
-    wait: typeof CATCH_UP_MS;
+    wait: { manifest: number; install?: number };
 }
 
 export interface OtaOptions {
@@ -270,7 +270,12 @@ export function createOta(options: OtaOptions) {
         if (!enabled || onTrial) return Promise.resolve(null);
 
         checking ??= (async () => {
-            const version = await installNewer();
+            // The shell release can hold a newer compatible bundle than the OTA feed immediately after an upgrade.
+            // Check it in the background too, so an installed bundle still opens without waiting for the network.
+            const version = await installBest({
+                onProgress: () => undefined,
+                wait: { manifest: (options.catchUpMs ?? CATCH_UP_MS).manifest },
+            });
 
             if (version !== null) {
                 installedVersion = version;
@@ -326,30 +331,41 @@ export function createOta(options: OtaOptions) {
             throw new Error('This app has no update feed or verification key');
 
         const waiting = { onProgress, wait: options.catchUpMs ?? CATCH_UP_MS };
-        const errors: string[] = [];
+        if ((await installBest(waiting)) === null) throw new Error('No compatible bundle is available');
+    }
+
+    /** Try both sources in version order; a failed source never prevents using the other. */
+    async function installBest(waiting: Waiting): Promise<number | null> {
+        const errors: Array<{ source: string; message: string }> = [];
 
         const candidates = await Promise.all(
-            [feed, options.bootstrapFeed].map(async source => {
-                try {
-                    return await candidate(source, waiting);
-                } catch (error) {
-                    errors.push(errorText(error));
-                    return null;
-                }
-            })
+            [feed, options.bootstrapFeed]
+                .filter((source): source is string => Boolean(source))
+                .map(async source => {
+                    try {
+                        return await candidate(source, waiting);
+                    } catch (error) {
+                        errors.push({ source, message: errorText(error) });
+                        return undefined;
+                    }
+                })
         );
 
-        const usable = candidates.filter(item => item !== null).sort((a, b) => b.manifest.version - a.manifest.version);
+        const usable = candidates.filter(item => item != null).sort((a, b) => b.manifest.version - a.manifest.version);
         for (const item of usable) {
             try {
                 await installCandidate(item, waiting);
-                return;
+                return item.manifest.version;
             } catch (error) {
-                errors.push(errorText(error));
+                errors.push({ source: item.source, message: errorText(error) });
             }
         }
 
-        throw new Error(errors.join('; ') || 'No compatible bundle is available');
+        // A healthy current OTA feed is enough when only the supplementary bootstrap is unavailable.
+        if (errors.length && !(candidates[0] === null && errors.every(error => error.source !== feed))) {
+            throw new Error(errors.map(error => error.message).join('; '));
+        }
+        return null;
     }
 
     /**
@@ -369,7 +385,7 @@ export function createOta(options: OtaOptions) {
         });
 
         // Nothing published yet, or the repository is still private.
-        if (response.status === 404) return null;
+        if (response.status === 404) return undefined;
 
         if (!response.ok) throw new Error(`The bundle manifest answered ${response.status}`);
 
@@ -414,7 +430,7 @@ export function createOta(options: OtaOptions) {
         waiting?.onProgress(0);
 
         const response = await options.fetch(`${source}/${name}`, {
-            signal: waiting && AbortSignal.timeout(waiting.wait.install),
+            signal: waiting?.wait.install === undefined ? undefined : AbortSignal.timeout(waiting.wait.install),
         });
 
         if (!response.ok) throw new Error(`${name} answered ${response.status}`);

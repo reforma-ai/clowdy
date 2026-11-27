@@ -321,8 +321,9 @@ describe('check', () => {
         const { ota } = await app.launch();
 
         app.publish(102);
+        app.fetch.mockClear();
         await expect(ota.check()).resolves.toBeNull();
-        expect(app.fetch).toHaveBeenCalledTimes(2);
+        expect(app.fetch).not.toHaveBeenCalled();
     });
 
     test('is off without a feed', async () => {
@@ -343,6 +344,105 @@ describe('check', () => {
         expect(ota.enabled).toBe(false);
         await expect(ota.check()).resolves.toBeNull();
         expect(app.fetch).not.toHaveBeenCalled();
+    });
+});
+
+describe('shell upgrade with a cached bundle', () => {
+    async function upgraded() {
+        await installAndConfirm(machine({ ownVersion: 0, shellVersion: '0.1.2' }), 101);
+        const app = machine({ ownVersion: 0, shellVersion: '0.1.3' });
+        app.publish(101);
+        app.publish(102, { source: BOOTSTRAP });
+        return app;
+    }
+
+    test('opens the cache and installs the newer shell bootstrap for restart', async () => {
+        const app = await upgraded();
+        const { ota, bundle } = await app.launch();
+        expect(bundle.version).toBe(101);
+        await expect(ota.check()).resolves.toBe(102);
+        expect(await app.state()).toMatchObject({ current: 102, previous: 101, unconfirmed: true });
+        expect((await app.launch()).bundle.version).toBe(102);
+    });
+
+    test('selects a newer compatible OTA over the bootstrap', async () => {
+        const app = await upgraded();
+        app.publish(103);
+        const { ota } = await app.launch();
+        await expect(ota.check()).resolves.toBe(103);
+        expect((await app.launch()).bundle.version).toBe(103);
+    });
+
+    test('keeps the cache usable offline and retries the bootstrap on a later check', async () => {
+        const app = await upgraded();
+        const serve = app.fetch.getMockImplementation()!;
+        app.fetch.mockRejectedValue(new Error('offline'));
+        const { ota, bundle } = await app.launch();
+        expect(bundle.version).toBe(101);
+        await expect(ota.check()).rejects.toThrow('offline');
+        expect((await app.launch()).bundle.version).toBe(101);
+        app.fetch.mockImplementation(serve);
+        await expect(ota.check()).resolves.toBe(102);
+    });
+
+    test('uses a newer OTA when the bootstrap is inaccessible', async () => {
+        const app = await upgraded();
+        const serve = app.fetch.getMockImplementation()!;
+        app.publish(103);
+        app.fetch.mockImplementation((url, init) =>
+            url.startsWith(BOOTSTRAP) ? Promise.reject(new Error('unavailable')) : serve(url, init)
+        );
+        const { ota } = await app.launch();
+        await expect(ota.check()).resolves.toBe(103);
+    });
+
+    test('reports no update when the current OTA is healthy and bootstrap is inaccessible', async () => {
+        const app = await upgraded();
+        const serve = app.fetch.getMockImplementation()!;
+        app.fetch.mockImplementation((url, init) =>
+            url.startsWith(BOOTSTRAP) ? Promise.reject(new Error('unavailable')) : serve(url, init)
+        );
+        const { ota } = await app.launch();
+        await expect(ota.check()).resolves.toBeNull();
+        expect((await app.launch()).bundle.version).toBe(101);
+    });
+
+    test('reports a broken OTA even when the bootstrap is already installed', async () => {
+        const app = await upgraded();
+        app.publish(101, { source: BOOTSTRAP });
+        app.publish(103, { key: stranger.privateKey });
+        const { ota } = await app.launch();
+        await expect(ota.check()).rejects.toThrow(/not signed by the release key/);
+    });
+
+    test.each<Publish>([{ minShell: '0.3.0' }, { protocol: 4 }, { key: stranger.privateKey }, { corrupt: true }])(
+        'does not replace the cache with an unusable bootstrap: %o',
+        async invalid => {
+            const app = await upgraded();
+            app.publish(102, { ...invalid, source: BOOTSTRAP });
+            const { ota } = await app.launch();
+            await ota.check().catch(() => null);
+            expect((await app.launch()).bundle.version).toBe(101);
+            expect(app.relaunch).not.toHaveBeenCalled();
+        }
+    );
+
+    test('keeps an interrupted trial until it fails and then rejects it without a restart loop', async () => {
+        const app = await upgraded();
+        await (await app.launch()).ota.check();
+        const interrupted = await app.launch();
+        expect(interrupted.bundle.version).toBe(102);
+        await expect(interrupted.ota.check()).resolves.toBeNull();
+
+        const trial = await app.launch();
+        trial.ota.watchReady();
+        await vi.waitFor(() => expect(app.relaunch).toHaveBeenCalledOnce());
+        const previous = await app.launch();
+        expect(previous.bundle.version).toBe(101);
+        await previous.ota.ready();
+        await expect(previous.ota.check()).resolves.toBeNull();
+        expect((await app.launch()).bundle.version).toBe(101);
+        expect(app.relaunch).toHaveBeenCalledOnce();
     });
 });
 
