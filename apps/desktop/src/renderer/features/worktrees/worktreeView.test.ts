@@ -225,7 +225,7 @@ describe('repositoryGroups', () => {
         worktrees: [],
     });
 
-    it('keeps the groups of repositories, each with its folder, in the order given', () => {
+    it('keeps the groups of all folders, in the order given', () => {
         const folders: ProjectFolder[] = [
             { id: 'a', path: '/a' },
             { id: 'b', path: '/b' },
@@ -239,6 +239,7 @@ describe('repositoryGroups', () => {
             ])
         ).toEqual([
             ['a', '/a'],
+            ['b', '/b'],
             ['c', '/c'],
         ]);
     });

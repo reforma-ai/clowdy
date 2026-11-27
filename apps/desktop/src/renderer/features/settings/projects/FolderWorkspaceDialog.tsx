@@ -12,7 +12,6 @@ import { reaction } from 'mobx';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 
 import { RootStoreProvider } from '../../../stores';
-import { FolderWorktreesList } from '../../worktrees/FolderWorktreesList';
 import styles from './FolderWorkspaceDialog.module.css';
 import { setFolderSettings } from './projectActions';
 import { isWorkspaceSaved, type WorkspaceFields, workspaceFields, workspacePatch } from './projectView';
@@ -26,7 +25,6 @@ export interface FolderWorkspaceDialogProps {
     folderId: FolderId;
     /** The folder's short name among the project's folders, for the heading. */
     name: string;
-    initialTab?: 'settings' | 'worktrees';
 }
 
 interface FolderDraftState {
@@ -35,7 +33,7 @@ interface FolderDraftState {
     saving: boolean;
 }
 
-/** One draft and pending-save state for the lifetime of the modal, across native tab remounts. */
+/** One draft and pending-save state for the lifetime of the modal. */
 function createFolderDraft(initial: FolderDraftState) {
     let state = initial;
     const listeners = new Set<() => void>();
@@ -55,7 +53,7 @@ function createFolderDraft(initial: FolderDraftState) {
 
 type FolderDraft = ReturnType<typeof createFolderDraft>;
 
-/** Opens folder settings and worktrees in one window with native modal tabs. */
+/** Opens the settings of one folder. */
 export function openFolderWorkspace(props: FolderWorkspaceDialogProps): void {
     const folder = props.root.projects
         .find(project => project.id === props.projectId)
@@ -68,48 +66,15 @@ export function openFolderWorkspace(props: FolderWorkspaceDialogProps): void {
 
     openFormDialog({
         width: 540,
-        activeTab: props.initialTab ?? 'settings',
-        tabs: [
-            {
-                id: 'settings',
-                title: 'Settings',
-                component: (
-                    <RootStoreProvider value={props.root}>
-                        <FolderWorkspaceForm {...props} draft={draft} />
-                    </RootStoreProvider>
-                ),
-            },
-            {
-                id: 'worktrees',
-                title: 'Worktrees',
-                component: (
-                    <RootStoreProvider value={props.root}>
-                        <FolderWorktreesTab {...props} draft={draft} />
-                    </RootStoreProvider>
-                ),
-            },
-        ],
+        component: (
+            <RootStoreProvider value={props.root}>
+                <FolderWorkspaceForm {...props} draft={draft} />
+            </RootStoreProvider>
+        ),
     });
 }
 
 type FolderTabProps = FolderWorkspaceDialogProps & { draft: FolderDraft };
-
-function FolderWorktreesTab({ root, projectId, folderId, draft }: FolderTabProps) {
-    const project = root.projects.find(candidate => candidate.id === projectId);
-    const saved = project?.folders.find(candidate => candidate.id === folderId)?.settings;
-    const { fields, folderName, saving } = useSyncExternalStore(draft.subscribe, draft.getSnapshot);
-    const pendingChanges = !isWorkspaceSaved(fields, saved) || folderName.trim() !== (saved?.name ?? '');
-
-    return (
-        <div className={styles.worktrees}>
-            <FolderWorktreesList
-                projectId={projectId}
-                folderId={folderId}
-                pendingChanges={!project?.personal && (pendingChanges || saving)}
-            />
-        </div>
-    );
-}
 
 function FolderWorkspaceForm({ root, projectId, folderId, name, draft }: FolderTabProps) {
     const { modal } = useModalContext();

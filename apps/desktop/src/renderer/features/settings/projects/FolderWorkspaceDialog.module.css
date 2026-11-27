@@ -1,10 +1,5 @@
 @reference '@clowdy/styles/rulesets';
 
-/* The Worktrees tab has the inset of the Settings tab's dialog layout. */
-.worktrees {
-    padding: var(--spacing-20);
-}
-
 /* A script and a list of paths read better in the code face. */
 .code {
     @ruleset typography-text-code-sm;

@@ -92,7 +92,11 @@ export function WorktreeRowSummary({
             color={tidy && mark.label === 'Merged' ? 'accent' : mark.color}
             textValue={mark.label}
             tooltip={tidy ? undefined : mark.tip}
-            icon={tidy ? <MarkIcon className={styles.tidyMarkIcon} aria-hidden="true" /> : undefined}
+            icon={
+                tidy && (mark.label === 'Merged' || mark.label === 'Not merged') ? (
+                    <MarkIcon className={styles.tidyMarkIcon} aria-hidden="true" />
+                ) : undefined
+            }
         >
             {mark.label}
         </Badge>
@@ -240,26 +244,32 @@ export function WorktreeGroup({
             <Text as="h3" id={headingId} variant="heading-5" truncate title={group.name}>
                 {group.name}
             </Text>
-            <ul className={styles.card}>
-                <For each={group.worktrees}>
-                    {worktree => (
-                        <WorktreeRow
-                            key={worktree.path}
-                            projectId={projectId}
-                            group={group}
-                            folder={folder}
-                            worktree={worktree}
-                            {...actions}
-                        />
-                    )}
-                </For>
-                <li>
-                    <button type="button" className={styles.add} onClick={onCreate} disabled={createDisabled}>
-                        <Plus aria-hidden="true" />
-                        New worktree
-                    </button>
-                </li>
-            </ul>
+            {!group.isRepository ? (
+                <Text variant="sm" color="secondary">
+                    This folder is not a git repository
+                </Text>
+            ) : (
+                <ul className={styles.card}>
+                    <For each={group.worktrees}>
+                        {worktree => (
+                            <WorktreeRow
+                                key={worktree.path}
+                                projectId={projectId}
+                                group={group}
+                                folder={folder}
+                                worktree={worktree}
+                                {...actions}
+                            />
+                        )}
+                    </For>
+                    <li>
+                        <button type="button" className={styles.add} onClick={onCreate} disabled={createDisabled}>
+                            <Plus aria-hidden="true" />
+                            New worktree
+                        </button>
+                    </li>
+                </ul>
+            )}
         </section>
     );
 }

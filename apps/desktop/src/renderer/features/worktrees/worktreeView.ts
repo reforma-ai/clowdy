@@ -293,7 +293,7 @@ export function confirmedRemovalDrift(
     return undefined;
 }
 
-/** The groups of the project that are repositories and whose folder is still in the project, each with its folder, in the project's order. */
+/** The folder groups still in the project, including folders that are not repositories. */
 export function repositoryGroups(
     groups: readonly FolderWorktrees[],
     folders: readonly ProjectFolder[]
@@ -301,6 +301,6 @@ export function repositoryGroups(
     return groups.flatMap(group => {
         const folder = folders.find(candidate => candidate.id === group.folderId);
 
-        return group.isRepository && folder ? [{ group, folder }] : [];
+        return folder ? [{ group, folder }] : [];
     });
 }

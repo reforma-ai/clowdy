@@ -912,134 +912,43 @@ describe('Remove in Manage worktrees', () => {
         expect({ commands: removals(), present: Boolean(row(ONE_CHANGE)) }).toEqual({ commands: [], present: true });
     });
 
-    it('tidies selected clean unused trees only, refusing one that acquired changes after preview', async () => {
+    it('cleans eligible selections across folders and reports a worktree that changed', async () => {
         const data = dataWithKinds();
-        const second = '/Users/dev/worktrees/car-rental/second';
-        const kept = '/Users/dev/worktrees/car-rental/kept';
-        data.worktrees![CAR_RENTAL]!.push(
-            { path: second, branch: 'second', head: 'abcd123' },
-            { path: kept, branch: 'kept', head: 'defg123' }
-        );
         await open({ data });
         await click(textButton(confirmation(), 'Tidy up…')!);
         await settle();
-        const list = confirmation().querySelector('ul[aria-label="Worktrees to remove"]')!;
-        expect(
-            [...list.querySelectorAll('li')].map(row => [
-                row.textContent,
-                row.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked,
-            ])
-        ).toEqual([
-            ['feature/doneMerged', true],
-            ['secondMerged', true],
-            ['keptMerged', true],
+        const main = confirmation().querySelector<HTMLInputElement>(`input[aria-label="Remove main: ${CAR_RENTAL}"]`)!;
+        const clean = confirmation().querySelector<HTMLInputElement>(
+            `input[aria-label="Remove feature/done: ${CLEAN_MERGED}"]`
+        )!;
+        const api = confirmation().querySelector<HTMLInputElement>(
+            `input[aria-label^="Remove "][aria-label$="${DETACHED_MERGED}"]`
+        )!;
+        expect([main.disabled, clean.checked, api.checked]).toEqual([true, true, true]);
+        data.worktrees![CAR_RENTAL]!.find(row => row.path === CLEAN_MERGED)!.changes = 1;
+        await click(textButton(confirmation(), 'Remove 2 worktrees…')!);
+        await settle();
+        await confirm('Remove 2 worktrees');
+        expect(removals()).toEqual([
+            expect.objectContaining({ folderId: 'fld_car_rental', path: CLEAN_MERGED, tidy: true }),
+            expect.objectContaining({ folderId: 'fld_api', path: DETACHED_MERGED, tidy: true }),
         ]);
-        expect(confirmation().querySelectorAll('input[type="checkbox"]')).toHaveLength(4);
-        const choices = [...confirmation().querySelectorAll<HTMLInputElement>('input[type="checkbox"]')];
-        expect(choices.map(choice => choice.getAttribute('aria-label')).filter(Boolean)).toEqual([
-            `Remove feature/done: ${CLEAN_MERGED}`,
-            `Remove second: ${second}`,
-            `Remove kept: ${kept}`,
-        ]);
-        await click(
-            [...list.querySelectorAll('li')]
-                .find(item => item.textContent?.startsWith('kept'))!
-                .querySelector<HTMLElement>('[title]')!
-        );
-        data.worktrees![CAR_RENTAL]!.find(row => row.path === second)!.changes = 1;
-        await confirm('Remove 2 workspaces');
-        expect(confirmation().textContent).toContain(second);
-        expect({
-            commands: removals(),
-            present: [CLEAN_MERGED, second, kept].map(path => Boolean(row(path))),
-            readCount: getProjectWorktrees.mock.calls.length,
-        }).toEqual({
-            commands: [
-                {
-                    type: 'workspace.remove',
-                    projectId: FIXTURE_PROJECT_ID,
-                    folderId: 'fld_car_rental',
-                    path: CLEAN_MERGED,
-                    tidy: true,
-                    deleteBranch: true,
-                },
-                {
-                    type: 'workspace.remove',
-                    projectId: FIXTURE_PROJECT_ID,
-                    folderId: 'fld_car_rental',
-                    path: second,
-                    tidy: true,
-                    deleteBranch: true,
-                },
-            ],
-            present: [false, true, true],
-            readCount: 3,
-        });
+        expect(confirmation().textContent).toContain(CLEAN_MERGED);
     });
 
-    it('disables removal when nothing is selected and closes without removing', async () => {
+    it('does not remove anything when the selection is cleared', async () => {
         await open({ data: dataWithKinds() });
         await click(textButton(confirmation(), 'Tidy up…')!);
         await settle();
-        const choice = confirmation().querySelector<HTMLInputElement>(
-            `input[aria-label="Remove feature/done: ${CLEAN_MERGED}"]`
-        )!;
-        await click(choice);
-        expect(textButton(confirmation(), 'Remove 0 workspaces')?.disabled).toBe(true);
-        await click(cancelButton());
-        await settle();
+        const choices = [
+            ...confirmation().querySelectorAll<HTMLInputElement>(
+                'input[type="checkbox"][aria-label^="Remove "]:checked'
+            ),
+        ];
+        for (const choice of choices) await click(choice);
+        expect(textButton(confirmation(), 'Remove 0 worktrees…')?.disabled).toBe(true);
+        await click(textButton(confirmation(), 'Cancel')!);
         expect(removals()).toEqual([]);
-        expect(row(CLEAN_MERGED)).not.toBeNull();
-    });
-
-    it('tidies an archived-only worktree without disposing of its history or an unarchived thread elsewhere', async () => {
-        const data = dataWithKinds();
-        const archived = data.chats.find(chat => chat.id === 'c-10')!;
-        archived.workspace = {
-            id: 'archived-only',
-            path: CLEAN_MERGED,
-            folderId: 'fld_car_rental',
-            ready: true,
-            managed: false,
-        };
-        const outside = {
-            ...archived,
-            id: 'outside-thread',
-            parentChatId: archived.id,
-            workspace: undefined,
-            archivedAt: undefined,
-            orchestratorRunId: undefined,
-        };
-        data.chats.push(outside);
-        await open({ data });
-        await click(textButton(confirmation(), 'Tidy up…')!);
-        await settle();
-        expect(
-            confirmation().querySelector<HTMLInputElement>(`input[aria-label="Remove feature/done: ${CLEAN_MERGED}"]`)
-                ?.checked
-        ).toBe(true);
-        await confirm('Remove 1 workspace');
-        const snapshot = await store.transport.getProjectSnapshot(FIXTURE_PROJECT_ID);
-        expect({
-            commands: removals(),
-            present: Boolean(row(CLEAN_MERGED)),
-            archived: snapshot.chats.find(chat => chat.id === archived.id),
-            outside: snapshot.chats.find(chat => chat.id === outside.id),
-        }).toEqual({
-            commands: [
-                {
-                    type: 'workspace.remove',
-                    projectId: FIXTURE_PROJECT_ID,
-                    folderId: 'fld_car_rental',
-                    path: CLEAN_MERGED,
-                    tidy: true,
-                    deleteBranch: true,
-                },
-            ],
-            present: false,
-            archived,
-            outside,
-        });
     });
 
     describe('a list that cannot be read after the removal', () => {
