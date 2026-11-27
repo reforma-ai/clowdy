@@ -169,7 +169,6 @@ export interface SpawnInput {
     branch?: string;
 }
 
-/** What `spawn` gives back: the thread, and for one with a worktree of its own where it is and the branch to merge when it is done. */
 /** What a thread's own worktree is checked against, read before `spawn`'s transaction (`ThreadService.readStart`). */
 interface ThreadStart {
     repository: RepositoryFacts;
@@ -177,6 +176,7 @@ interface ThreadStart {
     worktreeHead?: Head;
 }
 
+/** What `spawn` gives back: the thread, and for one with a worktree of its own where it is and the branch to merge when it is done. */
 export interface Spawned {
     threadId: string;
     title: string;

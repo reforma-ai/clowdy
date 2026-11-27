@@ -300,7 +300,8 @@ export interface Head {
 
 /**
  * What a new worktree is checked against in the repository of a folder, read before the transaction that writes its row, so that no git runs inside it
- * (`readRepository`; a thread's spawn reads it so). A read that fails reads as nothing: not a root, no HEAD, no branch, which the checks refuse.
+ * (`readRepository`; a thread's spawn reads it so). A read that fails reads as nothing: not a root, no HEAD, no branch, which the checks refuse. A git that
+ * does not answer while the base is read is `unavailable` instead (`baseOf`).
  */
 export interface RepositoryFacts {
     /** The folder that was read. */
@@ -308,24 +309,16 @@ export interface RepositoryFacts {
     /** Whether the folder is the root of a working tree: a worktree is made of the whole repository, so a folder inside one has none of its own. */
     root: boolean;
     head?: Head;
-    /** The branches, local (`refs/heads/…`) and the remotes' (`refs/remotes/…`), by ref, with their commits. */
-    refs: ReadonlyMap<string, string>;
+    /** The branches by ref, local (`refs/heads/…`) and the remotes' (`refs/remotes/…`). */
+    refs: ReadonlySet<string>;
     /** The base of a worktree whose choice names none, as `baseOf` says it. */
     base?: string;
 }
 
-/** `for-each-ref --format='%(objectname) %(refname)'` as refs and their commits (a ref name has no space). */
-function parseRefs(output: string): Map<string, string> {
-    return new Map(
-        output.split('\n').flatMap(line => {
-            const space = line.indexOf(' ');
+const REFS_FORMAT = ['for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes'];
 
-            return space > 0 ? [[line.slice(space + 1), line.slice(0, space)] as const] : [];
-        })
-    );
-}
-
-const REFS_FORMAT = ['for-each-ref', '--format=%(objectname) %(refname)', 'refs/heads', 'refs/remotes'];
+/** The refs `REFS_FORMAT` lists. */
+const parseRefs = (output: string): Set<string> => new Set(output.split('\n').filter(ref => ref !== ''));
 
 /** Where the checkout at `path` has HEAD, read with the async git: nothing when it has no commit or git does not answer. */
 async function readHead(path: string): Promise<Head | undefined> {
@@ -409,9 +402,10 @@ function headOf(folder: string): Head | undefined {
 /** `readRepository`, read synchronously: the base by the same rule as `baseOf` (`pickBase`), the default read only when it is needed. */
 function readRepositorySync(folder: ProjectFolder): RepositoryFacts {
     const listed = readGit(folder.path, REFS_FORMAT);
-    const refs = parseRefs(listed.ok ? listed.stdout : '');
+    const output = listed.ok ? listed.stdout : '';
+    const refs = parseRefs(output);
     const head = headOf(folder.path);
-    const branches = parseBranches([...refs.keys()].join('\n'));
+    const branches = parseBranches(output);
     const base = pickBase(folder.settings?.baseBranch, branches, () => {
         const remoteHead = readGit(folder.path, ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD']);
 
@@ -784,7 +778,7 @@ function branchTaken(
 ): boolean {
     return (
         refs.has(`refs/heads/${branch}`) ||
-        [...refs.keys()].some(ref => ref.startsWith(`refs/heads/${branch}/`)) ||
+        [...refs].some(ref => ref.startsWith(`refs/heads/${branch}/`)) ||
         listWorkspacesOfProject(store.db, project.id).some(
             record =>
                 record.folderId === folder.id &&
