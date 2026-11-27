@@ -92,8 +92,9 @@ async function setup(
     const folder = project.folders[0];
     const chatOf = (chatId: string) => getChat(store.db, chatId) as Chat;
     const runOf = (chatId: string) => h.run(chatOf(chatId).orchestratorRunId as string);
-    const make = (workspace: unknown): Chat =>
-        (h.ok('chat.create', { projectId: project.id, folderId: folder.id, workspace }) as { chat: Chat }).chat;
+    const make = async (workspace: unknown): Promise<Chat> =>
+        ((await h.okAsync('chat.create', { projectId: project.id, folderId: folder.id, workspace })) as { chat: Chat })
+            .chat;
     const send = async (chat: Chat, text: string, until: Run['status'] = 'succeeded') => {
         const before = chatOf(chat.id).orchestratorRunId === undefined ? undefined : runOf(chat.id).finishedAt;
 
@@ -108,7 +109,7 @@ async function setup(
     };
     /** A chat on a new worktree whose first turn has made it. */
     const start = async (): Promise<Chat> => {
-        const chat = make({ mode: 'new' });
+        const chat = await make({ mode: 'new' });
 
         await send(chat, 'Start');
 
@@ -603,8 +604,8 @@ describe('workspace.remove', () => {
         test('a worktree is blocked by unarchived chats but can be removed with archived chats still linked', async () => {
             const { h, store, found, make, remove, refusal, rows } = await setup();
             const path = found('in-use');
-            const chat = make({ mode: 'existing', path });
-            const second = make({ mode: 'existing', path });
+            const chat = await make({ mode: 'existing', path });
+            const second = await make({ mode: 'existing', path });
             const works = { code: 'conflict', message: 'The chat "Fix the cart" works in this worktree' };
 
             h.ok('chat.rename', { chatId: chat.id, title: 'Fix the cart' });
@@ -654,7 +655,7 @@ describe('workspace.remove', () => {
             const used = found('used');
 
             git(repo, 'worktree', 'lock', locked);
-            make({ mode: 'existing', path: used });
+            await make({ mode: 'existing', path: used });
 
             const [group] = await worktrees();
             const verdicts = await Promise.all(
@@ -830,7 +831,7 @@ describe('workspace.remove', () => {
             const locked = found('gone-locked');
             const used = found('gone-used');
 
-            make({ mode: 'existing', path: used });
+            await make({ mode: 'existing', path: used });
             git(repo, 'worktree', 'lock', locked);
             rmSync(locked, { recursive: true });
             rmSync(used, { recursive: true });
@@ -962,7 +963,7 @@ describe('workspace.remove', () => {
             // The removal takes its place on the line before the chat that picks the worktree starts its turn.
             await new Promise(resolve => setTimeout(resolve, 100));
 
-            const chat = make({ mode: 'existing', path });
+            const chat = await make({ mode: 'existing', path });
 
             expect(chat.workspace!.id).toBe(workspace.id);
 
@@ -1006,7 +1007,7 @@ describe('workspace.remove', () => {
             expect(await removing).toMatchObject({ ok: true, data: { branchDeleted: true } });
             expect(isBeingRemoved(store, workspace.id)).toBe(false);
             expect(existsSync(path)).toBe(false);
-            expect(() => make({ mode: 'existing', path })).toThrow('is not a worktree of this repository');
+            await expect(make({ mode: 'existing', path })).rejects.toThrow('is not a worktree of this repository');
         });
     });
 });
@@ -1018,14 +1019,14 @@ describe('explicit worktree disposition', () => {
             const { h, store, project, repo, start, make, found, send, remove, chatOf, hasBranch } = await setup();
             const root = await start();
             const path = root.workspace!.path;
-            const shared = make({ mode: 'existing', path });
+            const shared = await make({ mode: 'existing', path });
             const descendant = createChat(store, {
                 projectId: project.id,
                 parentChatId: root.id,
                 workspaceId: root.workspace!.id,
             });
             const otherPath = found('other-tree');
-            const unrelated = make({ mode: 'existing', path: otherPath });
+            const unrelated = await make({ mode: 'existing', path: otherPath });
             const remoteThread = createChat(store, {
                 projectId: project.id,
                 parentChatId: descendant.id,
@@ -1102,7 +1103,7 @@ describe('explicit worktree disposition', () => {
             const { h, store, project, start, found, make, runOf, remove, chatOf } = await setup({ script });
             const chat = await start();
             const otherPath = found('active-other');
-            const other = make({ mode: 'existing', path: otherPath });
+            const other = await make({ mode: 'existing', path: otherPath });
             const thread = createChat(store, {
                 projectId: project.id,
                 parentChatId: chat.id,
@@ -1217,7 +1218,7 @@ describe('explicit worktree disposition', () => {
                 error: { code: 'conflict' },
             });
             expect(
-                h.send('chat.create', { projectId: project.id, workspace: { mode: 'existing', path } })
+                await h.sendAsync('chat.create', { projectId: project.id, workspace: { mode: 'existing', path } })
             ).toMatchObject({ ok: false, error: { code: 'conflict' } });
         } finally {
             writeFileSync(join(bin, 'go'), '');
@@ -1234,7 +1235,7 @@ describe('explicit worktree disposition', () => {
     test('refuses stale preview IDs, including descendants, without disposing of any chat', async () => {
         const { store, project, found, make, remove, chatOf } = await setup();
         const path = found('stale-preview');
-        const original = make({ mode: 'existing', path });
+        const original = await make({ mode: 'existing', path });
         const late = createChat(store, { projectId: project.id, parentChatId: original.id });
         expect(await remove(path, { chatDisposition: 'delete', expectedChatIds: [original.id] })).toMatchObject({
             ok: false,
@@ -1253,7 +1254,10 @@ describe('explicit worktree disposition', () => {
         const { project: other } = h.ok('project.add', { name: 'Other', folders: [repo, secondFolder] }) as {
             project: Project;
         };
-        const { chat } = h.ok('chat.create', { projectId: other.id, workspace: { mode: 'existing', path } }) as {
+        const { chat } = (await h.okAsync('chat.create', {
+            projectId: other.id,
+            workspace: { mode: 'existing', path },
+        })) as {
             chat: Chat;
         };
         h.ok('chat.setArchived', { chatId: chat.id, archived: true });
@@ -1305,11 +1309,11 @@ describe('explicit worktree disposition', () => {
     test('a chat attached after disposition starts is not silently archived or deleted', async () => {
         const { store, found, make, remove, chatOf } = await setup();
         const path = found('contested-disposition');
-        const original = make({ mode: 'existing', path });
+        const original = await make({ mode: 'existing', path });
         const gate = latch();
         const holding = exclusive(store, pathKey(original.workspace!.path), undefined, () => gate.wait());
         const removing = remove(path, { chatDisposition: 'delete' });
-        const late = make({ mode: 'existing', path });
+        const late = await make({ mode: 'existing', path });
         gate.release();
         await holding;
         expect(await removing).toMatchObject({ ok: false, error: { code: 'conflict' } });
@@ -1325,7 +1329,7 @@ describe('tidy removal', () => {
     test('removes only a merged clean unused tree and keeps archived history', async () => {
         const { h, found, make, remove, chatOf, hasBranch } = await setup();
         const path = found('tidy');
-        const chat = make({ mode: 'existing', path });
+        const chat = await make({ mode: 'existing', path });
         h.ok('chat.setArchived', { chatId: chat.id, archived: true });
         const before = chatOf(chat.id);
         expect(await remove(path, { tidy: true, deleteBranch: true })).toMatchObject({
@@ -1377,7 +1381,7 @@ describe('tidy removal', () => {
         const gate = latch();
         const holding = exclusive(store, pathKey(workspace.path), undefined, () => gate.wait());
         const removing = remove(path, { tidy: true });
-        const chat = make({ mode: 'existing', path });
+        const chat = await make({ mode: 'existing', path });
         gate.release();
         await holding;
         expect(await removing).toMatchObject({ ok: false, error: { code: 'conflict' } });
@@ -1401,7 +1405,7 @@ describe('tidy removal', () => {
         git(repo, 'worktree', 'lock', path);
         expect(await remove(path, { tidy: true })).toMatchObject({ ok: false, error: { code: 'conflict' } });
         git(repo, 'worktree', 'unlock', path);
-        make({ mode: 'existing', path });
+        await make({ mode: 'existing', path });
         expect(await remove(path, { tidy: true })).toMatchObject({ ok: false, error: { code: 'conflict' } });
         const missing = found('tidy-missing');
         rmSync(missing, { recursive: true });

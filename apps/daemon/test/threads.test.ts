@@ -9,7 +9,7 @@ import { getProject } from '../src/db/projects';
 import { getRunWork } from '../src/db/runs';
 import { chatsOfWorkspace, getWorkspace, listWorkspacesOfProject, updateWorkspace } from '../src/db/workspaces';
 import { createChat } from '../src/domain/chats';
-import { WORKSPACE_TOOL } from '../src/domain/workspaces';
+import { readRepository, WORKSPACE_TOOL } from '../src/domain/workspaces';
 import { clipOutput } from '../src/runs/threads';
 import { clip } from '../src/runs/tool-kit';
 import { toolsFor } from '../src/runs/tools';
@@ -133,7 +133,7 @@ async function setup(overrides: Parameters<typeof startHarness>[0] = {}) {
 
     /** A chat the person starts with `text`, whose first turn holds until `gate` is released; resolves once it runs. */
     const root = async (text: string, gate: Latch, fields: Record<string, unknown> = {}) => {
-        const { chat } = h.ok('chat.create', { projectId: project.id, ...fields }) as { chat: Chat };
+        const { chat } = (await h.okAsync('chat.create', { projectId: project.id, ...fields })) as { chat: Chat };
 
         on(text, held(gate));
         h.ok('chat.send', { chatId: chat.id, text });
@@ -2332,6 +2332,9 @@ describe('thread_spawn with a worktree', () => {
                 parentChatId: parent.chat.id,
                 folderId: mine.folderId,
                 workspace: { mode: 'new', branchPrefix: 'max/threads' },
+                repository: await readRepository(
+                    getProject(store.db, project.id)!.folders.find(folder => folder.id === mine.folderId)!
+                ),
             },
             h.config
         );
