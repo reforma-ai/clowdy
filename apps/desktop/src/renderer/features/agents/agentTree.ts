@@ -109,6 +109,29 @@ export function isActiveThread(chat: Chat, runs: ReadonlyMap<RunId, Run>): boole
 }
 
 /**
+ * How many agents work inside a chat, for the count at the end of its row: each thread below it (`threads`, at any depth) whose orchestrator is not over, and each
+ * native sub-agent not over that the chat's orchestrator or one of those threads started, at any depth. The chat's own orchestrator is not counted, so the count
+ * is the same whether the chat works itself or not. Put-away threads and sub-agents are left out, as the list leaves them out.
+ */
+export function agentsWorkingInside(
+    chat: Chat,
+    threads: readonly Chat[],
+    runs: ReadonlyMap<RunId, Run>,
+    agentsOf: (chat: Chat) => readonly Run[]
+): number {
+    const subagentsOf = (owner: Chat) =>
+        agentsOf(owner).filter(run => run.archivedAt === undefined && isRunActive(run)).length;
+
+    return threads.reduce(
+        (count, thread) =>
+            thread.archivedAt === undefined
+                ? count + (isActiveThread(thread, runs) ? 1 : 0) + subagentsOf(thread)
+                : count,
+        subagentsOf(chat)
+    );
+}
+
+/**
  * The sub-agents the daemon will not archive now: each one that works, and each one that started a sub-agent that does, at any depth. The list offers no Archive on
  * them, as it offers none on a chat whose agents work.
  */

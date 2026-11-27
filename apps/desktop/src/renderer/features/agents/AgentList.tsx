@@ -60,6 +60,7 @@ import {
     type AgentSelection,
     agentGroups,
     agentRows,
+    agentsWorkingInside,
     ancestorChats,
     asksThePerson,
     busySubagents,
@@ -552,6 +553,8 @@ export function AgentList({
             : below.some(thread => isActiveThread(thread, project.runs))
               ? ('working' as const)
               : undefined;
+        // Everything that works inside the chat, whether its row is folded or not and whether the chat works itself: the dot says that something does, this says how many.
+        const agentsInside = agentsWorkingInside(chat, below, project.runs, agentsOf);
         const draft = messageOf(draftOf(chat.id)) !== '' || filesOf(chat.id).length > 0;
         const unread = ui.hasUnreadCompletion(run);
         const showPullRequests = chatDotTone(run, threads, draft, unread) === undefined;
@@ -600,6 +603,7 @@ export function AgentList({
                             chat={chat}
                             actions={actions}
                             busy={busy}
+                            agentsInside={agentsInside}
                             status={status}
                             showPullRequests={showPullRequests}
                             crossWorktree={
@@ -825,6 +829,7 @@ function RowEnd({
     chat,
     actions,
     busy,
+    agentsInside,
     status,
     isOpen,
     onOpenChange,
@@ -835,6 +840,8 @@ function RowEnd({
     chat: Chat;
     actions: ChatActions;
     busy: string | undefined;
+    /** How many agents work inside the chat (`agentsWorkingInside`); none draws nothing. */
+    agentsInside: number;
     status: ReactNode;
     isOpen: boolean;
     onOpenChange: (isOpen: boolean) => void;
@@ -847,6 +854,14 @@ function RowEnd({
     return (
         // The buttons and the popover are React children of the row, so their clicks and keys would reach the row through the tree.
         <span className={styles.chatActions} {...ownEvents}>
+            {agentsInside > 0 && (
+                <span
+                    className={styles.agentsInside}
+                    title={`${agentsInside} ${agentsInside === 1 ? 'agent works' : 'agents work'} inside`}
+                >
+                    {agentsInside} {agentsInside === 1 ? 'agent' : 'agents'}
+                </span>
+            )}
             {status}
             <BranchPullRequestBadge branchKey={branchKey} visible={showPullRequests} crossWorktree={crossWorktree} />
             {!busy && (
