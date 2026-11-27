@@ -77,6 +77,8 @@ interface StoredProjectUi {
     collapsedFolders: FolderId[];
     groupByWorktree: boolean;
     worktreeOrder: string[];
+    worktreeCreations?: Record<string, { time: number; chatId: ChatId }>;
+    worktreeMoves?: string[];
     collapsedWorktrees: string[];
     agentsFoldedByChat: Record<ChatId, boolean>;
     sidePanelOpen: boolean;
@@ -199,6 +201,8 @@ export class ProjectUi {
     collapsedFolders: readonly FolderId[] = [];
     groupByWorktree = true;
     worktreeOrder: readonly string[] = [];
+    worktreeCreations: Readonly<Record<string, { time: number; chatId: ChatId }>> = {};
+    worktreeMoves: readonly string[] = [];
     collapsedWorktrees: readonly string[] = [];
     /** The side panel at the right of the window is open for this project. Closed until the person opens it, and kept for the project, whichever chat is on show. */
     sidePanelOpen = false;
@@ -295,6 +299,22 @@ export class ProjectUi {
             const strings = (value: unknown): string[] =>
                 Array.isArray(value) ? [...new Set(value.filter(id => typeof id === 'string'))] : [];
             this.worktreeOrder = strings(stored.worktreeOrder);
+            this.worktreeMoves = strings(stored.worktreeMoves);
+            if (
+                stored.worktreeCreations &&
+                typeof stored.worktreeCreations === 'object' &&
+                !Array.isArray(stored.worktreeCreations)
+            )
+                this.worktreeCreations = Object.fromEntries(
+                    Object.entries(stored.worktreeCreations).filter(
+                        ([, value]) =>
+                            value &&
+                            typeof value === 'object' &&
+                            typeof value.time === 'number' &&
+                            Number.isFinite(value.time) &&
+                            typeof value.chatId === 'string'
+                    )
+                );
             this.collapsedWorktrees = strings(stored.collapsedWorktrees);
             // A project-wide choice from an older version cannot identify which chat was opened.
             if (
@@ -333,6 +353,8 @@ export class ProjectUi {
             chatOrder: observableRef,
             collapsedFolders: observableRef,
             worktreeOrder: observableRef,
+            worktreeCreations: observableRef,
+            worktreeMoves: observableRef,
             collapsedWorktrees: observableRef,
             tasksCollapsed: observableRef,
         });
@@ -347,6 +369,8 @@ export class ProjectUi {
                 collapsedFolders: [...this.collapsedFolders],
                 groupByWorktree: this.groupByWorktree,
                 worktreeOrder: [...this.worktreeOrder],
+                worktreeCreations: { ...this.worktreeCreations },
+                worktreeMoves: [...this.worktreeMoves],
                 collapsedWorktrees: [...this.collapsedWorktrees],
                 agentsFoldedByChat: Object.fromEntries(this.#agentsFoldedByChat),
                 sidePanelOpen: this.sidePanelOpen,
@@ -609,6 +633,43 @@ export class ProjectUi {
     }
 
     setWorktreeOrder(order: readonly string[]): void {
+        this.worktreeOrder = order;
+    }
+
+    markWorktreesMoved(keys: readonly string[]): void {
+        this.worktreeMoves = [...new Set([...this.worktreeMoves, ...keys])];
+    }
+
+    placeNewWorktree(folderId: FolderId, keys: readonly string[], createdAt: number, chatId: ChatId): void {
+        const unique = [...new Set(keys)];
+        const order = [...this.worktreeOrder];
+        const existing = order.findIndex(key => unique.includes(key));
+        const preserve = unique.some(key => this.worktreeMoves.includes(key) || this.worktreeCreations[key]);
+        if (existing >= 0 && preserve) {
+            order.splice(existing + 1, 0, ...unique.filter(key => !order.includes(key)));
+        } else {
+            for (const key of unique) {
+                const index = order.indexOf(key);
+                if (index >= 0) order.splice(index, 1);
+            }
+            const prefix = `@worktree:${encodeURIComponent(folderId)}:`;
+            let insertAt = 0;
+            order.forEach((key, index) => {
+                const prior = this.worktreeCreations[key];
+                if (
+                    key.startsWith(prefix) &&
+                    prior &&
+                    (prior.time > createdAt || (prior.time === createdAt && prior.chatId > chatId))
+                )
+                    insertAt = index + 1;
+            });
+            order.splice(insertAt, 0, ...unique);
+        }
+        this.worktreeCreations = {
+            ...this.worktreeCreations,
+            ...Object.fromEntries(unique.map(key => [key, { time: createdAt, chatId }])),
+        };
+        this.worktreeMoves = this.worktreeMoves.filter(key => !unique.includes(key));
         this.worktreeOrder = order;
     }
 

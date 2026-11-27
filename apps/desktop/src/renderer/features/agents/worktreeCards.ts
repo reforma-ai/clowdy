@@ -39,6 +39,12 @@ export interface WorktreeCard {
     workspace?: ChatWorkspace;
     actual?: WorktreeInfo;
     group?: FolderWorktrees;
+    orderAliases?: string[];
+}
+
+/** A pending workspace path may differ from the canonical path reported by Git. */
+export function worktreeRank(card: WorktreeCard, rank: ReadonlyMap<string, number>): number {
+    return Math.min(...[card.key, ...(card.orderAliases ?? [])].map(key => rank.get(key) ?? Infinity));
 }
 
 /** Actual Git worktrees supply the list; active chat workspace records keep pending and missing places visible. Threads never become roots of a card. */
@@ -89,12 +95,15 @@ export function worktreeCards(
 
     for (const chat of chats) {
         const workspace = chat.workspace;
-        if (!workspace || chat.archivedAt !== undefined) continue;
+        if (!workspace) continue;
         const folder =
             folders.find(candidate => candidate.id === workspace.folderId) ?? folderById(folders, chat.folderId);
         const key = keysByWorkspace.get(workspace.id) ?? worktreeKey(workspace.folderId, workspace.path);
         keysByWorkspace.set(workspace.id, key);
         const card = cards.get(key) ?? { ...make(folder, workspace.path), key };
+        const alias = worktreeKey(workspace.folderId, workspace.path);
+        if (key !== alias) card.orderAliases = [...(card.orderAliases ?? []), alias];
+        if (chat.archivedAt !== undefined) continue;
         const state = info?.workspaces?.find(candidate => candidate.workspaceId === workspace.id);
         card.workspace = workspace;
         card.used = true;
@@ -114,5 +123,5 @@ export function worktreeCards(
     }
 
     const rank = new Map(order.map((key, index) => [key, index]));
-    return [...cards.values()].sort((a, b) => (rank.get(a.key) ?? Infinity) - (rank.get(b.key) ?? Infinity));
+    return [...cards.values()].sort((a, b) => worktreeRank(a, rank) - worktreeRank(b, rank));
 }

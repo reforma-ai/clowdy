@@ -83,6 +83,18 @@ describe('worktree cards', () => {
         expect(chatWorktreeKey(root, cards)).toBe(worktreeKey('main', '/private/var/tree'));
     });
 
+    it('keeps a newly ordered pending workspace in place when Git reports a canonical path', () => {
+        const root = chat('root', { workspace: workspace('/var/tree') });
+        const read = [
+            {
+                ...actual[0],
+                worktrees: [tree('/older'), tree('/private/var/tree', { workspaceId: root.workspace!.id })],
+            },
+        ];
+        const cards = worktreeCards([root], [root], folders, read, undefined, [worktreeKey('main', '/var/tree')]);
+        expect(cards.map(card => card.path)).toEqual(['/private/var/tree', '/older']);
+    });
+
     it('retains a root whose workspace folder no longer exists in its surviving folder', () => {
         const root = chat('root', { folderId: 'api', workspace: workspace('/lost', true, 'removed') });
         const cards = worktreeCards([root], [root], folders, [], undefined, []);

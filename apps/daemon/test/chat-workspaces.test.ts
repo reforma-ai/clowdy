@@ -193,6 +193,57 @@ async function setup(options: { origin?: boolean; canFork?: boolean; script?: Sc
 }
 
 describe('chat.create with a workspace', () => {
+    test('returns canonical paths for simultaneous new worktrees before they exist', async () => {
+        const root = tempDir('worktree-order-path');
+        const target = join(root, 'actual');
+        const link = join(root, 'link');
+        mkdirSync(target);
+        symlinkSync(target, link, 'dir');
+        const h = await startHarness({ workspacesDir: join(link, 'workspaces') });
+        harnesses.push(h);
+        const repo = makeRepo(root, 'repo');
+        const { project } = h.ok('project.add', { folders: [repo] }) as { project: Project };
+        const [first, second] = (await Promise.all([
+            h.okAsync('chat.create', { projectId: project.id, workspace: { mode: 'new' } }),
+            h.okAsync('chat.create', { projectId: project.id, workspace: { mode: 'new' } }),
+        ])) as [{ chat: Chat; workspaceOrderPath: string }, { chat: Chat; workspaceOrderPath: string }];
+        expect(first.chat.workspace!.path).not.toBe(second.chat.workspace!.path);
+        expect([first.workspaceOrderPath, second.workspaceOrderPath]).toEqual([
+            placeOf(first.chat.workspace!.path),
+            placeOf(second.chat.workspace!.path),
+        ]);
+        expect(first.workspaceOrderPath).not.toBe(first.chat.workspace!.path);
+        expect(existsSync(first.workspaceOrderPath)).toBe(false);
+    });
+
+    test('the canonical creation path identifies a worktree after its last chat is deleted', async () => {
+        const root = tempDir('worktree-order-delete');
+        const target = join(root, 'actual');
+        const link = join(root, 'link');
+        mkdirSync(target);
+        symlinkSync(target, link, 'dir');
+        const h = await startHarness(
+            { workspacesDir: join(link, 'workspaces') },
+            { engines: scriptEngines(new ScriptEngine(finishing)) }
+        );
+        harnesses.push(h);
+        const repo = makeRepo(root, 'repo');
+        const { project } = h.ok('project.add', { folders: [repo] }) as { project: Project };
+        const { chat, workspaceOrderPath } = (await h.okAsync('chat.create', {
+            projectId: project.id,
+            workspace: { mode: 'new' },
+        })) as { chat: Chat; workspaceOrderPath: string };
+        h.ok('chat.send', { chatId: chat.id, text: 'Start' });
+        await waitFor(() => {
+            const runId = getChat(h.store.db, chat.id)?.orchestratorRunId;
+            return runId && h.run(runId).status === 'succeeded';
+        }, 'the worktree to be prepared');
+        h.ok('chat.delete', { chatId: chat.id });
+        const response = await h.fetch(`/v1/projects/${project.id}/worktrees`);
+        const groups = (await response.json()) as import('@clowdy/protocol').FolderWorktrees[];
+        expect(groups[0].worktrees.map(tree => tree.path)).toContain(workspaceOrderPath);
+        expect(getWorkspace(h.store.db, chat.workspace!.id)).toBeUndefined();
+    });
     test("records a new worktree under the workspaces folder on a branch of the chat's own, pins the chat to its folder, and makes nothing on the disk", async () => {
         const { h, project, folder, chatOf, make } = await setup();
         const chat = await make({ mode: 'new' });
