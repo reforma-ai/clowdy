@@ -1,0 +1,26 @@
+.row {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xl);
+}
+
+.body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+    min-width: 0;
+}
+
+.heading {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+.recovery {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+    overflow-wrap: anywhere;
+}

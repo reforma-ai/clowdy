@@ -26,7 +26,10 @@ export function ProviderCard({ agent }: { agent: AgentInfo }) {
     const installed = agent.status !== 'missing' && agent.status !== 'needs-runtime';
     const isOn = agent.enabled && installed;
     const usage = isOn ? agent.usage : undefined;
-    const settings = agent.settings?.filter(setting => setting.id !== COMMIT_MESSAGE_SETTING_ID) ?? [];
+    const settings =
+        agent.settings?.filter(
+            setting => ![COMMIT_MESSAGE_SETTING_ID, 'subagents', 'promptSuggestions'].includes(setting.id)
+        ) ?? [];
 
     return (
         <SettingsCard as="section" divided aria-label={agent.name}>
@@ -37,7 +40,7 @@ export function ProviderCard({ agent }: { agent: AgentInfo }) {
 
                 <div className={styles.who}>
                     <header className={styles.title}>
-                        <Text weight="medium" truncate title={agent.name}>
+                        <Text variant="md" weight="medium" truncate title={agent.name}>
                             {agent.name}
                         </Text>
                         {agent.version && (

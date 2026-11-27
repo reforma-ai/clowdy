@@ -67,11 +67,29 @@ describe('SettingsSection', () => {
         );
 
         const section = container.querySelector('section[aria-label="Git"]')!;
+        const [caption, card] = section.children;
 
-        expect(section.querySelector('h2')?.textContent).toBe('Git');
-        expect(section.textContent).toContain('Where it lives.');
-        expect(section.textContent).toContain('2');
-        expect(section.textContent).toContain('card');
+        expect(section.children).toHaveLength(2);
+        expect(caption?.querySelector('h2')?.textContent).toBe('Git');
+        expect(caption?.firstElementChild?.textContent).toBe('Git2');
+        expect(caption?.lastElementChild?.textContent).toBe('Where it lives.');
+        expect(card?.textContent).toBe('card');
+    });
+
+    it('has only the heading in its caption without a description', () => {
+        draw(
+            <SettingsSection title="Theme">
+                <SettingsCard>card</SettingsCard>
+            </SettingsSection>
+        );
+
+        const section = container.querySelector('section[aria-label="Theme"]')!;
+        const [caption, card] = section.children;
+
+        expect(section.children).toHaveLength(2);
+        expect(caption?.children).toHaveLength(1);
+        expect(caption?.querySelector('h2')?.textContent).toBe('Theme');
+        expect(card?.textContent).toBe('card');
     });
 });
 

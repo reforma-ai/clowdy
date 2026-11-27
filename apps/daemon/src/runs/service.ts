@@ -88,6 +88,7 @@ export interface NewRun {
 
 export interface StatusOptions {
     reason?: string;
+    usageLimitUntil?: number;
     result?: string;
     error?: string;
     /** Why a failed run failed, as the engine classed it (`Run.failureCode`). */
@@ -151,7 +152,7 @@ export class RunService {
             config,
             this.limits,
             runId => this.setStatus(runId, 'running'),
-            (runId, reason) => this.setStatus(runId, 'queued', { reason })
+            (runId, reason, usageLimitUntil) => this.setStatus(runId, 'queued', { reason, usageLimitUntil })
         );
     }
 
@@ -274,7 +275,11 @@ export class RunService {
             const run = this.require(runId);
             const reason = options.reason ?? (status === 'queued' ? QUEUE_REASON : undefined);
 
-            if (run.status === status && run.statusReason === reason) {
+            if (
+                run.status === status &&
+                run.statusReason === reason &&
+                run.usageLimitUntil === options.usageLimitUntil
+            ) {
                 return run;
             }
 
@@ -293,6 +298,12 @@ export class RunService {
                 next.statusReason = reason;
             } else {
                 delete next.statusReason;
+            }
+
+            if (options.usageLimitUntil !== undefined) {
+                next.usageLimitUntil = options.usageLimitUntil;
+            } else {
+                delete next.usageLimitUntil;
             }
 
             if (status === 'running') {

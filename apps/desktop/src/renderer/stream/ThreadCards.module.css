@@ -74,6 +74,7 @@
 }
 
 .title {
+    flex: 1;
     min-width: 0;
     font-weight: 500;
     line-height: var(--spacing-20);
@@ -134,5 +135,7 @@
 }
 
 .open {
+    max-width: 50%;
+    text-align: end;
     overflow-wrap: anywhere;
 }

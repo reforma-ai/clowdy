@@ -563,3 +563,80 @@ describe('watching the skill folders', () => {
         expect(skillEvents(h, 0)).toHaveLength(0);
     });
 });
+
+describe('Briefback installation endpoint', () => {
+    test('retained backups remain visible and block installation after a daemon restart', async () => {
+        const first = tempDir();
+        const second = tempDir();
+        const backup = join(first, '.briefback-install-test', 'backup');
+        mkdirSync(backup, { recursive: true });
+        writeFileSync(join(backup, 'SKILL.md'), 'original');
+        const h = await start([first, second]);
+        await h.stop();
+        harnesses.length = 0;
+        const restarted = await restartHarness(h);
+        harnesses.push(restarted);
+        const status = (await (await restarted.fetch('/v1/skills/briefback')).json()) as {
+            backups: string[];
+            fingerprint: string;
+        };
+        expect(status.backups).toEqual([backup]);
+        const response = await restarted.fetch('/v1/skills/briefback', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ fingerprint: status.fingerprint }),
+        });
+        expect(response.status).toBe(409);
+        expect(readFileSync(join(backup, 'SKILL.md'), 'utf8')).toBe('original');
+    });
+
+    test('does not claim an externally installed copy is up to date', async () => {
+        const first = tempDir();
+        const second = tempDir();
+        writeSkill(first, 'briefback', 'External copy');
+        writeSkill(second, 'briefback', 'External copy');
+        const h = await start([first, second]);
+
+        const { fingerprint } = (await (await h.fetch('/v1/skills/briefback')).json()) as { fingerprint: string };
+        const response = await h.fetch(`/v1/skills/briefback/update?fingerprint=${fingerprint}`);
+        expect(response.status).toBe(200);
+        expect(await response.json()).toBe('unknown');
+    });
+
+    test('requires authorization and refuses a stale confirmation without changing existing copies', async () => {
+        const first = tempDir();
+        const second = tempDir();
+        const h = await start([first, second]);
+        const status = (await (await h.fetch('/v1/skills/briefback')).json()) as { fingerprint: string };
+        writeSkill(first, 'briefback', 'Existing copy');
+
+        expect((await fetch(`${h.url}/v1/skills/briefback`)).status).toBe(401);
+        const response = await h.fetch('/v1/skills/briefback', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ fingerprint: status.fingerprint }),
+        });
+        expect(response.ok).toBe(false);
+        expect(readFileSync(join(first, 'briefback', 'SKILL.md'), 'utf8')).toContain('Existing copy');
+        expect(existsSync(join(second, 'briefback'))).toBe(false);
+    });
+});
+
+test('announces edits to a Briefback reference file', async () => {
+    const first = tempDir();
+    const second = tempDir();
+    writeSkill(first, 'briefback');
+    mkdirSync(join(first, 'briefback', 'references'));
+    const reference = join(first, 'briefback', 'references', 'review.md');
+    writeFileSync(reference, 'original');
+    const h = await start([first, second]);
+    const project = h.openRepo();
+    await catalogOf(h);
+    const before = h.store.headCursor();
+    writeFileSync(reference, 'changed');
+    await waitFor(
+        () => skillEvents(h, before).some(event => event.projectId === project.id),
+        'Briefback reference change'
+    );
+    expect(skillEvents(h, before).some(event => event.projectId === project.id)).toBe(true);
+});

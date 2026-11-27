@@ -20,6 +20,7 @@ interface RunRow {
     summary: string;
     status: Run['status'];
     status_reason: string | null;
+    usage_limit_until: number | null;
     engine: Run['engine'];
     model: string | null;
     effort: string | null;
@@ -54,6 +55,7 @@ const toRun = (row: RunRow): Run =>
         summary: row.summary,
         status: row.status,
         statusReason: row.status_reason,
+        usageLimitUntil: row.usage_limit_until,
         engine: row.engine,
         model: row.model,
         effort: row.effort,
@@ -90,10 +92,10 @@ export function listRuns(db: Database, projectId: string): Run[] {
 export function upsertRun(db: Database, run: Run): void {
     db.query(`
         INSERT INTO runs (id, project_id, parent_run_id, root_run_id, chat_id, role, origin, parent_tool_call_id, can_stop_alone, awaiting_user, name, summary, status,
-            status_reason, engine, model, effort, session_id, worktree, result, error, failure_code, usage, context, background, archived_at, created_at, started_at, active_since,
+            status_reason, usage_limit_until, engine, model, effort, session_id, worktree, result, error, failure_code, usage, context, background, archived_at, created_at, started_at, active_since,
             finished_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET summary = excluded.summary, status = excluded.status, status_reason = excluded.status_reason,
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET summary = excluded.summary, status = excluded.status, status_reason = excluded.status_reason, usage_limit_until = excluded.usage_limit_until,
             model = excluded.model, effort = excluded.effort, session_id = excluded.session_id, worktree = excluded.worktree, result = excluded.result,
             error = excluded.error, failure_code = excluded.failure_code, usage = excluded.usage, context = excluded.context, background = excluded.background,
             awaiting_user = excluded.awaiting_user, started_at = excluded.started_at, active_since = excluded.active_since, finished_at = excluded.finished_at
@@ -112,6 +114,7 @@ export function upsertRun(db: Database, run: Run): void {
         run.summary,
         run.status,
         run.statusReason ?? null,
+        run.usageLimitUntil ?? null,
         run.engine,
         run.model ?? null,
         run.effort ?? null,
@@ -288,6 +291,7 @@ export interface RunProcess {
 
 /** What the runtime keeps about a run besides the entity clients see. */
 export interface RunWork {
+    strictModel?: boolean;
     /** Working directory the run's engine starts in; absent, the folder its chat works in, else the project's main folder (`workingFolder` in `domain/places.ts`). */
     cwd?: string;
     /** The user message or assignment of the turn that has not started yet. */
@@ -298,6 +302,7 @@ export interface RunWork {
 }
 
 interface WorkRow {
+    strict_model: number | null;
     cwd: string | null;
     next_prompt: string | null;
     pid: number | null;
@@ -308,7 +313,9 @@ interface WorkRow {
 
 export function getRunWork(db: Database, runId: string): RunWork {
     const row = db
-        .query('SELECT cwd, next_prompt, pid, pgid, process_started_at, lost_background FROM runs WHERE id = ?')
+        .query(
+            'SELECT cwd, next_prompt, pid, pgid, process_started_at, lost_background, strict_model FROM runs WHERE id = ?'
+        )
         .get(runId) as WorkRow | null;
 
     if (!row) {
@@ -317,6 +324,7 @@ export function getRunWork(db: Database, runId: string): RunWork {
 
     return clean({
         cwd: row.cwd,
+        strictModel: row.strict_model === 1 || undefined,
         nextPrompt: row.next_prompt,
         process:
             row.pid === null ? undefined : clean({ pid: row.pid, pgid: row.pgid, startedAt: row.process_started_at }),
@@ -337,6 +345,10 @@ export function setRunWork(db: Database, runId: string, work: WorkPatch): void {
         if (work[key] !== undefined) {
             columns.push([column, work[key]]);
         }
+    }
+
+    if (work.strictModel !== undefined) {
+        columns.push(['strict_model', work.strictModel ? 1 : null]);
     }
 
     if (work.process !== undefined) {

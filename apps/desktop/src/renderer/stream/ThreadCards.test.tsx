@@ -234,7 +234,8 @@ describe('threads that stopped', () => {
 
         const [refunds, , , load] = cards('agent-card');
 
-        expect(load.textContent).toContain('Still running: k6 run long.js, bun run report');
+        expect(load.firstElementChild?.textContent).toContain('Still running: k6 run long.js, bun run report');
+        expect(load.children[1].textContent).not.toContain('Still running');
         expect(load.textContent).toContain('Not the final result');
         expect(refunds.textContent).not.toContain('Still running');
         expect(refunds.textContent).not.toContain('Not the final result');
