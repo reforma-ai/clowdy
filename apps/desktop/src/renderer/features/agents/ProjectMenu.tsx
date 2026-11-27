@@ -100,6 +100,12 @@ export function ProjectMenu() {
                                         className={styles.displayItem}
                                         id="completed"
                                         text="Show completed threads"
+                                        stacked
+                                        description={
+                                            <span className={styles.description}>
+                                                Keeps finished delegated work in the chat list
+                                            </span>
+                                        }
                                         shouldCloseOnSelect={false}
                                         endAffix={
                                             <span inert aria-hidden className={styles.switch}>
@@ -138,6 +144,12 @@ export function ProjectMenu() {
                                         className={styles.displayItem}
                                         id="unused"
                                         text="Show unused worktrees"
+                                        stacked
+                                        description={
+                                            <span className={styles.description}>
+                                                Shows worktrees without a main chat in the list
+                                            </span>
+                                        }
                                         shouldCloseOnSelect={false}
                                         endAffix={
                                             <span inert aria-hidden className={styles.switch}>
