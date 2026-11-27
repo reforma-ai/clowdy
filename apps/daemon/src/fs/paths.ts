@@ -58,6 +58,26 @@ export function normalizeFsPath(input: unknown): string {
     return segments.join('/');
 }
 
+/** A name git keeps its data in, or that Windows reads as one (a trailing dot or space is dropped, `GIT~1` is its short name). */
+export function isGitName(name: string): boolean {
+    const bare = name.replace(/[. ]+$/, '').toLowerCase();
+
+    return bare === '.git' || /^git~\d+$/.test(bare);
+}
+
+/**
+ * Refuses a normalized path that is git's own folder or runs through it (a repository's, or a nested one's): a write there changes a hook or the config, and a delete
+ * takes the history that is not pushed. The file manager shows `.git` and reads it, and changes it never.
+ */
+export function refuseGitPath(rel: string): void {
+    if (rel.split('/').some(isGitName)) {
+        throw invalid(
+            `${rel} is in git's own folder, which is not changed here`,
+            reasoned('permission', { path: rel })
+        );
+    }
+}
+
 /** Whether a name found in a folder can be addressed back by a client: one with a backslash or a drive letter could not. */
 export const isAddressable = (path: string) => !path.includes('\\') && !/^[A-Za-z]:/.test(path);
 

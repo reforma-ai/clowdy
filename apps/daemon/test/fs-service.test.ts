@@ -457,6 +457,41 @@ describe('containment', () => {
     });
 });
 
+describe("git's own folder", () => {
+    const refused = { code: 'invalid', details: { reason: 'permission' } };
+
+    test("is never written, made, moved, copied or deleted, a nested repository's too, and is still read", async () => {
+        const { fs, project, folderId, dir } = openFolder(h, {
+            '.git/config': 'config',
+            'sub/.git/HEAD': 'head',
+            'a.txt': 'a',
+        });
+
+        await expect(fs.write(project, folderId, '.git/config', body('x'), neither)).rejects.toMatchObject(refused);
+        await expect(fs.write(project, folderId, '.git/hooks/pre-commit', body('x'), neither)).rejects.toMatchObject(
+            refused
+        );
+        await expect(fs.makeFolder(project, folderId, '.git/hooks')).rejects.toMatchObject(refused);
+        await expect(fs.move(project, folderId, [{ from: '.git/config', to: 'config' }])).rejects.toMatchObject(
+            refused
+        );
+        await expect(fs.move(project, folderId, [{ from: 'a.txt', to: 'sub/.git/a.txt' }])).rejects.toMatchObject(
+            refused
+        );
+        await expect(fs.copy(project, folderId, [{ from: 'a.txt', to: '.git/a.txt' }])).rejects.toMatchObject(refused);
+        await expect(fs.remove(project, folderId, ['a.txt', '.git'])).rejects.toMatchObject(refused);
+        await expect(fs.remove(project, folderId, ['sub/.git.'])).rejects.toMatchObject(refused);
+
+        expect([text(join(dir, '.git/config')), text(join(dir, 'sub/.git/HEAD')), text(join(dir, 'a.txt'))]).toEqual([
+            'config',
+            'head',
+            'a',
+        ]);
+        expect(existsSync(join(dir, '.git/hooks'))).toBe(false);
+        expect(new TextDecoder().decode((await fs.read(project, folderId, '.git/config')).bytes)).toBe('config');
+    });
+});
+
 describe('read', () => {
     test('answers the bytes of a text file, of a binary one and of an empty one, with a version', async () => {
         const binary = new Uint8Array([0, 255, 128, 7, 0]);
