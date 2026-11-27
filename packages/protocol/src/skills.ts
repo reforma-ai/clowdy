@@ -33,3 +33,13 @@ export interface SkillCatalog {
     /** Problems found while reading the skill folders (a skipped skill, a cap hit, a large catalog), in plain words. */
     warnings: string[];
 }
+
+/** Installation state in the configured Claude Code and Codex skill roots, in that order. */
+export interface BriefbackStatus {
+    copies: { exists: boolean; installed: boolean }[];
+    /** Snapshot to confirm before replacing existing copies. */
+    fingerprint: string;
+}
+
+/** Whether a known, unmodified Briefback installation differs from its upstream skill. */
+export type BriefbackUpdateStatus = 'up-to-date' | 'update-available' | 'unknown';
