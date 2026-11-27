@@ -1,14 +1,16 @@
+import { existsSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
-import { isTerminalRunStatus, shownRunReason, shownRunStatus } from '@clowdy/protocol';
+import { isTerminalRunStatus, mainFolder, shownRunReason, shownRunStatus } from '@clowdy/protocol';
 
 import { readBranchPrefix } from '../db/appSettings';
 import { getChat, listChatDescendants, listChildChats } from '../db/chats';
 import { lastUserSeq, listItems, nextSeq } from '../db/items';
+import { getProject } from '../db/projects';
 import { getRun, getRunWork } from '../db/runs';
 import { getWorkspace } from '../db/workspaces';
-import { chatDepth, createChat, inSameTree, isBelow, requireChat } from '../domain/chats';
+import { chatDepth, chatFolder, createChat, inSameTree, isBelow, requireChat } from '../domain/chats';
 import { linkChatTask, requireNotArchived, resolveTask } from '../domain/tasks';
-import { branchNameFor, checkoutBranch, threadBase } from '../domain/workspaces';
+import { branchNameFor, checkoutBranch, readRepository, readWorktreeHead, threadBase } from '../domain/workspaces';
 import { CommandError, conflict, invalid, notFound } from '../errors';
 import { newId } from '../ids';
 import { isFolder } from './driver';
@@ -30,6 +32,7 @@ import type {
 import type { AttachmentsService } from '../attachments/service';
 import type { Config } from '../config';
 import type { NewChat } from '../domain/chats';
+import type { Head, RepositoryFacts } from '../domain/workspaces';
 import type { AgentRegistry } from '../engine/acp/registry';
 import type { Store } from '../store';
 import type { RunDriver } from './driver';
@@ -166,6 +169,13 @@ export interface SpawnInput {
     branch?: string;
 }
 
+/** What a thread's own worktree is checked against, read before `spawn`'s transaction (`ThreadService.readStart`). */
+interface ThreadStart {
+    repository: RepositoryFacts;
+    /** Where the caller's worktree has HEAD, when it works in one that is there. */
+    worktreeHead?: Head;
+}
+
 /** What `spawn` gives back: the thread, and for one with a worktree of its own where it is and the branch to merge when it is done. */
 export interface Spawned {
     threadId: string;
@@ -208,10 +218,12 @@ export class ThreadService {
      * which its run keeps; `worktree` is a new worktree for it alone (`createWorkspace` with the thread's own chat id, so its path and branch are its own), on
      * `<prefix>/<name>` (`branch`, else made of `title`, else the thread's id8), started from `base`, else from the branch the parent has checked out now, in its worktree
      * (`threadBase`) or in the folder itself (`checkoutBranch`), else from the folder's default branch, and made by the thread's first turn like any chat's. `worktree` with `cwd` is `invalid`: two answers to where the thread works. Nothing is made when anything is
-     * refused: the row and the chat are written in one transaction, and the disk is touched by the first turn only.
+     * refused: the row and the chat are written in one transaction, and the disk is touched by the first turn only. What `worktree` is checked against is read
+     * from git before that transaction (`readStart`), which runs none.
      */
-    spawn(caller: Run, input: SpawnInput): Spawned {
+    async spawn(caller: Run, input: SpawnInput): Promise<Spawned> {
         const { store, config, runs } = this.deps;
+        const start = input.worktree === true ? await this.readStart(caller) : undefined;
 
         return store.tx(() => {
             const current = this.requireLive(caller);
@@ -279,7 +291,7 @@ export class ThreadService {
             }
 
             const tasks = this.freeTasks(current, input.tasks ?? []);
-            const chat = this.createThreadChat(parent, project, input.worktree === true && { base, branch }, {
+            const chat = this.createThreadChat(parent, project, input.worktree === true && { base, branch, start }, {
                 projectId: project.id,
                 title: input.title,
                 mode: input.mode ?? parent.mode,
@@ -329,7 +341,7 @@ export class ThreadService {
     private createThreadChat(
         parent: Chat,
         project: Project,
-        own: false | { base?: string; branch?: string },
+        own: false | { base?: string; branch?: string; start?: ThreadStart },
         input: NewChat
     ): Chat {
         const { store, config } = this.deps;
@@ -339,18 +351,26 @@ export class ThreadService {
         }
 
         try {
+            const { start } = own;
+
+            // Read when the parent's folder was there before the transaction; one that is gone is refused, as `createWorkspace` would.
+            if (!start) {
+                throw invalid(`The folder ${chatFolder(project, parent.folderId).path} is missing`);
+            }
+
+            const { repository } = start;
             const base =
                 own.base ??
                 (parent.workspace
-                    ? threadBase(store, project, parent.workspace)
-                    : checkoutBranch(project, parent.folderId));
+                    ? threadBase(store, project, parent.workspace, repository, start.worktreeHead)
+                    : checkoutBranch(project, parent.folderId, repository));
             // The chat is made with the id it will have, so the branch is made of the title before the chat exists: the id is only a tie-breaker in it.
             const chatId = newId('cht');
             const branchPrefix = readBranchPrefix(store.db);
             const branchName =
                 own.branch ??
                 (input.title?.trim()
-                    ? branchNameFor(store, config, project, parent.folderId, chatId, branchPrefix, input.title)
+                    ? branchNameFor(store, project, parent.folderId, repository, chatId, branchPrefix, input.title)
                     : undefined);
 
             return createChat(
@@ -364,6 +384,7 @@ export class ThreadService {
                         ...(base !== undefined && { base }),
                         ...(branchName !== undefined && { branchName }),
                     },
+                    repository,
                 },
                 config
             );
@@ -611,6 +632,31 @@ export class ThreadService {
         }
 
         return current;
+    }
+
+    /**
+     * What a thread's own worktree is checked against: the repository of the folder the caller's chat works in, and where the caller's worktree has HEAD. Read
+     * with the async git before `spawn`'s transaction. Nothing for a caller with no chat, or a folder that is gone, which the transaction refuses.
+     */
+    private async readStart(caller: Run): Promise<ThreadStart | undefined> {
+        const chat = caller.chatId ? getChat(this.deps.store.db, caller.chatId) : undefined;
+        const project = chat && getProject(this.deps.store.db, chat.projectId);
+        const folder =
+            project &&
+            (chat.folderId === undefined
+                ? mainFolder(project)
+                : project.folders.find(candidate => candidate.id === chat.folderId));
+
+        if (!chat || !folder || !existsSync(folder.path)) {
+            return undefined;
+        }
+
+        const [repository, worktreeHead] = await Promise.all([
+            readRepository(folder),
+            chat.workspace ? readWorktreeHead(chat.workspace.path) : undefined,
+        ]);
+
+        return { repository, ...(worktreeHead && { worktreeHead }) };
     }
 
     private callerChat(caller: Run): Chat {

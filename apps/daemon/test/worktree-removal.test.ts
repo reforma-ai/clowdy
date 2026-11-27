@@ -1201,9 +1201,9 @@ describe('explicit worktree disposition', () => {
         try {
             await waitFor(() => existsSync(join(bin, 'ready')), 'Git removal to start');
             await waitFor(() => runOf(parent.id).status === 'running', 'the other parent to run');
-            expect(() =>
+            await expect(
                 h.daemon.services.threads.spawn(runOf(parent.id), { prompt: 'Work in removed tree', cwd: path })
-            ).toThrow('The worktree is being removed');
+            ).rejects.toThrow('The worktree is being removed');
             expect(h.send('chat.setArchived', { chatId: chat.id, archived: false })).toMatchObject({
                 ok: false,
                 error: { code: 'conflict' },
@@ -1286,7 +1286,7 @@ describe('explicit worktree disposition', () => {
         h.ok('chat.send', { chatId: chat.id, text: 'Parent' });
         try {
             await waitFor(() => runOf(chat.id).status === 'running', 'the parent to run');
-            const thread = h.daemon.services.threads.spawn(runOf(chat.id), { prompt: 'Work here', cwd: path });
+            const thread = await h.daemon.services.threads.spawn(runOf(chat.id), { prompt: 'Work here', cwd: path });
             await waitFor(
                 () => engine.turns.some(turn => turn.cwd === path) && runOf(thread.threadId).status === 'running',
                 'the thread to run in the external worktree'

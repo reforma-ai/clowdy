@@ -4,7 +4,8 @@ import type { LatePromptSuggestion } from './engine/types';
 
 export type EventListener = (events: ClowdyEvent[]) => void;
 
-interface EventRow {
+/** An event as the log stores it: `data` is the event's data serialized once, when it was emitted. */
+export interface EventRow {
     cursor: number;
     at: number;
     project_id: string;
@@ -140,14 +141,18 @@ export class Store {
     }
 
     eventsAfter(cursor: number, projectId: string | undefined, limit: number): ClowdyEvent[] {
-        const rows =
-            projectId === undefined
-                ? this.db.query('SELECT * FROM events WHERE cursor > ? ORDER BY cursor LIMIT ?').all(cursor, limit)
-                : this.db
-                      .query('SELECT * FROM events WHERE cursor > ? AND project_id = ? ORDER BY cursor LIMIT ?')
-                      .all(cursor, projectId, limit);
+        return this.eventRowsAfter(cursor, projectId, limit).map(toEvent);
+    }
 
-        return (rows as EventRow[]).map(toEvent);
+    /** `eventsAfter` as stored, with `data` not parsed: what a stream sends on as it is. */
+    eventRowsAfter(cursor: number, projectId: string | undefined, limit: number): EventRow[] {
+        const columns = 'SELECT cursor, at, project_id, data FROM events WHERE cursor > ?';
+
+        return (
+            projectId === undefined
+                ? this.db.query(`${columns} ORDER BY cursor LIMIT ?`).all(cursor, limit)
+                : this.db.query(`${columns} AND project_id = ? ORDER BY cursor LIMIT ?`).all(cursor, projectId, limit)
+        ) as EventRow[];
     }
 
     commandResult(requestId: string): CommandResult | undefined {

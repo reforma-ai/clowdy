@@ -5,6 +5,9 @@ import type { RunProcess } from '../db/runs';
 /** The start time an engine reports and the one the OS shows for the same process differ by about a second. */
 const START_TOLERANCE_MS = 5000;
 
+/** How long `ps` gets to say when a process started; the daemon waits for it, and without an answer the start time is unknown. */
+const PS_TIMEOUT_MS = 2000;
+
 export function isAlive(pid: number): boolean {
     try {
         process.kill(pid, 0);
@@ -26,7 +29,11 @@ export function startTimeOf(pid: number): number | undefined {
     }
 
     // Elapsed time rather than the start date: the date is printed in local time, which moves with the zone and daylight saving.
-    const text = Bun.spawnSync(['ps', '-o', 'etime=', '-p', String(pid)], { stdout: 'pipe', stderr: 'ignore' })
+    const text = Bun.spawnSync(['ps', '-o', 'etime=', '-p', String(pid)], {
+        stdout: 'pipe',
+        stderr: 'ignore',
+        timeout: PS_TIMEOUT_MS,
+    })
         .stdout.toString()
         .trim();
     const match = /^(?:(?:(\d+)-)?(\d+):)?(\d+):(\d+)$/.exec(text);
