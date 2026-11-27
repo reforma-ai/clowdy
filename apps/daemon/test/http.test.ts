@@ -5,7 +5,7 @@ import { SSE_EVENT } from '@clowdy/protocol';
 import { isAllowedOrigin, isLoopbackHost, tokenMatches } from '../src/http/guard';
 import { cleanTempDirs, command, Harness, startHarness } from './helpers';
 
-import type { ClowdyEvent } from '@clowdy/protocol';
+import type { ClowdyEvent, StreamItemBody } from '@clowdy/protocol';
 
 afterAll(cleanTempDirs);
 
@@ -302,8 +302,11 @@ describe('commands endpoint', () => {
             (h.store.db.query('SELECT COUNT(*) AS n FROM chats WHERE project_id = ?').get(project.id) as { n: number })
                 .n
         ).toBe(1);
-        const items = h.store.db.query('SELECT body FROM stream_items').all() as { body: string }[];
-        expect(items.filter(item => item.body.includes('Only once'))).toHaveLength(1);
+        // The person's messages only: the fake agent quotes the prompt in its answer, which may be in the stream by now.
+        const messages = (h.store.db.query('SELECT body FROM stream_items').all() as { body: string }[])
+            .map(item => JSON.parse(item.body) as StreamItemBody)
+            .filter(body => body.kind === 'user' && body.text === 'Only once');
+        expect(messages).toHaveLength(1);
     });
 
     test('answers a CommandResult for success and for caller errors, with matching statuses', async () => {
