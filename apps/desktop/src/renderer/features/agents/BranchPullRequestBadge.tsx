@@ -1,9 +1,11 @@
+import { Button } from '@clowdy/components/Button';
 import { Tooltip } from '@clowdy/components/Tooltip';
 import { Merge, WorktreeFolder } from '@clowdy/icons/14';
 
 import { type BranchPullRequestKey, useBranchPullRequests } from '../changes/branchPullRequests';
+import { openEffects } from '../openWith';
 
-/** A status, not another action: every chat observing the same branch shares the PR state. */
+/** Every chat observing the same branch shares its PR state and opens the latest open PR. */
 export function BranchPullRequestBadge({
     branchKey,
     visible,
@@ -53,32 +55,35 @@ export function BranchPullRequestBadge({
             ? `${first.state === 'open' ? 'Open' : first.state === 'draft' ? 'Draft' : 'Merged'} pull request #${first.number}`
             : detail;
     const prLabel = `${summary}${fact?.stale ? ' (last known)' : ''}`;
+    const target = pullRequests.find(pr => pr.state === 'open') ?? first;
     const label = crossWorktree ? `Thread works in a different worktree\n${prLabel}` : prLabel;
+    const accessibleLabel = pullRequests.length > 1 ? `${label}, open pull request #${target.number}` : label;
+    const tooltip = crossWorktree ? (
+        <>
+            Thread works in a different worktree
+            <br />
+            {prLabel}
+        </>
+    ) : (
+        prLabel
+    );
 
     return (
-        <Tooltip
-            content={
-                crossWorktree ? (
-                    <>
-                        Thread works in a different worktree
-                        <br />
-                        {prLabel}
-                    </>
-                ) : (
-                    prLabel
-                )
-            }
+        <Button
+            variant="filling"
+            color="secondary"
+            size="xs"
+            iconOnly
+            preventFocusOnPress
+            className={className}
+            data-hover-only={hoverOnly || undefined}
+            data-pr-state={state}
+            data-stale={fact?.stale || undefined}
+            aria-label={accessibleLabel}
+            tooltip={tooltip}
+            onPress={() => openEffects.openUrl(target.url)}
         >
-            <span
-                className={className}
-                data-hover-only={hoverOnly || undefined}
-                data-pr-state={state}
-                data-stale={fact?.stale || undefined}
-                role="img"
-                aria-label={label}
-            >
-                <Merge size={12} aria-hidden="true" />
-            </span>
-        </Tooltip>
+            <Merge size={12} aria-hidden="true" />
+        </Button>
     );
 }

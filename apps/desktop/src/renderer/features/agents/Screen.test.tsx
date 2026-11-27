@@ -375,7 +375,7 @@ describe('a side panel that covers the chat', () => {
             ui().setChatListLayout('simple');
             ui().openDraft();
         });
-        await press(rowOf('@new-chat'));
+        await press(buttonNamed('New chat'));
 
         expect(covering()).toBe(false);
     });
@@ -520,7 +520,7 @@ describe('the new-chat row', () => {
         await draw(() => store.ui.forProject(FIXTURE_EMPTY_PROJECT_ID).setChatListLayout('simple'));
 
         const draft = store.ui.forProject(FIXTURE_EMPTY_PROJECT_ID).draftId;
-        expect(rowKeys()).toEqual(['@new-chat', `@draft:${draft}`]);
+        expect(rowKeys()).toEqual([`@draft:${draft}`]);
         expect(isSelected(`@draft:${draft}`)).toBe(true);
         expect(field()).not.toBeNull();
     });
@@ -666,7 +666,7 @@ describe('grouped by folder', () => {
 
         await draw(() => ui().setGroupByFolder(false));
 
-        expect(rowKeys()).toEqual(['@new-chat', 'c-4', 'c-5', 'c-3', 'c-6', 'c-1', 'c-2']);
+        expect(rowKeys()).toEqual(['c-4', 'c-5', 'c-3', 'c-6', 'c-1', 'c-2']);
     });
 
     it('lists a group for each folder, main first, with the chats that work in it below; a chat with no folder is in the main one', async () => {
@@ -884,7 +884,7 @@ describe('grouped by folder', () => {
     });
 
     it.each([
-        ['simple', '@new-chat', 'c-4'],
+        ['simple', null, 'c-4'],
         ['folder', MAIN_GROUP, 'c-4'],
         ['worktree', worktreeKey(MAIN, '/Users/dev/car-rental'), 'c-4'],
     ] as const)('navigates the first rows in the %s layout with J and K', async (layout, first, second) => {
@@ -903,13 +903,14 @@ describe('grouped by folder', () => {
             return document.activeElement?.getAttribute('data-key');
         };
         try {
-            rowOf(first).focus();
-            expect(await step('j')).toBe(`@draft:${ui().draftId}`);
+            const firstRow = first ?? `@draft:${ui().draftId}`;
+            rowOf(firstRow).focus();
+            if (first) expect(await step('j')).toBe(`@draft:${ui().draftId}`);
             expect(await step('j')).toBe(second);
             expect(await step('k')).toBe(`@draft:${ui().draftId}`);
-            expect(await step('k')).toBe(first);
-            expect(await step('k')).toBe(first);
-            expect(rowKeys().includes('@new-chat')).toBe(layout === 'simple');
+            if (first) expect(await step('k')).toBe(first);
+            expect(await step('k')).toBe(firstRow);
+            expect(buttonNamed('New chat')).toBeTruthy();
         } finally {
             uninstall();
         }
@@ -954,7 +955,7 @@ describe('grouped by folder', () => {
             ui().openChat('c-2');
             ui().setChatListLayout('simple');
         });
-        await press(rowOf('@new-chat'));
+        await press(buttonNamed('New chat'));
         await draw();
 
         expect(folderSelect()?.textContent).toContain('car-rental-api');
@@ -1052,7 +1053,7 @@ describe('grouped by folder', () => {
                 ui().openChat('c-2');
                 ui().setChatListLayout('simple');
             });
-            await press(rowOf('@new-chat'));
+            await press(buttonNamed('New chat'));
             await draw();
 
             expect(folderSelect()?.textContent).toContain('car-rental-api');
@@ -1396,7 +1397,7 @@ describe('the heading', () => {
 
     it('selects the draft row only while its page is open', async () => {
         await draw(() => ui().setChatListLayout('simple'));
-        await press(rowOf('@new-chat'));
+        await press(buttonNamed('New chat'));
 
         expect(ui().draft).toBe(true);
 
@@ -2015,7 +2016,7 @@ describe('a chat that works in a worktree', () => {
         });
         const workspace = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
 
-        await press(rowOf('@new-chat'));
+        await press(buttonNamed('New chat'));
         await draw();
         await vi.waitFor(() => expect(ui().draftWorkspaceRow?.id).toBe(workspace.id));
 
@@ -2030,6 +2031,39 @@ describe('a chat that works in a worktree', () => {
         expect(ui().draft).toBe(false);
         expect(ui().chatId).not.toBe(FIXTURE_WORKSPACE_CHAT_ID);
         expect(project().chats.get(ui().chatId!)?.workspace?.id).toBe(workspace.id);
+    });
+
+    it.each(['simple', 'folder', 'worktree'] as const)(
+        'opens New chat in the active worktree in the %s layout',
+        async layout => {
+            await restart();
+            await draw(() => {
+                ui().setChatListLayout(layout);
+                ui().openChat(FIXTURE_WORKSPACE_CHAT_ID);
+            });
+            const workspace = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
+            await press(buttonNamed('New chat'));
+            await draw();
+            expect([ui().draft, ui().draftWorkspace]).toEqual([true, { mode: 'existing', path: workspace.path }]);
+        }
+    );
+
+    it('returns to the active worktree chat after closing the shortcut draft', async () => {
+        await restart();
+        await draw(() => {
+            ui().setChatListLayout('worktree');
+            ui().openChat(FIXTURE_WORKSPACE_CHAT_ID);
+        });
+        const command = shellCommands(store).find(entry => entry.id === NEW_CHAT_COMMAND)!;
+        await act(async () => command.handler(new KeyboardEvent('keydown', { key: 'n' })));
+        await draw();
+        const draftId = ui().draftId!;
+        await press(rowOf(`@draft:${draftId}`).querySelector<HTMLElement>('button[aria-label="Close draft"]')!);
+        await draw();
+        expect(ui().draft).toBe(false);
+        expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe(
+            FIXTURE_WORKSPACE_CHAT_ID
+        );
     });
 
     it('shares the active worktree when the new chat shortcut opens a grouped draft', async () => {
@@ -2057,7 +2091,7 @@ describe('a chat that works in a worktree', () => {
             });
             await draw();
             await vi.waitFor(() => expect(ui().draftWorkspaceRow?.id).toBe(workspace.id));
-            expect(rowKeys()).not.toContain('@new-chat');
+            expect(buttonNamed('New chat')).toBeTruthy();
             expect(isSelected(`@draft:${ui().draftId}`)).toBe(true);
 
             const field = container.querySelector<HTMLElement & { editor: Editor }>('[contenteditable="true"]')!;
@@ -2132,8 +2166,13 @@ describe('a chat that works in a worktree', () => {
         await store.load();
         await draw(() => ui().setChatListLayout('folder'));
 
-        const badge = (id: string) => rowOf(id).querySelector('[data-pr-state]');
+        const badge = (id: string) => rowOf(id).querySelector<HTMLElement>('[data-pr-state]');
+        const openUrl = vi.spyOn(window, 'open').mockImplementation(() => null);
         await vi.waitFor(() => expect(badge(first.id)?.getAttribute('aria-label')).toBe('Open pull request #11'));
+        const selectedBefore = ui().chatId;
+        await press(badge(first.id)!);
+        expect(openUrl).toHaveBeenLastCalledWith('https://github.com/acme/car-rental/pull/11', '_blank', 'noopener');
+        expect(ui().chatId).toBe(selectedBefore);
         expect(badge(second.id)?.textContent).toBe('');
         expect(badge(second.id)?.getAttribute('data-pr-state')).toBe('open');
         expect(badge(second.id)?.querySelector('svg')?.getAttribute('width')).toBe('12');
@@ -2142,6 +2181,9 @@ describe('a chat that works in a worktree', () => {
         await draw(() => ui().setGroupByWorktree(true));
         const cardKey = chatWorktreeKey(first)!;
         await vi.waitFor(() => expect(badge(cardKey)?.getAttribute('data-pr-state')).toBe('open'));
+        await press(badge(cardKey)!);
+        expect(openUrl).toHaveBeenLastCalledWith('https://github.com/acme/car-rental/pull/11', '_blank', 'noopener');
+        expect(ui().chatId).toBe(selectedBefore);
         expect(badge(first.id)).toBeNull();
         expect(badge(second.id)).toBeNull();
         await draw(() => ui().toggleWorktreeCollapsed(cardKey));
@@ -2161,6 +2203,16 @@ describe('a chat that works in a worktree', () => {
         await draw(() => project().runs.set(run.id, { ...run, status: 'running' }));
         expect(badge(first.id)?.getAttribute('data-pr-state')).toBe('open');
         expect(rowOf(first.id).querySelector('[aria-label="Working"]')).not.toBeNull();
+        openUrl.mockClear();
+        await act(async () => {
+            rowOf(first.id).focus();
+            badge(first.id)!.focus();
+            badge(first.id)!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+            badge(first.id)!.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }));
+        });
+        expect(openUrl).toHaveBeenCalledOnce();
+        expect(openUrl).toHaveBeenLastCalledWith('https://github.com/acme/car-rental/pull/11', '_blank', 'noopener');
+        expect(ui().chatId).toBe(selectedBefore);
         await draw(() => ui().setChatListLayout('simple'));
         expect(badge(first.id)?.getAttribute('data-pr-state')).toBe('open');
         expect(rowOf(first.id).querySelector('[aria-label="Working"]')).not.toBeNull();
@@ -2176,13 +2228,17 @@ describe('a chat that works in a worktree', () => {
                 pullRequests: [pr(8, 'merged'), pr(11, 'open'), pr(12, 'open'), pr(14, 'draft')],
             });
         });
-        expect(badge(first.id)?.getAttribute('aria-label')).toBe('2 open, 1 draft');
+        expect(badge(first.id)?.getAttribute('aria-label')).toBe('2 open, 1 draft, open pull request #12');
         expect(badge(first.id)?.getAttribute('data-pr-state')).toBe('open');
+        await press(badge(first.id)!);
+        expect(openUrl).toHaveBeenLastCalledWith('https://github.com/acme/car-rental/pull/12', '_blank', 'noopener');
         await act(async () => {
             fact.accept({ ...fact.value!, pullRequests: [pr(8, 'merged'), pr(14, 'draft')] });
         });
         expect(badge(first.id)?.getAttribute('aria-label')).toBe('Draft pull request #14');
         expect(badge(first.id)?.getAttribute('data-pr-state')).toBe('draft');
+        await press(badge(first.id)!);
+        expect(openUrl).toHaveBeenLastCalledWith('https://github.com/acme/car-rental/pull/14', '_blank', 'noopener');
 
         await act(async () => {
             fact.accept({
@@ -2197,6 +2253,9 @@ describe('a chat that works in a worktree', () => {
         });
         expect(badge(first.id)?.getAttribute('data-pr-state')).toBe('merged');
         expect(badge(second.id)?.getAttribute('aria-label')).toBe('Merged pull request #10');
+        await press(badge(second.id)!);
+        expect(openUrl).toHaveBeenLastCalledWith('https://github.com/acme/car-rental/pull/10', '_blank', 'noopener');
+        openUrl.mockRestore();
         expect(badge(second.id)?.textContent).toBe('');
         await draw(() => ui().setGroupByWorktree(true));
         expect(badge(cardKey)?.getAttribute('data-pr-state')).toBe('merged');
@@ -2902,7 +2961,7 @@ describe('worktree cards', () => {
         await press(rowOf(workspaceKey()).querySelector<HTMLElement>('button[aria-label^="New chat in "]')!);
         expect([ui().draft, ui().draftWorkspace]).toEqual([true, { mode: 'existing', path: workspace.path }]);
         await draw();
-        expect(rowKeys()).not.toContain('@new-chat');
+        expect(buttonNamed('New chat')).toBeTruthy();
         expect(isSelected(`@draft:${ui().draftId}`)).toBe(true);
     });
 
@@ -3223,9 +3282,10 @@ describe('worktree cards', () => {
             [workspaceKey(), null],
             [workspaceKey(), 'true'],
         ]);
-        expect(
-            rowOf('c-6b').querySelector('[aria-label="Thread works in a different worktree"]')?.getAttribute('title')
-        ).toBeNull();
+        const indicator = rowOf('c-6b').querySelector('[aria-label="Thread works in a different worktree"]');
+        expect(indicator?.getAttribute('title')).toBeNull();
+        expect(indicator?.tagName).toBe('SPAN');
+        expect(indicator?.getAttribute('role')).toBe('img');
     });
 
     it('shows a thread’s pull request from its own folder inside its ancestor’s worktree card', async () => {

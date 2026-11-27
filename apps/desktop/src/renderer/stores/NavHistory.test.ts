@@ -119,6 +119,59 @@ describe('recent chats', () => {
     });
 });
 
+describe('returning after closing a draft', () => {
+    const closeCurrent = () => {
+        ui().newChatDrafts.remove(ui().draftId!);
+        return root.history.backInProject();
+    };
+
+    it('returns to the prior draft when it still exists', () => {
+        ui().openDraft();
+        const first = ui().draftId;
+        ui().openDraft([], 'fld_other');
+        expect(closeCurrent()).toBe(true);
+        expect([ui().draft, ui().draftId]).toEqual([true, first]);
+    });
+
+    it('skips archived or deleted chats instead of showing a fallback', () => {
+        ui().openChat('c-2');
+        ui().openChat('c-3');
+        ui().openChat('c-1');
+        ui().openDraft();
+        runInAction(() => {
+            const archived = root.selectedProject!.chats.get('c-1')!;
+            root.selectedProject!.chats.set(archived.id, { ...archived, archivedAt: Date.now() });
+            root.selectedProject!.chats.delete('c-3');
+        });
+        expect(closeCurrent()).toBe(true);
+        expect([ui().draft, ui().chatId]).toEqual([false, 'c-2']);
+    });
+
+    it('returns to an available subagent, but skips it when archived', () => {
+        ui().openChat('c-1');
+        ui().openRun('r-na-02');
+        ui().openDraft();
+        expect(closeCurrent()).toBe(true);
+        expect(ui().runId).toBe('r-na-02');
+
+        ui().openDraft();
+        runInAction(() => {
+            const run = root.selectedProject!.runs.get('r-na-02')!;
+            root.selectedProject!.runs.set(run.id, { ...run, archivedAt: Date.now() });
+        });
+        expect(closeCurrent()).toBe(true);
+        expect([ui().runId, ui().chatId]).toEqual([null, 'c-1']);
+    });
+
+    it('stays in the current project when the preceding place is in another project', () => {
+        ui().openChat('c-1');
+        root.selectProject(FIXTURE_EMPTY_PROJECT_ID);
+        ui().openDraft();
+        closeCurrent();
+        expect(root.selectedProjectId).toBe(FIXTURE_EMPTY_PROJECT_ID);
+    });
+});
+
 describe('NavHistory recording', () => {
     it('starts with the place the first project opens on, so there is nowhere to go yet', () => {
         expect(root.selectedProjectId).toBe(FIXTURE_PROJECT_ID);

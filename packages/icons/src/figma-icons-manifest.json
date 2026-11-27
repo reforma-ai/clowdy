@@ -2082,11 +2082,11 @@
                     "name": "paint-bucket",
                     "sourceHash": "b7d4e7ba2f311ffd97a11af848a67c63c6d5e24dd6bd46e133ca755208a0c9b8"
                 },
-                "16707:129124": {
-                    "file": "mop.svg",
-                    "fingerprint": "3741563347a1756667621dedf90d67579474c6ceebbaaf88f03830ebd1dc3517",
-                    "name": "mop",
-                    "sourceHash": "a31c3afd20cb4fd7157fe9b5e6595dd27b1f47f413d94fb42b81ae4a68bb7816"
+                "16768:134444": {
+                    "file": "broom.svg",
+                    "fingerprint": "6c2781882b04ee3335bb45debb65e273fb51eb9e138115d7cb66dee0c66d622f",
+                    "name": "broom",
+                    "sourceHash": "8675a819354f4bc151ccfa5ffb4e8f3575f738a5ff518f927c64df3bee3b0a2c"
                 },
                 "4298:58141": {
                     "file": "mail.svg",

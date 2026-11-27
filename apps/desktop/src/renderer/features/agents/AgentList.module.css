@@ -55,7 +55,6 @@
     }
 }
 
-.end,
 .chatActions {
     display: inline-flex;
     align-items: center;
@@ -76,10 +75,10 @@
     pointer-events: auto;
 }
 
-.pullRequests[data-pr-state='open'] > svg {
+.pullRequests[data-pr-state='open'] svg {
     color: var(--color-success-text);
 }
-.pullRequests[data-pr-state='merged'] > svg {
+.pullRequests[data-pr-state='merged'] svg {
     color: var(--color-accent-text);
 }
 
@@ -102,9 +101,7 @@
 }
 
 /* Keep hidden tooltip anchors measurable while freeing the title's space. A sub-agent that can be archived has the same end as a chat's row. */
-:is(.chatRow, .archivable):not(
-    :is(:hover, :focus-visible, :has(.rowAction:focus), [data-hovered], [data-open], [data-renaming])
-) {
+:is(.chatRow, .archivable):not(:is(:hover, :focus-within, [data-hovered], [data-open], [data-renaming])) {
     & .rowAction {
         visibility: hidden;
         pointer-events: none;
@@ -125,23 +122,17 @@
     }
 }
 
-.archivable:is(:hover, :focus-visible, :has(.rowAction:focus), [data-hovered], [data-open]) .archiveStatus {
+.archivable:is(:hover, :focus-within, [data-hovered], [data-open]) .archiveStatus {
     display: none;
 }
 
 /* A row's activity dot keeps the idle position; the place or PR is available beside the actions. */
-.chatRow:not(:is(:hover, :focus-visible, :has(.rowAction:focus), [data-hovered], [data-open]))
-    .pullRequests[data-hover-only] {
+.chatRow:not(:is(:hover, :focus-within, [data-hovered], [data-open])) .pullRequests[data-hover-only] {
     display: none;
 }
 
-/*
- * The shortcut's capsule is as far from the row's right edge as from its top and bottom. The list's own rule for a hotkey in a row is for a
- * 30px row; the rows here are 36px, so the capsule (an xs hotkey: a line of `--leading-xs` and its padding) has more room above and below.
- * Doubled so it outranks the list's rule.
- */
-.newChat.newChat {
-    padding-inline-end: calc((var(--clowdy-listbox-item-height) - (var(--leading-xs) + 2 * var(--spacing-2))) / 2);
+.newChat {
+    margin-bottom: var(--spacing-md);
 }
 
 /* A thread below a chat: one level in from the row it belongs to, per level. A sub-agent stands like a thread does. */

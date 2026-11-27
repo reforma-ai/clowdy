@@ -1,9 +1,9 @@
+import { Button } from '@clowdy/components/Button';
 import { Input } from '@clowdy/components/Input';
 import {
     GridList,
     GridListItem,
     GridListSection,
-    listBoxItemDataShow,
     RowActionButton,
     RowControls,
     useCellEditMode,
@@ -26,11 +26,10 @@ import {
     useState,
 } from 'react';
 
-import { CommandHotkey, useCommands, useHotkeyScope } from '../../hotkeys';
+import { useCommands, useHotkeyScope } from '../../hotkeys';
 import { SidebarHeading, useRunLabel } from '../../shared';
 import { useFileDragHover } from '../../shared/useFileDragHover';
 import { ProjectSelect } from '../../shell/ProjectSelect';
-import { NEW_CHAT_COMMAND } from '../../shell/shellCommands';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import {
     type BranchPullRequestKey,
@@ -83,9 +82,6 @@ import { chatWorktreeKey, type WorktreeCard, worktreeCards, worktreeKey, worktre
 
 import type { Chat, ChatId, FolderId, FolderWorktrees, ProjectInfo, Run } from '@clowdy/protocol';
 import type { NewChatDraft } from '../../stores/NewChatDrafts';
-
-/** The id of the first row, the one that starts a chat. Chat ids never look like it. */
-export const NEW_CHAT_ROW = '@new-chat';
 
 const NO_RUNS: readonly Run[] = [];
 
@@ -369,14 +365,11 @@ export function AgentList({
               ]
             : [entryKey(entry)];
     });
-    // A draft has a selected row only when the ungrouped list has a new-chat row.
     // A sub-agent that has no row (its chat's folder group is folded, or it is no native sub-agent) leaves its chat's row as the open one, so the list never shows nothing open.
     const selectedId = selection.draft
         ? ui.draftId && navigationIds.includes(`@draft:${ui.draftId}`)
             ? `@draft:${ui.draftId}`
-            : grouped
-              ? undefined
-              : NEW_CHAT_ROW
+            : undefined
         : openRun && navigationIds.includes(openRun.id)
           ? openRun.id
           : openChatId;
@@ -432,7 +425,7 @@ export function AgentList({
         agentCommands({
             list: () => list.current,
             // The headings are rows the arrows stop on, so they are in the order J and K step through; a group's note has no focus.
-            ids: () => (grouped ? navigationIds : [NEW_CHAT_ROW, ...navigationIds]),
+            ids: () => navigationIds,
             openId: () => selectedId,
         })
     );
@@ -514,7 +507,6 @@ export function AgentList({
 
         if (id.startsWith(LINKED_THREAD_PREFIX)) ui.openChat(id.slice(LINKED_THREAD_PREFIX.length));
         else if (id.startsWith('@draft:')) ui.openDraftId(id.slice('@draft:'.length));
-        else if (id === NEW_CHAT_ROW) openNewChat(project, ui);
         else if (row?.kind === 'subagent') ui.openRun(row.id);
         // A heading is a label, not a page: only its chevron, and Right and Left on it, fold the group.
         else if (row?.kind === 'chat') ui.openChat(id);
@@ -589,7 +581,8 @@ export function AgentList({
                                 label="Close draft"
                                 onPress={() => {
                                     ui.newChatDrafts.remove(draft.id);
-                                    if (ui.draftId === draft.id) ui.openChat(null);
+                                    if (ui.draftId === draft.id && !root.history.backInProject())
+                                        ui.openChat(ui.chatId);
                                 }}
                             />
                         </RowControls>
@@ -842,6 +835,16 @@ export function AgentList({
             </SidebarHeading>
 
             <PanelContent contentClass={styles.content}>
+                <Button
+                    variant="bordered"
+                    size="sm"
+                    fullWidth
+                    aria-label="New chat"
+                    className={styles.newChat}
+                    onPress={() => openNewChat(project, ui)}
+                >
+                    <Plus aria-hidden="true" /> New chat
+                </Button>
                 <div
                     ref={list}
                     onClickCapture={onClick}
@@ -861,22 +864,6 @@ export function AgentList({
                             if (id !== undefined) select(String(id));
                         }}
                     >
-                        {!grouped && (
-                            <GridListItem
-                                id={NEW_CHAT_ROW}
-                                text="New chat"
-                                icon={<Plus />}
-                                className={styles.newChat}
-                                // The shortcut is a hint for the pointer on its way to the row, not a label the row wears at rest.
-                                endAffix={
-                                    <span className={styles.end} data-show={listBoxItemDataShow.itemHover}>
-                                        <CommandHotkey id={NEW_CHAT_COMMAND} size="xs" />
-                                    </span>
-                                }
-                            >
-                                <span className={styles.title}>New chat</span>
-                            </GridListItem>
-                        )}
                         {entries.map(renderEntry)}
                     </GridList>
                 </div>
