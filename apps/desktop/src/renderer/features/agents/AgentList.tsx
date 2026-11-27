@@ -994,7 +994,8 @@ function RowEnd({
             <BranchPullRequestBadge
                 className={styles.pullRequests}
                 branchKey={branchKey}
-                visible={showPullRequests}
+                visible
+                hoverOnly={!showPullRequests}
                 crossWorktree={crossWorktree}
             />
             {status}
