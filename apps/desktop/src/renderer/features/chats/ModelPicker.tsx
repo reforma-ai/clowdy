@@ -23,6 +23,7 @@ import {
 } from 'react';
 
 import { ProviderIcon } from '../settings/providers/ProviderIcon';
+import { ComposerPill } from './ComposerPill';
 import styles from './ModelPicker.module.css';
 import {
     choiceForModel,
@@ -125,20 +126,11 @@ function noteOf(provider: PickerProvider): { busy: true } | { busy: false; text:
 }
 
 function Trigger({ choice, providers }: { choice: ModelChoice; providers: readonly PickerProvider[] }) {
-    const isOpen = use(OverlayTriggerStateContext)!.isOpen;
     const held = holdOf(choice, providers);
     const label = held.level ? `${held.title}, ${levelLabel(held.level)}` : held.title;
 
     return (
-        <Button
-            size="sm"
-            variant="filling"
-            rounded
-            className={styles.trigger}
-            contentClassName={styles.triggerContent}
-            data-open={isOpen || undefined}
-            aria-label={`Model: ${label}`}
-        >
+        <ComposerPill className={styles.trigger} aria-label={`Model: ${label}`}>
             <ProviderIcon agentId={choice.engine} size={16} aria-hidden="true" />
             <span className={styles.modelLabel}>
                 <Text truncate>{held.title}</Text>
@@ -147,8 +139,7 @@ function Trigger({ choice, providers }: { choice: ModelChoice; providers: readon
             <Show when={held.loading}>
                 <Spinner size="xs" />
             </Show>
-            <ChevronDown aria-hidden="true" />
-        </Button>
+        </ComposerPill>
     );
 }
 
@@ -772,19 +763,8 @@ export function ModelPicker({ choice, providers, running = false, onPick }: Mode
 /** The pill of a composer with no provider to pick from: off, and the caller says why (see `Unavailable` in the composer). */
 export function ModelPickerOff() {
     return (
-        <Button
-            size="sm"
-            variant="filling"
-            rounded
-            isDisabled
-            className={styles.trigger}
-            contentClassName={styles.triggerContent}
-            aria-label="No provider"
-        >
-            <span className={styles.modelLabel}>
-                <Text truncate>No provider</Text>
-            </span>
-            <ChevronDown aria-hidden="true" />
-        </Button>
+        <ComposerPill className={styles.trigger} isDisabled aria-label="No provider">
+            <Text truncate>No provider</Text>
+        </ComposerPill>
     );
 }

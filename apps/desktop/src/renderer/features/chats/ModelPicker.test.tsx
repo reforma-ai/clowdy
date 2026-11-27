@@ -223,7 +223,7 @@ describe('the popover', () => {
         // A button that opens a popover is not a toggle: it says it is expanded, and not that it is pressed.
         expect(trigger().getAttribute('aria-expanded')).toBe('true');
         expect(trigger().hasAttribute('aria-pressed')).toBe(false);
-        expect(trigger().hasAttribute('data-open')).toBe(true);
+        expect(trigger().hasAttribute('data-pressed')).toBe(true);
         expect(dialog()!.getAttribute('aria-label')).toBe('Model and reasoning effort');
         expect(selectModel().textContent).toBe('Opus 5.5High');
         expect(slider()!.getAttribute('aria-valuetext')).toBe('High');
