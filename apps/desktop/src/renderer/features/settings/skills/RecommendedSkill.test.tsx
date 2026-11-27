@@ -76,6 +76,22 @@ afterEach(async () => {
 });
 
 describe('Briefback recommendation', () => {
+    it('offers recovery when the connected daemon lacks the status endpoint', async () => {
+        await act(async () => root.unmount());
+        root = createRoot(container);
+        transport.getBriefbackStatus.mockRejectedValueOnce(new TransportError('No route', 404));
+        await act(async () => root.render(<RecommendedSkill onInstalled={onInstalled} revision={1} />));
+        await settle();
+        expect(container.querySelector('[role="alert"]')?.textContent).toContain('restart Clowdy');
+        expect(button()).toBeNull();
+        const retry = [...container.querySelectorAll('button')].find(
+            candidate => candidate.textContent === 'Try again'
+        )!;
+        await press(retry);
+        await settle();
+        expect(status()).toBe('Not installed');
+    });
+
     it('asks before installing and leaves the filesystem alone when the dialog is canceled', async () => {
         await press(button());
         expect(openConfirmModal).toHaveBeenCalledOnce();
@@ -135,6 +151,10 @@ describe('Briefback recommendation', () => {
         await act(async () => {
             await vi.mocked(openConfirmModal).mock.lastCall![0].onConfirm();
         });
+        expect(container.querySelector('[role="alert"]')?.textContent).toContain('/tmp/briefback');
+        transport.getBriefbackStatus.mockRejectedValue(new Error('offline'));
+        await act(async () => root.render(<RecommendedSkill onInstalled={onInstalled} revision={1} />));
+        await settle();
         expect(container.querySelector('[role="alert"]')?.textContent).toContain('/tmp/briefback');
     });
 

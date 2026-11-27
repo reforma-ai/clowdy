@@ -45,7 +45,19 @@ export function RecommendedSkill({ onInstalled, revision }: { onInstalled: () =>
                             ? previous
                             : { kind: 'ready', status }
                     ),
-                () => current && setState(previous => (previous.kind === 'ready' ? previous : { kind: 'failed' }))
+                error =>
+                    current &&
+                    setState(previous =>
+                        previous.kind === 'ready' || previous.kind === 'failed'
+                            ? previous
+                            : {
+                                  kind: 'failed',
+                                  message:
+                                      error instanceof TransportError && error.status === 404
+                                          ? 'After active work finishes, restart Clowdy to use Briefback installation'
+                                          : "Couldn't check Briefback installation. Try again",
+                              }
+                    )
             );
         void refresh();
         // Missing skill roots have no watcher until they are created.
@@ -127,25 +139,15 @@ export function RecommendedSkill({ onInstalled, revision }: { onInstalled: () =>
                                 {label}
                             </Badge>
                         </div>
-                        <Text variant="sm" color="secondary">
-                            A workflow for researching, planning, building and reviewing software
-                        </Text>
-                        {state.kind === 'failed' && (
-                            <Text color="danger" variant="sm" role="alert">
-                                {state.message ?? "Couldn't check Briefback installation"}
-                            </Text>
-                        )}
-                        {state.kind === 'ready' && state.error && (
-                            <Text color="danger" variant="sm" role="alert">
-                                {state.error}
-                            </Text>
-                        )}
-                        {installing && (
+                        {installing ? (
                             <Text variant="sm" color="secondary" role="status">
                                 Installing Briefback…
                             </Text>
-                        )}
-                        {installed && !installing && (
+                        ) : state.kind === 'failed' || (state.kind === 'ready' && state.error) ? (
+                            <Text color="danger" variant="sm" role="alert">
+                                {state.kind === 'failed' ? state.message : state.error}
+                            </Text>
+                        ) : installed ? (
                             <Text variant="sm" color="secondary" data-testid="briefback-update-status">
                                 {update === 'checking'
                                     ? 'Checking for updates…'
@@ -155,6 +157,10 @@ export function RecommendedSkill({ onInstalled, revision }: { onInstalled: () =>
                                         ? 'Update available'
                                         : 'Up to date'}
                             </Text>
+                        ) : (
+                            <Text variant="sm" color="secondary">
+                                A workflow for researching, planning, building and reviewing software
+                            </Text>
                         )}
                     </div>
                     {state.kind === 'failed' ? (
@@ -162,7 +168,6 @@ export function RecommendedSkill({ onInstalled, revision }: { onInstalled: () =>
                             size="sm"
                             variant="bordered"
                             onPress={() => {
-                                setState({ kind: 'loading' });
                                 setAttempt(n => n + 1);
                             }}
                         >
