@@ -630,7 +630,7 @@ export class HttpTransport implements Transport {
 
     async command(command: CommandInput): Promise<CommandResult> {
         // One id for the whole user action: a retry after a lost response must not act twice.
-        const body = JSON.stringify({ ...command, requestId: crypto.randomUUID() });
+        const body = JSON.stringify({ ...command, requestId: command.requestId ?? crypto.randomUUID() });
         let failure: unknown;
 
         for (let attempt = 1; attempt <= COMMAND_ATTEMPTS; attempt++) {

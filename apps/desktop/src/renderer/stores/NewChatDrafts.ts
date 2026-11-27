@@ -1,16 +1,24 @@
 import { type ComposerDoc, emptyComposerDoc } from '@clowdy/components/RichInput';
+import { commandSchema } from '@clowdy/protocol';
 import { makeAutoObservable, observableRef } from 'mobx';
 
 import { samePath } from '../features/agents/workspaceChoice';
 import { browserStorage, type KeyValueStorage, readStored, writeStored } from './storage';
 
-import type { ChatWorkspaceChoice, FolderId, ProjectId } from '@clowdy/protocol';
+import type { Attachment, Chat, ChatWorkspaceChoice, Command, FolderId, ProjectId } from '@clowdy/protocol';
+import type { ReplyMessage } from '../stream/MessageActions';
 
 export interface NewChatDraft {
     readonly id: string;
     readonly folderId: FolderId | null;
     readonly workspace: ChatWorkspaceChoice | null;
     readonly doc: ComposerDoc;
+    readonly createdChat?: Chat;
+    readonly firstMessage?: Omit<Extract<Command, { type: 'chat.send' }>, 'type' | 'requestId' | 'chatId'>;
+    readonly operation?: Extract<Command, { type: 'chat.create' | 'chat.send' }>;
+    readonly attachments?: readonly Attachment[];
+    readonly reply?: ReplyMessage;
+    readonly engine?: string;
 }
 
 function sameWorkspace(a: ChatWorkspaceChoice | null, b: ChatWorkspaceChoice | null): boolean {
@@ -84,13 +92,57 @@ function restore(value: unknown): NewChatDraft[] {
                 !isWorkspace(item.workspace) ||
                 !isNode(item.doc) ||
                 item.doc.type !== 'doc' ||
-                !nonempty(item.doc)
+                (!nonempty(item.doc) &&
+                    item.operation === undefined &&
+                    item.firstMessage === undefined &&
+                    item.reply === undefined &&
+                    (!Array.isArray(item.attachments) || item.attachments.length === 0)) ||
+                (item.createdChat !== undefined &&
+                    (!isObject(item.createdChat) || typeof item.createdChat.id !== 'string')) ||
+                (item.reply !== undefined &&
+                    (!isObject(item.reply) ||
+                        !['user', 'assistant'].includes(String(item.reply.role)) ||
+                        typeof item.reply.text !== 'string')) ||
+                (item.engine !== undefined && typeof item.engine !== 'string') ||
+                (item.attachments !== undefined &&
+                    (!Array.isArray(item.attachments) ||
+                        !item.attachments.every(
+                            file =>
+                                isObject(file) &&
+                                typeof file.id === 'string' &&
+                                typeof file.name === 'string' &&
+                                typeof file.mediaType === 'string' &&
+                                typeof file.size === 'number'
+                        ))) ||
+                (item.firstMessage !== undefined &&
+                    (!isObject(item.firstMessage) ||
+                        !commandSchema.safeParse({
+                            ...item.firstMessage,
+                            type: 'chat.send',
+                            chatId: 'pending',
+                            requestId: 'pending-1',
+                        }).success)) ||
+                (item.operation !== undefined &&
+                    (!commandSchema.safeParse(item.operation).success ||
+                        !isObject(item.operation) ||
+                        !['chat.create', 'chat.send'].includes(String(item.operation.type))))
             )
                 return false;
             ids.add(item.id);
             return true;
         })
-        .map(({ id, folderId, workspace, doc }) => ({ id, folderId, workspace, doc }));
+        .map(({ id, folderId, workspace, doc, createdChat, operation, firstMessage, attachments, reply, engine }) => ({
+            id,
+            folderId,
+            workspace,
+            doc,
+            ...(createdChat && { createdChat }),
+            ...(operation && { operation }),
+            ...(firstMessage && { firstMessage }),
+            ...(attachments && { attachments }),
+            ...(reply && { reply }),
+            ...(engine && { engine }),
+        }));
 }
 
 export class NewChatDrafts {
@@ -106,14 +158,16 @@ export class NewChatDrafts {
     }
 
     createOrOpen(folderId: FolderId | null, workspace: ChatWorkspaceChoice | null): NewChatDraft {
-        const existing = this.drafts.find(
-            draft => draft.folderId === folderId && sameWorkspace(draft.workspace, workspace)
-        );
+        const existing = this.findPlace(folderId, workspace);
         if (existing) return existing;
         const draft: NewChatDraft = { id: crypto.randomUUID(), folderId, workspace, doc: emptyComposerDoc() };
         this.drafts = [...this.drafts, draft];
         this.persist();
         return draft;
+    }
+
+    findPlace(folderId: FolderId | null, workspace: ChatWorkspaceChoice | null): NewChatDraft | undefined {
+        return this.drafts.find(draft => draft.folderId === folderId && sameWorkspace(draft.workspace, workspace));
     }
 
     get(id: string): NewChatDraft | undefined {
@@ -130,6 +184,89 @@ export class NewChatDrafts {
         this.persist();
     }
 
+    updateOperation(
+        id: string,
+        operation: NewChatDraft['operation'],
+        createdChat?: Chat,
+        firstMessage?: NewChatDraft['firstMessage'],
+        attachments?: readonly Attachment[],
+        reply?: ReplyMessage
+    ): boolean {
+        const before = this.drafts;
+        this.drafts = this.drafts.map(draft =>
+            draft.id === id
+                ? {
+                      ...draft,
+                      operation,
+                      createdChat: createdChat ?? draft.createdChat,
+                      firstMessage: firstMessage ?? draft.firstMessage,
+                      attachments: attachments ?? draft.attachments,
+                      reply: reply ?? draft.reply,
+                  }
+                : draft
+        );
+        try {
+            if (!this.#storage) throw new Error('Storage unavailable');
+            const value = JSON.stringify(
+                this.drafts.filter(
+                    draft =>
+                        nonempty(draft.doc) ||
+                        draft.operation ||
+                        draft.firstMessage ||
+                        draft.attachments?.length ||
+                        draft.reply
+                )
+            );
+            this.#storage.setItem(this.#key, value);
+            if (this.#storage.getItem(this.#key) !== value) throw new Error('Storage unavailable');
+            return true;
+        } catch {
+            this.drafts = before;
+            return false;
+        }
+    }
+
+    updateAttachments(id: string, attachments: readonly Attachment[]): void {
+        this.drafts = this.drafts.map(draft => (draft.id === id ? { ...draft, attachments } : draft));
+        this.persist();
+    }
+
+    updateReply(id: string, reply?: ReplyMessage): void {
+        this.drafts = this.drafts.map(draft => (draft.id === id ? { ...draft, reply } : draft));
+        this.persist();
+    }
+
+    updateEngine(id: string, engine: string | null): void {
+        this.drafts = this.drafts.map(draft => (draft.id === id ? { ...draft, engine: engine ?? undefined } : draft));
+        this.persist();
+    }
+
+    clearRefused(id: string): boolean {
+        const before = this.drafts;
+        this.drafts = this.drafts.map(draft =>
+            draft.id === id ? { ...draft, operation: undefined, firstMessage: undefined } : draft
+        );
+        try {
+            if (!this.#storage) throw new Error('Storage unavailable');
+            const value = JSON.stringify(
+                this.drafts.filter(
+                    draft =>
+                        nonempty(draft.doc) ||
+                        draft.operation ||
+                        draft.firstMessage ||
+                        draft.attachments?.length ||
+                        draft.reply
+                )
+            );
+            this.#storage.setItem(this.#key, value);
+            if (this.#storage.getItem(this.#key) !== value) throw new Error('Storage unavailable');
+            return true;
+        } catch {
+            this.drafts = before;
+            return false;
+        }
+    }
+
     remove(id: string): void {
         this.drafts = this.drafts.filter(draft => draft.id !== id);
         this.persist();
@@ -139,7 +276,14 @@ export class NewChatDrafts {
         writeStored(
             this.#storage,
             this.#key,
-            this.drafts.filter(draft => nonempty(draft.doc))
+            this.drafts.filter(
+                draft =>
+                    nonempty(draft.doc) ||
+                    draft.operation ||
+                    draft.firstMessage ||
+                    draft.attachments?.length ||
+                    draft.reply
+            )
         );
     }
 }

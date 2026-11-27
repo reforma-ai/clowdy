@@ -414,7 +414,7 @@ describe('the new-chat row', () => {
 
         await draw(() => ui().openDraft());
 
-        expect(isSelected('@new-chat')).toBe(true);
+        expect(isSelected(`@draft:${ui().draftId}`)).toBe(true);
         expect(container.querySelector('[data-testid="chat"]')).toBeNull();
         expect(field()).not.toBeNull();
         expect(container.textContent).toContain('What should we work on?');
@@ -440,6 +440,51 @@ describe('the new-chat row', () => {
         expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe(made[0]);
     });
 
+    it('locks a sending draft when returning to it and opens its chat after success', async () => {
+        let release!: () => void;
+        const original = store.command.bind(store);
+        vi.spyOn(store, 'command').mockImplementation(async input => {
+            if (input.type === 'chat.send')
+                await new Promise<void>(resolve => {
+                    release = resolve;
+                });
+            return original(input);
+        });
+        await draw(() => ui().openDraft());
+        const draft = ui().draftId!;
+        type('First message');
+        await pressEnter();
+        await draw(() => ui().openChat('c-3'));
+        await draw(() => ui().openDraftId(draft));
+        expect(container.querySelector('[contenteditable="true"]')).toBeNull();
+        expect(container.textContent).toContain('Sending message');
+        await act(async () => release());
+        await draw();
+        expect(ui().draft).toBe(false);
+        expect(ui().chatId).not.toBe('c-3');
+        expect(ui().newChatDrafts.get(draft)).toBeUndefined();
+    });
+
+    it('does not change the selected chat when a first send completes elsewhere', async () => {
+        let release!: () => void;
+        const original = store.command.bind(store);
+        vi.spyOn(store, 'command').mockImplementation(async input => {
+            if (input.type === 'chat.send')
+                await new Promise<void>(resolve => {
+                    release = resolve;
+                });
+            return original(input);
+        });
+        await draw(() => ui().openDraft());
+        const draft = ui().draftId!;
+        type('First message');
+        await pressEnter();
+        await draw(() => ui().openChat('c-3'));
+        await act(async () => release());
+        await draw();
+        expect([ui().draft, ui().chatId, ui().newChatDrafts.get(draft)]).toEqual([false, 'c-3', undefined]);
+    });
+
     it('sends nothing for a message of spaces, and keeps what was typed when the row is left and opened again', async () => {
         const before = project().chats.size;
 
@@ -456,26 +501,66 @@ describe('the new-chat row', () => {
         expect(editor().getText()).toContain('half a thought');
     });
 
-    it('is what shows, and the only row, when the project has no chat', async () => {
+    it('shows a selected draft when the project has no chat', async () => {
         store.selectProject(FIXTURE_EMPTY_PROJECT_ID);
         await vi.waitFor(() => expect(store.selectedProject?.status).toBe('ready'));
         await draw(() => store.ui.forProject(FIXTURE_EMPTY_PROJECT_ID).setChatListLayout('simple'));
 
-        expect(rowKeys()).toEqual(['@new-chat']);
-        expect(isSelected('@new-chat')).toBe(true);
+        const draft = store.ui.forProject(FIXTURE_EMPTY_PROJECT_ID).draftId;
+        expect(rowKeys()).toEqual(['@new-chat', `@draft:${draft}`]);
+        expect(isSelected(`@draft:${draft}`)).toBe(true);
         expect(field()).not.toBeNull();
     });
 });
 
 describe('grouped by folder', () => {
-    it('shows an empty grouped project with a draft and no selected row', async () => {
+    it('shows a selected draft in an empty grouped project', async () => {
         store.selectProject(FIXTURE_EMPTY_PROJECT_ID);
         await vi.waitFor(() => expect(store.selectedProject?.status).toBe('ready'));
         await draw(() => store.ui.forProject(FIXTURE_EMPTY_PROJECT_ID).setChatListLayout('folder'));
 
-        expect(rowKeys()).toEqual([expect.stringMatching(/^@folder:/), expect.stringMatching(/^@empty:/)]);
-        expect(container.querySelector('[role="row"][data-selected]')).toBeNull();
+        const draft = store.ui.forProject(FIXTURE_EMPTY_PROJECT_ID).draftId;
+        expect(rowKeys()).toEqual([expect.stringMatching(/^@folder:/), `@draft:${draft}`]);
+        expect(isSelected(`@draft:${draft}`)).toBe(true);
         expect(container.querySelector('[contenteditable="true"]')).not.toBeNull();
+    });
+
+    it('creates a persistent draft when typing after closing the empty project draft', async () => {
+        store.selectProject(FIXTURE_EMPTY_PROJECT_ID);
+        await vi.waitFor(() => expect(store.selectedProject?.status).toBe('ready'));
+        await draw(() => store.ui.forProject(FIXTURE_EMPTY_PROJECT_ID).setChatListLayout('folder'));
+        const emptyUi = store.ui.forProject(FIXTURE_EMPTY_PROJECT_ID);
+        const first = emptyUi.draftId!;
+        await press(rowOf(`@draft:${first}`).querySelector<HTMLElement>('button[aria-label="Close draft"]')!);
+        await draw();
+        const input = container.querySelector<HTMLElement & { editor: Editor }>('[contenteditable="true"]')!;
+        await act(async () => {
+            input.editor.commands.insertContent('Keep this');
+        });
+        await draw();
+        expect(emptyUi.newChatDrafts.get(emptyUi.draftId!)?.doc).toBeDefined();
+        expect(emptyUi.draftId).not.toBe(first);
+        expect(rowKeys()).toContain(`@draft:${emptyUi.draftId}`);
+    });
+
+    it('sends the first message typed immediately after closing an empty project draft', async () => {
+        store.selectProject(FIXTURE_EMPTY_PROJECT_ID);
+        await vi.waitFor(() => expect(store.selectedProject?.status).toBe('ready'));
+        await draw(() => store.ui.forProject(FIXTURE_EMPTY_PROJECT_ID).setChatListLayout('folder'));
+        const emptyUi = store.ui.forProject(FIXTURE_EMPTY_PROJECT_ID);
+        await press(rowOf(`@draft:${emptyUi.draftId}`).querySelector<HTMLElement>('button[aria-label="Close draft"]')!);
+        await draw();
+        const input = container.querySelector<HTMLElement & { editor: Editor }>('[contenteditable="true"]')!;
+        const command = vi.spyOn(store, 'command');
+        await act(async () => {
+            input.editor.commands.insertContent('Send immediately');
+            input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+        });
+        await draw();
+        expect(command.mock.calls.map(([item]) => item).find(item => item.type === 'chat.send')).toMatchObject({
+            text: 'Send immediately',
+        });
+        expect(emptyUi.draft).toBe(false);
     });
 
     const API = { id: 'fld_api', path: '/Users/dev/car-rental-api' };
@@ -641,7 +726,7 @@ describe('grouped by folder', () => {
 
             expect([ui().draft, ui().draftFolderId]).toEqual([true, API.id]);
             expect(ui().draftWorkspace).toBeNull();
-            expect(container.querySelector('[role="row"][data-selected]')).toBeNull();
+            expect(isSelected(`@draft:${ui().draftId}`)).toBe(true);
 
             // The built-in tabs can open the folder when it matches the current draft.
             await press(name(API.id)!);
@@ -850,7 +935,9 @@ describe('grouped by folder', () => {
         };
         try {
             rowOf(first).focus();
+            expect(await step('j')).toBe(`@draft:${ui().draftId}`);
             expect(await step('j')).toBe(second);
+            expect(await step('k')).toBe(`@draft:${ui().draftId}`);
             expect(await step('k')).toBe(first);
             expect(await step('k')).toBe(first);
             expect(rowKeys().includes('@new-chat')).toBe(layout === 'simple');
@@ -873,15 +960,14 @@ describe('grouped by folder', () => {
         expect(isSelected('c-2')).toBe(true);
     });
 
-    it('has a button in each heading for a chat in that folder: the page says where, and no list row is selected', async () => {
+    it('selects the draft in the folder whose new chat button was pressed', async () => {
         await restart();
         await press(buttonNamed('New chat in car-rental-api'));
         await draw();
 
         expect([ui().draft, ui().draftFolderId]).toEqual([true, API.id]);
         expect(folderSelect()?.textContent).toContain('car-rental-api');
-        // A grouped draft does not select a list row.
-        expect(container.querySelector('[role="row"][data-selected]')).toBeNull();
+        expect(isSelected(`@draft:${ui().draftId}`)).toBe(true);
         expect(rowOf(head(API.id)).hasAttribute('data-open')).toBe(false);
 
         // The main group opens a draft in the main folder.
@@ -889,7 +975,7 @@ describe('grouped by folder', () => {
         await draw();
 
         expect([ui().draft, ui().draftFolderId]).toEqual([true, null]);
-        expect(container.querySelector('[role="row"][data-selected]')).toBeNull();
+        expect(isSelected(`@draft:${ui().draftId}`)).toBe(true);
         expect(folderSelect()?.textContent).toContain('car-rental');
     });
 
@@ -940,9 +1026,9 @@ describe('grouped by folder', () => {
 
             expect([ui().draft, ui().draftFolderId]).toEqual([true, API.id]);
             expect(folderSelect()?.textContent).toContain('car-rental-api');
-            // Changing folders keeps the grouped draft without a selected row.
+            // Changing folders moves the selected draft.
             expect(rowOf(head(API.id)).hasAttribute('data-open')).toBe(false);
-            expect(container.querySelector('[role="row"][data-selected]')).toBeNull();
+            expect(isSelected(`@draft:${ui().draftId}`)).toBe(true);
 
             await press(folderSelect()!);
 
@@ -955,7 +1041,7 @@ describe('grouped by folder', () => {
 
             expect([ui().draft, ui().draftFolderId]).toEqual([true, null]);
             expect(folderSelect()?.textContent).toContain('car-rental');
-            expect(container.querySelector('[role="row"][data-selected]')).toBeNull();
+            expect(isSelected(`@draft:${ui().draftId}`)).toBe(true);
         });
 
         it('keeps the words of the message when another folder is picked', async () => {
@@ -1302,7 +1388,7 @@ describe('the heading', () => {
         expect(menuItem('Project settings')).toBeTruthy();
     });
 
-    it('has the new-chat page open by its row, which is selected only while it is open', async () => {
+    it('selects the draft row only while its page is open', async () => {
         await draw(() => ui().setChatListLayout('simple'));
         await press(rowOf('@new-chat'));
 
@@ -1311,11 +1397,12 @@ describe('the heading', () => {
         // The test build has no observer, so the screen is drawn again by hand.
         await draw();
 
-        expect(isSelected('@new-chat')).toBe(true);
+        const draft = ui().draftId;
+        expect(isSelected(`@draft:${draft}`)).toBe(true);
 
         await draw(() => ui().openChat('c-3'));
 
-        expect(isSelected('@new-chat')).toBe(false);
+        expect(isSelected(`@draft:${draft}`)).toBe(false);
     });
 });
 
@@ -1950,7 +2037,7 @@ describe('a chat that works in a worktree', () => {
             await draw();
             await vi.waitFor(() => expect(ui().draftWorkspaceRow?.id).toBe(workspace.id));
             expect(rowKeys()).not.toContain('@new-chat');
-            expect(container.querySelector('[role="row"][data-selected]')).toBeNull();
+            expect(isSelected(`@draft:${ui().draftId}`)).toBe(true);
 
             const field = container.querySelector<HTMLElement & { editor: Editor }>('[contenteditable="true"]')!;
             await act(async () => {
@@ -2352,7 +2439,71 @@ describe('worktree cards', () => {
         expect([ui().draft, ui().draftWorkspace]).toEqual([true, { mode: 'existing', path: workspace.path }]);
         await draw();
         expect(rowKeys()).not.toContain('@new-chat');
-        expect(container.querySelector('[role="row"][data-selected]')).toBeNull();
+        expect(isSelected(`@draft:${ui().draftId}`)).toBe(true);
+    });
+
+    it('keeps two worktree drafts and their text when switching and moving one into the other', async () => {
+        await restart();
+        await draw(() => {
+            ui().setGroupByWorktree(true);
+            chatListPreferences.setShowUnusedWorktrees(true);
+        });
+        const firstCard = workspaceKey();
+        const secondCard = cardRows().find(key => key?.includes('search-filters'))!;
+        await press(rowOf(firstCard).querySelector<HTMLElement>('button[aria-label^="New chat in "]')!);
+        await draw();
+        const first = ui().draftId!;
+        const editor = () =>
+            container.querySelector<HTMLElement & { editor: Editor }>('[contenteditable="true"]')!.editor;
+        await act(async () => {
+            editor().commands.insertContent('First worktree words');
+        });
+        await press(rowOf(secondCard).querySelector<HTMLElement>('button[aria-label^="New chat in "]')!);
+        await draw();
+        const second = ui().draftId!;
+        expect(second).not.toBe(first);
+        await act(async () => {
+            editor().commands.insertContent('Second worktree words');
+        });
+        await press(rowOf(`@draft:${first}`));
+        await draw();
+        expect([isSelected(`@draft:${first}`), editor().getText()]).toEqual([true, 'First worktree words']);
+        await draw(() =>
+            ui().setDraftWorkspace({ mode: 'existing', path: '/Users/dev/worktrees/car-rental/search-filters' })
+        );
+        expect(rowOf(`@draft:${first}`).closest('[data-worktree-card]')?.getAttribute('data-worktree-card')).toBe(
+            secondCard
+        );
+        await press(rowOf(`@draft:${second}`));
+        await draw();
+        expect([isSelected(`@draft:${second}`), editor().getText()]).toEqual([true, 'Second worktree words']);
+        await press(rowOf(`@draft:${first}`));
+        await draw();
+        expect(editor().getText()).toBe('First worktree words');
+    });
+
+    it.each(['simple', 'folder', 'worktree'] as const)('shows a selected draft in the %s layout', async layout => {
+        await restart();
+        await draw(() => {
+            ui().setChatListLayout(layout);
+            ui().openDraft([], null, { mode: 'existing', path: '/missing-from-git' });
+        });
+        expect(isSelected(`@draft:${ui().draftId}`)).toBe(true);
+    });
+
+    it('closes an empty draft row without removing another draft', async () => {
+        await restart();
+        await draw(() => {
+            ui().setChatListLayout('folder');
+            ui().openDraft([], null, { mode: 'existing', path: '/first' });
+        });
+        const first = ui().draftId!;
+        await draw(() => ui().openDraft([], null, { mode: 'existing', path: '/second' }));
+        const second = ui().draftId!;
+        await press(rowOf(`@draft:${first}`).querySelector<HTMLElement>('button[aria-label="Close draft"]')!);
+        await draw();
+        expect(rowKeys()).not.toContain(`@draft:${first}`);
+        expect(isSelected(`@draft:${second}`)).toBe(true);
     });
 
     it('disables the shortcut while a worktree is still being prepared', async () => {

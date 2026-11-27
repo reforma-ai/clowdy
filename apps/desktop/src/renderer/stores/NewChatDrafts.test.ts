@@ -57,6 +57,66 @@ describe('NewChatDrafts', () => {
         drafts.updateDoc(first.id, emptyComposerDoc());
         expect(new NewChatDrafts('p', storage).drafts).toEqual([]);
     });
+    it('restores an attachment-only pending first message and its request after restart', () => {
+        const storage = memory();
+        const drafts = new NewChatDrafts('p', storage);
+        const draft = drafts.createOrOpen(null, null);
+        const create = { type: 'chat.create' as const, projectId: 'p', requestId: 'create-request-1' };
+        const firstMessage = { text: '', attachmentIds: ['file-1'], mode: 'steer' as const };
+        expect(drafts.updateOperation(draft.id, create, undefined, firstMessage)).toBe(true);
+        expect(new NewChatDrafts('p', storage).get(draft.id)).toMatchObject({ operation: create, firstMessage });
+    });
+
+    it('refuses to journal an operation when storage fails', () => {
+        const storage = memory();
+        const drafts = new NewChatDrafts('p', storage);
+        const draft = drafts.createOrOpen(null, null);
+        storage.setItem = () => {
+            throw new Error('full');
+        };
+        expect(drafts.updateOperation(draft.id, { type: 'chat.create', projectId: 'p', requestId: 'request-1' })).toBe(
+            false
+        );
+        expect(drafts.get(draft.id)?.operation).toBeUndefined();
+    });
+
+    it('keeps attachments and the created chat editable after a definitive refusal and restart', () => {
+        const storage = memory();
+        const drafts = new NewChatDrafts('p', storage);
+        const draft = drafts.createOrOpen(null, null);
+        const file = { id: 'file-1', name: 'notes.txt', mediaType: 'text/plain', size: 5 };
+        const reply = { role: 'assistant' as const, text: 'The original answer' };
+        const chat = {
+            id: 'c-1',
+            projectId: 'p',
+            title: 'Chat',
+            mode: 'autopilot' as const,
+            createdAt: 1,
+            updatedAt: 1,
+        };
+        drafts.updateDoc(draft.id, text('Please read'));
+        expect(
+            drafts.updateOperation(
+                draft.id,
+                { type: 'chat.send', requestId: 'request-1', chatId: chat.id, text: 'Please read' },
+                chat,
+                { text: 'Please read' },
+                [file],
+                reply
+            )
+        ).toBe(true);
+        drafts.clearRefused(draft.id);
+        const restored = new NewChatDrafts('p', storage).get(draft.id);
+        expect(restored).toMatchObject({
+            doc: text('Please read'),
+            createdChat: chat,
+            attachments: [file],
+            reply,
+        });
+        expect(restored?.operation).toBeUndefined();
+        expect(restored?.firstMessage).toBeUndefined();
+    });
+
     it('does not persist formatting without content', () => {
         const storage = memory();
         const drafts = new NewChatDrafts('p', storage);

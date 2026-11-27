@@ -167,6 +167,35 @@ describe('NavHistory recording', () => {
         expect(place()).toBe('p-car/c-1');
     });
 
+    it('returns to a draft even if the previously selected chat was deleted', () => {
+        ui().openChat('c-1');
+        ui().openDraft();
+        const draftId = ui().draftId;
+        ui().openChat('c-2');
+        runInAction(() => root.selectedProject!.chats.delete('c-1'));
+        root.history.back();
+        expect([ui().draft, ui().draftId]).toEqual([true, draftId]);
+    });
+
+    it('skips a draft removed after leaving it', () => {
+        ui().openChat('c-1');
+        ui().openDraft();
+        const draftId = ui().draftId!;
+        ui().openChat('c-2');
+        ui().newChatDrafts.remove(draftId);
+        root.history.back();
+        expect([ui().draft, ui().chatId]).toEqual([false, 'c-1']);
+    });
+
+    it('restores the current agent of a draft instead of its old history value', () => {
+        ui().openDraft();
+        const id = ui().draftId!;
+        ui().openChat('c-1');
+        ui().newChatDrafts.updateEngine(id, 'codex');
+        root.history.back();
+        expect(ui().draftEngine).toBe('codex');
+    });
+
     it('records the new-chat row of each folder as a place of its own, and brings its folder back', () => {
         ui().openDraft();
         ui().openDraft([], 'fld_other');

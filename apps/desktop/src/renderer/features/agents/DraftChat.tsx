@@ -6,6 +6,8 @@ import { useEffect, useRef } from 'react';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { ChatDropZone } from '../chats/ChatDropZone';
 import { Composer, type ComposerHandle } from '../chats/Composer';
+import { saveDraft } from '../chats/composerDrafts';
+import { useDraftSending } from '../chats/draftSending';
 import { newChatDefaults, startingChoice } from '../chats/newChatDefaults';
 import { currentPlace } from '../sidePanel/currentPlace';
 import { openManageWorktrees } from '../worktrees';
@@ -57,6 +59,34 @@ export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
 
     // The worktree the page works in once its row is there: the same the window's tabs show, and the box's `@` list reads.
     const workspaceRow = currentPlace(project, ui).workspace;
+    const draftId = ui.draftId;
+    const savedDraft = draftId ? ui.newChatDrafts.get(draftId) : undefined;
+    const sending = useDraftSending(draftId ? `@new-chat:${project.id}:${draftId}` : undefined);
+    const locked = sending || Boolean(savedDraft?.operation || savedDraft?.createdChat || savedDraft?.firstMessage);
+    const journalFor = (id: string) => ({
+        key: `@new-chat:${project.id}:${id}`,
+        get: () => ui.newChatDrafts.get(id),
+        set: (
+            operation: import('@clowdy/protocol').Command | undefined,
+            chat?: import('@clowdy/protocol').Chat,
+            firstMessage?: import('../../stores/NewChatDrafts').NewChatDraft['firstMessage'],
+            attachments?: readonly import('@clowdy/protocol').Attachment[],
+            reply?: import('../../stream/MessageActions').ReplyMessage
+        ) =>
+            ui.newChatDrafts.updateOperation(
+                id,
+                operation as import('../../stores/NewChatDrafts').NewChatDraft['operation'],
+                chat,
+                firstMessage,
+                attachments,
+                reply
+            ),
+        setAttachments: (attachments: readonly import('@clowdy/protocol').Attachment[]) =>
+            ui.newChatDrafts.updateAttachments(id, attachments),
+        clearRefused: () => ui.newChatDrafts.clearRefused(id),
+        setReply: (reply?: import('../../stream/MessageActions').ReplyMessage) =>
+            ui.newChatDrafts.updateReply(id, reply),
+    });
 
     // The branch or base for a new worktree comes from the Git listing. An existing checkout is validated by path.
     const waiting =
@@ -67,7 +97,7 @@ export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
     // A project with no chat shows this page whether or not the store says the new-chat page is open (`resolveSelection`), and the store keeps what is chosen here (the folder, where it works, the
     // branch) only while the page is open: an empty project's first chat would otherwise ignore every pick of the pill. Opening it changes nothing the person sees.
     useEffect(() => {
-        if (!ui.draft) ui.openDraft();
+        if (!ui.draft && !ui.chatId && !ui.runId) ui.openDraft();
     }, [ui]);
 
     // Files a hand-off left here join the message as if they were picked: the box uploads them to this project. What the effect adds is
@@ -81,7 +111,7 @@ export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
     }, [pending, ui]);
 
     return (
-        <ChatDropZone onFiles={files => composer.current?.addFiles(files)}>
+        <ChatDropZone disabled={locked} onFiles={files => composer.current?.addFiles(files)}>
             <div className={styles.draft}>
                 <div className={styles.center}>
                     <Text variant="heading-3">What should we work on?</Text>
@@ -94,40 +124,67 @@ export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
                             minLines={3}
                             start={{
                                 projectId: project.id,
+                                ...(draftId && {
+                                    draftKey: `@new-chat:${project.id}:${draftId}`,
+                                    draftDoc: savedDraft?.doc,
+                                    journal: journalFor(draftId),
+                                }),
+                                ensureJournal: () => {
+                                    if (!ui.draftId) ui.openDraft();
+                                    return journalFor(ui.draftId!);
+                                },
+                                onDraftChange: (doc: import('@clowdy/components/RichInput').ComposerDoc) => {
+                                    if (!draftId && !ui.draft && !ui.chatId && !ui.runId) ui.openDraft();
+                                    const id = draftId ?? ui.draftId;
+                                    if (!id) return;
+                                    saveDraft(`@new-chat:${project.id}:${id}`, doc);
+                                    ui.newChatDrafts.updateDoc(id, doc);
+                                },
                                 folderId,
                                 workspace,
                                 ...(workspaceRow && { workspaceRow }),
                                 ...(mainBranch.around && { around: mainBranch.around }),
                                 waiting,
-                                onStarted: chatId => ui.openChat(chatId),
+                                onStarted: (chatId, key) => {
+                                    const id = key?.slice(`@new-chat:${project.id}:`.length) ?? draftId;
+                                    const selected = ui.draft && ui.draftId === id;
+                                    if (id) ui.newChatDrafts.remove(id);
+                                    if (selected) ui.openChat(chatId);
+                                },
                                 defaults,
                             }}
                             controls={
                                 <>
-                                    <WorkspaceChips
-                                        folders={folders}
-                                        selectedFolderId={target.folder.id}
-                                        missing={missing}
-                                        onPickFolder={folder =>
-                                            ui.setDraftFolder(
-                                                folder.id === mainFolder(project.project).id ? null : folder.id
-                                            )
-                                        }
-                                        repository={repository}
-                                        choice={workspace}
-                                        workspaceRow={workspaceRow}
-                                        chats={project.chats}
-                                        main={mainBranch.controls}
-                                        onChoose={choice => ui.setDraftWorkspace(choice)}
-                                        onManage={() =>
-                                            openManageWorktrees({
-                                                root,
-                                                projectId: project.id,
-                                                folderId: target.folder.id,
-                                                initialTab: 'settings',
-                                            })
-                                        }
-                                    />
+                                    {locked ? (
+                                        <Text color="secondary">
+                                            {sending ? 'Sending message…' : 'Message ready to retry'}
+                                        </Text>
+                                    ) : (
+                                        <WorkspaceChips
+                                            folders={folders}
+                                            selectedFolderId={target.folder.id}
+                                            missing={missing}
+                                            onPickFolder={folder =>
+                                                ui.setDraftFolder(
+                                                    folder.id === mainFolder(project.project).id ? null : folder.id
+                                                )
+                                            }
+                                            repository={repository}
+                                            choice={workspace}
+                                            workspaceRow={workspaceRow}
+                                            chats={project.chats}
+                                            main={mainBranch.controls}
+                                            onChoose={choice => ui.setDraftWorkspace(choice)}
+                                            onManage={() =>
+                                                openManageWorktrees({
+                                                    root,
+                                                    projectId: project.id,
+                                                    folderId: target.folder.id,
+                                                    initialTab: 'settings',
+                                                })
+                                            }
+                                        />
+                                    )}
                                 </>
                             }
                         />

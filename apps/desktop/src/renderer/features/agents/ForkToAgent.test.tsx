@@ -1,5 +1,4 @@
 // @vitest-environment happy-dom
-import { emptyComposerDoc } from '@clowdy/components/RichInput';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -7,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createFixtureData, FIXTURE_PROJECT_ID } from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../../stores';
-import { newChatDraftKey, saveDraft } from '../chats/composerDrafts';
+import { newChatDraftKey } from '../chats/composerDrafts';
 import { filesOf, setFiles } from '../chats/composerFiles';
 import { newChatDefaults } from '../chats/newChatDefaults';
 import { Screen } from './Screen';
@@ -28,7 +27,7 @@ vi.mock('../../stream/Markdown', () => ({ Markdown: ({ text }: { text: string })
  * first message is sent. The test build has no MobX observer plugin, so the screen is drawn again by hand after a change, as the observer does in the app.
  */
 
-const DRAFT_KEY = newChatDraftKey(FIXTURE_PROJECT_ID);
+const draftKey = () => `${newChatDraftKey(FIXTURE_PROJECT_ID)}:${ui().newChatDrafts.findPlace(null, null)?.id ?? ''}`;
 const FILE_NAME = 'first-version-conversation.md';
 
 const memoryStorage = (): KeyValueStorage => {
@@ -89,8 +88,6 @@ async function forkTo(agent: string) {
 }
 
 beforeEach(async () => {
-    saveDraft(DRAFT_KEY, emptyComposerDoc());
-    setFiles(DRAFT_KEY, []);
     localStorage.clear();
 
     container = document.createElement('div');
@@ -106,8 +103,8 @@ afterEach(() => {
     newChatDefaults.setEngine(undefined);
     act(() => reactRoot.unmount());
     container.remove();
+    setFiles(draftKey(), []);
     store.dispose();
-    setFiles(DRAFT_KEY, []);
     localStorage.clear();
 });
 
@@ -118,7 +115,7 @@ describe('Hand off to', () => {
         expect(container.textContent).toContain('What should we work on?');
         expect(modelLabel()).toBe('Model: GPT-6.2 Sol, Low');
         expect(container.textContent).toContain(FILE_NAME);
-        expect(filesOf(DRAFT_KEY).map(file => file.name)).toEqual([FILE_NAME]);
+        expect(filesOf(draftKey()).map(file => file.name)).toEqual([FILE_NAME]);
         expect(field()!.editor.getText()).toBe(
             `Continue the work from the chat "First version". The conversation so far is attached as ${FILE_NAME}.`
         );
@@ -126,7 +123,7 @@ describe('Hand off to', () => {
         expect(ui().pendingFiles).toEqual([]);
     });
 
-    it("starts on the agent picked even when the app's new chats ask for another, and the next page opened asks for that other again", async () => {
+    it('keeps the picked agent when the same draft is reopened', async () => {
         newChatDefaults.setEngine('claude');
         await forkTo('Cursor');
 
@@ -136,7 +133,7 @@ describe('Hand off to', () => {
         await act(async () => ui().openDraft());
         await draw();
 
-        expect(modelLabel()).toContain('Opus');
+        expect(modelLabel()).toContain('Auto');
     });
 
     it('sends the first message to the agent picked, with the file, and that makes the chat', async () => {
@@ -144,7 +141,7 @@ describe('Hand off to', () => {
 
         await forkTo('Codex');
 
-        const [held] = filesOf(DRAFT_KEY);
+        const [held] = filesOf(draftKey());
 
         await act(async () => {
             field()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
@@ -164,7 +161,7 @@ describe('Hand off to', () => {
         expect(sent.find(input => input.type === 'chat.send')).toMatchObject({ attachmentIds: [held!.attachment!.id] });
     });
 
-    it('leaves nothing behind when the page is closed, and the next new-chat page starts where it always does', async () => {
+    it('keeps the handoff draft and its agent after navigating away', async () => {
         const command = vi.spyOn(store, 'command');
         const chats = [...store.selectedProject!.chats.keys()];
 
@@ -180,7 +177,7 @@ describe('Hand off to', () => {
         await act(async () => ui().openDraft());
         await draw();
 
-        expect(modelLabel()).toContain('Opus');
+        expect(modelLabel()).toContain('GPT-6.2 Sol');
     });
 
     it('brings the agent back with the page when the person goes back to it', async () => {

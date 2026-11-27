@@ -82,6 +82,27 @@ describe('UiStore', () => {
         expect([ui.chatId, ui.runId, ui.draft]).toEqual(['c2', null, false]);
     });
 
+    it('keeps pending files with their draft across navigation and restores its current location from history', () => {
+        const ui = new UiStore(memoryStorage()).forProject('p1');
+        const first = new File(['first'], 'first.md');
+        const second = new File(['second'], 'second.md');
+        ui.openDraft([first], null, { mode: 'existing', path: '/one' });
+        const firstId = ui.draftId!;
+        const oldView = ui.view;
+        ui.setDraftWorkspace({ mode: 'existing', path: '/moved' });
+        ui.openDraft([second], null, { mode: 'existing', path: '/two' });
+        expect(ui.takePendingFiles()).toEqual([second]);
+        ui.show(oldView);
+        expect([ui.draftId, ui.draftWorkspace, ui.takePendingFiles()]).toEqual([
+            firstId,
+            { mode: 'existing', path: '/moved' },
+            [first],
+        ]);
+        ui.newChatDrafts.remove(firstId);
+        ui.show(oldView);
+        expect(ui.draft).toBe(false);
+    });
+
     it('holds the files a hand-off gives the new-chat page until the page takes them, once, and does not keep them', () => {
         const storage = memoryStorage();
         const ui = new UiStore(storage).forProject('p1');
@@ -1360,7 +1381,7 @@ describe('UiStore', () => {
     });
 
     describe('the agent the new chat starts on', () => {
-        it('is none unless the page was opened for one, and the next page opened starts over', () => {
+        it('keeps the requested agent when an existing draft is reopened', () => {
             const ui = new UiStore().forProject('p1');
 
             ui.openDraft();
@@ -1369,9 +1390,12 @@ describe('UiStore', () => {
             ui.openDraft([], null, null, 'codex');
             expect(ui.draftEngine).toBe('codex');
 
-            // The page opened from the list again is not for the agent a hand-off named.
+            const draftId = ui.draftId!;
+            ui.openChat('c1');
+            ui.openDraftId(draftId);
+            expect(ui.draftEngine).toBe('codex');
             ui.openDraft();
-            expect(ui.draftEngine).toBeNull();
+            expect(ui.draftEngine).toBe('codex');
         });
 
         it('is part of the place (`view`): forgotten once a chat or a run opens, and brought back with the page by back and forward', () => {

@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { emptyComposerDoc } from '@clowdy/components/RichInput';
+import { type ComposerDoc, emptyComposerDoc } from '@clowdy/components/RichInput';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -10,7 +10,7 @@ import { Composer } from './Composer';
 import { draftOf, messageOf, newChatDraftKey, saveDraft } from './composerDrafts';
 import { modelStore } from './modelTestKit';
 
-import type { Chat, ChatWorkspaceChoice, CommandResult } from '@clowdy/protocol';
+import type { Attachment, Chat, ChatWorkspaceChoice, Command, CommandResult } from '@clowdy/protocol';
 import type { Editor } from '@tiptap/core';
 import type { CommandInput } from '../../daemon/transport';
 
@@ -30,12 +30,23 @@ const transport = {
     getDocsTree: vi.fn(async () => []),
     getProjectFiles: vi.fn(async () => []),
     getSkills: vi.fn(async () => ({ entries: [], tokens: 0, warnings: [] })),
+    deleteAttachment: vi.fn(async () => undefined),
 };
 
 let container: HTMLDivElement;
 let root: Root;
 let sent: CommandInput[];
 let started: string[];
+const journals = new Map<
+    string,
+    {
+        createdChat?: Chat;
+        operation?: Extract<Command, { type: 'chat.create' | 'chat.send' }>;
+        firstMessage?: Omit<Extract<Command, { type: 'chat.send' }>, 'type' | 'requestId' | 'chatId'>;
+        attachments?: readonly Attachment[];
+        reply?: import('../../stream/MessageActions').ReplyMessage;
+    }
+>();
 
 /** `answer` says what the daemon answers to each command, in the order they are sent. Drawn again for another `projectId` or `folderId`, it is the same composer on another project's or folder's page. */
 async function mount(
@@ -43,8 +54,46 @@ async function mount(
     minLines?: number,
     projectId = 'p',
     folderId?: string,
-    workspace?: ChatWorkspaceChoice
+    workspace?: ChatWorkspaceChoice,
+    draft?: { key: string; doc: ComposerDoc; change: (doc: ComposerDoc) => void }
 ) {
+    const journal = draft && {
+        key: draft.key,
+        get: () => journals.get(draft.key),
+        clearRefused: () => {
+            const previous = journals.get(draft.key);
+            if (previous)
+                journals.set(draft.key, {
+                    createdChat: previous.createdChat,
+                    attachments: previous.attachments,
+                    reply: previous.reply,
+                });
+            return true;
+        },
+        setAttachments: (attachments: readonly Attachment[]) => {
+            journals.set(draft.key, { ...journals.get(draft.key), attachments });
+        },
+        setReply: (reply?: import('../../stream/MessageActions').ReplyMessage) => {
+            journals.set(draft.key, { ...journals.get(draft.key), reply });
+        },
+        set: (
+            operation: Extract<Command, { type: 'chat.create' | 'chat.send' }> | undefined,
+            createdChat?: Chat,
+            firstMessage?: Omit<Extract<Command, { type: 'chat.send' }>, 'type' | 'requestId' | 'chatId'>,
+            attachments?: readonly Attachment[],
+            reply?: import('../../stream/MessageActions').ReplyMessage
+        ) => {
+            const previous = journals.get(draft.key);
+            journals.set(draft.key, {
+                operation,
+                createdChat: createdChat ?? previous?.createdChat,
+                firstMessage: firstMessage ?? previous?.firstMessage,
+                attachments: attachments ?? previous?.attachments,
+                reply: reply ?? previous?.reply,
+            });
+            return true;
+        },
+    };
     const command = vi.fn(async (input: CommandInput) => {
         sent.push(input);
 
@@ -67,6 +116,12 @@ async function mount(
                     minLines={minLines}
                     start={{
                         projectId,
+                        ...(draft && {
+                            draftKey: draft.key,
+                            draftDoc: draft.doc,
+                            onDraftChange: draft.change,
+                            journal,
+                        }),
                         folderId,
                         ...(workspace && { workspace }),
                         onStarted: chatId => started.push(chatId),
@@ -98,6 +153,7 @@ beforeEach(() => {
 
     sent = [];
     started = [];
+    journals.clear();
     container = document.createElement('div');
     document.body.append(container);
     root = createRoot(container);
@@ -268,6 +324,186 @@ describe('Composer without a chat', () => {
         await mount(() => accepted());
 
         expect(field().style.minHeight).toBe('24px');
+    });
+});
+
+describe('identified new-chat drafts', () => {
+    it('retains persisted words during a failed asynchronous send and after navigation', async () => {
+        let release!: (result: CommandResult) => void;
+        let doc = emptyComposerDoc();
+        const draft = {
+            key: '@new-chat:p:one',
+            get doc() {
+                return doc;
+            },
+            change: (next: ComposerDoc) => {
+                doc = next;
+            },
+        };
+        await mount(
+            () =>
+                new Promise<CommandResult>(resolve => {
+                    release = resolve;
+                }),
+            undefined,
+            'p',
+            undefined,
+            undefined,
+            draft
+        );
+        type('Keep these words');
+        await pressEnter();
+        expect(messageOf(doc)).toBe('Keep these words');
+        await mount(() => accepted(), undefined, 'p-two');
+        await act(async () => release(refused));
+        expect(messageOf(doc)).toBe('Keep these words');
+        expect(started).toEqual([]);
+    });
+
+    it('locks the message during a first send and keeps the original words on failure', async () => {
+        let release!: (result: CommandResult) => void;
+        let doc = emptyComposerDoc();
+        const draft = {
+            key: '@new-chat:p:three',
+            get doc() {
+                return doc;
+            },
+            change: (next: ComposerDoc) => {
+                doc = next;
+            },
+        };
+        await mount(
+            () =>
+                new Promise<CommandResult>(resolve => {
+                    release = resolve;
+                }),
+            undefined,
+            'p',
+            undefined,
+            undefined,
+            draft
+        );
+        type('Original message');
+        await pressEnter();
+        expect(container.querySelector('[contenteditable="false"]')).not.toBeNull();
+        await act(async () => release(refused));
+        expect(messageOf(doc)).toBe('Original message');
+        expect(started).toEqual([]);
+    });
+
+    it('retries an attachment-only first message restored after chat creation', async () => {
+        const key = '@new-chat:p:attachment';
+        const draft = { key, doc: emptyComposerDoc(), change: (_doc: ComposerDoc) => {} };
+        journals.set(key, { createdChat: made, firstMessage: { text: '', attachmentIds: ['a-1'], mode: 'steer' } });
+        await mount(() => accepted(), undefined, 'p', undefined, undefined, draft);
+        const sendButton = container.querySelector<HTMLButtonElement>('button[aria-label="Send"]')!;
+        await act(async () => sendButton.click());
+        expect(sent).toHaveLength(1);
+        expect(sent[0]).toMatchObject({ type: 'chat.send', chatId: 'c-new', text: '', attachmentIds: ['a-1'] });
+        expect(started).toEqual(['c-new']);
+    });
+
+    it('keeps the same send request after an uncertain result', async () => {
+        let sendCount = 0;
+        let doc = emptyComposerDoc();
+        const draft = {
+            key: '@new-chat:p:two',
+            get doc() {
+                return doc;
+            },
+            change: (next: ComposerDoc) => {
+                doc = next;
+            },
+        };
+        await mount(
+            input =>
+                input.type === 'chat.create'
+                    ? accepted({ chat: made })
+                    : ++sendCount === 1
+                      ? { ...refused, requestId: 'unsent' }
+                      : accepted(),
+            undefined,
+            'p',
+            undefined,
+            undefined,
+            draft
+        );
+        type('First');
+        await pressEnter();
+        const sendButton = container.querySelector<HTMLButtonElement>('button[aria-label="Send"]')!;
+        await act(async () => sendButton.click());
+        const sends = sent.filter(input => input.type === 'chat.send');
+        expect(sends).toHaveLength(2);
+        expect(sends[0]).toEqual(sends[1]);
+        expect(started).toEqual(['c-new']);
+    });
+
+    it('allows the refused first message to be edited and retried in the same chat', async () => {
+        let sendCount = 0;
+        let doc = emptyComposerDoc();
+        const draft = {
+            key: '@new-chat:p:refused',
+            get doc() {
+                return doc;
+            },
+            change: (next: ComposerDoc) => {
+                doc = next;
+            },
+        };
+        await mount(
+            input =>
+                input.type === 'chat.create' ? accepted({ chat: made }) : ++sendCount === 1 ? refused : accepted(),
+            undefined,
+            'p',
+            undefined,
+            undefined,
+            draft
+        );
+        type('First');
+        await pressEnter();
+        expect(text()).toBe('First');
+        type(' revised');
+        await pressEnter();
+        expect(sent.filter(input => input.type === 'chat.create')).toHaveLength(1);
+        const sends = sent.filter(input => input.type === 'chat.send');
+        expect(sends.map(input => input.type === 'chat.send' && input.text)).toEqual(['First', 'First revised']);
+        expect(started).toEqual(['c-new']);
+    });
+
+    it('restores and removes a saved attachment after a refused send', async () => {
+        const key = '@new-chat:p:recovered-file';
+        const file = { id: 'file-1', name: 'notes.txt', mediaType: 'text/plain', size: 5 };
+        journals.set(key, { createdChat: made, attachments: [file] });
+        await mount(() => accepted(), undefined, 'p', undefined, undefined, {
+            key,
+            doc: emptyComposerDoc(),
+            change: () => {},
+        });
+        const remove = container.querySelector<HTMLButtonElement>('button[aria-label="Remove notes.txt"]');
+        expect(remove).not.toBeNull();
+        await act(async () => remove!.click());
+        expect(journals.get(key)?.attachments).toEqual([]);
+        expect(container.querySelector('button[aria-label="Remove notes.txt"]')).toBeNull();
+    });
+
+    it('keeps the saved reply locked while an uncertain send is retried', async () => {
+        const key = '@new-chat:p:pending-reply';
+        const reply = { role: 'assistant' as const, text: 'Original answer' };
+        const operation = {
+            type: 'chat.send' as const,
+            requestId: 'request-pending',
+            chatId: made.id,
+            text: '> Original answer\n\nContinue',
+        };
+        journals.set(key, { createdChat: made, reply, operation, firstMessage: { text: operation.text } });
+        await mount(() => accepted(), undefined, 'p', undefined, undefined, {
+            key,
+            doc: emptyComposerDoc(),
+            change: () => {},
+        });
+        expect(container.querySelector<HTMLButtonElement>('button[aria-label="Remove quote"]')?.disabled).toBe(true);
+        await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Send"]')!.click());
+        expect(sent.find(input => input.type === 'chat.send')).toEqual(operation);
     });
 });
 

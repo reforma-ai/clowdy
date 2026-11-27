@@ -184,8 +184,10 @@ export class NavHistory {
     }
 
     /** Whether what the entry shows is still there: its project, and the chat or run it had open. */
-    #exists({ projectId, chatId, runId }: NavSnapshot): boolean {
+    #exists({ projectId, chatId, runId, draft, draftId }: NavSnapshot): boolean {
         if (!this.host.projects.some(project => project.id === projectId)) return false;
+
+        if (draft && draftId) return this.host.ui.forProject(projectId).newChatDrafts.get(draftId) !== undefined;
 
         const state = this.host.projectState(projectId);
 
