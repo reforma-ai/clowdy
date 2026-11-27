@@ -1,6 +1,6 @@
 import { createContext } from 'react';
 
-import type { Attachment, Chat, ChatId, EngineId, SkillEntry, Task, TaskId } from '@clowdy/protocol';
+import type { Attachment, Chat, ChatId, SkillEntry, Task, TaskId } from '@clowdy/protocol';
 
 /** What a message's text may point at inside the app. Without it, task keys and chat references stay plain text and a thread's name opens nothing. */
 export interface StreamLinks {
@@ -15,8 +15,6 @@ export interface StreamLinks {
     hasChat?: (chatId: ChatId) => boolean;
     /** The current title of a chat named by a message reference. */
     chatOfId?: (chatId: ChatId) => Pick<Chat, 'id' | 'title'> | undefined;
-    /** The agent a chat runs on, for the mark of a card that names the chat as its writer. Without it, or for a chat the project no longer has, the card has no agent's mark. */
-    engineOfChat?: (chatId: ChatId) => EngineId | undefined;
     /** Opens a referenced chat or a chat a thread's card names (the thread that wrote, or the one that stopped). */
     onOpenChat?: (chatId: ChatId) => void;
 }

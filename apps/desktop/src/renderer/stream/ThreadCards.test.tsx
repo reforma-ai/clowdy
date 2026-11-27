@@ -92,29 +92,21 @@ describe('a message from another thread', () => {
         expect(card.getAttribute('data-turn')).toBe('i-0');
     });
 
-    it('is marked with the agent of the chat that wrote it, as the chat is in the list, and with a speech bubble when that agent is not known', async () => {
-        await draw([message], { engineOfChat: () => 'claude' });
+    it('is marked with the agent icon, as a sub-agent is in the list, whichever agent wrote it', async () => {
+        await draw([message]);
 
-        expect(cards('thread-message')[0].querySelector('[data-provider]')?.getAttribute('data-provider')).toBe(
-            'claude'
-        );
+        const mark = cards('thread-message')[0].querySelector('svg');
 
-        await draw([message], { engineOfChat: () => 'codex' });
-
-        expect(cards('thread-message')[0].querySelector('[data-provider]')?.getAttribute('data-provider')).toBe(
-            'codex'
-        );
-
-        for (const links of [{}, { engineOfChat: () => undefined }, { engineOfChat: () => 'fake' }]) {
-            await draw([message], links);
-
-            expect(cards('thread-message')[0].querySelector('[data-provider]')).toBeNull();
-            expect(cards('thread-message')[0].querySelector('svg')).not.toBeNull();
-        }
+        expect(mark).not.toBeNull();
+        expect(cards('thread-message')[0].querySelector('[data-provider]')).toBeNull();
+        // The notice cards of the threads that stopped have the marks of how they ended, not this one.
+        await draw([message, notice]);
+        expect(cards('thread-message')[0].querySelector('svg')?.outerHTML).toBe(mark?.outerHTML);
+        expect(cards('agent-card')[0].querySelector('svg')?.outerHTML).not.toBe(mark?.outerHTML);
     });
 
     it('holds the icon in the title line, so the words under it start at the edge of the card and not after the icon', async () => {
-        await draw([message, notice], { engineOfChat: () => 'claude' });
+        await draw([message, notice]);
 
         expect(cards('thread-message')).toHaveLength(1);
         expect(cards('agent-card')).toHaveLength(notices.length);
