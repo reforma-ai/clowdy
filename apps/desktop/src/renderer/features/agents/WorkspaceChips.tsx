@@ -417,7 +417,7 @@ function WorkspaceChip({
                                     stacked
                                     icon={<GitFolder aria-hidden="true" />}
                                     text="Main worktree"
-                                    description="Use the project folder"
+                                    description="Use the space folder"
                                     endAffix={
                                         shown ? (
                                             main && canMakeOne ? (
@@ -461,7 +461,7 @@ function WorkspaceChip({
                                 />
                                 {orderedWorktrees.map(worktreeItem)}
                                 <MenuSeparator />
-                                <MenuSection aria-label="Worktrees of the project" selectionMode="none">
+                                <MenuSection aria-label="Worktrees of the space" selectionMode="none">
                                     <MenuItem
                                         id={MANAGE_KEY}
                                         shouldCloseOnSelect

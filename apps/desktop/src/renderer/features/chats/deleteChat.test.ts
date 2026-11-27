@@ -21,16 +21,12 @@ vi.mock('@clowdy/components/Toast', () => ({ toast: { error: vi.fn(), info: vi.f
 
 describe('deleteMessage', () => {
     it('explains what deletion means without mentioning threads when there are none', () => {
-        expect(deleteMessage(0)).toBe('You can’t undo this. Tasks stay in the project.');
+        expect(deleteMessage(0)).toBe('You can’t undo this. Tasks stay in the space.');
     });
 
     it('says how many threads go with the chat', () => {
-        expect(deleteMessage(1)).toBe(
-            'This will also delete 1 thread. You can’t undo this. Tasks stay in the project.'
-        );
-        expect(deleteMessage(5)).toBe(
-            'This will also delete 5 threads. You can’t undo this. Tasks stay in the project.'
-        );
+        expect(deleteMessage(1)).toBe('This will also delete 1 thread. You can’t undo this. Tasks stay in the space.');
+        expect(deleteMessage(5)).toBe('This will also delete 5 threads. You can’t undo this. Tasks stay in the space.');
     });
 });
 

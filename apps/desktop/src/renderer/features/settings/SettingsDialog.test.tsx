@@ -70,7 +70,7 @@ describe('the Settings window', () => {
             'Files',
             'Source Control',
             'Shortcuts',
-            'Projects',
+            'Spaces',
             'Providers',
             'Delegation',
             'Skills',

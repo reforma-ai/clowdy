@@ -428,7 +428,7 @@ export class RootStore {
 
             const loaded = await Promise.all([...this.#states.values()].map(state => state.load()));
 
-            if (loaded.includes(false)) throw new Error('A project did not reload');
+            if (loaded.includes(false)) throw new Error('A space did not reload');
 
             await this.streams.reloadAll();
             runInAction(() => {

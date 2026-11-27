@@ -4,6 +4,7 @@ import {
     type DesktopBridge,
     type FindCommand,
     IPC_CHANNELS,
+    type NativeScrollRecord,
     parseUpdateStatus,
     WINDOW_MATERIAL_ARGUMENT,
 } from '../shared/bridge';
@@ -14,6 +15,16 @@ const daemon = ipcRenderer.sendSync(IPC_CHANNELS.getDaemon) as DesktopBridge['da
 const desktop: DesktopBridge = {
     platform: process.platform as DesktopBridge['platform'],
     material: process.argv.includes(WINDOW_MATERIAL_ARGUMENT),
+    nativeScroll: {
+        available: ipcRenderer.sendSync(IPC_CHANNELS.nativeScrollAvailable) === true,
+        subscribe: listener => {
+            const handler = (_event: unknown, record: NativeScrollRecord) => listener(record);
+
+            ipcRenderer.on(IPC_CHANNELS.nativeScroll, handler);
+
+            return () => void ipcRenderer.removeListener(IPC_CHANNELS.nativeScroll, handler);
+        },
+    },
     setThemeSource: theme => ipcRenderer.invoke(IPC_CHANNELS.setThemeSource, theme),
     chooseDirectories: () => ipcRenderer.invoke(IPC_CHANNELS.chooseDirectories),
     onDaemonChange: listener => {

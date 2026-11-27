@@ -25,16 +25,7 @@ import { IPC_CHANNELS, type UpdateStatus } from '../shared/bridge';
 import { DEV_BUILD_MARKER } from '../shared/dev';
 import { createAppIcon } from './appIcon';
 import { type BootWindow, showBootWindow } from './bootWindow';
-import {
-    type BundleInfo,
-    bundleRuntime,
-    installBun,
-    installedRipgrep,
-    installOwnBundle,
-    pruneBunCopies,
-    readBundleInfo,
-    updatesDir,
-} from './bundle';
+import { bundleRuntime, installBun, installedRipgrep, pruneBunCopies, updatesDir } from './bundle';
 import { createClipboardFiles, systemClipboardFilesDeps } from './clipboardFiles';
 import {
     attachDaemon,
@@ -59,6 +50,7 @@ import {
 } from './daemonKeeper';
 import { registerIpc } from './ipc';
 import { createAppMenu } from './menu';
+import { attachNativeScroll } from './nativeScroll';
 import { createOpenWith, systemOpenWithDeps } from './openWith';
 import { createOta, type Ota, type RunningBundle } from './ota';
 import { createProtocolHandler } from './protocol';
@@ -80,9 +72,8 @@ const OTA_CHECK_INTERVAL_MS = 60 * 60_000;
 
 /**
  * The renderer's files, served from `app://clowdy` in every run, so a development run has the same origin, the same
- * CSP and no open port, as the packaged app. A packaged app carries its own copy in `renderer`; a development run
- * (`scripts/dev.ts` rebuilds them on every change) names the folder in `CLOWDY_RENDERER_DIR`. An installed OTA bundle
- * brings its own (`ota.ts`).
+ * CSP and no open port, as the packaged app. A development run names the folder in `CLOWDY_RENDERER_DIR`;
+ * an installed OTA bundle brings its own (`ota.ts`).
  */
 const ownRendererRoot = app.isPackaged
     ? path.join(app.getAppPath(), 'renderer')
@@ -170,22 +161,17 @@ function start(): void {
         const { dataDir } = currentContext();
         const updates = updatesDir(dataDir);
         let runtimeError: unknown;
-        // A development run's own bundle is its checkout: version 0, so a bundle from the test feed is newer.
-        const own = app.isPackaged
-            ? await readBundleInfo(path.join(app.getAppPath(), 'bundle.json')).catch((error: unknown) => {
-                  runtimeError = error;
-
-                  return undefined;
-              })
-            : undefined;
         const ota = createOta({
             updates,
             dataDir,
-            own: { version: own?.version ?? 0, rendererRoot: ownRendererRoot, dir: null, rendererFiles: null },
+            own: { version: 0, rendererRoot: ownRendererRoot, dir: null, rendererFiles: null },
             shellVersion: app.getVersion(),
             protocol: PROTOCOL_VERSION,
             publicKey: release.otaPublicKey,
             feed: release.otaFeed,
+            bootstrapFeed: release.repo
+                ? `https://github.com/${release.repo}/releases/download/v${app.getVersion()}`
+                : '',
             fetch: (url, init) => net.fetch(url, init),
             daemonVersion: async () => {
                 const context = currentContext();
@@ -211,9 +197,34 @@ function start(): void {
         let bundle = await ota.choose();
         let boot: BootWindow | undefined;
 
-        // The first launch of a shell version installs the newest bundle before any window, so a fresh install does not
-        // open on a bundle weeks old and offer a restart a moment later. The boot window shows once a download begins.
-        if (await ota.catchUp(fraction => (boot ??= showBootWindow()).progress(fraction))) bundle = await ota.choose();
+        if (app.isPackaged && !bundle.dir) {
+            boot = showBootWindow();
+            while (!bundle.dir) {
+                try {
+                    await ota.bootstrap(fraction => boot?.progress(fraction));
+                    bundle = await ota.choose();
+                    if (!bundle.dir) throw new Error('The downloaded bundle could not be opened');
+                } catch (error) {
+                    console.error('Could not download a compatible bundle:', error);
+                    const answer = await dialog.showMessageBox({
+                        type: 'error',
+                        title: 'Clowdy',
+                        message: 'Could not download Clowdy',
+                        detail: 'Check your connection and try again',
+                        buttons: ['Retry', 'Quit'],
+                        defaultId: 0,
+                        cancelId: 1,
+                        noLink: true,
+                    });
+                    if (answer.response !== 0) {
+                        app.quit();
+                        return;
+                    }
+                }
+            }
+        } else if (!app.isPackaged && (await ota.catchUp(fraction => (boot ??= showBootWindow()).progress(fraction)))) {
+            bundle = await ota.choose();
+        }
 
         // macOS shows it after the shell version: "Version 0.2.0 (Bundle 1234)".
         if (bundle.version) app.setAboutPanelOptions({ version: `Bundle ${bundle.version}` });
@@ -224,7 +235,7 @@ function start(): void {
 
         if (!app.isPackaged && !bundle.dir) reloadAfterRendererBuilds(bundle.rendererRoot);
 
-        const runtime = await daemonRuntime(bundle, own, updates).catch((error: unknown) => {
+        const runtime = await daemonRuntime(bundle, updates).catch((error: unknown) => {
             console.error('The daemon cannot be prepared:', error);
             runtimeError ??= error;
 
@@ -436,15 +447,11 @@ function startUpdates(release: ReleaseConfig, ota: Ota, bundle: RunningBundle): 
 
 /**
  * What runs the daemon of the chosen bundle. A packaged app copies the Bun it ships, and the ripgrep beside it, out of its
- * install folder, and runs an installed OTA bundle's daemon from its folder, or its own bundle's from a copy (`bundle.ts`).
+ * install folder, and runs an installed OTA bundle's daemon from its folder.
  * A development run takes the Bun and the checkout `./clowdy dev` names, or that Bun and a bundle from the test feed; it
  * has no ripgrep of its own, so the daemon uses the one on the PATH.
  */
-async function daemonRuntime(
-    bundle: RunningBundle,
-    own: BundleInfo | undefined,
-    updates: string
-): Promise<DaemonRuntime | undefined> {
+async function daemonRuntime(bundle: RunningBundle, updates: string): Promise<DaemonRuntime | undefined> {
     if (!app.isPackaged) {
         const checkout = environmentRuntime(process.env);
 
@@ -457,9 +464,7 @@ async function daemonRuntime(
 
     if (bundle.dir) return bundleRuntime(bun, bundle.dir, rg);
 
-    if (!own) throw new Error("The app's own bundle is unreadable");
-
-    return bundleRuntime(bun, await installOwnBundle({ resources, updates, version: own.version }), rg);
+    throw new Error('No bundle is installed');
 }
 
 /**
@@ -575,6 +580,7 @@ function openWindow(): BrowserWindow {
         )
     );
 
+    attachNativeScroll(window);
     window.once('ready-to-show', () => window.show());
     window.loadURL(`${APP_ORIGIN}/`).catch((error: unknown) => console.error('The window did not load:', error));
 

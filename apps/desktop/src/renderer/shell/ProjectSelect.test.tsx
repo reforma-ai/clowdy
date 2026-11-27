@@ -67,7 +67,7 @@ async function open(data = createFixtureData(), { pointer = false } = {}) {
     );
     await flush();
 
-    const trigger = container.querySelector<HTMLButtonElement>('button[aria-label="Project"]')!;
+    const trigger = container.querySelector<HTMLButtonElement>('button[aria-label="Space"]')!;
 
     // A press of the pointer is what makes the focus the menu takes show no ring, as a click of the mouse does.
     if (pointer) trigger.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse' }));
@@ -103,14 +103,14 @@ afterEach(async () => {
 });
 
 describe('ProjectSelect', () => {
-    it('lists the personal space on top, then the projects, then Manage projects…, with no Add project…', async () => {
+    it('lists the personal space on top, then the projects, then Manage spaces…, with no Add space…', async () => {
         await open();
 
         expect(labels()).toEqual([
             expect.stringContaining('Personal'),
             expect.stringContaining('Car Rental'),
             expect.stringContaining('Clowdy'),
-            'Manage projects…',
+            'Manage spaces…',
         ]);
         // The menu has a separator between the personal space and the projects, and one before the actions.
         expect(document.body.querySelectorAll('[role="separator"]')).toHaveLength(2);
@@ -125,7 +125,7 @@ describe('ProjectSelect', () => {
         await open(data);
 
         // The personal space says what it is; a project has no second line, neither a path nor a count of folders.
-        expect(items()[0].textContent).toContain('Chats without a project');
+        expect(items()[0].textContent).toContain('For personal work');
         expect(items()[1].textContent).toBe('Car Rental');
         expect(items()[2].textContent).toBe('Clowdy');
     });
@@ -329,7 +329,7 @@ describe('ProjectSelect', () => {
                 ?.getAttribute('src');
 
         // Car Rental, the open project, has a favicon in its folder; Clowdy has an uploaded picture.
-        expect(container.querySelector('button[aria-label="Project"] img')?.getAttribute('src')).toMatch(/^blob:/);
+        expect(container.querySelector('button[aria-label="Space"] img')?.getAttribute('src')).toMatch(/^blob:/);
         expect(picture('Car Rental')).toMatch(/^blob:/);
         expect(picture('Clowdy')).toBe(png);
         expect(picture('Personal')).toBeUndefined();
@@ -340,14 +340,14 @@ describe('ProjectSelect', () => {
         await act(async () => items()[0].click());
 
         expect(store.selectedProjectId).toBe(FIXTURE_PERSONAL_PROJECT_ID);
-        expect(container.querySelector('button[aria-label="Project"]')?.textContent).toBe('Personal');
+        expect(container.querySelector('button[aria-label="Space"]')?.textContent).toBe('Personal');
     });
 
-    it('opens Settings on the list of projects with Manage projects…', async () => {
+    it('opens Settings on the list of projects with Manage spaces…', async () => {
         await open();
         await act(async () =>
             items()
-                .find(item => item.textContent === 'Manage projects…')!
+                .find(item => item.textContent === 'Manage spaces…')!
                 .click()
         );
 
@@ -364,7 +364,7 @@ describe('ProjectSelect', () => {
         data.projects = data.projects.filter(project => project.personal);
         await open(data);
 
-        expect(labels()).toEqual([expect.stringContaining('Personal'), 'Manage projects…']);
+        expect(labels()).toEqual([expect.stringContaining('Personal'), 'Manage spaces…']);
         expect(document.body.querySelectorAll('[role="separator"]')).toHaveLength(1);
     });
 });

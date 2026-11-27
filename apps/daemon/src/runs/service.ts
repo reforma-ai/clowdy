@@ -1344,7 +1344,7 @@ export class RunService {
         const project = getProject(this.store.db, run.projectId);
 
         if (!project) {
-            throw invalid(`Project ${run.projectId} of run ${run.id} is gone`);
+            throw invalid(`Space ${run.projectId} of run ${run.id} is gone`);
         }
 
         return project;

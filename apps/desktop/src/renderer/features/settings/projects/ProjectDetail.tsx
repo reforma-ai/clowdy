@@ -40,7 +40,7 @@ export function ProjectDetail({ project, info, infoFailed }: ProjectDetailProps)
     return (
         <>
             {!project.personal && (
-                <SettingsLayout.Section title="Project">
+                <SettingsLayout.Section title="Space">
                     <SettingsLayout.Card>
                         <NameRow project={project} />
                     </SettingsLayout.Card>
@@ -63,7 +63,7 @@ function WorktreesSection({ project }: { project: Project }) {
     return (
         <SettingsLayout.Section title="Worktrees">
             <SettingsLayout.Card>
-                <SettingsLayout.Row title="Worktrees" description="Manage or clean up worktrees across this project">
+                <SettingsLayout.Row title="Worktrees" description="Manage or clean up worktrees across this space">
                     <Button onPress={() => openManageWorktrees({ root, projectId: project.id })}>
                         Manage worktrees
                     </Button>
@@ -89,7 +89,7 @@ function NameRow({ project }: { project: Project }) {
     });
 
     return (
-        <SettingsLayout.Row title="Name" description="How the project is listed in Clowdy" controlWidth="18rem">
+        <SettingsLayout.Row title="Name" description="How the space is listed in Clowdy" controlWidth="18rem">
             <Input {...fieldProps} type="text" variant="bordered" className={styles.nameField}>
                 <IconField slot="prefix" project={project} />
             </Input>
@@ -128,7 +128,7 @@ function IconField({ project, slot }: { project: Project; slot?: string }) {
                 type="file"
                 accept={ICON_FILES}
                 className={styles.file}
-                aria-label="Project icon file"
+                aria-label="Space icon file"
                 onChange={() => {
                     const picked = file.current?.files?.[0];
 
@@ -173,18 +173,18 @@ function RemoveSection({ project, info }: { project: Project; info: ProjectInfo 
         <SettingsLayout.Section title="Danger zone">
             <SettingsLayout.Card>
                 <SettingsLayout.Row
-                    title="Remove project"
+                    title="Remove space"
                     description={`Deletes ${project.name}'s chats, tasks and the work of its agents from Clowdy. ${stays} on your computer.`}
                     footer={
                         working && (
                             <Text variant="sm" color="warning" role="status">
-                                Agents are working in this project. Stop them first.
+                                Agents are working in this space. Stop them first.
                             </Text>
                         )
                     }
                 >
                     <Button color="danger" isDisabled={working} onPress={() => removeProject(root, project, info)}>
-                        Remove project
+                        Remove space
                     </Button>
                 </SettingsLayout.Row>
             </SettingsLayout.Card>

@@ -1082,6 +1082,128 @@ describe('Remove in Manage worktrees', () => {
         ).toBe(true);
     });
 
+    it.each([
+        ['old daemon', true, false],
+        ['worktree changed after the old daemon refusal', false, true],
+        ['other refusal', false, false],
+    ] as const)('handles %s during guarded cleanup without discarding files', async (scenario, removes, changed) => {
+        const data = dataWithKinds();
+        const chat = data.chats.find(item => item.id === 'c-10')!;
+        chat.archivedAt = undefined;
+        chat.workspace = { id: 'linked', path: CLEAN_MERGED, folderId: 'fld_car_rental', ready: true, managed: false };
+        data.worktrees!['/Users/dev/car-rental-api'] = [];
+        const base = new FixtureTransport({ data });
+        const legacy = vi.fn<Transport['command']>(async input => {
+            if (input.type === 'workspace.remove' && input.tidy && input.chatDisposition === 'archive') {
+                if (changed) data.worktrees![CAR_RENTAL]!.find(row => row.path === CLEAN_MERGED)!.changes = 1;
+                return {
+                    ok: false,
+                    requestId: 'refused',
+                    error: {
+                        code: 'invalid',
+                        message:
+                            scenario === 'other refusal'
+                                ? 'Unrelated refusal'
+                                : 'Tidy up cannot discard changes or dispose of chats',
+                    },
+                };
+            }
+            return base.command(input);
+        });
+        await open({ data, overrides: { command: legacy } });
+        await click(textButton(confirmation(), 'Tidy up…')!);
+        await click(textButton(confirmation(), 'Remove 1 worktree…')!);
+        await settle();
+        await confirm('Remove 1 worktree');
+        const calls = legacy.mock.calls.map(([input]) => input).filter(input => input.type === 'workspace.remove');
+        expect(calls).toHaveLength(removes ? 2 : 1);
+        if (removes) {
+            expect(calls[1]).toMatchObject({
+                path: CLEAN_MERGED,
+                chatDisposition: 'archive',
+                expectedChatIds: [chat.id],
+            });
+            expect(calls[1]).not.toHaveProperty('tidy');
+            expect(calls[1]).not.toHaveProperty('discard');
+            expect(calls[1]).not.toHaveProperty('deleteBranch');
+            expect(calls[1]).not.toHaveProperty('expectedBranch');
+            expect(data.worktreeEdits![CAR_RENTAL]!.kept).toContain('feature/done');
+            expect(
+                (await base.getProjectSnapshot(FIXTURE_PROJECT_ID)).chats.find(item => item.id === chat.id)?.archivedAt
+            ).toBeDefined();
+            expect(
+                toast.queue.visibleToasts.some(
+                    item => item.content.message === '1 removed, 1 branch kept because the daemon is out of date'
+                )
+            ).toBe(true);
+        } else {
+            expect(
+                (await base.getProjectSnapshot(FIXTURE_PROJECT_ID)).chats.find(item => item.id === chat.id)?.archivedAt
+            ).toBeUndefined();
+            await checkTidyFailure(CLEAN_MERGED);
+        }
+    });
+
+    it('keeps the branch without a warning when branch deletion was not selected', async () => {
+        const data = dataWithKinds();
+        const chat = data.chats.find(item => item.id === 'c-10')!;
+        chat.archivedAt = undefined;
+        chat.workspace = { id: 'linked', path: CLEAN_MERGED, folderId: 'fld_car_rental', ready: true, managed: false };
+        data.worktrees!['/Users/dev/car-rental-api'] = [];
+        const base = new FixtureTransport({ data });
+        const legacy = vi.fn<Transport['command']>(input =>
+            input.type === 'workspace.remove' && input.tidy
+                ? Promise.resolve({
+                      ok: false,
+                      requestId: 'refused',
+                      error: { code: 'invalid', message: 'Tidy up cannot discard changes or dispose of chats' },
+                  })
+                : base.command(input)
+        );
+        await open({ data, overrides: { command: legacy } });
+        await click(textButton(confirmation(), 'Tidy up…')!);
+        await click(textButton(confirmation(), 'Remove 1 worktree…')!);
+        await settle();
+        await click(confirmation().querySelector<HTMLInputElement>('input[type="checkbox"]')!);
+        await confirm('Remove 1 worktree');
+        expect(data.worktreeEdits![CAR_RENTAL]!.kept).toContain('feature/done');
+        expect(toast.queue.visibleToasts.some(item => item.content.message === 'Removed 1 worktree')).toBe(true);
+    });
+
+    it('refuses legacy fallback for a detached worktree with linked chats', async () => {
+        const data = dataWithKinds();
+        const chat = data.chats.find(item => item.id === 'c-10')!;
+        chat.archivedAt = undefined;
+        chat.workspace = {
+            id: 'detached-linked',
+            path: DETACHED_MERGED,
+            folderId: 'fld_api',
+            ready: true,
+            managed: false,
+        };
+        data.worktrees![CAR_RENTAL] = data.worktrees![CAR_RENTAL]!.filter(row => row.path !== CLEAN_MERGED);
+        const base = new FixtureTransport({ data });
+        const legacy = vi.fn<Transport['command']>(input =>
+            input.type === 'workspace.remove' && input.tidy
+                ? Promise.resolve({
+                      ok: false,
+                      requestId: 'refused',
+                      error: { code: 'invalid', message: 'Tidy up cannot discard changes or dispose of chats' },
+                  })
+                : base.command(input)
+        );
+        await open({ data, overrides: { command: legacy } });
+        await click(textButton(confirmation(), 'Tidy up…')!);
+        await click(textButton(confirmation(), 'Remove 1 worktree…')!);
+        await settle();
+        await confirm('Remove 1 worktree');
+        expect(legacy.mock.calls.filter(([input]) => input.type === 'workspace.remove')).toHaveLength(1);
+        expect(
+            (await base.getProjectSnapshot(FIXTURE_PROJECT_ID)).chats.find(item => item.id === chat.id)?.archivedAt
+        ).toBeUndefined();
+        await checkTidyFailure(DETACHED_MERGED);
+    });
+
     it('does not preselect worktrees with a running descendant, changes or unmerged commits', async () => {
         const data = dataWithKinds();
         const chat = data.chats.find(item => item.id === 'c-10')!;

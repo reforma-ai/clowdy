@@ -91,7 +91,7 @@ export function ProjectRow({ project, info, slot, onManage, onOpen, onRemove }: 
                                 }}
                             >
                                 <MenuItem id={CONFIGURE} text="Configure" icon={<Sliders />} />
-                                <MenuItem id={OPEN} text="Open project" icon={<Folder />} />
+                                <MenuItem id={OPEN} text="Open space" icon={<Folder />} />
                                 {onRemove && <MenuSeparator />}
                                 {onRemove && (
                                     <MenuItem

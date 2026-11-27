@@ -255,7 +255,7 @@ export function removeProject(root: RootStore, project: Project, info: ProjectIn
             project.folders.map(folder => folder.path),
             info
         ),
-        confirmLabel: 'Remove project',
+        confirmLabel: 'Remove space',
         destructive: true,
         onConfirm: async () => {
             const result = await root.command({ type: 'project.delete', projectId: project.id });

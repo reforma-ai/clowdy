@@ -94,7 +94,7 @@ export const EXAMPLES: Readonly<Record<string, readonly string[]>> = {
     thread_output: ['clowdy thread output <thread>'],
     thread_stop: ['clowdy thread stop <thread>'],
     chat_read: [
-        'clowdy chat read <chat>                   # read a mentioned chat in your project',
+        'clowdy chat read <chat>                   # read a mentioned chat in your space',
         'clowdy chat read <chat> --before <nextBefore>   # read the preceding page',
     ],
     worktree_name: [

@@ -15,7 +15,7 @@ export function Unreachable({ message, onRetry }: UnreachableProps) {
         <div className={styles.message}>
             <Text variant="heading-2">Cannot reach the daemon</Text>
             <Text color="secondary">
-                Clowdy keeps your projects, chats and agents in a background daemon. Check that it is running, then try
+                Clowdy keeps your spaces, chats and agents in a background daemon. Check that it is running, then try
                 again.
             </Text>
             {message && (

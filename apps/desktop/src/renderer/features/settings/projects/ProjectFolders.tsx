@@ -102,7 +102,7 @@ export function ProjectFolders({ project, info, infoFailed }: ProjectFoldersProp
 
             {working && (
                 <Text variant="sm" color="secondary" role="status">
-                    Agents are working in this project. Stop them before changing the main folder.
+                    Agents are working in this space. Stop them before changing the main folder.
                 </Text>
             )}
             {infoFailed && (

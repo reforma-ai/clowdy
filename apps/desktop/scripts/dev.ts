@@ -4,7 +4,7 @@
  * - The renderer is built by `vite build --watch` into `dist/renderer` and served by the app from `app://clowdy`, as in
  *   a packaged app: the same origin and CSP, and no open port. After each rebuild lands, the app reloads its window
  *   (a marker file in the folder tells it); there is no hot module replacement, so the window's state is lost.
- * - Main and preload are bundled with Bun. A change under `src/main`, `src/preload`, or `src/shared`
+ * - Main and preload are bundled with Bun. A change under `src/main`, `src/preload`, `src/shared`, or `native`
  *   rebuilds them and restarts the app; so does the next save after the app crashed.
  * - Quitting the app ends the session.
  * - The app finds or starts the daemon from this checkout (`apps/daemon`) and leaves it running. It replaces a daemon
@@ -22,6 +22,7 @@ import { $, type Subprocess } from 'bun';
 
 import { DEV_BUILD_MARKER } from '../src/shared/dev';
 import { buildMain } from './main-bundle';
+import { buildNativeScroll } from './native-scroll';
 
 // Outside Electron, the `electron` package exports the path to its binary (downloaded on first use).
 const electronBinary = (await import('electron')).default as unknown as string;
@@ -133,9 +134,9 @@ await startApp();
 
 let pending: ReturnType<typeof setTimeout> | undefined;
 
-// One save can fire several events; restart once they settle.
-for (const folder of ['main', 'preload', 'shared']) {
-    watch(path.join(desktopRoot, 'src', folder), { recursive: true }, (_event, file) => {
+// One save can fire several events; restart once they settle. The addon is built before each start.
+for (const folder of ['src/main', 'src/preload', 'src/shared', 'native']) {
+    watch(path.join(desktopRoot, folder), { recursive: true }, (_event, file) => {
         if (!file || file.endsWith('.test.ts')) return;
 
         clearTimeout(pending);
@@ -153,10 +154,12 @@ for (const folder of ['main', 'preload', 'shared']) {
 
 async function startApp(): Promise<void> {
     try {
+        if (process.platform === 'darwin')
+            await buildNativeScroll([`darwin-${process.arch}` as 'darwin-arm64' | 'darwin-x64']);
         await buildMain(path.join(desktopRoot, 'dist'));
     } catch (error) {
         console.error(error);
-        console.error('Main or preload did not build; save a fix to try again.');
+        console.error('Main, preload, or the native addon did not build; save a fix to try again.');
 
         return;
     }
@@ -178,7 +181,7 @@ async function startApp(): Promise<void> {
         if (code === 0) process.exit(0);
 
         console.error(
-            `Clowdy exited with code ${code}; save a fix under src/main, src/preload, or src/shared to start it again.`
+            `Clowdy exited with code ${code}; save a fix under src/main, src/preload, src/shared, or native to start it again.`
         );
     });
 }

@@ -242,7 +242,7 @@ describe("the branch of the main worktree's row", () => {
         await press(chip()!);
 
         expect(branchButton()?.textContent).toBe('main');
-        expect(menuItem('Main worktree').textContent).toBe('Main worktreeUse the project foldermain');
+        expect(menuItem('Main worktree').textContent).toBe('Main worktreeUse the space foldermain');
 
         await press(branchButton()!);
         await settle();

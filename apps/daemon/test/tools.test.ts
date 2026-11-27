@@ -517,7 +517,7 @@ describe('tasks inside tasks', () => {
         const foreign = h.ok('task.create', { projectId: other.id, title: 'Foreign' }).task;
 
         await expect(task('Orphan', { parent: foreign.key })).rejects.toThrow(/does not exist/);
-        await expect(task('Orphan', { parent: foreign.id })).rejects.toThrow(/belongs to another project/);
+        await expect(task('Orphan', { parent: foreign.id })).rejects.toThrow(/belongs to another space/);
         expect((await exec(orchestrator, 'task_list', { all: true })).total).toBe(0);
     });
 
@@ -746,7 +746,7 @@ describe('task comments', () => {
             /does not exist/
         );
         await expect(exec(orchestrator, 'task_comment', { taskId: foreign.id, body: 'x' })).rejects.toThrow(
-            /belongs to another project/
+            /belongs to another space/
         );
         await expect(exec(orchestrator, 'task_comment', { taskId: epic.key, text: 'x', body: 'y' })).rejects.toThrow(
             /Invalid input for task_comment.*text/s

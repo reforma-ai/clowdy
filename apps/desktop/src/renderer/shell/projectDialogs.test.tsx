@@ -130,19 +130,19 @@ afterEach(async () => {
     document.body.innerHTML = '';
 });
 
-describe('the Add project form', () => {
+describe('the Add space form', () => {
     it('says a new folder is made when none is added, needs a name only then, and adds the project in that new folder', async () => {
         desktop();
         await open();
 
-        expect(form()?.textContent).toContain('Without folders, Clowdy creates one named after the project');
+        expect(form()?.textContent).toContain('Without folders, Clowdy creates one named after the space');
         expect(paths()).toEqual([]);
-        expect(button('Add project')?.disabled).toBe(true);
+        expect(button('Add space')?.disabled).toBe(true);
 
         type(input('Name'), 'Garden Planner');
-        expect(button('Add project')?.disabled).toBe(false);
+        expect(button('Add space')?.disabled).toBe(false);
 
-        await press(button('Add project'));
+        await press(button('Add space'));
 
         expect(store.selectedProject?.project).toMatchObject({
             name: 'Garden Planner',
@@ -188,7 +188,7 @@ describe('the Add project form', () => {
 
         // With folders the name may be left empty: the daemon names the project after the main folder.
         type(input('Name'), '');
-        expect(button('Add project')?.disabled).toBe(false);
+        expect(button('Add space')?.disabled).toBe(false);
     });
 
     it('reorders and removes folders, keeps the first one marked Main, and adds them in that order', async () => {
@@ -204,7 +204,7 @@ describe('the Add project form', () => {
         expect(paths()).toEqual(['/Users/dev/web', '/Users/dev/api']);
         expect(marked()).toEqual(['/Users/dev/web']);
 
-        await press(button('Add project'));
+        await press(button('Add space'));
 
         expect(store.selectedProject?.project).toMatchObject({
             name: 'web',
@@ -240,7 +240,7 @@ describe('the Add project form', () => {
             }),
         });
         await press(button('Add folders…'));
-        await press(button('Add project'));
+        await press(button('Add space'));
 
         expect(alert()).toBe('/Users/dev/api is inside /Users/dev');
         expect(form()).not.toBeNull();
@@ -254,7 +254,7 @@ describe('the Add project form', () => {
         desktop(['/Users/dev/clowdy']);
         await open();
         await press(button('Add folders…'));
-        await press(button('Add project'));
+        await press(button('Add space'));
 
         expect(store.selectedProjectId).toBe(FIXTURE_EMPTY_PROJECT_ID);
         expect(store.projects).toHaveLength(3);
@@ -343,7 +343,7 @@ describe('the Add project form', () => {
             expect(marked()).toEqual(['/Users/dev/code/booking-api']);
             // Only the clone dialog went; the form is where it was, with the folder in its list.
             expect(document.body.querySelectorAll('form')).toHaveLength(1);
-            expect(button('Add project')!.disabled).toBe(false);
+            expect(button('Add space')!.disabled).toBe(false);
         });
 
         it('leaves the list as it was when the clone is cancelled with Escape', async () => {

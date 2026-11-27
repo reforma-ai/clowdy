@@ -154,7 +154,7 @@ describe('the folder of a chat', () => {
 
         // The git mark and the branch, in one label that says on hover and to a screen reader where it runs.
         expect(label?.textContent).toBe('web, main');
-        expect((await tooltipFor(label!)).textContent).toBe('Working in project folder~/car-rental');
+        expect((await tooltipFor(label!)).textContent).toBe('Working in space folder~/car-rental');
         expect(label?.querySelector('svg')).not.toBeNull();
 
         await draw({
@@ -201,7 +201,7 @@ describe('the folder of a chat', () => {
 
         expect(container.textContent).toBe('web, 5c4d3e2');
         const label = container.querySelector<HTMLElement>('[aria-label="Current place: web, detached at 5c4d3e2"]')!;
-        expect((await tooltipFor(label)).textContent).toBe('Working in project folder~/car-rentalDetached HEAD');
+        expect((await tooltipFor(label)).textContent).toBe('Working in space folder~/car-rentalDetached HEAD');
     });
 
     it('is read only outside the desktop app: its name, the path on hover, and nothing to press', async () => {
@@ -210,7 +210,7 @@ describe('the folder of a chat', () => {
         const line = container.querySelector<HTMLElement>('[role="img"][aria-label^="Current place:"]');
 
         expect(line?.textContent).toBe('web, main');
-        expect((await tooltipFor(line!)).textContent).toBe('Working in project folder~/car-rental');
+        expect((await tooltipFor(line!)).textContent).toBe('Working in space folder~/car-rental');
         expect(container.querySelector('button')).toBeNull();
     });
 

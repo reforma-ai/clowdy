@@ -15,7 +15,7 @@ export function PlaceTooltip({
 }) {
     return (
         <div className={styles.tooltip}>
-            <span>{worktree ? 'Working in worktree' : 'Working in project folder'}</span>
+            <span>{worktree ? 'Working in worktree' : 'Working in space folder'}</span>
             <span className={styles.tooltipPath}>{tildePath(path, homeFolder.path)}</span>
             {note && <span>{note}</span>}
             {detached && <span>Detached HEAD</span>}

@@ -175,7 +175,7 @@ describe('task.create', () => {
         });
         expect(refusal(await send(create('Two', { statusId: 'nope' })))).toEqual({
             code: 'invalid',
-            message: 'Status nope does not belong to project p-car',
+            message: 'Status nope does not belong to space p-car',
         });
     });
 
@@ -220,7 +220,7 @@ describe('task.create', () => {
                     parentId: 't-24',
                 })
             )
-        ).toEqual({ code: 'invalid', message: 'Task CAR-24 belongs to another project' });
+        ).toEqual({ code: 'invalid', message: 'Task CAR-24 belongs to another space' });
         expect(refusal(await send(create('C', { parentId: 't-38' })))).toEqual({
             code: 'invalid',
             message: 'Task CAR-38 is archived: restore it before putting tasks inside it',
@@ -263,7 +263,7 @@ describe('task.create', () => {
                     dependsOn: ['t-24'],
                 })
             )
-        ).toEqual({ code: 'invalid', message: 'Task CAR-24 belongs to another project' });
+        ).toEqual({ code: 'invalid', message: 'Task CAR-24 belongs to another space' });
     });
 
     it('links the new task to the chat it is made in, after the task, and refuses a chat of another project', async () => {
@@ -280,7 +280,7 @@ describe('task.create', () => {
                     chatId: 'c-1',
                 })
             )
-        ).toEqual({ code: 'invalid', message: 'The chat belongs to another project' });
+        ).toEqual({ code: 'invalid', message: 'The chat belongs to another space' });
         expect(refusal(await send(create('Nowhere', { chatId: 'c-nope' })))).toEqual({
             code: 'not_found',
             message: 'Chat c-nope does not exist',
@@ -414,7 +414,7 @@ describe('task.update', () => {
         });
         expect(refusal(await send({ type: 'task.update', taskId: 't-26', statusId: 'nope' }))).toEqual({
             code: 'invalid',
-            message: 'Status nope does not belong to project p-car',
+            message: 'Status nope does not belong to space p-car',
         });
         // CAR-22 already depends on CAR-21, so CAR-21 cannot depend on it.
         expect(refusal(await send({ type: 'task.update', taskId: 't-21', dependsOn: ['t-22'] }))).toEqual({

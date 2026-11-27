@@ -1295,7 +1295,7 @@ describe('UiStore', () => {
             expect(ui.draftWorkspace).toBeNull();
         });
 
-        it('goes back to Project checkout when the folder changes, and stays when the same folder is picked again', () => {
+        it('goes back to Folder checkout when the folder changes, and stays when the same folder is picked again', () => {
             const ui = new UiStore().forProject('p1');
 
             ui.openDraft([], 'fld-api');

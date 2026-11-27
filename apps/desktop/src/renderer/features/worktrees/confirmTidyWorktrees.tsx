@@ -140,6 +140,7 @@ export function confirmTidyWorktrees({
         const progress = toast.progress({ title: 'Removing worktrees', total: previews.length });
         try {
             let removed = 0;
+            let branchesKept = 0;
             const errors: string[] = [];
             // An earlier selected worktree may archive a chat also linked to a later one.
             const archivedByThisAction = new Set<string>();
@@ -167,7 +168,27 @@ export function confirmTidyWorktrees({
                             }),
                             ...(deleteBranches && removalPlan(row).branch?.selected && { deleteBranch: true }),
                         });
-                        if (!result.ok) throw new Error(result.error.message);
+                        if (!result.ok) {
+                            // Dev/OTA can leave an older daemon running while its agents finish. This exact invalid
+                            // response is sent before any Git mutation; no other failure is safe to retry.
+                            if (
+                                result.error.code !== 'invalid' ||
+                                result.error.message !== 'Tidy up cannot discard changes or dispose of chats' ||
+                                !read.chats.affected.some(chat => chat.archivedAt === undefined)
+                            ) {
+                                throw new Error(result.error.message);
+                            }
+                            await removeWorktree(
+                                target,
+                                read,
+                                {
+                                    deleteBranch: false,
+                                    disposition: 'archive',
+                                },
+                                { legacyTidy: true }
+                            );
+                            if (deleteBranches && deleteBranchByDefault(row)) branchesKept++;
+                        }
                     } else {
                         await removeWorktree(target, read, {
                             deleteBranch: deleteBranches && deleteBranchByDefault(row),
@@ -183,7 +204,7 @@ export function confirmTidyWorktrees({
                 }
             }
             for (const folder of project.folders) refreshFolderGit(projectId, folder.id);
-            return { removed, errors };
+            return { removed, branchesKept, errors };
         } finally {
             progress.close();
         }
@@ -213,11 +234,11 @@ export function confirmTidyWorktrees({
             queueMicrotask(() => {
                 onStart();
                 void run(deleteBranches)
-                    .then(({ removed, errors }) => {
+                    .then(({ removed, branchesKept, errors }) => {
                         if (errors.length) {
                             toast.warning({
                                 title: 'Worktree cleanup finished',
-                                message: `${removed} removed, ${errors.length} refused or incomplete`,
+                                message: `${removed} removed, ${errors.length} refused or incomplete${branchesKept ? `, ${branchesKept} ${branchesKept === 1 ? 'branch' : 'branches'} kept because the daemon is out of date` : ''}`,
                                 timeout: 0,
                                 action: {
                                     label: 'View details',
@@ -238,6 +259,12 @@ export function confirmTidyWorktrees({
                                             onConfirm: () => {},
                                         }),
                                 },
+                            });
+                        } else if (branchesKept) {
+                            toast.warning({
+                                title: 'Worktree cleanup finished',
+                                message: `${removed} removed, ${branchesKept} ${branchesKept === 1 ? 'branch' : 'branches'} kept because the daemon is out of date`,
+                                timeout: 0,
                             });
                         } else if (removed) {
                             toast.success({

@@ -211,8 +211,8 @@ export function OpenWithMenu({
                         </MenuItem>
                     )}
                     {repair?.remove && (
-                        <MenuItem id="remove" icon={<Close aria-hidden="true" />} textValue="Remove from project">
-                            Remove from project
+                        <MenuItem id="remove" icon={<Close aria-hidden="true" />} textValue="Remove from space">
+                            Remove from space
                         </MenuItem>
                     )}
                     {onNewChat && (

@@ -47,7 +47,7 @@ const PAGES: readonly PageView[] = [
         icon: <Keyboard size={14} />,
         render: () => <ShortcutsPage />,
     },
-    { id: 'projects', label: 'Projects', group: 'Workspace', icon: <Folder />, render: () => <ProjectsPage /> },
+    { id: 'projects', label: 'Spaces', group: 'Workspace', icon: <Folder />, render: () => <ProjectsPage /> },
     {
         id: 'providers',
         label: 'Providers',
@@ -89,7 +89,7 @@ export const SettingsWindow = observer(function SettingsWindow() {
         >
             {/* No title over the groups: the first group's heading is right there, and the window is called Settings by where it opens from. */}
             <SettingsLayout.Sidebar aria-label="Settings pages" />
-            {/* The page's own main action, at the end of the title's line: Projects has Add project, and not while a project's page is open over it. */}
+            {/* The page's own main action, at the end of the title's line: Projects has Add space, and not while a project's page is open over it. */}
             <SettingsLayout.Content headerRight={page.id === 'projects' && !project ? <AddProjectButton /> : undefined}>
                 {page.render()}
             </SettingsLayout.Content>

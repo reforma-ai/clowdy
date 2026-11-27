@@ -23,7 +23,7 @@ export async function openDocument(
     const current = currentPlace(project, root.ui.forProject(project.id));
 
     if (!folder || folder.id !== current.folder.id) {
-        toast.error({ message: 'That document is in another folder of the project' });
+        toast.error({ message: 'That document is in another folder of the space' });
 
         return false;
     }

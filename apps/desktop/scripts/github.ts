@@ -123,3 +123,8 @@ export async function downloadAsset(tag: string, name: string): Promise<string |
         throw error;
     }
 }
+
+/** Downloads a named binary asset into an empty directory. */
+export async function downloadAssetTo(tag: string, name: string, dir: string): Promise<void> {
+    await gh(['release', 'download', tag, '--pattern', name, '--dir', dir]);
+}

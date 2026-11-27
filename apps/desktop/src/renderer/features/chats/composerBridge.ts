@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
 
+import type { ComposerMentionAttrs } from '@clowdy/components/RichInput';
 import type { ClipboardFile } from '../../../shared/bridge';
 
 /**
@@ -9,11 +10,14 @@ import type { ClipboardFile } from '../../../shared/bridge';
  * the box of an edit frame does not, and a chat that is read only has no box, so it registers nothing. The last box registered is the one asked.
  */
 type Quote = (text: string) => void;
-type MentionFiles = (files: readonly ClipboardFile[]) => boolean;
+export type DropPoint = { x: number; y: number };
+type MentionFiles = (files: readonly ClipboardFile[], point?: DropPoint) => boolean;
+type MentionTasks = (mentions: readonly ComposerMentionAttrs[], point?: DropPoint) => boolean;
 interface ComposerBridge {
     quote: Quote;
     mentionFiles?: MentionFiles;
     appendText?: (text: string) => boolean;
+    mentionTasks?: MentionTasks;
 }
 
 const composers: ComposerBridge[] = [];
@@ -31,9 +35,10 @@ function subscribe(listener: () => void): () => void {
 export function registerComposer(
     quote: Quote,
     mentionFiles?: MentionFiles,
-    appendText?: (text: string) => boolean
+    appendText?: (text: string) => boolean,
+    mentionTasks?: MentionTasks
 ): () => void {
-    const composer = { quote, mentionFiles, appendText };
+    const composer = { quote, mentionFiles, appendText, mentionTasks };
     composers.push(composer);
     changed();
 
@@ -72,8 +77,12 @@ export function useHasComposer(): boolean {
 }
 
 /** Adds references to files in the current chat's place without uploading their contents. */
-export function mentionFilesIntoComposer(files: readonly ClipboardFile[]): boolean {
-    return composers.at(-1)?.mentionFiles?.(files) ?? false;
+export function mentionFilesIntoComposer(files: readonly ClipboardFile[], point?: DropPoint): boolean {
+    return composers.at(-1)?.mentionFiles?.(files, point) ?? false;
+}
+
+export function mentionTasksIntoComposer(mentions: readonly ComposerMentionAttrs[], point?: DropPoint): boolean {
+    return composers.at(-1)?.mentionTasks?.(mentions, point) ?? false;
 }
 
 export function useCanMentionFiles(): boolean {
@@ -86,15 +95,17 @@ export function useCanMentionFiles(): boolean {
 export function useRegisterComposer(
     quote: Quote | undefined,
     mentionFiles?: MentionFiles,
-    appendText?: (text: string) => boolean
+    appendText?: (text: string) => boolean,
+    mentionTasks?: MentionTasks
 ): void {
-    const latest = useRef({ quote, mentionFiles, appendText });
+    const latest = useRef({ quote, mentionFiles, appendText, mentionTasks });
     const takes = quote !== undefined;
     const takesFiles = mentionFiles !== undefined;
     const takesText = appendText !== undefined;
+    const takesTasks = mentionTasks !== undefined;
 
     useLayoutEffect(() => {
-        latest.current = { quote, mentionFiles, appendText };
+        latest.current = { quote, mentionFiles, appendText, mentionTasks };
     });
 
     useEffect(
@@ -102,10 +113,13 @@ export function useRegisterComposer(
             takes
                 ? registerComposer(
                       text => latest.current.quote?.(text),
-                      takesFiles ? files => latest.current.mentionFiles?.(files) ?? false : undefined,
-                      takesText ? text => latest.current.appendText?.(text) ?? false : undefined
+                      takesFiles ? (files, point) => latest.current.mentionFiles?.(files, point) ?? false : undefined,
+                      takesText ? text => latest.current.appendText?.(text) ?? false : undefined,
+                      takesTasks
+                          ? (mentions, point) => latest.current.mentionTasks?.(mentions, point) ?? false
+                          : undefined
                   )
                 : undefined,
-        [takes, takesFiles, takesText]
+        [takes, takesFiles, takesText, takesTasks]
     );
 }

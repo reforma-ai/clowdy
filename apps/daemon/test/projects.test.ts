@@ -255,9 +255,9 @@ describe('the personal space', () => {
         const regular = systemPrompt('autopilot', projectsOf(h).find(project => project.id === repo.id) as Project);
 
         expect(personal).toContain(
-            `Project: Personal, the person's personal space, a folder at ${pathOf(h.personal)} that belongs to no repository, task keys PER-<number>.`
+            `Space: Personal, the person's personal space, a folder at ${pathOf(h.personal)} that belongs to no repository, task keys PER-<number>.`
         );
-        expect(regular).toContain(`Project: shop, folder at ${repo.path}, task keys SHO-<number>`);
+        expect(regular).toContain(`Space: shop, folder at ${repo.path}, task keys SHO-<number>`);
         expect(regular).not.toContain('repository');
     });
 });
@@ -503,7 +503,7 @@ describe('project.delete', () => {
 
         expect(failure(h.send('project.delete', { projectId: project.id }))).toMatchObject({
             code: 'conflict',
-            message: 'The agents of this project are still working. Stop them first.',
+            message: 'The agents of this space are still working. Stop them first.',
         });
         expect(projectsOf(h).map(candidate => candidate.id)).toContain(project.id);
         expect(h.events(cursor).some(event => event.data.type === 'project.deleted')).toBe(false);
@@ -695,7 +695,7 @@ describe('project.update', () => {
         ).toBe('invalid');
         expect(
             failure(h.send('project.update', { projectId: project.id, folders: [{ id: 'fld_nope' }] })).message
-        ).toContain('not one of the project');
+        ).toContain('not one of the space');
         expect(failure(h.send('project.update', { projectId: project.id, folders: [] })).code).toBe('invalid');
         expect(projectOf(h, project.id).folders).toEqual([main]);
         expect(h.store.headCursor()).toBe(cursor);
@@ -790,7 +790,7 @@ describe('project.update', () => {
         expect(
             failure(h.send('project.update', { projectId: project.id, folders: [{ id: 'fld_nope', path: next }] }))
                 .message
-        ).toContain('not one of the project');
+        ).toContain('not one of the space');
         expect(pathsOf(projectOf(h, project.id))).toEqual([project.path, next]);
     });
 
@@ -800,7 +800,7 @@ describe('project.update', () => {
         const api = realpathSync.native(makeRepo(h.config.projectsDir, 'api'));
         const apiNext = realpathSync.native(makeRepo(h.config.projectsDir, 'api-next'));
         const mainNext = realpathSync.native(makeRepo(h.config.projectsDir, 'busy-next'));
-        const working = { code: 'conflict', message: 'The agents of this project are still working. Stop them first.' };
+        const working = { code: 'conflict', message: 'The agents of this space are still working. Stop them first.' };
         const { project: grown } = h.ok('project.update', {
             projectId: project.id,
             folders: [{ id: main.id }, { path: api }],
@@ -833,7 +833,7 @@ describe('project.update', () => {
         const { h, gate, project, task } = await busyProject('busy');
         const main = projectOf(h, project.id).folders[0];
         const next = realpathSync.native(makeRepo(h.config.projectsDir, 'next'));
-        const working = { code: 'conflict', message: 'The agents of this project are still working. Stop them first.' };
+        const working = { code: 'conflict', message: 'The agents of this space are still working. Stop them first.' };
 
         const { project: grown } = h.ok('project.update', {
             projectId: project.id,

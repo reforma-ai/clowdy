@@ -138,7 +138,7 @@ const menuItem = (name: string) => {
 
 /** Opens a submenu the way a keyboard user does, so both the menu and its controls are available. */
 const openProjectSubmenu = async (name: 'Layout' | 'Display') => {
-    await press(buttonNamed('Project menu'));
+    await press(buttonNamed('Space menu'));
     await act(async () => {
         menuItem(name).dispatchEvent(
             new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true })
@@ -710,7 +710,7 @@ describe('grouped by folder', () => {
         expect(ui().collapsedFolders).toEqual([]);
     });
 
-    it('puts right a folder that is gone from the disk from the menu of its group: Locate… moves the folder, Remove from project takes it out', async () => {
+    it('puts right a folder that is gone from the disk from the menu of its group: Locate… moves the folder, Remove from space takes it out', async () => {
         const transport = new FixtureTransport({ data: twoFolders() });
         const info = await transport.getProjectsInfo();
         const choose = vi.fn(async () => ['/Users/dev/api-moved']);
@@ -752,7 +752,7 @@ describe('grouped by folder', () => {
             expect(ui().draft).toBe(false);
             expect(menuItems()).toEqual([
                 'Locate…',
-                'Remove from project',
+                'Remove from space',
                 'New chat',
                 'Open in Files',
                 'Open in Terminal',
@@ -777,7 +777,7 @@ describe('grouped by folder', () => {
             // A chat works in the folder, so taking it out asks first (it is named by its new place now).
             await restart({ transport });
             await press(name(API.id));
-            await press(item('Remove from project'));
+            await press(item('Remove from space'));
 
             expect(openConfirmModal).toHaveBeenCalledWith(
                 expect.objectContaining({
@@ -1319,18 +1319,16 @@ describe('the heading', () => {
     it('has the history, as a button, to the left of the project menu', () => {
         // The rows have an Archive of their own, as a quick action: the heading's buttons are the ones outside the list.
         const buttons = [
-            ...container.querySelectorAll<HTMLElement>(
-                'button[aria-label="History"], button[aria-label="Project menu"]'
-            ),
+            ...container.querySelectorAll<HTMLElement>('button[aria-label="History"], button[aria-label="Space menu"]'),
         ].filter(button => !button.closest('[role="grid"]'));
 
-        expect(buttons.map(button => button.getAttribute('aria-label'))).toEqual(['History', 'Project menu']);
+        expect(buttons.map(button => button.getAttribute('aria-label'))).toEqual(['History', 'Space menu']);
         expect(buttons[0].parentElement).toBe(buttons[1].parentElement);
     });
 
     it('opens settings for the selected project', async () => {
-        await press(buttonNamed('Project menu'));
-        await press(menuItem('Project settings'));
+        await press(buttonNamed('Space menu'));
+        await press(menuItem('Space settings'));
 
         expect([store.ui.settingsOpen, store.ui.settingsPage, store.ui.settingsProjectId]).toEqual([
             true,
@@ -1345,7 +1343,7 @@ describe('the heading', () => {
         (window as { desktop?: unknown }).desktop = { chooseDirectories: choose };
 
         try {
-            await press(buttonNamed('Project menu'));
+            await press(buttonNamed('Space menu'));
             await press(menuItem('Add…'));
             await press(
                 [...document.body.querySelectorAll<HTMLButtonElement>('button')].find(
@@ -1368,7 +1366,7 @@ describe('the heading', () => {
         const create = Modal.create.bind(Modal);
         vi.spyOn(Modal, 'create').mockImplementation(options => create({ ...options, animate: false }));
         try {
-            await press(buttonNamed('Project menu'));
+            await press(buttonNamed('Space menu'));
             await press(menuItem('Add…'));
             const clone = [...document.body.querySelectorAll<HTMLButtonElement>('button')].find(
                 node => node.textContent?.trim() === 'Clone Git repository'
@@ -1377,7 +1375,7 @@ describe('the heading', () => {
             await vi.waitFor(() =>
                 expect(document.body.querySelector('input[aria-label="Repository address"]')).not.toBeNull()
             );
-            expect(document.body.querySelector('[aria-label="Add to project"]')).toBeNull();
+            expect(document.body.querySelector('[aria-label="Add to space"]')).toBeNull();
         } finally {
             for (const modal of [...Modal.opened].reverse()) await act(async () => modal.close(false));
             vi.restoreAllMocks();
@@ -1387,12 +1385,12 @@ describe('the heading', () => {
     it('does not offer adding folders to the personal space', async () => {
         await draw(() => store.selectProject(FIXTURE_PERSONAL_PROJECT_ID));
         await draw();
-        await press(buttonNamed('Project menu'));
+        await press(buttonNamed('Space menu'));
 
         expect(
             [...document.body.querySelectorAll('[role^="menuitem"]')].some(row => row.textContent?.includes('Add…'))
         ).toBe(false);
-        expect(menuItem('Project settings')).toBeTruthy();
+        expect(menuItem('Space settings')).toBeTruthy();
     });
 
     it('selects the draft row only while its page is open', async () => {
@@ -1459,6 +1457,25 @@ describe('the archive', () => {
         const popover = document.body.querySelector<HTMLElement>('[data-modal-clickout-layer]')!;
 
         expect(popover.style.width).toBe('280px');
+    });
+
+    it('filters history by title and shows no matches', async () => {
+        await archive('c-2', true);
+        await archive('c-4', true);
+        await press(buttonNamed('History'));
+        const input = document.querySelector<HTMLInputElement>('input[aria-label="Search archived chats"]')!;
+        await draw(() => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'FIRST VERSION');
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        expect(document.querySelector('[aria-label="Archived chats"] [data-key="c-2"]')).not.toBeNull();
+        expect(document.querySelector('[aria-label="Archived chats"] [data-key="c-4"]')).toBeNull();
+        await draw(() => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'no such title');
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        expect(document.querySelector('[aria-label="Archived chats"]')).toBeNull();
+        expect(document.body.textContent).toContain('No matching chats');
     });
 
     it('groups the chats by the day they were put away', async () => {
@@ -1953,7 +1970,7 @@ describe('threads', () => {
                 confirmLabel: 'Delete chat',
                 message: expect.objectContaining({
                     props: expect.objectContaining({
-                        text: 'This will also delete 5 threads. You can’t undo this. Tasks stay in the project.',
+                        text: 'This will also delete 5 threads. You can’t undo this. Tasks stay in the space.',
                     }),
                 }),
             })
@@ -2968,6 +2985,30 @@ describe('worktree cards', () => {
         ]);
     });
 
+    it('filters worktree archives by thread parent and resets the search on reopening', async () => {
+        const data = withFixtureWorktrees(createFixtureData());
+        const thread = data.chats.find(chat => chat.id === 'c-6a1')!;
+        thread.archivedAt = Date.now();
+        thread.workspace = data.chats.find(chat => chat.id === FIXTURE_WORKSPACE_CHAT_ID)!.workspace;
+        await restart(data);
+        await draw(() => ui().setGroupByWorktree(true));
+        const card = rowOf(workspaceKey()).closest<HTMLElement>('[data-worktree-card]')!;
+        const trigger = [...card.querySelectorAll('button')].find(button =>
+            button.textContent?.includes('archived thread')
+        )!;
+        await press(trigger);
+        const input = document.querySelector<HTMLInputElement>('input[aria-label="Search archived chats"]')!;
+        await draw(() => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'PRICE ROUNDING');
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        expect(document.querySelector('[aria-label="Archived chats"] [data-key="c-6a1"]')).not.toBeNull();
+        expect(document.querySelector('[aria-label="Archived chats"] [data-key="c-10"]')).toBeNull();
+        await press(trigger);
+        await press(trigger);
+        expect(document.querySelector<HTMLInputElement>('input[aria-label="Search archived chats"]')!.value).toBe('');
+    });
+
     it('opens the worktree archive with the keyboard', async () => {
         await restart(withFixtureWorktrees(createFixtureData()));
         await draw(() => ui().setGroupByWorktree(true));
@@ -3508,7 +3549,7 @@ describe('worktree cards', () => {
     });
 
     it('switches projects through the sidebar dots in menu order', async () => {
-        const navigation = container.querySelector<HTMLElement>('nav[aria-label="Switch project"]')!;
+        const navigation = container.querySelector<HTMLElement>('nav[aria-label="Switch space"]')!;
         const buttons = [...navigation.querySelectorAll('button')];
         const ordered = [
             ...store.projects.filter(candidate => candidate.personal),

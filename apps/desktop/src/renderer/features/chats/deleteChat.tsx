@@ -11,7 +11,7 @@ import type { Chat } from '@clowdy/protocol';
 import type { RootStore } from '../../stores';
 
 export function deleteMessage(threadCount: number): string {
-    const consequences = 'You can’t undo this. Tasks stay in the project.';
+    const consequences = 'You can’t undo this. Tasks stay in the space.';
 
     if (threadCount === 0) return consequences;
 

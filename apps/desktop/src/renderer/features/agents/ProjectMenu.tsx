@@ -36,15 +36,15 @@ export function ProjectMenu() {
 
     return (
         <MenuTrigger>
-            <Button variant="filling" size="sm" iconOnly aria-label="Project menu" tooltip="Project menu">
+            <Button variant="filling" size="sm" iconOnly aria-label="Space menu" tooltip="Space menu">
                 <More />
             </Button>
             <Popover placement="bottom end" spacing="xs" width={290}>
-                <Menu aria-label="Project menu" size="sm">
+                <Menu aria-label="Space menu" size="sm">
                     {!project.personal && <MenuItem id="add-folder" text="Add…" onAction={addFolder} />}
                     <MenuItem
                         id="settings"
-                        text="Project settings…"
+                        text="Space settings…"
                         onAction={() => root.ui.openProjectSettings(project.id)}
                     />
                     <MenuSeparator />

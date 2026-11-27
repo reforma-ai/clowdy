@@ -28,7 +28,7 @@ export function useProjectState(): ProjectState {
     const root = useRootStore();
     const project = override ?? root.selectedProject;
 
-    if (!project) throw new Error('No project is selected');
+    if (!project) throw new Error('No space is selected');
 
     return project;
 }
@@ -39,7 +39,7 @@ export function useProjectUi(): ProjectUi {
     const override = use(ProjectContext);
 
     const projectId = override?.id ?? root.selectedProjectId;
-    if (!projectId) throw new Error('No project is selected');
+    if (!projectId) throw new Error('No space is selected');
 
     return root.ui.forProject(projectId);
 }

@@ -1,7 +1,9 @@
 .viewport {
     flex: 1;
+    min-width: 0;
     min-height: 0;
-    overflow: hidden;
+    /* A preview's selected row may scroll into view; it must not scroll the pager. */
+    overflow: clip;
     touch-action: pan-y;
 }
 

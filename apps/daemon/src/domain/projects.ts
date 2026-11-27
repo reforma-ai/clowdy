@@ -57,7 +57,7 @@ export function requireProject(store: Store, projectId: string): Project {
     const project = getProject(store.db, projectId);
 
     if (!project) {
-        throw notFound('Project', projectId);
+        throw notFound('Space', projectId);
     }
 
     return project;
@@ -88,7 +88,7 @@ function cleanName(name: string): string {
     const trimmed = name.trim();
 
     if (!trimmed) {
-        throw invalid('The project name cannot be empty');
+        throw invalid('The space name cannot be empty');
     }
 
     return trimmed;
@@ -152,7 +152,7 @@ function requireSeparateFolders(paths: readonly string[]): void {
             const [outer, inner] = path.length < other.length ? [path, other] : [other, path];
 
             if (inner.startsWith(outer.endsWith(sep) ? outer : outer + sep)) {
-                throw invalid(`${inner} is inside ${outer}, which the project has already`);
+                throw invalid(`${inner} is inside ${outer}, which the space has already`);
             }
         }
     });
@@ -200,7 +200,7 @@ export function addProject(
  */
 function newFolderProject(store: Store, config: Config, name: string | undefined): AddedProject {
     if (name === undefined) {
-        throw invalid('A project without folders needs a name: its new folder is named after it');
+        throw invalid('A space without folders needs a name: its new folder is named after it');
     }
 
     const clean = cleanName(name);
@@ -352,7 +352,7 @@ function mergeSettings(current: ProjectSettings, patch: SettingsPatch = {}): Pro
     return merged as ProjectSettings;
 }
 
-const stillWorking = () => conflict('The agents of this project are still working. Stop them first.');
+const stillWorking = () => conflict('The agents of this space are still working. Stop them first.');
 
 /**
  * The folders `entries` describe: the project's own for an id (at the path it is given with the id, when it is moved: it keeps its id, and so its chats), a new folder
@@ -360,7 +360,7 @@ const stillWorking = () => conflict('The agents of this project are still workin
  */
 function nextFolders(current: Project, entries: readonly FolderEntry[]): ProjectFolder[] {
     if (entries.length === 0) {
-        throw invalid('A project needs at least one folder');
+        throw invalid('A space needs at least one folder');
     }
 
     const folders = entries.map(entry => {
@@ -368,7 +368,7 @@ function nextFolders(current: Project, entries: readonly FolderEntry[]): Project
             const folder = current.folders.find(candidate => candidate.id === entry.id);
 
             if (!folder) {
-                throw invalid(`Folder ${entry.id} is not one of the project's`);
+                throw invalid(`Folder ${entry.id} is not one of the space's`);
             }
 
             // The folder is the same one at another place, so what it was given (its settings) stays with it.
@@ -544,7 +544,7 @@ export function reorderProjects(store: Store, projectIds: readonly string[]): Pr
         const unknown = projectIds.find(id => !known.has(id));
 
         if (unknown !== undefined) {
-            throw invalid(`Project ${unknown} does not exist`);
+            throw invalid(`Space ${unknown} does not exist`);
         }
 
         const line = all.filter(project => !project.personal);
@@ -665,7 +665,7 @@ export function requireStatus(store: Store, projectId: string, statusId: string)
     const status = listStatuses(store.db, projectId).find(candidate => candidate.id === statusId);
 
     if (!status) {
-        throw invalid(`Status ${statusId} does not belong to project ${projectId}`);
+        throw invalid(`Status ${statusId} does not belong to space ${projectId}`);
     }
 
     return status;
@@ -676,7 +676,7 @@ export function statusOfCategory(store: Store, projectId: string, category: Task
     const status = listStatuses(store.db, projectId).find(candidate => candidate.category === category);
 
     if (!status) {
-        throw invalid(`Project ${projectId} has no status in the ${category} category`);
+        throw invalid(`Space ${projectId} has no status in the ${category} category`);
     }
 
     return status;

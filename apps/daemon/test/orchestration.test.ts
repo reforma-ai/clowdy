@@ -252,7 +252,7 @@ describe('the prompts of a run', () => {
         expect(prompt).toContain('You are the orchestrator of a Clowdy chat. Follow clowdy:orchestrate');
         expect(prompt).toContain('Mode: semi-manual.');
         // Any folder can be a project's, so none is called a repository.
-        expect(prompt).toContain('Project: Car Rental, folder at /work/cars, task keys CAR-<number>.');
+        expect(prompt).toContain('Space: Car Rental, folder at /work/cars, task keys CAR-<number>.');
         expect(prompt).not.toContain('repository');
         expect(prompt.length).toBeLessThan(900);
         expect(systemPrompt('autopilot', project)).toContain('Mode: autopilot.');
@@ -274,7 +274,7 @@ describe('the prompts of a run', () => {
         const prompt = systemPrompt('semi', project, '/work/cars', undefined, logs);
 
         expect(prompt).toContain(
-            `The app's terminal logs for this project are in ${logs}, one plain file per shell. Read one when the person mentions the terminal.`
+            `The app's terminal logs for this space are in ${logs}, one plain file per shell. Read one when the person mentions the terminal.`
         );
         expect(systemPrompt('semi', project)).not.toContain('terminal logs');
     });
@@ -292,7 +292,7 @@ describe('the prompts of a run', () => {
 
         expect(prompt).toContain(
             [
-                'Project: Car Rental, task keys CAR-<number>, folders (use absolute paths outside the folder you work in):',
+                'Space: Car Rental, task keys CAR-<number>, folders (use absolute paths outside the folder you work in):',
                 '- /work/cars (main, you work here)',
                 '- /work/cars-api',
                 '- /notes/fleet',

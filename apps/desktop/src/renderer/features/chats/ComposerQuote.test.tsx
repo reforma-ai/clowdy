@@ -7,11 +7,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { type RootStore, RootStoreProvider } from '../../stores';
 import { UserBubble } from '../../stream/UserBubble';
+import { ChatDropZone } from './ChatDropZone';
 import { Composer, type ComposerHandle } from './Composer';
 import { codeQuote } from './codeQuote';
 import { appendTextIntoComposer, mentionFilesIntoComposer, quoteIntoComposer } from './composerBridge';
 import { draftOf, messageOf, newChatDraftKey, saveDraft } from './composerDrafts';
+import { FILE_REFERENCE_DRAG_TYPE } from './fileReferences';
 import { modelStore } from './modelTestKit';
+import { TASK_REFERENCE_DRAG_TYPE } from './taskReferences';
 
 import type { Chat } from '@clowdy/protocol';
 import type { Editor } from '@tiptap/core';
@@ -48,14 +51,16 @@ async function mount(props: { chat?: Chat; projectId?: string } = { chat }) {
     await act(async () => {
         root.render(
             <RootStoreProvider value={store as unknown as RootStore}>
-                <Composer
-                    ref={value => {
-                        handle = value;
-                    }}
-                    chat={props.chat}
-                    run={undefined}
-                    start={props.projectId ? { projectId: props.projectId, onStarted: () => undefined } : undefined}
-                />
+                <ChatDropZone onFiles={vi.fn()}>
+                    <Composer
+                        ref={value => {
+                            handle = value;
+                        }}
+                        chat={props.chat}
+                        run={undefined}
+                        start={props.projectId ? { projectId: props.projectId, onStarted: () => undefined } : undefined}
+                    />
+                </ChatDropZone>
             </RootStoreProvider>
         );
     });
@@ -390,4 +395,40 @@ it('adds a file and a directory from the side panel as path mentions in the draf
     expect(sent()).toBe('Look at @src/a.ts @"my docs"');
     expect(messageOf(draftOf(chat.id))).toBe(sent());
     expect(document.activeElement).toBe(field());
+});
+
+it.each(['existing', 'new'] as const)('drops file and task references into the %s chat draft', async context => {
+    await mount(context === 'new' ? { projectId: 'p' } : { chat });
+    type('Review ');
+    const drop = (format: string, value: unknown) => {
+        const event = new Event('drop', { bubbles: true, cancelable: true });
+        Object.defineProperty(event, 'dataTransfer', {
+            value: { types: [format], getData: () => JSON.stringify(value) },
+        });
+        act(() => field().dispatchEvent(event));
+        expect(event.defaultPrevented).toBe(true);
+    };
+    drop(FILE_REFERENCE_DRAG_TYPE, [{ path: '/Users/dev/web/src/a.ts', name: 'a.ts', kind: 'file' }]);
+    drop(TASK_REFERENCE_DRAG_TYPE, { key: 'CLO-250', title: 'Example' });
+    expect(sent()).toBe('Review @src/a.ts CLO-250');
+});
+
+it('inserts a dropped task at the position under the pointer', async () => {
+    await mount();
+    type('before after');
+    vi.spyOn(field(), 'getBoundingClientRect').mockReturnValue({ left: 0, right: 200, top: 0, bottom: 100 } as DOMRect);
+    vi.spyOn(editor().view, 'posAtCoords').mockReturnValue({ pos: 8, inside: 0 });
+    const event = new Event('drop', { bubbles: true, cancelable: true });
+    Object.defineProperties(event, {
+        clientX: { value: 50 },
+        clientY: { value: 30 },
+        dataTransfer: {
+            value: {
+                types: [TASK_REFERENCE_DRAG_TYPE],
+                getData: () => JSON.stringify({ key: 'CLO-250', title: 'Example' }),
+            },
+        },
+    });
+    act(() => field().dispatchEvent(event));
+    expect(sent()).toBe('before CLO-250 after');
 });

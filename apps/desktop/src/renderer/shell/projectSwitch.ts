@@ -8,7 +8,7 @@ export const projectSwitchCommand = (slot: number) => `projects.switch.${slot}`;
 /** By the physical key (`Digit1`): with Option held, a Mac types a symbol on the key, and the key event names no digit. */
 export const projectSwitchKeys = (slot: number) => `$mod+Alt+Digit${slot}`;
 
-export const projectSwitchTitle = (slot: number) => (slot === 0 ? 'Switch to Personal' : `Switch to project ${slot}`);
+export const projectSwitchTitle = (slot: number) => (slot === 0 ? 'Switch to Personal' : `Switch to space ${slot}`);
 
 /** The project a slot's keys open, or `undefined` while no project is on it. */
 export function projectAtSlot(projects: readonly Project[], slot: number): Project | undefined {

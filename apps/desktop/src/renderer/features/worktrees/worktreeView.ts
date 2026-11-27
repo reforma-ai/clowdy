@@ -43,7 +43,7 @@ export function lockTip(locked: string): string {
 
 /** The one badge of a worktree's row: what it says, why (the tooltip), and the colour (the neutral grey when it has none). */
 export interface WorktreeMark {
-    label: 'Project checkout' | 'Missing on disk' | 'Locked' | MergedMark['label'];
+    label: 'Folder checkout' | 'Missing on disk' | 'Locked' | MergedMark['label'];
     tip: string;
     color?: MergedMark['color'];
 }
@@ -58,7 +58,7 @@ export function worktreeMark(
     worktree: Pick<WorktreeInfo, 'main' | 'missing' | 'locked' | 'merged' | 'base'>
 ): WorktreeMark | undefined {
     if (worktree.main)
-        return { label: 'Project checkout', tip: 'The folder itself, where a chat works without a worktree' };
+        return { label: 'Folder checkout', tip: 'The folder itself, where a chat works without a worktree' };
 
     if (worktree.missing)
         return { label: 'Missing on disk', tip: 'Git lists it, but its folder is gone', color: 'warning' };

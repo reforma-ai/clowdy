@@ -18,7 +18,7 @@ export function openAddFolderDialog(transport: Transport, onAdd: (paths: string[
         closeOnEscape: true,
         closeButton: true,
         handle: false,
-        ariaLabel: 'Add to project',
+        ariaLabel: 'Add to space',
         onCancel: () => {
             lifecycle.active = false;
         },
@@ -54,7 +54,7 @@ function AddFolderDialog({
 
     return (
         <div className={styles.dialog}>
-            <Text variant="heading-3">Add to project</Text>
+            <Text variant="heading-3">Add to space</Text>
             {enterPath ? (
                 <div className={styles.path}>
                     <Input

@@ -193,7 +193,7 @@ export class FixtureTasks {
     #requireProject(projectId: ProjectId): Project {
         const project = this.data.projects.find(candidate => candidate.id === projectId);
 
-        if (!project) throw notFound('Project', projectId);
+        if (!project) throw notFound('Space', projectId);
 
         return project;
     }
@@ -230,7 +230,7 @@ export class FixtureTasks {
     #requireStatus(projectId: ProjectId, statusId: string): TaskStatus {
         const status = this.#statuses(projectId).find(candidate => candidate.id === statusId);
 
-        if (!status) throw invalid(`Status ${statusId} does not belong to project ${projectId}`);
+        if (!status) throw invalid(`Status ${statusId} does not belong to space ${projectId}`);
 
         return status;
     }
@@ -239,7 +239,7 @@ export class FixtureTasks {
     #statusOfCategory(projectId: ProjectId, category: TaskStatusCategory): TaskStatus {
         const status = this.#statuses(projectId).find(candidate => candidate.category === category);
 
-        if (!status) throw invalid(`Project ${projectId} has no status in the ${category} category`);
+        if (!status) throw invalid(`Space ${projectId} has no status in the ${category} category`);
 
         return status;
     }
@@ -305,7 +305,7 @@ export class FixtureTasks {
         for (const id of ids) {
             const dependency = this.#requireTask(id);
 
-            if (dependency.projectId !== projectId) throw invalid(`Task ${dependency.key} belongs to another project`);
+            if (dependency.projectId !== projectId) throw invalid(`Task ${dependency.key} belongs to another space`);
 
             if (this.#createsCycle(taskId, [id]))
                 throw invalid(
@@ -325,7 +325,7 @@ export class FixtureTasks {
     #checkParent(task: Pick<Task, 'id' | 'key' | 'projectId' | 'archivedAt'>, parentId: TaskId): TaskId {
         const parent = this.#requireTask(parentId);
 
-        if (parent.projectId !== task.projectId) throw invalid(`Task ${parent.key} belongs to another project`);
+        if (parent.projectId !== task.projectId) throw invalid(`Task ${parent.key} belongs to another space`);
 
         if (parent.id === task.id) throw invalid(`Task ${task.key} cannot be its own parent`);
 
@@ -356,7 +356,7 @@ export class FixtureTasks {
             const project = this.#requireProject(command.projectId);
             const chat = command.chatId ? this.#requireChat(command.chatId) : undefined;
 
-            if (chat && chat.projectId !== project.id) throw invalid('The chat belongs to another project');
+            if (chat && chat.projectId !== project.id) throw invalid('The chat belongs to another space');
 
             const status = command.statusId
                 ? this.#requireStatus(project.id, command.statusId)

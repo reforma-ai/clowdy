@@ -44,6 +44,7 @@
 .bodyContent {
     display: flex;
     flex-direction: column;
+    height: 100%;
 }
 
 /* Sync and comparison actions, and the pull request or Create PR. */

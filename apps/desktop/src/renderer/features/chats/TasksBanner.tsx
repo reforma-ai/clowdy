@@ -6,6 +6,7 @@ import { useProjectState, useProjectUi } from '../../stores';
 import { StatusPill } from '../tasks/status';
 import { ComposerBanner, ComposerBannerHeader, ComposerBannerList } from './ComposerBanner';
 import styles from './TasksBanner.module.css';
+import { TASK_REFERENCE_DRAG_TYPE } from './taskReferences';
 
 import type { CSSProperties } from 'react';
 import type { ChatProgress } from './progress';
@@ -46,7 +47,22 @@ export function TasksBanner({ progress }: { progress: ChatProgress }) {
                             </ComposerBannerHeader>
                         </CollapsibleTrigger>
                         {state.isExpanded && (
-                            <ComposerBannerList label="Tasks in this chat" onAction={id => ui.openTask(id)}>
+                            <ComposerBannerList
+                                label="Tasks in this chat"
+                                onAction={id => ui.openTask(id)}
+                                onDragStart={event => {
+                                    const id = (event.target as HTMLElement).closest<HTMLElement>(
+                                        '[data-reference-task]'
+                                    )?.dataset.referenceTask;
+                                    const task = rows.find(row => row.task.id === id)?.task;
+                                    if (!task) return;
+                                    event.dataTransfer.setData(
+                                        TASK_REFERENCE_DRAG_TYPE,
+                                        JSON.stringify({ key: task.key, title: task.title })
+                                    );
+                                    event.dataTransfer.effectAllowed = 'copy';
+                                }}
+                            >
                                 {rows.map(({ task, depth, hasChildren }, index) => {
                                     const status = project.statuses.find(status => status.id === task.statusId);
                                     const label = `${task.key} ${task.title}, ${status?.name ?? 'Unknown'}`;
@@ -54,6 +70,10 @@ export function TasksBanner({ progress }: { progress: ChatProgress }) {
                                     return (
                                         <GridListItem
                                             id={task.id}
+                                            data-reference-task={task.id}
+                                            ref={node => {
+                                                if (node) node.draggable = true;
+                                            }}
                                             key={task.id}
                                             className={styles.row}
                                             data-depth={depth}

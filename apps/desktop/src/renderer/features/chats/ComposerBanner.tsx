@@ -9,7 +9,7 @@ import { cn } from '@clowdy/lib';
 import styles from './ComposerBanner.module.css';
 
 import type { ButtonProps } from '@clowdy/components/Button';
-import type { HTMLAttributes, ReactNode } from 'react';
+import type { DragEvent, HTMLAttributes, ReactNode } from 'react';
 
 /** The plate above the message box that status rows sit on (Reforma's `ComposerBanner`, dense form): one tight line per row, no rules between. */
 export function ComposerBanner({ className, children, ...props }: HTMLAttributes<HTMLDivElement>) {
@@ -30,10 +30,12 @@ export function ComposerBannerList({
     label,
     onAction,
     children,
+    onDragStart,
 }: {
     label: string;
     onAction: (id: string) => void;
     children: ReactNode;
+    onDragStart?: (event: DragEvent<HTMLDivElement>) => void;
 }) {
     return (
         <CollapsibleContent asChild>
@@ -42,9 +44,16 @@ export function ComposerBannerList({
                 containerClass={styles.listScroll}
                 contentClass={styles.listRows}
             >
-                <GridList aria-label={label} size="sm" className={styles.list} onAction={key => onAction(String(key))}>
-                    {children}
-                </GridList>
+                <div onDragStartCapture={onDragStart}>
+                    <GridList
+                        aria-label={label}
+                        size="sm"
+                        className={styles.list}
+                        onAction={key => onAction(String(key))}
+                    >
+                        {children}
+                    </GridList>
+                </div>
             </Scrollable>
         </CollapsibleContent>
     );
