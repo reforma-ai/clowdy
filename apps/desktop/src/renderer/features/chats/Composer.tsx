@@ -358,8 +358,19 @@ export function Composer({
         }),
         [draftLocked, attach.add, pasted, reply, quote]
     );
-    // The side panel's Add to chat sends quotes and file references to this box, never to an edit frame.
-    useRegisterComposer(editMode ? undefined : quote, editMode ? undefined : mentionFiles);
+    const appendText = (text: string): boolean => {
+        if (draftLocked || !field.current || !text) return false;
+        field.current.appendBlocks([{ type: 'paragraph', content: [{ type: 'text', text }] }]);
+
+        return true;
+    };
+
+    // The side panel adds content to this box, never to an edit frame.
+    useRegisterComposer(
+        editMode ? undefined : quote,
+        editMode ? undefined : mentionFiles,
+        editMode ? undefined : appendText
+    );
 
     /** Sends the message; `mod` (Cmd/Ctrl+Enter) sends it the other way than Enter while the orchestrator works. */
     const send = async (from: ComposerDoc, mod = false) => {
