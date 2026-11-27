@@ -8,12 +8,14 @@ import { CHANGE_KIND_VIEW, filesWords, splitPath } from '../changes/gitSummary';
 import { openRunInChanges } from '../changes/openRunInChanges';
 import { chatPlace, isPlaceReady } from '../sidePanel/currentPlace';
 import { ComposerBanner, ComposerBannerHeader, ComposerBannerList } from './ComposerBanner';
+import { FILE_REFERENCE_DRAG_TYPE, fileReferences } from './fileReferences';
 import styles from './LastRunPlate.module.css';
 import { isLastRunCurrent, lastRunScope, plateFilesOf, plateTotals, rowCounts, rowLabel } from './lastRunRows';
 import { useLastRunChanges } from './useLastRunChanges';
 
 import type { Chat, GitChangedFile, GitScope, Run, StreamItem } from '@clowdy/protocol';
 import type { RepositoryChanges } from '../changes/PlaceChanges';
+import type { Place } from '../sidePanel/currentPlace';
 
 /** The path of a file as the Changes tab's cards write it, as the row's label: the folder dimmed and the name after it. A path too long for its room is cut at its start, so the name stays. */
 function PathLabel({ path }: { path: string }) {
@@ -44,6 +46,10 @@ function Row({ file }: { file: GitChangedFile }) {
     return (
         <GridListItem
             id={file.path}
+            data-reference-path={file.path}
+            ref={node => {
+                if (node) node.draggable = true;
+            }}
             textValue={rowLabel(file)}
             icon={
                 <Text variant="xs" weight="medium" color={kind.color} className={styles.glyph} aria-hidden>
@@ -69,7 +75,15 @@ function Row({ file }: { file: GitChangedFile }) {
 }
 
 /** A one-line summary of the run that opens to show all its changed files in a scrollable list. */
-function RunPlate({ changes, onOpen }: { changes: RepositoryChanges; onOpen: (path: string) => void }) {
+function RunPlate({
+    changes,
+    onOpen,
+    place,
+}: {
+    changes: RepositoryChanges;
+    onOpen: (path: string) => void;
+    place: Place;
+}) {
     const totals = plateTotals(changes);
 
     return (
@@ -100,7 +114,21 @@ function RunPlate({ changes, onOpen }: { changes: RepositoryChanges; onOpen: (pa
                             </ComposerBannerHeader>
                         </CollapsibleTrigger>
                         {state.isExpanded && (
-                            <ComposerBannerList label="Files the run changed" onAction={onOpen}>
+                            <ComposerBannerList
+                                label="Files the run changed"
+                                onAction={onOpen}
+                                onDragStart={event => {
+                                    const path = (event.target as HTMLElement).closest<HTMLElement>(
+                                        '[data-reference-path]'
+                                    )?.dataset.referencePath;
+                                    if (!path) return;
+                                    event.dataTransfer.setData(
+                                        FILE_REFERENCE_DRAG_TYPE,
+                                        JSON.stringify(fileReferences(place, [{ path, kind: 'file' }]))
+                                    );
+                                    event.dataTransfer.effectAllowed = 'copy';
+                                }}
+                            >
                                 {changes.files.map(file => (
                                     <Row key={file.path} file={file} />
                                 ))}
@@ -144,6 +172,7 @@ export function LastRunPlate({
         <RunPlate
             key={scope}
             changes={changes}
+            place={place}
             onOpen={path => openRunInChanges(root, project.id, place, chat.id, scope, path)}
         />
     );

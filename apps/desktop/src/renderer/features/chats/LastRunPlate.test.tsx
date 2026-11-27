@@ -23,6 +23,7 @@ import { chatFolder } from '../agents/agentTree';
 import { gitFactsOf } from '../changes/gitFacts';
 import { placeChangesOf } from '../changes/PlaceChanges';
 import { chatPlace } from '../sidePanel/currentPlace';
+import { FILE_REFERENCE_DRAG_TYPE } from './fileReferences';
 import { LastRunPlate } from './LastRunPlate';
 import { rowLabel } from './lastRunRows';
 
@@ -107,6 +108,32 @@ afterEach(() => {
 });
 
 describe('the Last run plate', () => {
+    it('drags a changed file as a project reference', async () => {
+        await draw();
+        await act(async () => header()!.click());
+        const row = rows()[0];
+        expect(row.draggable).toBe(true);
+        const payload = new Map<string, string>();
+        const drag = new Event('dragstart', { bubbles: true, cancelable: true });
+        Object.defineProperty(drag, 'dataTransfer', {
+            value: { setData: (type: string, value: string) => payload.set(type, value) },
+        });
+        await act(async () => row.dispatchEvent(drag));
+        const place = chatPlace(
+            store.selectedProject!.project.folders,
+            chatOf(FIXTURE_LAST_RUN_CHAT_ID),
+            chatFolder(store.selectedProject!.chats, store.selectedProject!.project.folders, FIXTURE_LAST_RUN_CHAT_ID)
+                ?.folder
+        );
+        expect(JSON.parse(payload.get(FILE_REFERENCE_DRAG_TYPE)!)).toEqual([
+            {
+                path: `${place!.workspace!.path}/${FIXTURE_RUN_FILES[0].path}`,
+                name: FIXTURE_RUN_FILES[0].path.split('/').at(-1),
+                kind: 'file',
+            },
+        ]);
+    });
+
     it('shows only the changes summary with its totals by default', async () => {
         await draw();
 

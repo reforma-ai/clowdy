@@ -3,8 +3,9 @@ import { useFileDrag, useFilePaste } from '@clowdy/components/hooks';
 import { type DragEvent, type ReactNode, useState } from 'react';
 
 import styles from './ChatDropZone.module.css';
-import { mentionFilesIntoComposer, useCanMentionFiles } from './composerBridge';
+import { mentionFilesIntoComposer, mentionTasksIntoComposer, useCanMentionFiles } from './composerBridge';
 import { droppedFileReferences, FILE_REFERENCE_DRAG_TYPE } from './fileReferences';
+import { droppedTaskReference, TASK_REFERENCE_DRAG_TYPE } from './taskReferences';
 
 export interface ChatDropZoneProps {
     /** Files dropped on the zone, and pasted into it when `onPasteFiles` is not given. */
@@ -27,7 +28,10 @@ export function ChatDropZone({ onFiles, onPasteFiles = onFiles, disabled = false
     const drag = useFileDrag({ enabled: !disabled, onFileDragOver: setOver, onFilesDropped: onFiles });
     const paste = useFilePaste({ enabled: !disabled, onFilesPasted: onPasteFiles });
     const isReferenceDrag = (event: DragEvent) =>
-        !disabled && canMentionFiles && event.dataTransfer.types.includes(FILE_REFERENCE_DRAG_TYPE);
+        !disabled &&
+        canMentionFiles &&
+        (event.dataTransfer.types.includes(FILE_REFERENCE_DRAG_TYPE) ||
+            event.dataTransfer.types.includes(TASK_REFERENCE_DRAG_TYPE));
 
     // Capture before the rich text input handles drops of its own content.
     const referenceDragOver = (event: DragEvent) => {
@@ -36,7 +40,6 @@ export function ChatDropZone({ onFiles, onPasteFiles = onFiles, disabled = false
         event.preventDefault();
         event.stopPropagation();
         event.dataTransfer.dropEffect = 'copy';
-        setOver(true);
     };
 
     return (
@@ -50,7 +53,12 @@ export function ChatDropZone({ onFiles, onPasteFiles = onFiles, disabled = false
                 event.preventDefault();
                 event.stopPropagation();
                 setOver(false);
-                mentionFilesIntoComposer(droppedFileReferences(event.dataTransfer));
+                const point = { x: event.clientX, y: event.clientY };
+                if (event.dataTransfer.types.includes(FILE_REFERENCE_DRAG_TYPE)) {
+                    mentionFilesIntoComposer(droppedFileReferences(event.dataTransfer), point);
+                } else {
+                    mentionTasksIntoComposer(droppedTaskReference(event.dataTransfer), point);
+                }
             }}
             onDragEnter={drag.onDragEnter}
             onDragLeave={drag.onDragLeave}

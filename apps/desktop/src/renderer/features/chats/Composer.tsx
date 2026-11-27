@@ -333,14 +333,14 @@ export function Composer({
             attach: attach.add,
         });
 
-    const mentionFiles = (files: readonly ClipboardFile[]): boolean => {
+    const mentionFiles = (files: readonly ClipboardFile[], point?: { x: number; y: number }): boolean => {
         if (draftLocked) return false;
         const input = field.current;
         const chips = mentionedFiles(files, folders, place);
 
         if (!input || chips.length === 0) return false;
 
-        input.insertMentions(chips);
+        input.insertMentions(chips, point);
 
         return true;
     };
@@ -370,7 +370,14 @@ export function Composer({
     useRegisterComposer(
         editMode ? undefined : quote,
         editMode ? undefined : mentionFiles,
-        editMode ? undefined : appendText
+        editMode ? undefined : appendText,
+        editMode
+            ? undefined
+            : (mentions, point) => {
+                  if (draftLocked || !field.current || mentions.length === 0) return false;
+                  field.current.insertMentions(mentions, point);
+                  return true;
+              }
     );
 
     /** Sends the message; `mod` (Cmd/Ctrl+Enter) sends it the other way than Enter while the orchestrator works. */
