@@ -15,6 +15,12 @@ import type { DelegationSettings } from '@clowdy/protocol';
 
 const ROLES = ['default', 'research', 'code', 'review'] as const;
 const LABELS = { default: 'Default', research: 'Research', code: 'Code', review: 'Review' };
+const DESCRIPTIONS = {
+    default: 'Threads without a role and roles that use the default',
+    research: 'Investigate questions, explore code and gather information',
+    code: 'Implement changes and fix issues',
+    review: 'Review changes and check results',
+};
 
 export const DelegationPage = observer(function DelegationPage() {
     const root = useRootStore();
@@ -57,7 +63,7 @@ export const DelegationPage = observer(function DelegationPage() {
                 </SettingsCard>
             </SettingsSection>
             <SettingsSection title="Thread roles">
-                <SettingsCard>
+                <SettingsCard divided>
                     {ROLES.map(role => {
                         const selected = settings?.[role];
                         const selectedAlternative =
@@ -73,6 +79,7 @@ export const DelegationPage = observer(function DelegationPage() {
                             <SettingsRow
                                 key={role}
                                 title={LABELS[role]}
+                                description={DESCRIPTIONS[role]}
                                 footer={
                                     selected?.kind === 'model' &&
                                     status === 'ready' &&
