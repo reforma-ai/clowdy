@@ -2,7 +2,7 @@ import { Button } from '@clowdy/components/Button';
 import { GridListItem, listBoxItemDataShow } from '@clowdy/components/List';
 import { Popover, PopoverTrigger, useContextMenu } from '@clowdy/components/Popover';
 import { toast } from '@clowdy/components/Toast';
-import { ChevronDown, ChevronRight, More, Plus, Split, Version } from '@clowdy/icons/14';
+import { ChevronDown, ChevronRight, More, NewChat, Split, Version } from '@clowdy/icons/14';
 import { mainFolder } from '@clowdy/protocol';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -172,7 +172,7 @@ export function WorktreeCardHeader({
                             preventFocusOnPress
                             onPress={newChat}
                         >
-                            <Plus />
+                            <NewChat />
                         </Button>
                         <PopoverTrigger
                             isOpen={menuOpen}
