@@ -582,8 +582,7 @@ describe('grouped by folder', () => {
     const field = () => container.querySelector<HTMLElement>('[contenteditable="true"]');
     const editor = () => (field() as HTMLElement & { editor: Editor }).editor;
     /** The select under the new-chat page's message box, and the rows of its list. */
-    const folderSelect = () =>
-        container.querySelector<HTMLButtonElement>('button[aria-label^="Where it runs"][aria-label*="folder "]');
+    const folderSelect = () => container.querySelector<HTMLButtonElement>('button[aria-label^="Folder: "]');
     /** The read only line of a chat that is made, in the place the select had. */
     const folderLine = () => container.querySelector<HTMLElement>('[role="group"][aria-label^="Current place:"]');
     const folderItem = (name: string) =>
@@ -978,14 +977,14 @@ describe('grouped by folder', () => {
             await press(buttonNamed('New chat in car-rental'));
             await draw();
 
-            expect(folderSelect()?.getAttribute('aria-label')).toContain('folder car-rental');
+            expect(folderSelect()?.getAttribute('aria-label')).toBe('Folder: car-rental');
 
             await press(folderSelect()!);
 
-            // The same menu offers folders and workspace choices.
+            // Folder choices have their own menu.
             expect(folderItem('car-rental')).toBeDefined();
             expect(folderItem('car-rental-api')).toBeDefined();
-            expect(document.body.textContent).toContain('New worktree');
+            expect(document.body.textContent).not.toContain('New worktree');
             // The chosen folder is told to assistive technology, not only drawn as a tick, and the other is not.
             expect(folderItem('car-rental').getAttribute('aria-checked')).toBe('true');
             expect(folderItem('car-rental-api').getAttribute('aria-checked')).toBe('false');

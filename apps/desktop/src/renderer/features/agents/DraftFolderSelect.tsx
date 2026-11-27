@@ -31,7 +31,7 @@ export function DraftFolderSelect({ folders, selectedId, missing, onPick }: Draf
 
     return (
         <MenuTrigger>
-            <FolderTrigger name={names[selected] ?? folders[selected]?.path ?? ''} />
+            <FolderTrigger name={names[selected] ?? folders[selected]?.path ?? ''} missing={missing.has(selectedId)} />
             <Popover placement="bottom start" spacing="xs" width={240}>
                 <Menu
                     aria-label="Folders"

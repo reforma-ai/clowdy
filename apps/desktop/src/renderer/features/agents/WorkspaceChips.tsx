@@ -3,9 +3,8 @@ import { Menu, MenuItem, MenuSection, MenuSeparator, MenuTrigger } from '@clowdy
 import { Popover, PopoverScroll } from '@clowdy/components/Popover';
 import { Text } from '@clowdy/components/Text';
 import { ChevronRight } from '@clowdy/icons/8';
-import { Check, Folder, Settings, Version, WorktreeFolder } from '@clowdy/icons/14';
+import { GitFolder, Settings, WorktreeFolder } from '@clowdy/icons/14';
 import { capitalize } from '@clowdy/lib';
-import { folderNames } from '@clowdy/protocol';
 import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { OverlayTriggerStateContext, PopoverContext, type PressEvent } from 'react-aria-components';
 
@@ -128,28 +127,6 @@ interface FolderChoices {
     folders: readonly ProjectFolder[];
     selectedFolderId: FolderId;
     missing: ReadonlySet<FolderId>;
-    onPickFolder: (folder: ProjectFolder) => void;
-}
-
-// This is a collection helper, not a component: the renderer wraps capitalized JSX functions in observer.
-function folderRows({ folders, selectedFolderId, missing }: FolderChoices) {
-    const names = folderNames(folders);
-
-    return folders.map((folder, index) => (
-        <MenuItem
-            key={`folder:${folder.id}`}
-            id={`folder:${folder.id}`}
-            text={names[index] ?? folder.path}
-            icon={<Folder aria-hidden="true" />}
-            isDisabled={missing.has(folder.id)}
-            endAffix={folder.id === selectedFolderId ? <Check aria-hidden="true" /> : undefined}
-            {...(missing.has(folder.id) && {
-                description: 'This folder no longer exists',
-                stacked: true,
-                'data-align': 'center',
-            })}
-        />
-    ));
 }
 
 interface WorkspaceChipProps extends FolderChoices {
@@ -188,7 +165,6 @@ function WorkspaceChip({
     folders,
     selectedFolderId,
     missing,
-    onPickFolder,
     restoreRef,
 }: WorkspaceChipProps) {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -219,10 +195,6 @@ function WorkspaceChip({
         return () => cancelAnimationFrame(frame);
     }, [isMenuOpen]);
 
-    const folderName =
-        folders.length > 1
-            ? folderNames(folders)[folders.findIndex(folder => folder.id === selectedFolderId)]
-            : undefined;
     const worktrees = pickableWorktrees(git);
     // Worktrees used by chats come first, followed by the rest.
     const used = worktrees.filter(worktree => chatsUsing(chats.values(), worktree.path).length > 0);
@@ -338,18 +310,17 @@ function WorkspaceChip({
                         pill.current = element;
                         restoreRef(element);
                     }}
-                    folder={folderName}
                     icon={
                         choice?.mode === 'new' || chosen ? (
                             <WorktreeFolder aria-hidden="true" />
                         ) : (
-                            <Version aria-hidden="true" />
+                            <GitFolder aria-hidden="true" />
                         )
                     }
                     lead={'lead' in trigger ? trigger.lead : undefined}
                     label={trigger.label}
                     trail={'trail' in trigger ? trigger.trail : undefined}
-                    aria-label={folderName ? `${trigger.ariaLabel}, folder ${folderName}` : trigger.ariaLabel}
+                    aria-label={trigger.ariaLabel}
                     tooltip={'tooltip' in trigger ? trigger.tooltip : undefined}
                     missing={missing.has(selectedFolderId) || ('missing' in trigger && trigger.missing)}
                 />
@@ -369,12 +340,7 @@ function WorkspaceChip({
                                 selectedKeys={[selected]}
                                 disallowEmptySelection
                                 onAction={key => {
-                                    if (String(key).startsWith('folder:')) {
-                                        const folder = folders.find(item => `folder:${item.id}` === key);
-
-                                        if (folder && !missing.has(folder.id)) onPickFolder(folder);
-                                        setIsMenuOpen(false);
-                                    } else if (key === 'checkout') {
+                                    if (key === 'checkout') {
                                         // A press that was the branch's has its own answer, and leaves the menu as it is.
                                         if (branchHeld.current) {
                                             branchHeld.current = false;
@@ -408,17 +374,6 @@ function WorkspaceChip({
                                     }
                                 }}
                             >
-                                {folders.length > 1 && (
-                                    <MenuSection
-                                        aria-label="Folders"
-                                        selectionMode="single"
-                                        selectedKeys={[`folder:${selectedFolderId}`]}
-                                        disallowEmptySelection
-                                    >
-                                        {folderRows({ folders, selectedFolderId, missing, onPickFolder })}
-                                    </MenuSection>
-                                )}
-                                {folders.length > 1 && <MenuSeparator />}
                                 <MenuItem
                                     id="checkout"
                                     data-align="center"
@@ -426,7 +381,7 @@ function WorkspaceChip({
                                     // The row shuts the menu itself (`onAction`): a press on the branch inside it must not.
                                     shouldCloseOnSelect={false}
                                     stacked
-                                    icon={<Version aria-hidden="true" />}
+                                    icon={<GitFolder aria-hidden="true" />}
                                     text="Main worktree"
                                     description="Use the project folder"
                                     endAffix={
@@ -606,7 +561,6 @@ export function WorkspaceChips({
     folders,
     selectedFolderId,
     missing,
-    onPickFolder,
 }: WorkspaceChipsProps) {
     const git = repositoryOf(repository);
     const trigger = useRef<HTMLButtonElement | HTMLAnchorElement | null>(null);
@@ -621,13 +575,6 @@ export function WorkspaceChips({
             });
         }
     };
-    const pickFolder = (folder: ProjectFolder) => {
-        restoreFocus.current = true;
-        onPickFolder(folder);
-        requestAnimationFrame(() => {
-            if (document.activeElement === document.body) trigger.current?.focus();
-        });
-    };
 
     if (git)
         return (
@@ -636,7 +583,6 @@ export function WorkspaceChips({
                 folders={folders}
                 selectedFolderId={selectedFolderId}
                 missing={missing}
-                onPickFolder={pickFolder}
                 restoreRef={restoreRef}
                 choice={choice}
                 workspaceRow={workspaceRow}
@@ -651,40 +597,11 @@ export function WorkspaceChips({
 
     const why = whyUnread(repository);
 
-    if (folders.length > 1) {
-        const selected = folders.findIndex(folder => folder.id === selectedFolderId);
-        const name = folderNames(folders)[selected] ?? folders[selected]?.path ?? '';
-
+    if (folders.length > 1 && (repository.status === 'loading' || !why)) {
         return (
-            <MenuTrigger>
-                <ChipTrigger
-                    ref={restoreRef}
-                    icon={<Folder aria-hidden="true" />}
-                    folder={name}
-                    label={
-                        repository.status === 'loading' ? 'Reading Git…' : why ? 'Git unavailable' : 'Not a repository'
-                    }
-                    aria-label={`Where it runs: ${repository.status === 'loading' ? 'Reading Git' : why ? 'Git unavailable' : 'Not a repository'}, folder ${name}`}
-                    tooltip={[folders[selected]?.path, why].filter(Boolean).join('\n') || undefined}
-                    missing={missing.has(selectedFolderId)}
-                />
-                <Popover placement="bottom start" spacing="xs" width={400}>
-                    <Menu
-                        aria-label="Where the chat works"
-                        size="sm"
-                        selectionMode="single"
-                        selectedKeys={[`folder:${selectedFolderId}`]}
-                        disallowEmptySelection
-                        onAction={key => {
-                            const folder = folders.find(item => `folder:${item.id}` === key);
-
-                            if (folder && !missing.has(folder.id)) pickFolder(folder);
-                        }}
-                    >
-                        {folderRows({ folders, selectedFolderId, missing, onPickFolder })}
-                    </Menu>
-                </Popover>
-            </MenuTrigger>
+            <span className={styles.label}>
+                {repository.status === 'loading' ? 'Reading Git…' : 'Not a repository'}
+            </span>
         );
     }
 
