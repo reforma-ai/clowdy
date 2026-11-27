@@ -709,11 +709,9 @@ describe('grouped by folder', () => {
             await restart({ transport: new FixtureTransport({ data: withFixtureWorkspace(twoFolders()) }) });
             expect(name(MAIN)?.textContent).toBe('car-rental');
             await draw(() => ui().openChat(FIXTURE_WORKSPACE_CHAT_ID));
-            const workspace = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
-
             await press(name(MAIN)!);
             await press(menuItem('New chat'));
-            expect(ui().draftWorkspace).toEqual({ mode: 'existing', path: workspace.path });
+            expect(ui().draftWorkspace).toBeNull();
             await draw(() => ui().openChat(FIXTURE_WORKSPACE_CHAT_ID));
 
             await press(name(API.id)!);
@@ -2493,6 +2491,20 @@ describe('worktree cards', () => {
         await draw();
         expect(rowKeys()).not.toContain('@new-chat');
         expect(isSelected(`@draft:${ui().draftId}`)).toBe(true);
+    });
+
+    it('opens the folder checkout after starting a worktree draft', async () => {
+        await restart();
+        await draw(() => ui().setGroupByWorktree(true));
+        await press(rowOf(workspaceKey()).querySelector<HTMLElement>('button[aria-label^="New chat in "]')!);
+        const worktreeDraft = ui().draftId!;
+        await press(buttonNamed('New chat in car-rental'));
+        await draw();
+
+        expect(ui().draftWorkspace).toBeNull();
+        expect(ui().draftId).not.toBe(worktreeDraft);
+        expect(isSelected(`@draft:${ui().draftId}`)).toBe(true);
+        expect(rowKeys()).toContain(`@draft:${worktreeDraft}`);
     });
 
     it('keeps two worktree drafts and their text when switching and moving one into the other', async () => {

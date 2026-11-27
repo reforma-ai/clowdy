@@ -13,7 +13,7 @@ import {
     Merge,
     Message,
     More,
-    NewChat,
+    Plus,
     Robot,
     Split,
 } from '@clowdy/icons/14';
@@ -539,7 +539,7 @@ export function AgentList({
                             data-show={listBoxItemDataShow.itemBoth}
                             onPress={startChat}
                         >
-                            <NewChat />
+                            <Plus />
                         </Button>
                     </span>
                 }
@@ -600,8 +600,9 @@ export function AgentList({
                 key={`@draft:${draft.id}`}
                 id={`@draft:${draft.id}`}
                 text="New chat"
-                icon={<NewChat />}
+                icon={<Plus />}
                 className={styles.chatRow}
+                data-depth={0}
                 endAffix={
                     !isDraftSending(`@new-chat:${project.id}:${draft.id}`) &&
                     !draft.operation &&
@@ -844,7 +845,7 @@ export function AgentList({
                             <GridListItem
                                 id={NEW_CHAT_ROW}
                                 text="New chat"
-                                icon={<NewChat />}
+                                icon={<Plus />}
                                 className={styles.newChat}
                                 // The shortcut is a hint for the pointer on its way to the row, not a label the row wears at rest.
                                 endAffix={
