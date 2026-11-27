@@ -490,6 +490,29 @@ describe("git's own folder", () => {
         expect(existsSync(join(dir, '.git/hooks'))).toBe(false);
         expect(new TextDecoder().decode((await fs.read(project, folderId, '.git/config')).bytes)).toBe('config');
     });
+
+    test('is only .git itself: .gitignore, .github and .gitattributes are changed as any file', async () => {
+        const { fs, project, folderId, dir } = openFolder(h, { '.gitignore': 'old', 'a.txt': 'a' });
+        const create = { create: true, declaredLength: 0 };
+
+        await fs.write(project, folderId, '.gitignore', body('dist'), neither);
+        await fs.makeFolder(project, folderId, '.github/workflows');
+        await fs.write(project, folderId, '.github/workflows/ci.yml', body('on: push'), create);
+        await fs.copy(project, folderId, [{ from: 'a.txt', to: '.gitattributes' }]);
+        await fs.remove(project, folderId, ['a.txt']);
+
+        expect(paths(await fs.list(project, folderId, '', 3))).toEqual([
+            '.gitattributes',
+            '.github',
+            '.github/workflows',
+            '.github/workflows/ci.yml',
+            '.gitignore',
+        ]);
+        expect([text(join(dir, '.gitignore')), text(join(dir, '.github/workflows/ci.yml'))]).toEqual([
+            'dist',
+            'on: push',
+        ]);
+    });
 });
 
 describe('read', () => {
