@@ -11,7 +11,6 @@ import { useId, useState } from 'react';
 
 import { tildePath } from '../../shared/displayPath';
 import { homeFolder } from '../../shared/homeFolder';
-import { Unavailable } from '../../shared/Unavailable';
 import { worktreeLabel } from '../agents/workspaceChoice';
 import styles from './ManageWorktrees.module.css';
 import { WorktreeMenu } from './WorktreeMenu';
@@ -171,24 +170,19 @@ export function WorktreeRow({ projectId, group, folder, worktree, onNewChat, onO
             >
                 <WorktreeRowSummary worktree={worktree} onOpenChat={onOpenChat} />
                 <span className={styles.actions}>
-                    <Unavailable
-                        label={`${newChat}: ${label}`}
-                        hint={worktree.missing ? 'Its folder is gone from the disk' : undefined}
-                        placement="top"
+                    <Button
+                        variant="filling"
+                        color="secondary"
+                        size="sm"
+                        iconOnly
+                        aria-label={`${newChat}: ${label}`}
+                        tooltip={worktree.missing ? undefined : newChat}
+                        isDisabled={worktree.missing}
+                        disabledReason={worktree.missing ? 'Its folder is gone from the disk' : undefined}
+                        onPress={() => onNewChat(folder, worktree)}
                     >
-                        <Button
-                            variant="filling"
-                            color="secondary"
-                            size="sm"
-                            iconOnly
-                            aria-label={`${newChat}: ${label}`}
-                            tooltip={worktree.missing ? undefined : newChat}
-                            isDisabled={worktree.missing}
-                            onPress={() => onNewChat(folder, worktree)}
-                        >
-                            <NewChat />
-                        </Button>
-                    </Unavailable>
+                        <NewChat />
+                    </Button>
                     <MenuTrigger isOpen={isMenuOpen} onOpenChange={setIsMenuOpen}>
                         <Button
                             variant="filling"

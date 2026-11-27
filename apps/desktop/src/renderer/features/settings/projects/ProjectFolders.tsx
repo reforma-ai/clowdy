@@ -1,4 +1,5 @@
 import { Button } from '@clowdy/components/Button';
+import { SettingsLayout } from '@clowdy/components/SettingsLayout';
 import { Text } from '@clowdy/components/Text';
 import { Tooltip } from '@clowdy/components/Tooltip';
 import { ArrowUpRight, Settings } from '@clowdy/icons/14';
@@ -7,7 +8,6 @@ import { useMemo, useState } from 'react';
 
 import { FolderList } from '../../../shell/FolderList';
 import { useRootStore } from '../../../stores';
-import { SettingsSection } from '../ui/SettingsSection';
 import { openFolderWorkspace } from './FolderWorkspaceDialog';
 import styles from './ProjectDetail.module.css';
 import { addFolders, locateFolderByDialog, removeFolder, reorderFolders } from './projectActions';
@@ -72,7 +72,7 @@ export function ProjectFolders({ project, info, infoFailed }: ProjectFoldersProp
         source?.folder.id !== mainId && target?.folder.id !== mainId;
 
     return (
-        <SettingsSection
+        <SettingsLayout.Section
             title="Folders"
             description="The agents work in the main folder, the first one, and reach the others too. Drag a folder to change the order."
         >
@@ -109,14 +109,14 @@ export function ProjectFolders({ project, info, infoFailed }: ProjectFoldersProp
                     Couldn't check the folders
                 </Text>
             )}
-        </SettingsSection>
+        </SettingsLayout.Section>
     );
 }
 
 /** The personal space's folder, where Clowdy keeps it: shown, never changed. */
 function PersonalFolder({ project, views }: { project: Project; views: FolderView[] }) {
     return (
-        <SettingsSection title="Folder">
+        <SettingsLayout.Section title="Folder">
             <FolderList
                 items={views}
                 getKey={view => view.folder.id}
@@ -125,7 +125,7 @@ function PersonalFolder({ project, views }: { project: Project; views: FolderVie
                 renderDetails={view => <FolderState project={project} view={view} />}
                 renderActions={view => view.remote && <RemoteButton remote={view.remote} />}
             />
-        </SettingsSection>
+        </SettingsLayout.Section>
     );
 }
 

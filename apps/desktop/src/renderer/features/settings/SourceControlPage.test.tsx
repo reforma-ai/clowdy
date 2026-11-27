@@ -4,12 +4,13 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { branchPrefix } from '../chats/branchPrefix';
+import { named } from './accessibleName';
 import { BranchPrefixRow } from './BranchPrefixRow';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let container: HTMLDivElement;
 let root: Root;
-const prefixField = () => container.querySelector<HTMLInputElement>('input[aria-label="Branch prefix"]')!;
+const prefixField = () => named<HTMLInputElement>(container, 'input', 'Branch prefix')!;
 const prefixNote = () => container.querySelector('[role="alert"]')?.textContent;
 beforeEach(() => {
     branchPrefix.setValue('');

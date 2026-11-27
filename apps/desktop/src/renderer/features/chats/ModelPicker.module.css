@@ -9,8 +9,6 @@
 /* ---------------------------------- The pill ---------------------------------- */
 
 .trigger {
-    flex-shrink: 1;
-    min-width: 0;
     max-width: min(100%, 16rem);
     padding-inline-start: var(--spacing-sm);
 }
@@ -18,28 +16,6 @@
 /* The ring's glyph sits 8px inside its button; the picker's 4px start padding keeps the glyph and the model's icon together. */
 :global([data-context-ring]) + .trigger {
     padding-inline-start: var(--spacing-xs);
-}
-
-/*
- * Open, the plate of a pressed button stays and the whole label goes muted. The plate is drawn here and not with the button's
- * `isPressed`, which would also make the pill a toggle (`aria-pressed`) when it is a button that opens a popover (`aria-expanded`).
- */
-.trigger[data-open] {
-    --clowdy-button-color: var(--color-secondary-muted-text);
-    --clowdy-button-color--hover: var(--color-secondary-muted-text);
-
-    border-color: var(--clowdy-button-border--hover);
-    background-color: var(--clowdy-button-bg--hover);
-    opacity: var(--clowdy-button-opacity--hover);
-}
-
-.triggerContent {
-    justify-content: flex-start;
-    min-width: 0;
-}
-
-.triggerContent svg {
-    flex-shrink: 0;
 }
 
 .modelLabel {

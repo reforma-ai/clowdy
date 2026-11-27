@@ -5,6 +5,7 @@ import { Message } from '@clowdy/icons/14';
 import styles from './QuestionCard.module.css';
 import { QuestionPanel } from './QuestionPanel';
 import { splitQuestion } from './questionParts';
+import { StreamCard, StreamPlate } from './StreamCard';
 
 import type { StreamItemBody } from '@clowdy/protocol';
 import type { ReactNode } from 'react';
@@ -28,14 +29,8 @@ function SettledCard({ header, text, children }: { header: string; text: string;
     const { title, paragraphs } = splitQuestion(text);
 
     return (
-        <div className={styles.settled}>
-            <div className={styles.settledHeader}>
-                <Message className={styles.settledIcon} aria-hidden />
-                <Text variant="sm" weight="medium">
-                    {header}
-                </Text>
-            </div>
-            <div className={styles.settledBody}>
+        <StreamCard slot="question" icon={<Message />} title={header}>
+            <div className={styles.settled}>
                 <Text variant="label" color="secondary" className={styles.asked}>
                     {title}
                 </Text>
@@ -46,7 +41,7 @@ function SettledCard({ header, text, children }: { header: string; text: string;
                 </Show>
                 {children}
             </div>
-        </div>
+        </StreamCard>
     );
 }
 
@@ -90,8 +85,8 @@ export function QuestionCard({ question, onAnswer, docked }: QuestionCardProps) 
     }
 
     return (
-        <div className={styles.card}>
+        <StreamPlate size="sm">
             <QuestionPanel question={question} onAnswer={onAnswer} />
-        </div>
+        </StreamPlate>
     );
 }

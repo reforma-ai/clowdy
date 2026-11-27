@@ -4,6 +4,7 @@ import { folderNames } from '@clowdy/protocol';
 
 import { getProject, listProjects } from '../db/projects';
 import { invalid, notFound } from '../errors';
+import { briefbackStatus } from './briefback';
 import { buildCatalog, mergeUserSkills, USER_PLUGIN_NAME } from './catalog';
 import {
     defaultSystemSkillsSource,
@@ -45,6 +46,7 @@ export class SkillsService {
     private systemSource: string;
     /** What the last announcement (or the start) saw, to tell a real change from a touched file. */
     private userFingerprint?: string;
+    private briefbackFingerprint?: string;
     private projectFingerprints = new Map<string, string>();
 
     /** Materializes the system skills and fingerprints the user folders; throws when the system skills are missing. */
@@ -191,11 +193,24 @@ export class SkillsService {
     }
 
     private watchUser(): void {
-        for (const root of this.config.userSkillRoots ?? []) {
+        const roots = this.config.userSkillRoots ?? [];
+        try {
+            this.briefbackFingerprint ??= briefbackStatus(roots).fingerprint;
+        } catch {
+            // A failed recommendation check must not stop the skills catalog.
+        }
+        for (const root of roots) {
             this.watchers.watch('user', root, () => {
-                if (this.syncUser()) {
-                    this.announce(listProjects(this.store.db));
+                const changed = this.syncUser();
+                let briefbackChanged = false;
+                try {
+                    const fingerprint = briefbackStatus(roots).fingerprint;
+                    briefbackChanged = this.briefbackFingerprint !== fingerprint;
+                    this.briefbackFingerprint = fingerprint;
+                } catch {
+                    briefbackChanged = true;
                 }
+                if (changed || briefbackChanged) this.announce(listProjects(this.store.db));
             });
         }
     }

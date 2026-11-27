@@ -76,7 +76,7 @@ describe('the confirmation dialog', () => {
     it('puts the focus on Confirm unless the dialog says Cancel is safer', async () => {
         await open();
 
-        expect(document.activeElement).toBe(buttonOf('Discard changes'));
+        await vi.waitFor(() => expect(document.activeElement).toBe(buttonOf('Discard changes')));
     });
 
     it('puts the focus on Cancel when the dialog asks for it, and Enter on its body confirms nothing', async () => {
@@ -84,7 +84,7 @@ describe('the confirmation dialog', () => {
 
         await open({ initialFocus: 'cancel', onConfirm });
 
-        expect(document.activeElement).toBe(buttonOf('Cancel'));
+        await vi.waitFor(() => expect(document.activeElement).toBe(buttonOf('Cancel')));
 
         await enterOnTitle();
         await settle();

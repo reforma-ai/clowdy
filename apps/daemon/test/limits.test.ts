@@ -300,6 +300,7 @@ describe('subscription limits', () => {
         expect(h.run(first).statusReason).toMatch(
             /^The fake engine is at its usage limit until .+; this run continues then$/
         );
+        expect(h.run(first).usageLimitUntil).toBe(resets);
         expect(limits.pausedUntil('fake')).toBe(resets);
         expect((h.store.db.query('SELECT until FROM engine_pauses').get() as { until: number }).until).toBe(resets);
 
@@ -316,6 +317,7 @@ describe('subscription limits', () => {
         await Bun.sleep(100);
         expect(h.run(second)).toMatchObject({
             status: 'queued',
+            usageLimitUntil: resets,
             statusReason: expect.stringContaining('The fake engine is at its usage limit until'),
         });
         expect(engine.turns).toHaveLength(1);
@@ -330,6 +332,7 @@ describe('subscription limits', () => {
             prompt: CONTINUE_MESSAGE,
         });
         expect(h.run(first)).toMatchObject({ result: 'finished after the reset', sessionId: 's1' });
+        expect(h.run(first).usageLimitUntil).toBeUndefined();
         await waitFor(() => h.run(second).status === 'succeeded', 'the waiting run to start');
         expect(h.store.db.query('SELECT COUNT(*) AS n FROM engine_pauses').get()).toEqual({ n: 0 });
         expect(h.events().filter(event => event.data.type === 'notice')).toHaveLength(1);
@@ -400,6 +403,7 @@ describe('subscription limits', () => {
         // The run that waited for the reset waits again, and nothing is started against the empty quota.
         await waitFor(() => second.run(first).status === 'queued', 'the blocked run to queue behind the pause');
         expect(second.run(first).statusReason).toContain('The fake engine is at its usage limit until');
+        expect(second.run(first).usageLimitUntil).toBe(Math.floor(resets / 1000) * 1000);
         await Bun.sleep(50);
         expect(next.turns).toHaveLength(0);
     });

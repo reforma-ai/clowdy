@@ -326,7 +326,7 @@
         padding: var(--spacing-10);
     }
 
-    .item:not([data-icon-only]):not([data-select-item]) {
+    .item:not([data-icon-only]) {
         min-width: max-content;
     }
 
@@ -529,42 +529,5 @@
         width: 100%;
         min-width: 0;
         justify-content: center;
-    }
-
-    .selectItem {
-        display: contents;
-    }
-
-    .item[data-select-item] {
-        min-width: 0;
-    }
-
-    .selectItemLabel {
-        min-width: 0;
-        padding-right: var(--spacing-4);
-        overflow: hidden;
-        white-space: nowrap;
-        text-overflow: clip;
-        -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - var(--spacing-2)), transparent);
-        mask-image: linear-gradient(90deg, #000 calc(100% - var(--spacing-2)), transparent);
-    }
-
-    .itemChevron {
-        flex-shrink: 0;
-        opacity: var(--opacity-inactive);
-        transition: transform var(--transition-duration-fast) var(--ease-in-out);
-        fill: currentColor;
-    }
-
-    .selectItem[data-open] .itemChevron {
-        transform: rotate(180deg);
-    }
-
-    .selectPopover {
-        min-width: var(--trigger-width);
-    }
-
-    .selectListBox {
-        min-width: 100%;
     }
 }

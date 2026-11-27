@@ -37,14 +37,26 @@ import type { Editor } from '@tiptap/core';
 import type { ReactNode } from 'react';
 import type { KeyValueStorage } from '../../stores/storage';
 
-// `Modal` cannot load under the desktop's Vitest (decorators), and no confirmation is opened here.
-vi.mock('@clowdy/components/modals', () => ({ openConfirmModal: vi.fn() }));
+// Confirmations are only counted here; the other dialogs (removing a worktree) open for real.
+vi.mock('@clowdy/components/modals', async importOriginal => ({
+    ...(await importOriginal<typeof import('@clowdy/components/modals')>()),
+    openConfirmModal: vi.fn(),
+}));
 
 vi.mock('../changes/BranchPicker', async importOriginal => ({
     BranchPicker: observer((await importOriginal<typeof import('../changes/BranchPicker')>()).BranchPicker),
 }));
 vi.mock('../changes/BranchList', async importOriginal => ({
     BranchList: observer((await importOriginal<typeof import('../changes/BranchList')>()).BranchList),
+}));
+// The app build makes every component an observer; the test build does not, so the ones that read stores the test changes are wrapped here.
+vi.mock('./ProjectMenu', async importOriginal => ({
+    ProjectMenu: observer((await importOriginal<typeof import('./ProjectMenu')>()).ProjectMenu),
+}));
+vi.mock('./BranchPullRequestBadge', async importOriginal => ({
+    BranchPullRequestBadge: observer(
+        (await importOriginal<typeof import('./BranchPullRequestBadge')>()).BranchPullRequestBadge
+    ),
 }));
 
 // The pages beside the list are drawn by their own tests; here they only say which one was asked for. A chat's `controls` stand beside it, as the line under its message box.
@@ -2130,15 +2142,33 @@ describe('a chat that works in a worktree', () => {
         expect(badge(second.id)?.getAttribute('data-pr-state')).toBe('open');
         expect(badge(second.id)?.querySelector('svg')?.getAttribute('width')).toBe('12');
         expect(reads.mock.calls.filter(([, , name]) => name === branch)).toHaveLength(1);
-        await act(async () => saveDraft(first.id, plainTextToDoc('Unsent')));
+
+        await draw(() => ui().setGroupByWorktree(true));
+        const cardKey = chatWorktreeKey(first)!;
+        await vi.waitFor(() => expect(badge(cardKey)?.getAttribute('data-pr-state')).toBe('open'));
         expect(badge(first.id)).toBeNull();
+        expect(badge(second.id)).toBeNull();
+        await draw(() => ui().toggleWorktreeCollapsed(cardKey));
+        expect(badge(cardKey)?.getAttribute('data-pr-state')).toBe('open');
+        expect(rowOf(first.id)).toBeNull();
+        await draw(() => ui().toggleWorktreeCollapsed(cardKey));
+        await draw(() => ui().setGroupByWorktree(false));
+        expect(badge(first.id)?.getAttribute('data-pr-state')).toBe('open');
+        expect(reads.mock.calls.filter(([, , name]) => name === branch)).toHaveLength(1);
+        await act(async () => saveDraft(first.id, plainTextToDoc('Unsent')));
+        expect(badge(first.id)?.getAttribute('data-pr-state')).toBe('open');
+        expect(rowOf(first.id).querySelector('[aria-label="Unsent draft"]')).not.toBeNull();
         expect(badge(second.id)?.getAttribute('data-pr-state')).toBe('open');
         await act(async () => saveDraft(first.id, emptyComposerDoc()));
         expect(badge(first.id)?.getAttribute('data-pr-state')).toBe('open');
         const run = project().runs.get(first.orchestratorRunId!)!;
         await draw(() => project().runs.set(run.id, { ...run, status: 'running' }));
-        expect(badge(first.id)).toBeNull();
+        expect(badge(first.id)?.getAttribute('data-pr-state')).toBe('open');
         expect(rowOf(first.id).querySelector('[aria-label="Working"]')).not.toBeNull();
+        await draw(() => ui().setChatListLayout('simple'));
+        expect(badge(first.id)?.getAttribute('data-pr-state')).toBe('open');
+        expect(rowOf(first.id).querySelector('[aria-label="Working"]')).not.toBeNull();
+        await draw(() => ui().setChatListLayout('folder'));
         await draw(() => project().runs.set(run.id, run));
         expect(badge(first.id)?.getAttribute('data-pr-state')).toBe('open');
         expect(badge(second.id)?.getAttribute('data-pr-state')).toBe('open');
@@ -2158,6 +2188,19 @@ describe('a chat that works in a worktree', () => {
         expect(badge(first.id)?.getAttribute('data-pr-state')).toBe('merged');
         expect(badge(second.id)?.getAttribute('aria-label')).toBe('1 pull request: 1 merged');
         expect(badge(second.id)?.textContent).toBe('');
+        await draw(() => ui().setGroupByWorktree(true));
+        expect(badge(cardKey)?.getAttribute('data-pr-state')).toBe('merged');
+        await act(async () =>
+            runInAction(() => {
+                fact.stale = true;
+            })
+        );
+        expect(badge(cardKey)?.getAttribute('aria-label')).toContain('last known');
+        await act(async () =>
+            runInAction(() => {
+                fact.stale = false;
+            })
+        );
 
         // The branch has commits of its own since that merge: the pull request is history, and no chat on it looks merged.
         await act(async () => {
@@ -2166,6 +2209,7 @@ describe('a chat that works in a worktree', () => {
                 pullRequests: [{ ...pr(9, 'merged'), movedPast: true as const }, pr(11, 'closed'), pr(13, 'closed')],
             });
         });
+        expect(badge(cardKey)).toBeNull();
         expect(badge(first.id)).toBeNull();
         expect(badge(second.id)).toBeNull();
 
@@ -2191,6 +2235,7 @@ describe('a chat that works in a worktree', () => {
             branch: 'feature/current',
         });
         await vi.waitFor(() => expect(switched.value?.pullRequests[0]?.state).toBe('closed'));
+        expect(badge(cardKey)).toBeNull();
         expect(badge(first.id)).toBeNull();
         expect(badge(second.id)).toBeNull();
         expect(reads.mock.calls.filter(([, , name]) => name === 'feature/current')).toHaveLength(1);
@@ -2451,6 +2496,88 @@ describe('worktree cards', () => {
         await press(menuItem('Show unused worktrees'));
         await draw();
         expect(cardRows()).toEqual([mainKey(), workspaceKey()]);
+    });
+
+    it('shows each checkout’s pull request on its card, including unused worktrees and other folders', async () => {
+        const data = withFixtureWorktrees(createFixtureData());
+        const pr = (head: string, state: 'open' | 'draft' | 'merged') => ({
+            number: 42,
+            state,
+            head,
+            base: 'main',
+            title: 'Change',
+            url: `https://github.com/acme/example/pull/${head}`,
+            updatedAt: 42,
+        });
+        data.branchPullRequests = {
+            '/Users/dev/car-rental': {
+                main: [pr('main', 'open')],
+                'search-filters': [pr('search-filters', 'merged')],
+                'old-pricing': [pr('old-pricing', 'open')],
+            },
+            '/Users/dev/car-rental-api': { 'feature/payments': [pr('feature/payments', 'draft')] },
+        };
+        await restart(data);
+        await draw(() => {
+            ui().setGroupByWorktree(true);
+            chatListPreferences.setShowUnusedWorktrees(true);
+        });
+        const unused = worktreeKey('fld_car_rental', '/Users/dev/worktrees/car-rental/search-filters');
+        const missing = worktreeKey('fld_car_rental', '/Users/dev/car-rental-old');
+        const api = worktreeKey('fld_api', '/Users/dev/car-rental-api');
+        const detached = worktreeKey('fld_api', '/Users/dev/worktrees/car-rental-api/readme');
+        const badge = (key: string) => rowOf(key)?.querySelector('[data-pr-state]')?.getAttribute('data-pr-state');
+        await vi.waitFor(() =>
+            expect([badge(mainKey()), badge(unused), badge(api)]).toEqual(['open', 'merged', 'draft'])
+        );
+        expect(badge(missing)).toBeUndefined();
+        expect(badge(detached)).toBeUndefined();
+        expect(badge('c-4')).toBeUndefined();
+        await draw(() => chatListPreferences.setShowUnusedWorktrees(false));
+        expect(rowOf(unused)).toBeNull();
+        expect(badge(mainKey())).toBe('open');
+        await draw(() => ui().setGroupByWorktree(false));
+        await vi.waitFor(() => expect(badge('c-4')).toBe('open'));
+    });
+
+    it('does not show the planned branch pull request while a worktree is pending', async () => {
+        const data = withFixtureWorktrees(createFixtureData());
+        const chat = data.chats.find(candidate => candidate.id === FIXTURE_WORKSPACE_CHAT_ID)!;
+        chat.workspace = { ...chat.workspace!, id: 'pending-pr', path: '/pending-pr', branch: 'planned', ready: false };
+        data.branchPullRequests = {
+            '/Users/dev/car-rental': {
+                main: [
+                    {
+                        number: 41,
+                        state: 'open',
+                        head: 'main',
+                        base: 'dev',
+                        title: 'Main',
+                        url: 'https://github.com/acme/car-rental/pull/41',
+                        updatedAt: 41,
+                    },
+                ],
+                planned: [
+                    {
+                        number: 42,
+                        state: 'open',
+                        head: 'planned',
+                        base: 'main',
+                        title: 'Planned',
+                        url: 'https://github.com/acme/car-rental/pull/42',
+                        updatedAt: 42,
+                    },
+                ],
+            },
+        };
+        await restart(data);
+        const reads = vi.spyOn(store.transport, 'getGitBranchPullRequests');
+        await draw(() => ui().setGroupByWorktree(true));
+        const pending = worktreeKey('fld_car_rental', '/pending-pr');
+        await vi.waitFor(() => expect(rowOf(mainKey()).querySelector('[data-pr-state]')).not.toBeNull());
+        expect(rowOf(pending).querySelector('[data-pr-state]')).toBeNull();
+        expect(rowOf(chat.id).querySelector('[data-pr-state]')).toBeNull();
+        expect(reads.mock.calls.some(([, , branch]) => branch === 'planned')).toBe(false);
     });
 
     it.each(['button', 'context menu'])(
@@ -2777,6 +2904,46 @@ describe('worktree cards', () => {
             [workspaceKey(), true],
             [workspaceKey(), false],
         ]);
+    });
+
+    it('shows a thread’s pull request from its own folder inside its ancestor’s worktree card', async () => {
+        const data = withFixtureWorktrees(createFixtureData());
+        const root = data.chats.find(chat => chat.id === 'c-6')!;
+        const thread = data.chats.find(chat => chat.id === 'c-6b')!;
+        const workspace = data.chats.find(chat => chat.id === FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
+        root.workspace = workspace;
+        thread.workspace = {
+            ...workspace,
+            id: 'wks_api_thread',
+            folderId: 'fld_api',
+            path: '/Users/dev/worktrees/api-thread',
+            branch: 'feature/api-thread',
+        };
+        data.branchPullRequests = {
+            '/Users/dev/car-rental-api': {
+                'feature/api-thread': [
+                    {
+                        number: 42,
+                        state: 'open',
+                        head: 'feature/api-thread',
+                        base: 'main',
+                        title: 'API change',
+                        url: 'https://github.com/acme/car-rental-api/pull/42',
+                        updatedAt: 42,
+                    },
+                ],
+            },
+        };
+        await restart(data);
+        await draw(() => {
+            ui().setGroupByWorktree(true);
+            ui().toggleChatExpanded('c-6');
+            ui().openChat('c-6b');
+        });
+        await vi.waitFor(() =>
+            expect(rowOf('c-6b').querySelector('[data-pr-state]')?.getAttribute('data-pr-state')).toBe('open')
+        );
+        expect(rowOf('c-6b').closest('[data-worktree-card]')?.getAttribute('data-worktree-card')).toBe(workspaceKey());
     });
 
     it('marks a cross-worktree grandchild relative to its immediate parent, not to the root', async () => {

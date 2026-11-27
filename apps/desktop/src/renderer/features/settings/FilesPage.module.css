@@ -1,4 +1,0 @@
-/* The select is the control at the end of its row: a width of its own, so the two rows' controls line up whatever the names are. */
-.select {
-    width: 14rem;
-}

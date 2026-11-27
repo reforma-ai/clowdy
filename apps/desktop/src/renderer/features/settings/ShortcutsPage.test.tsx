@@ -3,6 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { nameOf } from './accessibleName';
 import { ShortcutsPage } from './ShortcutsPage';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -10,8 +11,8 @@ import { ShortcutsPage } from './ShortcutsPage';
 let container: HTMLDivElement;
 let root: Root;
 
-const sections = () => [...container.querySelectorAll('section[aria-label]')];
-const sectionNamed = (name: string) => sections().find(section => section.getAttribute('aria-label') === name)!;
+const sections = () => [...container.querySelectorAll('section')];
+const sectionNamed = (name: string) => sections().find(section => nameOf(section) === name)!;
 /** A row is the block that holds a command's title and its keys. */
 const rowOf = (title: string) =>
     [...container.querySelectorAll('div')].find(
@@ -40,7 +41,7 @@ describe('ShortcutsPage', () => {
     });
 
     it('has a section for each group, General and Navigation first', () => {
-        const names = sections().map(section => section.getAttribute('aria-label'));
+        const names = sections().map(nameOf);
 
         expect(names.slice(0, 2)).toEqual(['General', 'Navigation']);
         expect(names).toEqual(expect.arrayContaining(['Agents', 'Tasks']));

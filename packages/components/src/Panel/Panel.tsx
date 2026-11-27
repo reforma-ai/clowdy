@@ -1,12 +1,8 @@
-import { ArrowLeft } from '@clowdy/icons/14';
 import { cn } from '@clowdy/lib';
 import { type ComponentProps, type HTMLAttributes, type ReactNode, type Ref } from 'react';
 
 import { Button } from '../Button';
-import { For } from '../For';
 import { Scrollable } from '../Scrollable';
-import { Text } from '../Text';
-import { type Key, ToggleButtonGroup, ToggleButtonGroupItem } from '../ToggleButtonGroup';
 import styles from './Panel.module.css';
 
 type PanelSide = 'left' | 'right';
@@ -52,57 +48,6 @@ export const PanelHeader = Object.assign(PanelHeaderRoot, {
     Actions: PanelHeaderActions,
     Button: PanelHeaderButton,
 });
-
-/** One-step back in the tab/title slot. `label` is the place you return to. */
-export function PanelHeaderBack({ label, onPress }: { label: string; onPress: () => void }) {
-    return (
-        <Button
-            className={styles.headerBack}
-            variant="transparent"
-            color="secondary"
-            size="sm"
-            truncate
-            onPress={onPress}
-        >
-            <ArrowLeft className="shrink-0" />
-            <Text truncate className="min-w-0">
-                {`Back to ${label}`}
-            </Text>
-        </Button>
-    );
-}
-
-interface PanelTabHeaderProps<T extends string> {
-    tab: T;
-    tabs: ReadonlyArray<{ value: T; label: ReactNode }>;
-    onSelect: (tab: T) => void;
-}
-
-export function PanelTabHeader<T extends string>({ tab, tabs, onSelect }: PanelTabHeaderProps<T>) {
-    return (
-        <ToggleButtonGroup
-            className={styles.headerTabs}
-            size="sm"
-            variant="text"
-            selectedKeys={tab}
-            onSelectionChange={(keys: Set<Key>) => {
-                const val = keys.size ? ([...keys][0] as T) : undefined;
-
-                if (val) {
-                    onSelect(val);
-                }
-            }}
-        >
-            <For each={tabs}>
-                {item => (
-                    <ToggleButtonGroupItem key={item.value} value={item.value}>
-                        {item.label}
-                    </ToggleButtonGroupItem>
-                )}
-            </For>
-        </ToggleButtonGroup>
-    );
-}
 
 /** Scrollable panel body that fills the space below the header. */
 export function PanelContent({ className, ...props }: ComponentProps<typeof Scrollable>) {

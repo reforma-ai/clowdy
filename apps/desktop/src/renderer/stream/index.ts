@@ -7,7 +7,13 @@ export { NoteLine, type NoteLineProps } from './NoteLine';
 export { QuestionCard, type QuestionCardProps } from './QuestionCard';
 export { QuestionPanel, type QuestionPanelProps } from './QuestionPanel';
 export { openQuestion } from './questionParts';
-export { StreamView, type StreamViewHandle, type StreamViewProps } from './StreamView';
+export {
+    type StreamEditing,
+    type StreamMessageActions,
+    StreamView,
+    type StreamViewHandle,
+    type StreamViewProps,
+} from './StreamView';
 export { ToolCard, type ToolCardProps } from './ToolCard';
 export { describeTool, type ToolView } from './toolView';
 export { UserBubble, type UserBubbleProps } from './UserBubble';

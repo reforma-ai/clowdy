@@ -13,7 +13,7 @@ import { createRoot, type Root } from 'react-dom/client';
 
 import { hotkeys } from '../../hotkeys/registry';
 import { isAppShortcut, shellSequence } from './shellKeys';
-import styles from './TerminalTab.module.css';
+import styles from './TerminalView.module.css';
 import { type BufferSelection, type QuotedRows, quoteButtonPlace, selectedBufferRows } from './terminalSelection';
 import { terminalTheme } from './terminalTheme';
 

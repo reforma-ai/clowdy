@@ -122,7 +122,7 @@ const batches = () =>
     [...container.querySelectorAll<HTMLElement>('section')].map(section => ({
         count: section.querySelector('header')?.lastElementChild?.textContent,
         rows: [...section.querySelectorAll<HTMLElement>('li')].map(
-            row => `${row.dataset.depth}:${row.querySelector('button span')?.textContent}`
+            row => `${row.dataset.depth}:${row.querySelector('[data-archive-open] > :first-child')?.textContent}`
         ),
     }));
 const row = (taskId: string) => container.querySelector<HTMLElement>(`[data-archived-task="${taskId}"]`);

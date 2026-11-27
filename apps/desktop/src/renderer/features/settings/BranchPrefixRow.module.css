@@ -1,5 +1,0 @@
-/* The field is the control at the end of its row: a width of its own, so a long prefix does not push the text aside. */
-.field {
-    width: 14rem;
-    max-width: 100%;
-}

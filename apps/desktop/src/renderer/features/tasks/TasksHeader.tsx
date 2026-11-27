@@ -7,7 +7,6 @@ import { Archive, Columns, Layers, List, Plus } from '@clowdy/icons/14';
 
 import { CommandHotkey, commandHint, commandTooltip } from '../../hotkeys';
 import { SCREEN_TITLE } from '../../shared';
-import { Unavailable } from '../../shared/Unavailable';
 import { FilterPopover } from './FilterPopover';
 import styles from './TasksHeader.module.css';
 
@@ -192,18 +191,19 @@ export function TasksHeader({
                 </ToggleButtonGroup>
 
                 {!isArchive && (
-                    <Unavailable label={createLabel} hint={createHint} placement="bottom">
-                        <Button
-                            color="primary"
-                            size="sm"
-                            isDisabled={createHint !== undefined}
-                            tooltip={createHint === undefined ? commandTooltip(createLabel, 'tasks.create') : undefined}
-                            onPress={onCreate}
-                        >
-                            <Plus />
-                            {inTask ? 'Sub-task' : 'Task'}
-                        </Button>
-                    </Unavailable>
+                    <Button
+                        color="primary"
+                        size="sm"
+                        aria-label={createHint === undefined ? undefined : createLabel}
+                        isDisabled={createHint !== undefined}
+                        disabledReason={createHint}
+                        tooltip={createHint === undefined ? commandTooltip(createLabel, 'tasks.create') : undefined}
+                        tooltipPlacement="bottom"
+                        onPress={onCreate}
+                    >
+                        <Plus />
+                        {inTask ? 'Sub-task' : 'Task'}
+                    </Button>
                 )}
             </div>
         </header>

@@ -3,11 +3,12 @@ import { Shimmer } from '@clowdy/components/Shimmer';
 import { Text } from '@clowdy/components/Text';
 import { Robot2 } from '@clowdy/icons/14';
 import { ProgressLoader } from '@clowdy/icons/assets';
-import { Children, type ReactNode, use, useId } from 'react';
+import { use, useId } from 'react';
 
 import { Clamp } from './Clamp';
 import { Markdown } from './Markdown';
 import { OutcomeMark } from './OutcomeMark';
+import { StreamCard } from './StreamCard';
 import { StreamLinksContext } from './StreamLinks';
 import styles from './ThreadCards.module.css';
 import { OUTCOME_WORDS } from './threadMessages';
@@ -55,45 +56,6 @@ function ChatName({ chatId, title }: { chatId: ChatId; title: string }) {
     );
 }
 
-interface CardFrameProps {
-    /** What a test or a style finds the card by: `agent-card` or `thread-message`. */
-    slot: string;
-    /** The mark that opens the header: the title and the mark are one line, and the body under the rule starts at the card's edge. */
-    icon: ReactNode;
-    /** The header's words (a press, a link, a shimmer). */
-    title: ReactNode;
-    /** How it ended, for the colour of its mark. */
-    outcome?: ThreadOutcome;
-    pressable?: boolean;
-    busy?: boolean;
-    /** The stream item the card is, so the turn rail can scroll to it. */
-    turn?: string;
-    /** What is under the header, past its rule. A card with nothing to say has no body and no rule. */
-    children?: ReactNode;
-}
-
-/** The one frame of every card of other work in a stream, built as an answered question is: the plate, a header that holds the icon, and under a rule the rows of the body. */
-function CardFrame({ slot, icon, title, outcome, pressable, busy, turn, children }: CardFrameProps) {
-    return (
-        <div
-            className={styles.card}
-            data-slot={slot}
-            data-outcome={outcome}
-            data-pressable={pressable ? '' : undefined}
-            data-turn={turn}
-            aria-busy={busy || undefined}
-        >
-            <div className={styles.head}>
-                <span className={styles.icon} aria-hidden>
-                    {icon}
-                </span>
-                <span className={styles.title}>{title}</span>
-            </div>
-            {Children.toArray(children).length > 0 && <div className={styles.body}>{children}</div>}
-        </div>
-    );
-}
-
 export interface AgentCardProps {
     /** What the agent or the thread is called: what a sub-agent was asked to do, or a thread's title. */
     name: string;
@@ -120,25 +82,20 @@ export function AgentCard({ name, outcome, activity, report, open = [], onOpen }
     const title = running ? <Shimmer duration={1}>{name}</Shimmer> : `${name} ${OUTCOME_WORDS[outcome]}`;
 
     return (
-        <CardFrame
+        <StreamCard
             slot="agent-card"
             icon={running ? <ProgressLoader size={14} /> : <OutcomeMark outcome={outcome} />}
-            title={
-                onOpen ? (
-                    <button
-                        type="button"
-                        className={styles.press}
-                        aria-describedby={activity ? activityId : undefined}
-                        onClick={onOpen}
-                    >
-                        {title}
-                    </button>
-                ) : (
-                    title
+            title={title}
+            trailing={
+                open.length > 0 && (
+                    <Text variant="sm" color="secondary" className={styles.open}>
+                        {`Still running: ${open.join(', ')}`}
+                    </Text>
                 )
             }
             outcome={outcome}
-            pressable={onOpen !== undefined}
+            onPress={onOpen}
+            aria-describedby={activity ? activityId : undefined}
             busy={running}
         >
             {activity && (
@@ -158,14 +115,7 @@ export function AgentCard({ name, outcome, activity, report, open = [], onOpen }
                     </Clamp>
                 </div>
             )}
-            {open.length > 0 && (
-                <Text
-                    variant="sm"
-                    color="secondary"
-                    className={styles.open}
-                >{`Still running: ${open.join(', ')}`}</Text>
-            )}
-        </CardFrame>
+        </StreamCard>
     );
 }
 
@@ -184,7 +134,7 @@ export interface ThreadMessageCardProps {
  */
 export function ThreadMessageCard({ chatId, title, text, turn }: ThreadMessageCardProps) {
     return (
-        <CardFrame
+        <StreamCard
             slot="thread-message"
             icon={<Robot2 />}
             title={
@@ -199,7 +149,7 @@ export function ThreadMessageCard({ chatId, title, text, turn }: ThreadMessageCa
                     <Markdown text={text} />
                 </Clamp>
             )}
-        </CardFrame>
+        </StreamCard>
     );
 }
 

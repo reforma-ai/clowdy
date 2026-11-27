@@ -1,0 +1,188 @@
+import { Button } from '@clowdy/components/Button';
+import { Chip } from '@clowdy/components/Chip';
+import { openConfirmModal } from '@clowdy/components/modals';
+import { SettingsLayout } from '@clowdy/components/SettingsLayout';
+import { Text } from '@clowdy/components/Text';
+import { useCallback, useEffect, useState } from 'react';
+
+import { TransportError } from '../../../daemon/transport';
+import { useRootStore } from '../../../stores';
+import styles from './RecommendedSkill.module.css';
+
+type Status = { copies: { exists: boolean; installed: boolean }[]; fingerprint: string };
+type State =
+    | { kind: 'loading' }
+    | { kind: 'failed'; message?: string }
+    | { kind: 'ready'; status: Status; error?: string };
+
+export function RecommendedSkill({ onInstalled, revision }: { onInstalled: () => void; revision: number }) {
+    const { transport } = useRootStore();
+    const [state, setState] = useState<State>({ kind: 'loading' });
+    const [installing, setInstalling] = useState(false);
+    const [attempt, setAttempt] = useState(0);
+    const [updateAttempt, setUpdateAttempt] = useState(0);
+    const [updateResult, setUpdateResult] = useState<{
+        fingerprint: string;
+        value: 'checking' | 'up-to-date' | 'update-available' | 'unknown';
+    }>();
+
+    const installed =
+        state.kind === 'ready' && state.status.copies.length === 2 && state.status.copies.every(copy => copy.installed);
+    const fingerprint = installed && state.kind === 'ready' ? state.status.fingerprint : undefined;
+    const update = updateResult && fingerprint === updateResult.fingerprint ? updateResult.value : 'checking';
+
+    useEffect(() => {
+        if (installing) return;
+        let current = true;
+        const refresh = () =>
+            transport.getBriefbackStatus().then(
+                status =>
+                    current &&
+                    setState(previous =>
+                        previous.kind === 'ready' && previous.status.fingerprint === status.fingerprint
+                            ? previous
+                            : { kind: 'ready', status }
+                    ),
+                () => current && setState(previous => (previous.kind === 'ready' ? previous : { kind: 'failed' }))
+            );
+        void refresh();
+        // Missing skill roots have no watcher until they are created.
+        const timer = setInterval(() => void refresh(), 10000);
+        return () => {
+            current = false;
+            clearInterval(timer);
+        };
+    }, [transport, attempt, revision, installing]);
+
+    useEffect(() => {
+        if (!fingerprint) return;
+        let current = true;
+        setUpdateResult({ fingerprint, value: 'checking' });
+        transport.checkBriefbackUpdate(fingerprint).then(
+            value => current && setUpdateResult({ fingerprint, value }),
+            () => current && setUpdateResult({ fingerprint, value: 'unknown' })
+        );
+        return () => {
+            current = false;
+        };
+    }, [transport, fingerprint, updateAttempt]);
+
+    const install = useCallback(() => {
+        if (state.kind !== 'ready' || installing) return;
+        const { status } = state;
+        openConfirmModal({
+            title: installed ? 'Update Briefback' : 'Install Briefback',
+            message: 'Briefback goes in ~/.agents/skills and ~/.claude/skills, replacing any copy already there',
+            confirmLabel: installed ? 'Update' : 'Install',
+            initialFocus: 'cancel',
+            onConfirm: async () => {
+                setInstalling(true);
+                try {
+                    const next = await transport.installBriefback(status.fingerprint);
+                    setUpdateResult(undefined);
+                    setUpdateAttempt(n => n + 1);
+                    setState({ kind: 'ready', status: next });
+                    onInstalled();
+                } catch (error) {
+                    const message =
+                        error instanceof TransportError && error.status === 503
+                            ? error.message
+                            : "Couldn't install Briefback. Try again";
+                    // The filesystem may have changed since confirmation; inspect it before allowing another attempt.
+                    try {
+                        const next = await transport.getBriefbackStatus();
+                        setState({ kind: 'ready', status: next, error: message });
+                    } catch {
+                        setState({ kind: 'failed', message });
+                    }
+                } finally {
+                    setInstalling(false);
+                }
+            },
+        });
+    }, [state, installing, installed, transport, onInstalled]);
+
+    const partial = state.kind === 'ready' && state.status.copies.some(copy => copy.exists);
+    const label =
+        state.kind === 'loading'
+            ? 'Checking…'
+            : state.kind === 'failed'
+              ? 'Unavailable'
+              : installed
+                ? 'Installed'
+                : partial
+                  ? 'Partially installed'
+                  : 'Not installed';
+
+    return (
+        <SettingsLayout.Section title="Recommended skills">
+            <SettingsLayout.Card>
+                <SettingsLayout.Block className={styles.row}>
+                    <div className={styles.body}>
+                        <div className={styles.heading}>
+                            <Text weight="medium">Briefback</Text>
+                            <Chip size="xs" data-testid="briefback-status">
+                                {label}
+                            </Chip>
+                        </div>
+                        <Text variant="sm" color="secondary">
+                            A workflow for researching, planning, building and reviewing software
+                        </Text>
+                        {state.kind === 'failed' && (
+                            <Text color="danger" variant="sm" role="alert">
+                                {state.message ?? "Couldn't check Briefback installation"}
+                            </Text>
+                        )}
+                        {state.kind === 'ready' && state.error && (
+                            <Text color="danger" variant="sm" role="alert">
+                                {state.error}
+                            </Text>
+                        )}
+                        {installing && (
+                            <Text variant="sm" color="secondary" role="status">
+                                Installing Briefback…
+                            </Text>
+                        )}
+                        {installed && !installing && (
+                            <Text variant="sm" color="secondary" data-testid="briefback-update-status">
+                                {update === 'checking'
+                                    ? 'Checking for updates…'
+                                    : update === 'unknown'
+                                      ? "Couldn't check for updates"
+                                      : update === 'update-available'
+                                        ? 'Update available'
+                                        : 'Up to date'}
+                            </Text>
+                        )}
+                    </div>
+                    {state.kind === 'failed' ? (
+                        <Button
+                            size="sm"
+                            variant="bordered"
+                            onPress={() => {
+                                setState({ kind: 'loading' });
+                                setAttempt(n => n + 1);
+                            }}
+                        >
+                            Try again
+                        </Button>
+                    ) : installed && update === 'unknown' && !installing ? (
+                        <Button size="sm" variant="bordered" onPress={() => setUpdateAttempt(n => n + 1)}>
+                            Check again
+                        </Button>
+                    ) : !installed || update === 'update-available' || installing ? (
+                        <Button
+                            size="sm"
+                            variant="bordered"
+                            isDisabled={state.kind !== 'ready' || installing}
+                            onPress={install}
+                            data-testid="briefback-install"
+                        >
+                            {installing ? (installed ? 'Updating…' : 'Installing…') : installed ? 'Update' : 'Install'}
+                        </Button>
+                    ) : null}
+                </SettingsLayout.Block>
+            </SettingsLayout.Card>
+        </SettingsLayout.Section>
+    );
+}

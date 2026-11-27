@@ -1,33 +1,25 @@
-import { Button } from '@clowdy/components/Button';
 import { Input } from '@clowdy/components/Input';
-import { GridList, GridListItem, GridListSection, listBoxItemDataShow, useCellEditMode } from '@clowdy/components/List';
-import { Panel, PanelContent } from '@clowdy/components/Panel';
+import {
+    GridList,
+    GridListItem,
+    GridListSection,
+    listBoxItemDataShow,
+    RowActionButton,
+    RowControls,
+    useCellEditMode,
+} from '@clowdy/components/List';
+import { FoldButton, Panel, PanelContent } from '@clowdy/components/Panel';
 import { Popover, PopoverTrigger, useContextMenu } from '@clowdy/components/Popover';
 import { Show } from '@clowdy/components/Show';
-import {
-    Archive,
-    Check,
-    ChevronDown,
-    ChevronRight,
-    Close,
-    Merge,
-    Message,
-    More,
-    NewChat,
-    Plus,
-    Robot2,
-    Split,
-} from '@clowdy/icons/14';
+import { Archive, Check, Close, Message, More, NewChat, Plus, Robot2 } from '@clowdy/icons/14';
 import { cn } from '@clowdy/lib';
 import { mainFolder } from '@clowdy/protocol';
-import { observer } from 'mobx-react-lite';
 import {
     type CSSProperties,
     type KeyboardEvent,
     type MouseEvent,
     memo,
     type ReactNode,
-    type SyntheticEvent,
     useCallback,
     useEffect,
     useRef,
@@ -44,7 +36,6 @@ import {
     type BranchPullRequestKey,
     type BranchPullRequests,
     branchPullRequestsOf,
-    useBranchPullRequests,
 } from '../changes/branchPullRequests';
 import { archiveChat, archiveRun } from '../chats/archiveChat';
 import { ChatMenu } from '../chats/ChatMenu';
@@ -76,11 +67,13 @@ import {
     orchestratorOf,
     type SubagentRow,
 } from './agentTree';
+import { BranchPullRequestBadge } from './BranchPullRequestBadge';
 import { ChatIcon, ChatStatus } from './ChatIcon';
 import { chatListPreferences } from './chatListPreferences';
 import { GroupFolderName } from './GroupFolderName';
 import { openNewChat } from './openNewChat';
 import { ProjectMenu } from './ProjectMenu';
+import { RowFold } from './RowFold';
 import { StarCard } from './StarCard';
 import { SubagentMenu } from './SubagentMenu';
 import { useChatListOrder } from './useChatListOrder';
@@ -88,7 +81,7 @@ import { useSidebarWorktrees } from './useSidebarWorktrees';
 import { WorktreeCardHeader } from './WorktreeCardHeader';
 import { chatWorktreeKey, type WorktreeCard, worktreeCards, worktreeKey } from './worktreeCards';
 
-import type { Chat, ChatId, FolderId, ProjectInfo, Run, RunId } from '@clowdy/protocol';
+import type { Chat, ChatId, FolderId, ProjectInfo, Run } from '@clowdy/protocol';
 import type { NewChatDraft } from '../../stores/NewChatDrafts';
 
 /** The id of the first row, the one that starts a chat. Chat ids never look like it. */
@@ -120,15 +113,6 @@ const entryKey = (entry: ListEntry) =>
             : entry.kind === 'worktree'
               ? entry.card.key
               : `${EMPTY_PREFIX}${entry.folderId}`;
-
-/** The events a row's own buttons must not pass up: they are React children of the row, so the row would take their clicks and keys as its own. */
-const ownEvents = {
-    onClick: (event: SyntheticEvent) => event.stopPropagation(),
-    onDoubleClick: (event: SyntheticEvent) => event.stopPropagation(),
-    onPointerDown: (event: SyntheticEvent) => event.stopPropagation(),
-    onKeyDown: (event: SyntheticEvent) => event.stopPropagation(),
-    onContextMenu: (event: SyntheticEvent) => event.stopPropagation(),
-};
 
 /** A row's `⋯` button and the right-click menu are the same actions; a rename is a rename of the row it started on. */
 interface ChatActions {
@@ -525,51 +509,38 @@ export function AgentList({
                 className={styles.group}
                 plateless
                 endAffix={
-                    <span className={styles.end} {...ownEvents}>
-                        <Button
-                            variant="filling"
-                            color="secondary"
-                            size="xs"
-                            iconOnly
-                            aria-label={`New chat in ${group.name}`}
-                            tooltip={isMissing ? 'This folder no longer exists' : `New chat in ${group.name}`}
+                    <RowControls className={styles.end}>
+                        <RowActionButton
+                            icon={<NewChat />}
+                            label={`New chat in ${group.name}`}
                             isDisabled={isMissing}
-                            preventFocusOnPress
+                            disabledReason="This folder no longer exists"
                             data-show={listBoxItemDataShow.itemBoth}
                             onPress={startChat}
-                        >
-                            <NewChat />
-                        </Button>
-                    </span>
+                        />
+                    </RowControls>
                 }
                 data-collapsed={isCollapsed || undefined}
                 data-missing={isMissing || undefined}
             >
                 <span className={styles.groupTitle}>
-                    <span className={styles.groupNameBox} {...ownEvents}>
+                    <RowControls className={styles.groupNameBox}>
                         <GroupFolderName
                             name={group.name}
                             folder={group.folder}
                             missing={isMissing}
                             onNewChat={startChat}
                         />
-                    </span>
+                    </RowControls>
                     {/* The way to fold the group. On a folded group it is always there, which says it is folded; on an open one it comes with the pointer or the keyboard. */}
-                    <span className={styles.groupFold} {...ownEvents}>
-                        <Button
-                            variant="filling"
-                            color="secondary"
-                            size="xs"
-                            iconOnly
-                            aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${group.name}`}
-                            aria-expanded={!isCollapsed}
-                            preventFocusOnPress
+                    <RowControls className={styles.groupFold}>
+                        <FoldButton
+                            label={`${isCollapsed ? 'Expand' : 'Collapse'} ${group.name}`}
+                            isExpanded={!isCollapsed}
                             data-show={isCollapsed ? undefined : listBoxItemDataShow.itemBoth}
-                            onPress={() => ui.toggleFolderCollapsed(group.folder.id)}
-                        >
-                            {isCollapsed ? <ChevronRight /> : <ChevronDown />}
-                        </Button>
-                    </span>
+                            onToggle={() => ui.toggleFolderCollapsed(group.folder.id)}
+                        />
+                    </RowControls>
                 </span>
             </GridListItem>
         );
@@ -611,22 +582,16 @@ export function AgentList({
                     !draft.reply &&
                     filesOf(`@new-chat:${project.id}:${draft.id}`).length === 0 &&
                     ui.pendingFilesFor(draft.id).length === 0 ? (
-                        <span {...ownEvents}>
-                            <Button
-                                variant="filling"
-                                color="secondary"
-                                size="xs"
-                                iconOnly
-                                aria-label="Close draft"
-                                tooltip="Close draft"
+                        <RowControls>
+                            <RowActionButton
+                                icon={<Close />}
+                                label="Close draft"
                                 onPress={() => {
                                     ui.newChatDrafts.remove(draft.id);
                                     if (ui.draftId === draft.id) ui.openChat(null);
                                 }}
-                            >
-                                <Close />
-                            </Button>
-                        </span>
+                            />
+                        </RowControls>
                     ) : undefined
                 }
             >
@@ -656,6 +621,14 @@ export function AgentList({
                     >
                         <WorktreeCardHeader
                             card={entry.card}
+                            pullRequestStatus={
+                                <BranchPullRequestBadge
+                                    className={styles.pullRequests}
+                                    branchKey={cardBranchKey(projectInfo, entry.card, histories)}
+                                    visible
+                                    crossWorktree={false}
+                                />
+                            }
                             collapsed={entry.isCollapsed}
                             activity={cardActivity(entry.card)}
                             hasDraft={draftItems.some(draft => draftCardKey(draft) === entry.card.key)}
@@ -664,7 +637,7 @@ export function AgentList({
                             onDragStart={event => order.startCard(event, entry.card.key)}
                         />
                         {entry.drafts.map(renderDraft)}
-                        {entry.rows.map(renderAgentRow)}
+                        {entry.rows.map(row => renderAgentRow(row, entry.card))}
                     </GridListSection>
                 );
             case 'empty':
@@ -683,10 +656,10 @@ export function AgentList({
         }
     };
 
-    const renderAgentRow = (row: AgentRow) => {
+    const renderAgentRow = (row: AgentRow, card?: WorktreeCard) => {
         switch (row.kind) {
             case 'chat':
-                return renderRow(row);
+                return renderRow(row, card);
             case 'subagent':
                 return renderSubagent(row);
         }
@@ -707,7 +680,7 @@ export function AgentList({
         />
     );
 
-    const renderRow = (row: ChatRow) => {
+    const renderRow = (row: ChatRow, card?: WorktreeCard) => {
         const { chat } = row;
         const run = runOf(chat);
         const busy = actions.busy(chat);
@@ -723,7 +696,7 @@ export function AgentList({
               : undefined;
         const draft = messageOf(draftOf(chat.id)) !== '' || filesOf(chat.id).length > 0;
         const unread = ui.hasUnreadCompletion(run);
-        const showPullRequests = chatDotTone(run, threads, draft, unread) === undefined;
+        const showPullRequests = !card || chatDotTone(run, threads, draft, unread) === undefined;
         const status = (
             <ChatStatus
                 run={run}
@@ -745,7 +718,7 @@ export function AgentList({
                 // Only a row with threads below it has a chevron: on hover it takes the place of the icon, so the row needs no room for it.
                 icon={
                     row.childCount > 0 && renamingId !== chat.id ? (
-                        <Fold
+                        <RowFold
                             label={`${row.isExpanded ? 'Collapse' : 'Expand'} ${chat.title} threads`}
                             isExpanded={row.isExpanded}
                             icon={icon}
@@ -757,20 +730,14 @@ export function AgentList({
                 }
                 endAffix={
                     renamingId === chat.id ? (
-                        <span {...ownEvents}>
-                            <Button
-                                variant="filling"
-                                color="secondary"
-                                size="xs"
-                                iconOnly
-                                aria-label="Save chat title"
+                        <RowControls>
+                            <RowActionButton
+                                icon={<Check />}
+                                label="Save chat title"
                                 tooltip="Save"
-                                preventFocusOnPress
                                 onPress={() => saveRename.current()}
-                            >
-                                <Check />
-                            </Button>
-                        </span>
+                            />
+                        </RowControls>
                     ) : (
                         <RowEnd
                             chat={chat}
@@ -786,12 +753,19 @@ export function AgentList({
                             }
                             isOpen={menuOpenId === chat.id}
                             onOpenChange={open => setMenuOpenId(open ? chat.id : null)}
-                            branchKey={chatBranchKey(
-                                projectInfo,
-                                groupFolderOf(project.chats, folders, chat.id),
-                                chat,
-                                histories
-                            )}
+                            branchKey={
+                                card &&
+                                (chat.workspace
+                                    ? chatWorktreeKey(chat, cards) === card.key
+                                    : card.main && groupFolderOf(project.chats, folders, chat.id) === card.folder.id)
+                                    ? undefined
+                                    : chatBranchKey(
+                                          projectInfo,
+                                          chat.workspace?.folderId ?? groupFolderOf(project.chats, folders, chat.id),
+                                          chat,
+                                          histories
+                                      )
+                            }
                         />
                     )
                 }
@@ -923,23 +897,15 @@ const SubagentItem = memo(function SubagentItem({
             icon={<Robot2 />}
             endAffix={
                 canArchive ? (
-                    // The button is a React child of the row, so its clicks and keys would reach the row through the tree.
-                    <span className={styles.chatActions} {...ownEvents}>
+                    <RowControls className={styles.chatActions}>
                         <ChatStatus run={run} className={styles.archiveStatus} />
-                        <Button
-                            className={styles.rowAction}
-                            variant="filling"
-                            color="secondary"
-                            size="xs"
-                            iconOnly
-                            aria-label="Archive"
-                            tooltip="Archive"
-                            preventFocusOnPress
+                        <RowActionButton
+                            className={cn(styles.rowAction, styles.archiveAction)}
+                            icon={<Archive />}
+                            label="Archive"
                             onPress={() => onArchive(run)}
-                        >
-                            <Archive />
-                        </Button>
-                    </span>
+                        />
+                    </RowControls>
                 ) : (
                     <span className={styles.agentStatus}>
                         <ChatStatus run={run} />
@@ -958,43 +924,6 @@ const SubagentItem = memo(function SubagentItem({
         </GridListItem>
     );
 });
-
-/** The icon of a row that has lines below it (threads, sub-agents): on hover the chevron that folds them takes its place, in the same room. */
-function Fold({
-    label,
-    isExpanded,
-    icon,
-    onToggle,
-}: {
-    label: string;
-    isExpanded: boolean;
-    icon: ReactNode;
-    onToggle: () => void;
-}) {
-    return (
-        <span className={styles.foldIcon}>
-            <span className={styles.restIcon} data-show={listBoxItemDataShow.itemRest}>
-                {icon}
-            </span>
-            {/* The button is a React child of the row, so its clicks and keys would reach the row through the tree. */}
-            <span className={styles.fold} data-show={listBoxItemDataShow.itemHover} {...ownEvents}>
-                <Button
-                    variant="filling"
-                    color="secondary"
-                    size="xs"
-                    iconOnly
-                    tabIndex={-1}
-                    aria-label={label}
-                    aria-expanded={isExpanded}
-                    preventFocusOnPress
-                    onPress={onToggle}
-                >
-                    {isExpanded ? <ChevronDown /> : <ChevronRight />}
-                </Button>
-            </span>
-        </span>
-    );
-}
 
 /** The activity indicator takes the archive shortcut's place while the chat or its threads are active. */
 function RowEnd({
@@ -1021,37 +950,24 @@ function RowEnd({
     const close = () => onOpenChange(false);
 
     return (
-        // The buttons and the popover are React children of the row, so their clicks and keys would reach the row through the tree.
-        <span className={styles.chatActions} {...ownEvents}>
+        <RowControls className={styles.chatActions}>
+            <BranchPullRequestBadge
+                className={styles.pullRequests}
+                branchKey={branchKey}
+                visible={showPullRequests}
+                crossWorktree={crossWorktree}
+            />
             {status}
-            <BranchPullRequestBadge branchKey={branchKey} visible={showPullRequests} crossWorktree={crossWorktree} />
             {!busy && (
-                <Button
-                    className={styles.rowAction}
-                    variant="filling"
-                    color="secondary"
-                    size="xs"
-                    iconOnly
-                    aria-label="Archive"
-                    tooltip="Archive"
-                    preventFocusOnPress
+                <RowActionButton
+                    className={cn(styles.rowAction, styles.archiveAction)}
+                    icon={<Archive />}
+                    label="Archive"
                     onPress={() => actions.archive(chat)}
-                >
-                    <Archive />
-                </Button>
+                />
             )}
             <PopoverTrigger isOpen={isOpen} onOpenChange={onOpenChange}>
-                <Button
-                    className={styles.rowAction}
-                    variant="filling"
-                    color="secondary"
-                    size="xs"
-                    iconOnly
-                    aria-label="Chat actions"
-                    preventFocusOnPress
-                >
-                    <More />
-                </Button>
+                <RowActionButton className={styles.rowAction} icon={<More />} label="Chat actions" tooltip={null} />
                 <Popover placement="bottom end" spacing="xs">
                     <ChatMenu
                         busy={busy}
@@ -1062,7 +978,7 @@ function RowEnd({
                     />
                 </Popover>
             </PopoverTrigger>
-        </span>
+        </RowControls>
     );
 }
 
@@ -1086,52 +1002,29 @@ function chatBranchKey(
     return branch ? { projectId: info.projectId, folderId: folder.folderId, branch } : undefined;
 }
 
-/** A status, not another action: every chat observing the same branch shares the PR state. */
-const BranchPullRequestBadge = observer(function BranchPullRequestBadge({
-    branchKey,
-    visible,
-    crossWorktree,
-}: {
-    branchKey?: BranchPullRequestKey;
-    visible: boolean;
-    crossWorktree: boolean;
-}) {
-    const fact = useBranchPullRequests(branchKey);
-    const pullRequests = fact?.visiblePullRequests ?? [];
-    if (!visible) return null;
-    if (pullRequests.length === 0)
-        return crossWorktree ? (
-            <span className={styles.pullRequests} role="img" aria-label="Different worktree" title="Different worktree">
-                <Split aria-hidden="true" />
-            </span>
-        ) : null;
-
-    const state = pullRequests.some(pr => pr.state === 'open')
-        ? 'open'
-        : pullRequests.some(pr => pr.state === 'draft')
-          ? 'draft'
-          : 'merged';
-    const detail = (['open', 'draft', 'merged'] as const)
-        .flatMap(state => {
-            const count = pullRequests.filter(pr => pr.state === state).length;
-            return count ? [`${count} ${state}`] : [];
-        })
-        .join(', ');
-    const label = `${pullRequests.length} pull request${pullRequests.length === 1 ? '' : 's'}: ${detail}${fact?.stale ? ' (last known)' : ''}`;
-
-    return (
-        <span
-            className={styles.pullRequests}
-            data-pr-state={state}
-            data-stale={fact?.stale || undefined}
-            role="img"
-            aria-label={label}
-            title={label}
-        >
-            <Merge size={12} aria-hidden="true" />
-        </span>
-    );
-});
+/** Read the checkout itself, including cards with no chats, and never use a pending checkout's recorded branch. */
+function cardBranchKey(
+    info: ProjectInfo | undefined,
+    card: WorktreeCard,
+    histories: BranchPullRequests
+): BranchPullRequestKey | undefined {
+    const folder = info?.folders.find(folder => folder.folderId === card.folder.id);
+    if (!info || !folder?.exists || !folder.remoteUrl || card.pending) return undefined;
+    const branch = card.main
+        ? folder.detached
+            ? undefined
+            : folder.branch
+        : card.workspace
+          ? histories.workspaceHistoryBranch(
+                info.projectId,
+                card.workspace,
+                workspaceHead(card.workspace, info.workspaces)
+            )
+          : card.missing
+            ? undefined
+            : card.branch;
+    return branch ? { projectId: info.projectId, folderId: folder.folderId, branch } : undefined;
+}
 
 /** The title as a field in the title's own place: Enter or leaving it renames, Escape keeps the old name. */
 function RenameField({

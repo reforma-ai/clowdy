@@ -1,4 +1,0 @@
-/* The inset of a block is the card's, equal on every side. */
-.block {
-    padding: var(--settings-inset);
-}

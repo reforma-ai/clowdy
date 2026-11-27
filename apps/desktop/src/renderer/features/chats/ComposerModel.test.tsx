@@ -968,7 +968,7 @@ describe('in a chat', () => {
             await openPicker();
 
             expect(selectModel().textContent).toBe('Default model');
-            expect(dialog()!.textContent).toContain("Runs on Claude Code's own default until you pick a model.");
+            expect(dialog()!.textContent).toContain("Runs on Claude Code's own default until you pick a model");
             expect(slider()).toBeNull();
             expect(dialog()!.textContent).not.toContain('Reasoning effort');
         });

@@ -101,3 +101,32 @@ describe('FixtureTransport skills', () => {
         expect(on.tokens).toBeGreaterThan(off.tokens);
     });
 });
+
+describe('Briefback transport', () => {
+    it('sends the observed state with the installation request', async () => {
+        const requests: { url: string; method: string; body: unknown }[] = [];
+        const status = {
+            copies: [
+                { exists: false, installed: false },
+                { exists: true, installed: true },
+            ],
+            fingerprint: 'snapshot',
+        };
+        const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+            requests.push({
+                url: String(input),
+                method: init?.method ?? 'GET',
+                body: init?.body ? JSON.parse(String(init.body)) : null,
+            });
+            return Response.json(status);
+        }) as typeof fetch;
+        const transport = new HttpTransport({ url: 'http://127.0.0.1:4310', token: 't', fetch: fetchImpl });
+
+        expect(await transport.getBriefbackStatus()).toEqual(status);
+        expect(await transport.installBriefback(status.fingerprint)).toEqual(status);
+        expect(requests).toEqual([
+            { url: 'http://127.0.0.1:4310/v1/skills/briefback', method: 'GET', body: null },
+            { url: 'http://127.0.0.1:4310/v1/skills/briefback', method: 'POST', body: { fingerprint: 'snapshot' } },
+        ]);
+    });
+});

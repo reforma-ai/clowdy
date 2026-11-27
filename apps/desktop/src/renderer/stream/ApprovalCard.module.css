@@ -1,24 +1,5 @@
 @reference '@clowdy/styles/rulesets';
 
-/* The same card as a question: a request is something the run waits on, so it stands out of the line of tool calls. */
-.card {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-lg);
-    min-width: 0;
-    padding: var(--spacing-lg) var(--spacing-xl);
-    border: 1px solid var(--color-secondary-muted-border);
-    border-radius: calc(var(--radius-xl) * var(--squircle-radius-factor));
-    corner-shape: superellipse(var(--squircle-value));
-    background-color: var(--color-surface-float);
-}
-
-/* Once it is answered it is history: the same frame, without the plate. */
-.card[data-settled] {
-    gap: var(--spacing-md);
-    background-color: transparent;
-}
-
 .heading {
     display: flex;
     align-items: center;

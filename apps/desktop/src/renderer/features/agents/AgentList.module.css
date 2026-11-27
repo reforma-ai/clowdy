@@ -37,11 +37,11 @@
 /* Keep the accessible grid in place while each visible block previews its new slot. */
 :is(.chatRow, .agentRow, .worktreeCard) {
     transform: translateY(var(--reorder-offset));
-    transition: transform 160ms cubic-bezier(0.25, 1, 0.5, 1);
+    transition: transform var(--transition-duration-fast) ease-out;
 }
 
 :is(.chatRow, .agentRow, .worktreeCard)[data-reorder-source] {
-    opacity: 0.4;
+    opacity: var(--opacity-disabled);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -114,7 +114,7 @@
         inset-inline-end: 0;
     }
 
-    & .chatActions:has(.archiveStatus, .pullRequests) .rowAction[aria-label='Archive'] {
+    & .chatActions:has(.archiveStatus, .pullRequests) .archiveAction {
         inset-inline-end: calc(var(--spacing-24) + var(--spacing-xs));
     }
 }
@@ -131,29 +131,6 @@
  */
 .newChat.newChat {
     padding-inline-end: calc((var(--clowdy-listbox-item-height) - (var(--leading-xs) + 2 * var(--spacing-2))) / 2);
-}
-
-/*
- * A row with threads below it: the chevron is drawn over the icon and takes its place while the row is hovered, so the row keeps the one
- * room for both and the icon of every row stays where the list puts it. The icon goes out (`item-rest`) as the chevron comes in (`item-hover`).
- */
-.foldIcon {
-    position: relative;
-    display: inline-flex;
-    flex-shrink: 0;
-}
-
-.restIcon {
-    display: inline-flex;
-}
-
-/* The button is the size of the row's Archive button, so it is wider than the icon it covers and is centred on it. */
-.fold {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    display: flex;
-    transform: translate(-50%, -50%);
 }
 
 /* A thread below a chat: one level in from the row it belongs to, per level. A sub-agent stands like a thread does. */
@@ -218,7 +195,6 @@
 
 /* The name of a group that opens its folder's menu: a button of the chevron's size (`xs`, its own padding), in the heading's own type and not the button's. A name that is only a label (a page in a browser) has the same room at its start. */
 .groupNameBox {
-    display: inline-flex;
     min-width: 0;
 }
 
@@ -231,7 +207,6 @@
 }
 
 .groupFold {
-    display: inline-flex;
     flex-shrink: 0;
 }
 
@@ -243,7 +218,7 @@
 .worktreeCard {
     position: relative;
     background: var(--color-secondary-muted-light);
-    border-radius: var(--spacing-16);
+    border-radius: calc(var(--radius-lg) * var(--squircle-radius-factor));
     corner-shape: superellipse(var(--squircle-value));
     padding: var(--spacing-4);
     margin-block: var(--spacing-2);
@@ -257,15 +232,6 @@
 .worktreeHeader {
     font-weight: 500;
     cursor: default;
-}
-
-.worktreeHeader:focus-within .restIcon {
-    opacity: 0;
-}
-
-.worktreeHeader:focus-within .fold {
-    opacity: 1;
-    pointer-events: auto;
 }
 
 .worktreeActions {
@@ -298,7 +264,9 @@
     pointer-events: none;
 }
 
-.worktreeCard:is(:hover, :focus-within, :has(.worktreeHeader[data-open])) .worktreeStatus {
+.worktreeCard:is(:hover, :focus-within, :has(.worktreeHeader[data-open]))
+    .worktreeHeader
+    :is(.worktreeStatus, .pullRequests) {
     display: none;
 }
 

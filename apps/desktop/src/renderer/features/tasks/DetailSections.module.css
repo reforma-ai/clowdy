@@ -27,12 +27,6 @@
     margin-inline: calc(var(--spacing-md) * -1);
 }
 
-.none {
-    @ruleset typography-text-sm;
-
-    color: var(--color-secondary-muted-text);
-}
-
 .row {
     display: flex;
     align-items: center;

@@ -1,4 +1,5 @@
 import { Button } from '@clowdy/components/Button';
+import { Chip } from '@clowdy/components/Chip';
 import { Spinner } from '@clowdy/components/Spinner';
 import { Text } from '@clowdy/components/Text';
 import { Box, CodeBraces, Commit, Message, Page, Terminal, Tool, User } from '@clowdy/icons/14';
@@ -7,7 +8,6 @@ import { type ComponentType, type ReactNode, type SVGProps, useEffect, useState 
 import { RunStatusPill, useRunLabel } from '../../shared';
 import { AgentAvatar } from '../../stream';
 import styles from './DetailSections.module.css';
-import { Pill, PillLabel } from './Pill';
 import { type Activity, formatAgo, type ResultRow, resultRows } from './taskView';
 import { useTaskArtifacts } from './useTaskArtifacts';
 
@@ -36,7 +36,23 @@ export function Section({ title, count, aside, children }: SectionProps) {
 }
 
 /** The line a section says when it has nothing to list. */
-export const None = ({ children }: { children: ReactNode }) => <span className={styles.none}>{children}</span>;
+export const None = ({ children }: { children: ReactNode }) => (
+    <Text variant="sm" color="secondary">
+        {children}
+    </Text>
+);
+
+/** What a section says when its read failed, with a button that reads it again. `alert` for a failure that comes after the section showed its contents. */
+export function InlineRetry({ message, onRetry, role }: { message: string; onRetry: () => void; role?: 'alert' }) {
+    return (
+        <div className={styles.failed} role={role}>
+            <None>{message}</None>
+            <Button size="xs" variant="bordered" onPress={onRetry}>
+                Retry
+            </Button>
+        </div>
+    );
+}
 
 /** The agents on the task, each with its status. A press selects the run in Agents. */
 export function Executors({ taskRuns, onOpen }: { taskRuns: readonly Run[]; onOpen: (runId: string) => void }) {
@@ -116,9 +132,9 @@ function ResultContent({ row }: { row: ResultRow }) {
             </span>
             {row.meta && <span className={styles.meta}>{row.meta}</span>}
             {row.verdict && (
-                <Pill tone={row.verdict.tone}>
-                    <PillLabel>{row.verdict.label}</PillLabel>
-                </Pill>
+                <Chip shape="pill" tone={row.verdict.tone}>
+                    {row.verdict.label}
+                </Chip>
             )}
         </>
     );
@@ -140,14 +156,7 @@ export function Results({
     return (
         <Section title="Results" count={rows.length}>
             {state.status === 'loading' && <Spinner size="sm" aria-label="Loading results" />}
-            {state.status === 'failed' && (
-                <div className={styles.failed}>
-                    <None>Results did not load</None>
-                    <Button size="xs" variant="bordered" onPress={retry}>
-                        Retry
-                    </Button>
-                </div>
-            )}
+            {state.status === 'failed' && <InlineRetry message="Results did not load" onRetry={retry} />}
             {state.status === 'ready' && rows.length === 0 && (
                 <None>Nothing yet. Changes and checks show up here.</None>
             )}

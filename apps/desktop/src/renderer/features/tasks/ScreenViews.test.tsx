@@ -492,16 +492,14 @@ describe('the chips', () => {
 
     it('leaves Enter on a focused chip to the chip: the key is not a press on the task, so it does not open it', async () => {
         await mountScreen();
-        await act(async () => chipOf('t-31')!.focus());
 
-        const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+        const chip = chipOf('t-31')!;
 
-        await act(async () => void chipOf('t-31')!.dispatchEvent(event));
-
-        expect(event.defaultPrevented).toBe(false);
-        expect(ui().taskId).toBeNull();
-
-        await click(chipOf('t-31'));
+        await act(async () => chip.focus());
+        await act(async () => {
+            chip.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+            chip.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true, cancelable: true }));
+        });
 
         expect(ui().tasksScope).toBe('t-31');
         expect(ui().taskId).toBeNull();

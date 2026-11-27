@@ -2124,8 +2124,9 @@ describe('Edit in a chat', () => {
 
             await openEdit(SECOND);
             await typeIn(editField()!, ' in blue');
+            // The daemon's update replaces the run, as the store keeps runs as they come.
             await act(async () => {
-                run.status = 'running';
+                store.selectedProject!.runs.set(run.id, { ...run, status: 'running' });
             });
             await render('c-2');
 
@@ -2138,7 +2139,7 @@ describe('Edit in a chat', () => {
             expect(toast.error).not.toHaveBeenCalled();
 
             await act(async () => {
-                run.status = 'succeeded';
+                store.selectedProject!.runs.set(run.id, { ...run, status: 'succeeded' });
             });
             await render('c-2');
 

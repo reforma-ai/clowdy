@@ -540,6 +540,18 @@ export class HttpTransport implements Transport {
         );
     }
 
+    getBriefbackStatus(): Promise<import('@clowdy/protocol').BriefbackStatus> {
+        return this.#read(ROUTES.briefback);
+    }
+
+    checkBriefbackUpdate(fingerprint: string): Promise<import('@clowdy/protocol').BriefbackUpdateStatus> {
+        return this.#read(`${ROUTES.briefbackUpdate}?fingerprint=${encodeURIComponent(fingerprint)}`);
+    }
+
+    installBriefback(fingerprint: string): Promise<import('@clowdy/protocol').BriefbackStatus> {
+        return this.#write(ROUTES.briefback, { fingerprint });
+    }
+
     getPowerSettings(): Promise<PowerSettings> {
         return this.#get(ROUTES.power);
     }

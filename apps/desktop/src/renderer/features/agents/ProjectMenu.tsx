@@ -3,7 +3,6 @@ import { Menu, MenuItem, MenuSection, MenuSeparator, MenuTrigger, SubmenuTrigger
 import { Popover } from '@clowdy/components/Popover';
 import { Switch } from '@clowdy/components/Switch';
 import { Check, ChevronRight, More } from '@clowdy/icons/14';
-import { observer } from 'mobx-react-lite';
 
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { addFolders } from '../settings/projects/projectActions';
@@ -17,7 +16,7 @@ const layouts = [
 ] as const;
 
 /** Project actions and the display options for its chat list. */
-export const ProjectMenu = observer(function ProjectMenu() {
+export function ProjectMenu() {
     const root = useRootStore();
     const project = useProjectState().project;
     const ui = useProjectUi();
@@ -155,4 +154,4 @@ export const ProjectMenu = observer(function ProjectMenu() {
             </Popover>
         </MenuTrigger>
     );
-});
+}

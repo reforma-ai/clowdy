@@ -3,6 +3,7 @@ import { Box } from '@clowdy/components/Box';
 import { Button } from '@clowdy/components/Button';
 import { For } from '@clowdy/components/For';
 import { useModalContext } from '@clowdy/components/Modal';
+import { PanelEmptyState } from '@clowdy/components/Panel';
 import { Text } from '@clowdy/components/Text';
 import { AttentionCircle, Mop } from '@clowdy/icons/14';
 import { mainFolder } from '@clowdy/protocol';
@@ -139,9 +140,7 @@ export function FolderWorktreesList({
             <div className={styles.groups}>
                 {groups === undefined && !failed && <WorktreesSkeleton />}
                 {groups && !groups.some(item => item.group.folderId === folderId) && (
-                    <Text color="secondary" className={styles.message}>
-                        This folder is not a git repository
-                    </Text>
+                    <PanelEmptyState fill={false} label="This folder is not a git repository" />
                 )}
                 <For each={(groups ?? []).filter(item => item.group.folderId === folderId)}>
                     {({ group, folder }) => (

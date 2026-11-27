@@ -1,17 +1,13 @@
 import { Alert, AlertDescription, AlertIcon } from '@clowdy/components/Alert';
-import { Box } from '@clowdy/components/Box';
-import { Button } from '@clowdy/components/Button';
-import { Loader } from '@clowdy/components/Loader';
+import { PanelEmptyState, PanelLoadingState } from '@clowdy/components/Panel';
+import { SettingsLayout } from '@clowdy/components/SettingsLayout';
 import { Switch } from '@clowdy/components/Switch';
 import { Text } from '@clowdy/components/Text';
 import { AttentionTriangle } from '@clowdy/icons/14';
 
 import { useRootStore } from '../../../stores';
-import { SettingsBlock } from '../ui/SettingsBlock';
-import { SettingsCard } from '../ui/SettingsCard';
-import { SettingsEmpty } from '../ui/SettingsEmpty';
-import { SettingsPage } from '../ui/SettingsPage';
-import { SettingsSection } from '../ui/SettingsSection';
+import { ReadFailed } from '../ReadFailed';
+import { RecommendedSkill } from './RecommendedSkill';
 import { SkillRow } from './SkillRow';
 import styles from './SkillsSection.module.css';
 import { groupSkills } from './skillView';
@@ -29,35 +25,31 @@ const INTRO = 'Skills give agents instructions for specific kinds of work';
 
 function SkillsBody({ projectId, projectName }: { projectId?: string; projectName?: string }) {
     const { state, pending, reload, toggle } = useSkills(projectId);
+    const { skillsRevision } = useRootStore();
 
     if (state.status === 'loading') {
         return (
-            <SettingsPage description={INTRO}>
-                <Box direction="row" gap="md" align="center">
-                    <Loader size="xs" />
-                    <Text color="secondary">Loading skills…</Text>
-                </Box>
-            </SettingsPage>
+            <SettingsLayout.Page description={INTRO}>
+                <RecommendedSkill onInstalled={reload} revision={skillsRevision} />
+                <PanelLoadingState label="Loading skills…" />
+            </SettingsLayout.Page>
         );
     }
 
     if (state.status === 'failed') {
         return (
-            <SettingsPage description={INTRO}>
-                <Box gap="md" align="start">
-                    <Text color="danger">Skills could not be loaded. {state.message}</Text>
-                    <Button variant="bordered" size="sm" onPress={reload}>
-                        Try again
-                    </Button>
-                </Box>
-            </SettingsPage>
+            <SettingsLayout.Page description={INTRO}>
+                <RecommendedSkill onInstalled={reload} revision={skillsRevision} />
+                <ReadFailed message={`Skills could not be loaded. ${state.message}`} onRetry={reload} />
+            </SettingsLayout.Page>
         );
     }
 
     const { entries, systemEnabled, warnings } = state.catalog;
 
     return (
-        <SettingsPage description={INTRO}>
+        <SettingsLayout.Page description={INTRO}>
+            <RecommendedSkill onInstalled={reload} revision={skillsRevision} />
             {warnings.length > 0 && (
                 <Alert color="warning" role="status">
                     <AlertIcon>
@@ -74,7 +66,7 @@ function SkillsBody({ projectId, projectName }: { projectId?: string; projectNam
             )}
 
             {groupSkills(entries, projectName).map(group => (
-                <SettingsSection
+                <SettingsLayout.Section
                     key={group.source}
                     title={`${group.title} skills`}
                     aside={
@@ -85,27 +77,22 @@ function SkillsBody({ projectId, projectName }: { projectId?: string; projectNam
                     description={group.hint}
                 >
                     {group.skills.length === 0 ? (
-                        <SettingsEmpty>{group.empty}</SettingsEmpty>
+                        <PanelEmptyState fill={false} label={group.empty} />
                     ) : (
-                        <SettingsCard as="ul" divided>
+                        <SettingsLayout.Card as="ul" divided>
                             {group.source === 'system' && (
-                                <SettingsBlock as="li" className={styles.systemControl}>
-                                    <div className={styles.systemLabel}>
-                                        <Text variant="sm" weight="medium">
-                                            Enable system skills
-                                        </Text>
-                                        <Text variant="sm" color="secondary">
-                                            Changes apply to new agent sessions
-                                        </Text>
-                                    </div>
+                                <SettingsLayout.Row
+                                    as="li"
+                                    title="Enable system skills"
+                                    description="Changes apply to new agent sessions"
+                                >
                                     <Switch
                                         size="sm"
-                                        aria-label="Enable system skills"
                                         isSelected={systemEnabled}
                                         isPending={pending.has('clowdy:*')}
                                         onChange={enabled => void toggle('clowdy:*', enabled)}
                                     />
-                                </SettingsBlock>
+                                </SettingsLayout.Row>
                             )}
                             {group.skills.map(skill => (
                                 <SkillRow
@@ -118,10 +105,10 @@ function SkillsBody({ projectId, projectName }: { projectId?: string; projectNam
                                     onToggle={enabled => void toggle(skill.name, enabled)}
                                 />
                             ))}
-                        </SettingsCard>
+                        </SettingsLayout.Card>
                     )}
-                </SettingsSection>
+                </SettingsLayout.Section>
             ))}
-        </SettingsPage>
+        </SettingsLayout.Page>
     );
 }

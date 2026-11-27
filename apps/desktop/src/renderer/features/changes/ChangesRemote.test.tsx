@@ -85,7 +85,9 @@ const buttonOf = (label: string) =>
     );
 /** The sync button: the one that names the next action. */
 const createPRButton = () => container.querySelector<HTMLButtonElement>('button[aria-label="Create PR"]') ?? undefined;
-const syncButton = () => container.querySelector<HTMLButtonElement>('button[data-sync]')!;
+const syncButton = () => container.querySelector<HTMLButtonElement>('[data-sync] button')!;
+/** What the sync button offers (`push`, `blocked`, …), which its group carries. */
+const syncKind = () => syncButton().closest('[data-sync]')?.getAttribute('data-sync');
 const syncCopy = () => syncButton().querySelector('[data-sync-copy]')?.textContent;
 const syncDetail = () => document.getElementById(syncButton().getAttribute('aria-describedby') ?? '')?.textContent;
 /** The dropdown beside it, which keeps every action. */
@@ -350,7 +352,7 @@ describe('the sync button in the sidebar', () => {
     ] as const)('holds Sync where it cannot run (%s) with an accessible reason', async (script, kind, line) => {
         await start({ gitWrites: { remote: script } });
 
-        expect(syncButton().getAttribute('data-sync')).toBe(kind);
+        expect(syncKind()).toBe(kind);
         expect(syncButton().disabled).toBe(true);
         expect(syncCopy()).toContain(line);
         const stand = syncButton().closest('[role="button"][aria-disabled="true"]');
@@ -423,7 +425,7 @@ describe('the sync button in the sidebar', () => {
 
         expect(syncButton()).toBe(button);
         expect(button.hasAttribute('data-pending')).toBe(false);
-        expect(button.dataset.sync).toBe('push');
+        expect(syncKind()).toBe('push');
         expect(status()).toBeNull();
     });
 
@@ -535,7 +537,7 @@ describe('the sync button in the sidebar', () => {
 });
 
 describe('merging branches from the sync menu', () => {
-    const dialog = () => document.querySelector<HTMLElement>('[data-modal-window] [role="dialog"]')!;
+    const dialog = () => document.querySelector<HTMLElement>('[data-modal-window][role="dialog"]')!;
     const heading = () => dialog().querySelector('h2')?.textContent;
     const modeTrigger = () => dialog().querySelector<HTMLButtonElement>('button[aria-label="Choose merge mode"]')!;
     const options = () => [...dialog().querySelectorAll<HTMLElement>('[role="option"]')];
@@ -1091,19 +1093,21 @@ describe('merging branches from the sync menu', () => {
         await open('Merge into branch…');
         await press(option('main'));
         await settle();
-        const primary = button('Merge');
         expect(modeTrigger()).not.toBeNull();
 
-        await press(primary);
+        await press(button('Merge'));
         await settle();
+        // The split button gives way to one full-width button, which takes the focus and spins until the sync is done.
+        const spinning = button('Merge');
         expect(modeTrigger()).toBeNull();
-        expect(primary.getAttribute('data-pending')).toBe('true');
+        expect(spinning.getAttribute('data-pending')).toBe('true');
+        await vi.waitFor(() => expect(document.activeElement).toBe(spinning));
 
         releaseMerge.resolve();
         await settle();
         expect(modeTrigger()).toBeNull();
-        expect(primary.isConnected).toBe(true);
-        expect(primary.getAttribute('data-pending')).toBe('true');
+        expect(spinning.isConnected).toBe(true);
+        expect(spinning.getAttribute('data-pending')).toBe('true');
         expect(heading()).toBe('Merged clowdy/ab12cd34 into main');
 
         releaseSync.resolve();
@@ -1550,7 +1554,7 @@ describe('Create PR in the sidebar', () => {
 
         expect(createPRButton()).toBeUndefined();
         expect(buttonOf('Push first')).toBeUndefined();
-        expect(syncButton().getAttribute('data-sync')).toBe('push');
+        expect(syncKind()).toBe('push');
 
         await press(syncButton());
         await settle();

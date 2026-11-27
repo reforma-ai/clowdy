@@ -529,16 +529,16 @@ describe('the popover', () => {
     it('uses the same tones as the badges for its bars: warning from 80%, danger from 90%', async () => {
         await start(agentsWith());
 
-        const tone = (name: string) => bars(section(name)).map(bar => bar.firstElementChild!.getAttribute('data-tone'));
+        const tone = (name: string) => bars(section(name)).map(bar => bar.getAttribute('data-tone'));
 
         await openPopover();
 
-        expect(tone('Claude Code')).toEqual([null, null, 'danger']);
+        expect(tone('Claude Code')).toEqual(['primary', 'primary', 'danger']);
 
         await close();
         await openPopover('Codex');
 
-        expect(tone('Codex')).toEqual(['warning', null]);
+        expect(tone('Codex')).toEqual(['warning', 'primary']);
     });
 
     it('says a provider is being checked while its usage has not been read', async () => {

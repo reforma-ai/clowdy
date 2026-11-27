@@ -73,51 +73,19 @@
     }
 }
 
-/* The row's label: the letter, the name, strong, and the folder after it, dimmed; the folder is cut before the name is. */
+/* The row's label: the letter, then the path, cut at its start so the name stays. */
 .fileName {
     display: flex;
     align-items: baseline;
     gap: var(--spacing-sm);
-}
-
-/* The letter that says what happened to the file: a box of its own, so the names start at one place whichever letter it is. */
-.glyph {
-    display: inline-flex;
-    flex-shrink: 0;
-    align-items: center;
-    justify-content: center;
-    width: var(--spacing-14);
-}
-
-.name {
-    flex-shrink: 0;
-    max-width: 100%;
-}
-
-.folderHint {
-    flex: 0 1 auto;
     min-width: 0;
 }
 
-.counts {
-    display: inline-flex;
-    flex-shrink: 0;
-    gap: var(--spacing-xs);
-    white-space: nowrap;
-}
-
-/* In a sidebar dragged to its narrowest the folders and the counts go, and the names stay. */
+/* In a sidebar dragged to its narrowest the counts go, and the names stay. */
 @container (max-width: 12rem) {
-    .folderHint,
     .counts {
         display: none;
     }
-}
-
-.commitGroup {
-    display: flex;
-    gap: var(--spacing-sm);
-    min-width: 0;
 }
 
 .generateProgress {
@@ -134,43 +102,12 @@
     background: currentColor;
 }
 
-/* The Commit button's stop (`Unavailable`), when it is off and says why: it is the button's place in the group, and its focus ring follows the button's corners. */
-.commitHost {
-    flex: 1 1 0;
-    min-width: 0;
-    border-radius: calc(var(--radius-md) * var(--squircle-radius-factor));
-    corner-shape: superellipse(var(--squircle-value));
-}
-
-/* Keep the commit label readable at the minimum sidebar width. */
-.commit[data-size][data-variant] {
-    flex: 1 1 0;
-    min-width: 0;
-    height: auto;
-    min-height: var(--spacing-30);
-    padding-block: var(--spacing-xs);
-}
-
+/* The Commit label stays centred when it wraps. */
 .commitContent {
+    flex: 1;
+    justify-content: center;
     min-width: 0;
-    line-height: 1.2;
     text-align: center;
-    white-space: normal;
-}
-
-@container (max-width: 12rem) {
-    .commit[data-size][data-variant] {
-        padding-inline: var(--spacing-sm);
-        font-size: var(--text-xs);
-    }
-
-    .more[data-size][data-variant] {
-        min-width: var(--spacing-24);
-    }
-}
-
-.more[data-size][data-variant] {
-    flex: 0 0 auto;
 }
 
 /* Git's line, its hint, and for a push turned down for newer commits the Fetch origin button, which goes under the line where there is no room beside it. */
@@ -182,6 +119,6 @@
     overflow-wrap: anywhere;
 }
 
-.fetch[data-size][data-variant] {
+.fetch {
     margin-top: var(--spacing-xxs);
 }

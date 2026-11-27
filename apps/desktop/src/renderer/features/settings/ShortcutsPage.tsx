@@ -1,3 +1,4 @@
+import { SettingsLayout } from '@clowdy/components/SettingsLayout';
 import { Text } from '@clowdy/components/Text';
 import { Fragment, useMemo } from 'react';
 
@@ -6,10 +7,6 @@ import { groupHelpEntries, type HelpEntry } from '../../hotkeys/helpEntries';
 import { shortcutEntries } from '../../shell/keymap';
 import { panelOrder } from '../sidePanel/panelOrder';
 import styles from './ShortcutsPage.module.css';
-import { SettingsCard } from './ui/SettingsCard';
-import { SettingsPage } from './ui/SettingsPage';
-import { SettingsRow } from './ui/SettingsRow';
-import { SettingsSection } from './ui/SettingsSection';
 
 /**
  * Settings > Shortcuts: every command of the app with its keys, in a card for each group. It only informs: there is nothing to change, and a row does nothing when pressed.
@@ -20,19 +17,19 @@ export function ShortcutsPage() {
     const groups = useMemo(() => groupHelpEntries(shortcutEntries()), [order]);
 
     return (
-        <SettingsPage description="The keys that run commands in Clowdy">
+        <SettingsLayout.Page description="The keys that run commands in Clowdy">
             {groups.map(group => (
-                <SettingsSection key={group.name} title={group.name}>
-                    <SettingsCard divided>
+                <SettingsLayout.Section key={group.name} title={group.name}>
+                    <SettingsLayout.Card divided>
                         {group.entries.map(({ command, sequences }) => (
-                            <SettingsRow key={command.id} title={command.title}>
+                            <SettingsLayout.Row key={command.id} title={command.title}>
                                 <Keys sequences={sequences} />
-                            </SettingsRow>
+                            </SettingsLayout.Row>
                         ))}
-                    </SettingsCard>
-                </SettingsSection>
+                    </SettingsLayout.Card>
+                </SettingsLayout.Section>
             ))}
-        </SettingsPage>
+        </SettingsLayout.Page>
     );
 }
 

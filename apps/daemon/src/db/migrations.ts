@@ -581,4 +581,10 @@ export const MIGRATIONS: Migration[] = [
             db.run('CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
         },
     },
+    {
+        version: 32,
+        up(db) {
+            db.run('ALTER TABLE runs ADD COLUMN usage_limit_until INTEGER');
+        },
+    },
 ];

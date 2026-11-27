@@ -1561,9 +1561,17 @@ export class RunDriver {
 
         for (const [runId, live] of this.live) {
             // A run that waits for an answer or a slot is not using the engine; the scheduler holds it until the reset.
-            if (live.engine === run.engine && live.session && runs.statusOf(runId) === 'running') {
+            if (live.engine !== run.engine) continue;
+            const current = runs.require(runId);
+
+            if (live.session && current.status === 'running') {
                 live.pausedUntil = until;
                 live.turn?.abort();
+            } else if (current.status === 'blocked' && current.usageLimitUntil !== undefined) {
+                runs.setStatus(runId, 'blocked', {
+                    reason: `${engineName(run.engine)} is at its usage limit until ${formatMoment(until, now)}; this run continues then`,
+                    usageLimitUntil: until,
+                });
             }
         }
     }
@@ -1573,6 +1581,7 @@ export class RunDriver {
         const { store, runs } = this.deps;
         const run = runs.require(runId);
         const now = runs.limits.now();
+        const until = retry.kind === 'limit' ? (runs.limits.pausedUntil(run.engine) ?? retry.until) : undefined;
 
         // A compact turn is its command and nothing else (`chat.compact`); nothing was compacted, so a "continue" would have the agent resume work that does not exist.
         const compacting = this.isCompactCommand(run.engine, live.prompt);
@@ -1581,9 +1590,10 @@ export class RunDriver {
             // Without a session there is nothing to continue: the turn starts again from its own message.
             setRunWork(store.db, runId, { nextPrompt: run.sessionId && !compacting ? CONTINUE_MESSAGE : live.prompt });
             runs.setStatus(runId, 'blocked', {
+                usageLimitUntil: until,
                 reason:
                     retry.kind === 'limit'
-                        ? `${engineName(run.engine)} is at its usage limit until ${formatMoment(retry.until, now)}; this run continues then`
+                        ? `${engineName(run.engine)} is at its usage limit until ${formatMoment(until!, now)}; this run continues then`
                         : `${engineName(run.engine)} is busy (${firstLine(retry.message)}); trying again in ${Math.ceil(retry.delayMs / 1000)} s`,
             });
         });

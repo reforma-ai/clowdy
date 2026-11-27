@@ -1,6 +1,5 @@
 // @vitest-environment happy-dom
 import { Modal } from '@clowdy/components/Modal';
-import { toast } from '@clowdy/components/Toast';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -97,6 +96,8 @@ const confirmation = () => [...document.body.querySelectorAll<HTMLElement>('[dat
 const isConfirming = () => Modal.opened.length === 2;
 const textButton = (parent: HTMLElement, text: string) =>
     [...parent.querySelectorAll<HTMLButtonElement>('button')].find(candidate => candidate.textContent?.trim() === text);
+/** The confirmation's way out, which takes the focus when it opens. */
+const cancelButton = () => textButton(confirmation(), 'Cancel')!;
 const checkbox = () => confirmation().querySelector<HTMLInputElement>('input[aria-label^="Delete the branch"]');
 const deleteChats = () => confirmation().querySelector<HTMLInputElement>('input[role="switch"]');
 const click = (element: HTMLElement) => act(async () => element.click());
@@ -255,7 +256,7 @@ describe('Remove in Manage worktrees', () => {
         });
         await settle();
         expect(Modal.opened).toHaveLength(2);
-        await click(confirmation().querySelector<HTMLElement>('button[aria-label="Close"]')!);
+        await click(cancelButton());
         await act(async () => release());
         await settle();
         expect(Modal.opened).toHaveLength(1);
@@ -284,7 +285,7 @@ describe('Remove in Manage worktrees', () => {
         });
         await click(await removeItem(CLEAN_MERGED));
         await settle();
-        await click(confirmation().querySelector<HTMLElement>('button[aria-label="Close"]')!);
+        await click(cancelButton());
         await settle();
         await act(async () => {
             release();
@@ -300,14 +301,13 @@ describe('Remove in Manage worktrees', () => {
             await askToRemove(CLEAN_MERGED);
 
             const window = confirmation();
-            const dialog = window.querySelector<HTMLElement>('[role="dialog"]')!;
             const heading = window.querySelector<HTMLElement>(
-                `#${CSS.escape(dialog.getAttribute('aria-labelledby')!)}`
+                `#${CSS.escape(window.getAttribute('aria-labelledby')!)}`
             );
 
             expect(window.textContent).toContain('Remove worktree feature/done');
-            expect([dialog.getAttribute('aria-modal'), heading?.textContent]).toEqual([
-                'true',
+            expect([window.getAttribute('role'), heading?.textContent]).toEqual([
+                'alertdialog',
                 'Remove worktree feature/done',
             ]);
             expect(window.textContent).toContain('Delete the branch');
@@ -315,8 +315,7 @@ describe('Remove in Manage worktrees', () => {
             expect(window.textContent).not.toContain('The worktree folder will be deleted');
             expect(checkbox()!.checked).toBe(true);
             expect(checkbox()!.getAttribute('aria-label')).toBe('Delete the branch feature/done');
-            expect(textButton(window, 'Cancel')).toBeUndefined();
-            expect(window.querySelector('button[aria-label="Close"]')).not.toBeNull();
+            expect(document.activeElement).toBe(cancelButton());
             expect(window.textContent).not.toContain('Not merged');
             expect(textButton(window, 'Remove worktree')!.dataset.color).toBe('danger');
             // Nothing is sent until the person presses it.
@@ -374,7 +373,7 @@ describe('Remove in Manage worktrees', () => {
     });
 
     describe('while the command runs', () => {
-        it('sends it once for two presses, and keeps the close control off until it answers', async () => {
+        it('sends it once for two presses, and keeps Cancel off until it answers', async () => {
             let answer!: () => void;
             const slow = vi.fn(
                 (input: CommandInput) =>
@@ -400,7 +399,7 @@ describe('Remove in Manage worktrees', () => {
             await click(button);
 
             expect(slow).toHaveBeenCalledTimes(1);
-            expect(confirmation().querySelector<HTMLButtonElement>('button[aria-label="Close"]')!.disabled).toBe(true);
+            expect(cancelButton().disabled).toBe(true);
             expect(isConfirming()).toBe(true);
 
             await act(async () => answer());
@@ -759,7 +758,7 @@ describe('Remove in Manage worktrees', () => {
             await open();
             await askToRemove(CLEAN_MERGED);
 
-            const button = confirmation().querySelector<HTMLButtonElement>('button[aria-label="Close"]')!;
+            const button = cancelButton();
             await act(async () => {
                 button.focus();
                 button.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
@@ -783,7 +782,7 @@ describe('Remove in Manage worktrees', () => {
                 SUBMODULES_ONLY,
             ]) {
                 await askToRemove(path);
-                await click(confirmation().querySelector<HTMLButtonElement>('button[aria-label="Close"]')!);
+                await click(cancelButton());
                 await settle();
 
                 expect(isConfirming(), path).toBe(false);
@@ -832,7 +831,7 @@ describe('Remove in Manage worktrees', () => {
                 'The worktree has changes that are not committed'
             );
             expect(textButton(confirmation(), 'Remove worktree')!.disabled).toBe(true);
-            await click(confirmation().querySelector<HTMLElement>('button[aria-label="Close"]')!);
+            await click(cancelButton());
             await settle();
             expect(isConfirming()).toBe(false);
             expect(row(CLEAN_MERGED)!.textContent).toContain('2 changes');
@@ -987,7 +986,7 @@ describe('Remove in Manage worktrees', () => {
         )!;
         await click(choice);
         expect(textButton(confirmation(), 'Remove 0 workspaces')?.disabled).toBe(true);
-        await click(confirmation().querySelector<HTMLButtonElement>('button[aria-label="Close"]')!);
+        await click(cancelButton());
         await settle();
         expect(removals()).toEqual([]);
         expect(row(CLEAN_MERGED)).not.toBeNull();

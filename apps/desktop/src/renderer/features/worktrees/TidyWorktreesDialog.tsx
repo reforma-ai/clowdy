@@ -1,10 +1,9 @@
 import { Box } from '@clowdy/components/Box';
-import { Button } from '@clowdy/components/Button';
 import { Checkbox } from '@clowdy/components/Checkbox';
-import { Modal, useModalContext } from '@clowdy/components/Modal';
-import { openConfirmModal } from '@clowdy/components/modals';
+import { ConfirmModalContent, openConfirmModal, openFormDialog } from '@clowdy/components/modals';
 import { Text } from '@clowdy/components/Text';
 import { toast } from '@clowdy/components/Toast';
+import { errorMessage } from '@clowdy/lib';
 import { useState } from 'react';
 
 import { worktreeLabel } from '../agents/workspaceChoice';
@@ -18,90 +17,70 @@ import type { WorktreeTarget } from './worktreeActions';
 
 type TidyTarget = Omit<WorktreeTarget, 'path'>;
 
-interface Choice {
-    selected: Set<string>;
+/** The worktrees ticked for removal, by path, and whether their merged branches go too. */
+interface TidyChoice {
+    selected: ReadonlySet<string>;
     deleteBranches: boolean;
 }
 
-function TidyPreview({
-    rows,
-    choice,
-    onConfirm,
-}: {
-    rows: WorktreeInfo[];
-    choice: Choice;
-    onConfirm: () => Promise<void>;
-}) {
-    const { modal } = useModalContext();
-    const [pending, setPending] = useState(false);
-    const [selected, setSelected] = useState(choice.selected);
-    const [deleteBranches, setDeleteBranches] = useState(choice.deleteBranches);
+function TidyPreview({ rows, onConfirm }: { rows: WorktreeInfo[]; onConfirm: (choice: TidyChoice) => Promise<void> }) {
+    const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set(rows.map(row => row.path)));
+    const [deleteBranches, setDeleteBranches] = useState(true);
+    const [removing, setRemoving] = useState(false);
+
     return (
-        <Box gap="xl" padding="xxl">
-            <Text variant="heading-3">Tidy up worktrees?</Text>
-            <Text color="secondary" variant="md">
-                Select merged worktrees with no local changes, submodules or unarchived chats. Archived chat history
-                stays.
-            </Text>
-            <div className={styles.tidyRows}>
-                <ul className={styles.card} aria-label="Worktrees to remove">
-                    {rows.map(row => (
-                        <li key={row.path}>
-                            <Checkbox
-                                className={`${styles.row} ${styles.tidyCheck}`}
-                                size="sm"
-                                isDisabled={pending}
-                                isSelected={selected.has(row.path)}
-                                aria-label={`Remove ${worktreeLabel(row)}: ${row.path}`}
-                                onChange={checked => {
-                                    const next = new Set(selected);
-                                    if (checked) next.add(row.path);
-                                    else next.delete(row.path);
-                                    choice.selected = next;
-                                    setSelected(next);
-                                }}
-                            >
-                                <span className={styles.tidySummary}>
-                                    <WorktreeRowSummary worktree={row} tidy />
-                                </span>
-                            </Checkbox>
-                        </li>
-                    ))}
-                </ul>
-            </div>
-            <Checkbox
-                size="sm"
-                isDisabled={pending}
-                isSelected={deleteBranches}
-                onChange={checked => {
-                    choice.deleteBranches = checked;
-                    setDeleteBranches(checked);
-                }}
-            >
-                Also delete merged branches
-            </Checkbox>
-            <Button
-                color="danger"
-                fullWidth
-                isDisabled={selected.size === 0 || pending}
-                isPending={pending}
-                onPress={async () => {
-                    if (pending || selected.size === 0) return;
-                    setPending(true);
-                    modal.updateOptions({ clickOut: false, closeOnEscape: false, closeButton: false });
-                    try {
-                        await onConfirm();
-                        modal.cancel();
-                    } catch (error) {
-                        setPending(false);
-                        modal.updateOptions({ clickOut: true, closeOnEscape: true, closeButton: true });
-                        toast.error({ message: error instanceof Error ? error.message : 'Something went wrong' });
-                    }
-                }}
-            >
-                {`Remove ${selected.size} ${selected.size === 1 ? 'workspace' : 'workspaces'}`}
-            </Button>
-        </Box>
+        <ConfirmModalContent
+            title="Tidy up worktrees?"
+            message={
+                <Box gap="xl">
+                    <Text color="secondary" variant="md">
+                        Select merged worktrees with no local changes, submodules or unarchived chats. Archived chat
+                        history stays.
+                    </Text>
+                    <div className={styles.tidyRows}>
+                        <ul className={styles.card} aria-label="Worktrees to remove">
+                            {rows.map(row => (
+                                <li key={row.path}>
+                                    <Checkbox
+                                        className={`${styles.row} ${styles.tidyCheck}`}
+                                        size="sm"
+                                        isDisabled={removing}
+                                        isSelected={selected.has(row.path)}
+                                        aria-label={`Remove ${worktreeLabel(row)}: ${row.path}`}
+                                        onChange={checked => {
+                                            const next = new Set(selected);
+                                            if (checked) next.add(row.path);
+                                            else next.delete(row.path);
+                                            setSelected(next);
+                                        }}
+                                    >
+                                        <span className={styles.tidySummary}>
+                                            <WorktreeRowSummary worktree={row} tidy />
+                                        </span>
+                                    </Checkbox>
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                    <Checkbox size="sm" isDisabled={removing} isSelected={deleteBranches} onChange={setDeleteBranches}>
+                        Also delete merged branches
+                    </Checkbox>
+                </Box>
+            }
+            confirmLabel={`Remove ${selected.size} ${selected.size === 1 ? 'workspace' : 'workspaces'}`}
+            destructive
+            initialFocus="cancel"
+            isConfirmDisabled={selected.size === 0}
+            onConfirm={async () => {
+                setRemoving(true);
+                try {
+                    await onConfirm({ selected, deleteBranches });
+                } catch (error) {
+                    setRemoving(false);
+                    throw error;
+                }
+            }}
+        />
     );
 }
 
@@ -135,24 +114,19 @@ export async function openTidyWorktrees(target: TidyTarget): Promise<void> {
             });
             return;
         }
-        const choice: Choice = { selected: new Set(rows.map(row => row.path)), deleteBranches: true };
         let report: { removed: number; errors: string[] } | undefined;
-        Modal.create({
+        openFormDialog({
+            layer: 'confirm',
+            role: 'alertdialog',
+            closeButton: false,
             width: 540,
-            zIndex: 101100,
-            shadow: true,
-            clickOut: true,
-            closeOnEscape: true,
-            closeButton: true,
             component: (
                 <TidyPreview
                     rows={rows}
-                    choice={choice}
-                    onConfirm={async () => {
-                        const deleteBranches = choice.deleteBranches;
+                    onConfirm={async ({ selected, deleteBranches }) => {
                         let removed = 0;
                         const errors: string[] = [];
-                        for (const row of rows.filter(row => choice.selected.has(row.path))) {
+                        for (const row of rows.filter(row => selected.has(row.path))) {
                             const result = await root.command({
                                 type: 'workspace.remove',
                                 projectId,
@@ -204,7 +178,7 @@ export async function openTidyWorktrees(target: TidyTarget): Promise<void> {
         await refreshWorktreeTarget(target);
         toast.error({
             title: "Couldn't read worktrees",
-            message: error instanceof Error ? error.message : String(error),
+            message: errorMessage(error, 'Something went wrong'),
         });
     }
 }

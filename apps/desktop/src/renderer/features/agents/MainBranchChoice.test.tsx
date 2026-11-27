@@ -504,11 +504,12 @@ describe('the first message with a branch picked', () => {
             });
 
             expect(facts.switching).toBe(true);
-            // The chip says it is on its way.
+            // The draft is locked while it sends: the line under the box says so in the place of the chips.
             await act(async () => {
                 render();
             });
-            expect(chip()?.textContent).toBe('Switching todev');
+            expect(chip()).toBeNull();
+            expect(container.textContent).toContain('Sending message…');
 
             await act(async () => {
                 await vi.advanceTimersByTimeAsync(3000);

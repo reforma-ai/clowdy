@@ -1,4 +1,5 @@
 import { Button } from '@clowdy/components/Button';
+import { Chip } from '@clowdy/components/Chip';
 import { Text } from '@clowdy/components/Text';
 import { Box, Close, Undo } from '@clowdy/icons/14';
 import { useState } from 'react';
@@ -14,7 +15,6 @@ import { CommentsSection } from './CommentsSection';
 import { DependencyList } from './DependencyList';
 import panelStyles from './DetailPanel.module.css';
 import { None, Section } from './DetailSections';
-import { Pill, PillLabel } from './Pill';
 import { StatusIcon, StatusPill } from './status';
 import { ChecklistChip } from './TaskChips';
 import { taskNav } from './taskNav';
@@ -63,10 +63,7 @@ export function ArchivedPanel({ task }: ArchivedPanelProps) {
     return (
         <aside className={panelStyles.panel} aria-label={`Task ${task.key}`} data-archived>
             <div className={panelStyles.head}>
-                <span className={panelStyles.key}>
-                    <Box aria-hidden width={12} height={12} />
-                    {task.key}
-                </span>
+                <Chip icon={<Box width={12} height={12} />}>{task.key}</Chip>
                 <Button
                     iconOnly
                     size="sm"
@@ -85,9 +82,9 @@ export function ArchivedPanel({ task }: ArchivedPanelProps) {
                         {task.title}
                     </Text>
                     <div className={styles.state}>
-                        <Pill>
-                            <PillLabel>Archived</PillLabel>
-                        </Pill>
+                        <Chip shape="pill" tone="neutral">
+                            Archived
+                        </Chip>
                         <StatusPill status={status} />
                         {checklist && <ChecklistChip checklist={checklist} />}
                     </div>

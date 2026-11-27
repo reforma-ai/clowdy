@@ -189,7 +189,7 @@ describe('ConversationView, the live line', () => {
             stream: await streamOf('r-na-02'),
         });
 
-        const message = "I've hit the Claude usage limit. I'll continue after 14:00.";
+        const message = "I've hit the Claude usage limit, I'll continue at 14:00";
 
         expect(text()).toContain(message);
         expect(text()).not.toContain('Waiting for a free slot');
@@ -205,7 +205,7 @@ describe('ConversationView, the live line', () => {
             stream: await streamOf('r-na-02'),
         });
 
-        const message = "I've hit the Claude usage limit. I'll continue after 14:00.";
+        const message = "I've hit the Claude usage limit, I'll continue at 14:00";
 
         expect(text()).toContain(message);
         expect(container.querySelector('[role="status"][data-color="warning"]')?.textContent).toContain(message);
@@ -213,5 +213,54 @@ describe('ConversationView, the live line', () => {
         await draw({ run: { ...runOf('r-na-02'), status: 'running' }, stream: await streamOf('r-na-02') });
 
         expect(container.querySelector('[role="status"][data-color="warning"]')).toBeNull();
+    });
+    it('counts down from the exact deadline and stops promising a time after it passes', async () => {
+        const stream = await streamOf('r-na-02');
+        const clock = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
+        const run = {
+            ...runOf('r-na-02'),
+            status: 'queued' as const,
+            statusReason: 'Claude is at its usage limit until 14:00',
+            usageLimitUntil: 1_323_000,
+        };
+
+        try {
+            await draw({ run, stream });
+            expect(text()).toContain('Continue in 6m');
+            clock.mockReturnValue(1_322_000);
+            await act(async () => {
+                await new Promise(resolve => setTimeout(resolve, 1100));
+            });
+            expect(text()).toContain('Continue in 1m');
+            clock.mockReturnValue(1_324_000);
+            await act(async () => {
+                await new Promise(resolve => setTimeout(resolve, 1100));
+            });
+            expect(text()).toContain('Usage limit reached, waiting to continue');
+            expect(text()).not.toContain('Continue in');
+            await draw({ run: { ...run, status: 'running' }, stream });
+            expect(text()).not.toContain('Usage limit reached, waiting to continue');
+        } finally {
+            clock.mockRestore();
+        }
+    });
+    it('shows long pauses in whole minutes', async () => {
+        const stream = await streamOf('r-na-02');
+        const clock = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
+
+        try {
+            await draw({
+                run: {
+                    ...runOf('r-na-02'),
+                    status: 'blocked',
+                    statusReason: 'Claude is at its usage limit until 30 Nov, 14:00; this run continues then',
+                    usageLimitUntil: 1_000_000 + (2 * 86400 + 3 * 3600 + 4 * 60 + 5) * 1000,
+                },
+                stream,
+            });
+            expect(text()).toContain('Continue in 3,065m');
+        } finally {
+            clock.mockRestore();
+        }
     });
 });
