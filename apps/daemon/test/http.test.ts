@@ -457,12 +457,19 @@ describe('event stream', () => {
         await Bun.sleep(30);
         h.ok('chat.create', { projectId, title: 'live' });
 
-        const { frames } = await pending;
+        const { frames, raw } = await pending;
 
         expect(frames.map(frame => frame.id)).toEqual([start + 2, start + 3, start + 4].map(String));
         expect(frames.every(frame => frame.event === SSE_EVENT)).toBe(true);
         expect(frames.map(frame => frame.data.cursor)).toEqual([start + 2, start + 3, start + 4]);
         expect(frames[2].data.data).toMatchObject({ type: 'chat.upserted', chat: { title: 'live' } });
+        // The frame is built around the stored text of the event, and says exactly what the event as JSON says.
+        expect(
+            raw
+                .match(/^data: .*$/gm)
+                ?.slice(0, 3)
+                .map(line => line.slice('data: '.length))
+        ).toEqual(h.store.eventsAfter(start + 1, undefined, 3).map(event => JSON.stringify(event)));
     });
 
     test('the stream carries CORS headers for an allowed origin', async () => {
