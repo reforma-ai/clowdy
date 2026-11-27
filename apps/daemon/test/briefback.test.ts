@@ -5,6 +5,7 @@ import {
     mkdtempSync,
     readFileSync,
     readlinkSync,
+    renameSync,
     rmSync,
     symlinkSync,
     unlinkSync,
@@ -161,6 +162,20 @@ test('preserves a concurrently changed new copy and its original backup during r
     const message = (failure as Error).message;
     const backup = message.slice(message.indexOf('backups are kept in ') + 'backups are kept in '.length);
     expect(readFileSync(join(backup, 'backup', 'SKILL.md'), 'utf8')).toBe('original');
+    const recovered = briefbackStatus(roots);
+    expect(recovered.backups).toEqual([join(backup, 'backup')]);
+    await expect(installBriefback(roots, recovered.fingerprint, { source })).rejects.toMatchObject({
+        code: 'conflict',
+    });
+    const safe = join(roots[0]!, '..', '..', 'saved-briefback');
+    renameSync(join(backup, 'backup'), safe);
+    expect(briefbackStatus(roots).backups).toEqual([]);
+    expect(readFileSync(join(safe, 'SKILL.md'), 'utf8')).toBe('original');
+    const next = briefbackStatus(roots);
+    expect((await installBriefback(roots, next.fingerprint, { source })).copies.every(copy => copy.installed)).toBe(
+        true
+    );
+    expect(readFileSync(join(safe, 'SKILL.md'), 'utf8')).toBe('original');
 });
 
 describe('Briefback update check', () => {
@@ -379,6 +394,36 @@ describe('symlinked Briefback installations', () => {
         expect(readlinkSync(join(roots[0]!, 'briefback'))).toBe('../../source');
         expect(readFileSync(join(roots[0]!, 'briefback', 'references', 'review.md'), 'utf8')).toBe('Review');
         expect(readFileSync(join(source, 'references', 'review.md'), 'utf8')).toBe('Review');
+    });
+
+    test('retains a relative link after rollback failure until it is restored', async () => {
+        const { roots, source } = setup();
+        mkdirSync(roots[0]!, { recursive: true });
+        symlinkSync('../../source', join(roots[0]!, 'briefback'), 'dir');
+        await expect(
+            installBriefback(roots, briefbackStatus(roots).fingerprint, {
+                source,
+                onCopyInstalled(index) {
+                    if (index === 0) {
+                        writeFileSync(join(roots[0]!, 'briefback', 'external.txt'), 'user data');
+                        mkdirSync(join(roots[1]!, 'briefback'));
+                    }
+                },
+            })
+        ).rejects.toMatchObject({ code: 'unavailable' });
+        const [backup] = briefbackStatus(roots).backups;
+        expect(readlinkSync(backup!)).toBe('../../source');
+        renameSync(join(roots[0]!, 'briefback'), join(roots[0]!, 'current-copy'));
+        renameSync(backup!, join(roots[0]!, 'briefback'));
+        expect(readFileSync(join(roots[0]!, 'briefback', 'references', 'review.md'), 'utf8')).toBe('Review');
+        expect(briefbackStatus(roots).backups).toEqual([]);
+    });
+
+    test('treats a dangling skill root as missing', () => {
+        const { roots } = setup();
+        mkdirSync(join(roots[0]!, '..'), { recursive: true });
+        symlinkSync('absent', roots[0]!, 'dir');
+        expect(briefbackStatus(roots).copies[0]).toEqual({ exists: false, installed: false });
     });
 
     test('does not replace a link retargeted after confirmation', async () => {

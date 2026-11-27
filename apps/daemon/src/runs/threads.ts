@@ -1,10 +1,10 @@
 import { isAbsolute } from 'node:path';
 import { isTerminalRunStatus, shownRunReason, shownRunStatus } from '@clowdy/protocol';
 
-import { readBranchPrefix } from '../db/appSettings';
+import { readBranchPrefix, readDelegation } from '../db/appSettings';
 import { getChat, listChatDescendants, listChildChats } from '../db/chats';
 import { lastUserSeq, listItems, nextSeq } from '../db/items';
-import { getRun, getRunWork } from '../db/runs';
+import { getRun, getRunWork, setRunWork } from '../db/runs';
 import { getWorkspace } from '../db/workspaces';
 import { chatDepth, createChat, inSameTree, isBelow, requireChat } from '../domain/chats';
 import { linkChatTask, requireNotArchived, resolveTask } from '../domain/tasks';
@@ -150,6 +150,7 @@ export const MAX_WAIT_SECONDS = 600;
 
 export interface SpawnInput {
     prompt: string;
+    role?: 'research' | 'code' | 'review';
     title?: string;
     engine?: string;
     model?: string;
@@ -200,8 +201,8 @@ export class ThreadService {
 
     /**
      * Starts a thread below the caller's chat: a chat with the caller's chat as its parent, whose first message is `prompt`. It runs on the caller's
-     * agent unless it names another, on the caller's model and level only when it keeps the caller's agent and names no model (another agent has other
-     * models, and a model has its own levels), and in the caller's mode unless it names one. Tasks assign its run, which waits for their unfinished
+     * explicit agent, model and effort take precedence over the role's selection, then Default. With no selection or inherit selected it uses the caller's
+     * agent and, if it keeps that agent without naming a model, its model and effort. It uses the caller's mode unless it names one. Tasks assign its run, which waits for their unfinished
      * dependencies, and link its chat.
      *
      * Where it works: in its parent's worktree (the same row) when the parent has one, else in the folder its parent works in; `cwd` is a folder of its own,
@@ -241,15 +242,24 @@ export class ThreadService {
                 );
             }
 
+            const settings = readDelegation(store.db);
+            const selected = (input.role && settings[input.role]) ?? settings.default;
+            const configured = selected?.kind === 'model' ? selected : undefined;
+            const preferredEngine = input.engine ?? configured?.engine ?? current.engine;
+            const preferredModel = input.model ?? (input.engine === undefined ? configured?.model : undefined);
+            const preferredEffort =
+                input.effort ??
+                (input.engine === undefined && input.model === undefined ? configured?.effort : undefined);
+
             // The fake engine is for demos and tests: a model that picked it would report work nobody did.
-            if (input.engine === 'fake') {
+            if (input.engine === 'fake' || (input.engine === undefined && configured?.engine === 'fake')) {
                 throw invalid(
                     'The fake engine is not available to agents. Leave engine unset to use your own agent, or name an installed one.'
                 );
             }
 
-            const engine = runs.resolveEngine(project, input.engine ?? current.engine);
-            const inherits = engine === current.engine && input.model === undefined;
+            const engine = runs.resolveEngine(project, preferredEngine);
+            const inherits = engine === current.engine && preferredModel === undefined;
 
             if (input.worktree && input.cwd !== undefined) {
                 throw invalid(
@@ -284,8 +294,8 @@ export class ThreadService {
                 title: input.title,
                 mode: input.mode ?? parent.mode,
                 engine,
-                model: inherits ? current.model : input.model,
-                effort: input.effort ?? (inherits ? current.effort : undefined),
+                model: inherits ? current.model : preferredModel,
+                effort: preferredEffort ?? (inherits ? current.effort : undefined),
                 parentChatId: parent.id,
                 // The thread works where its parent does, unless the call names a folder of its own (`cwd`, which the run keeps): in its folder, and in
                 // its worktree (the same row, not a copy), or a worktree of its own (`worktree`, in the parent's folder).
@@ -301,6 +311,10 @@ export class ThreadService {
                 from: fromChat(parent),
                 start: { cwd: input.cwd, assigned: tasks },
             });
+
+            if (configured && input.engine === undefined && input.model === undefined) {
+                setRunWork(store.db, runId, { strictModel: true });
+            }
 
             const { workspace } = chat;
 

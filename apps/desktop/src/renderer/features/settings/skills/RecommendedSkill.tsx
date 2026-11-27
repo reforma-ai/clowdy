@@ -11,10 +11,10 @@ import { SettingsCard } from '../ui/SettingsCard';
 import { SettingsSection } from '../ui/SettingsSection';
 import styles from './RecommendedSkill.module.css';
 
-type Status = { copies: { exists: boolean; installed: boolean }[]; fingerprint: string };
+type Status = import('@clowdy/protocol').BriefbackStatus;
 type State =
     | { kind: 'loading' }
-    | { kind: 'failed'; message?: string }
+    | { kind: 'failed'; message?: string; installationError?: boolean }
     | { kind: 'ready'; status: Status; error?: string };
 
 export function RecommendedSkill({ onInstalled, revision }: { onInstalled: () => void; revision: number }) {
@@ -30,7 +30,11 @@ export function RecommendedSkill({ onInstalled, revision }: { onInstalled: () =>
 
     const installed =
         state.kind === 'ready' && state.status.copies.length === 2 && state.status.copies.every(copy => copy.installed);
-    const fingerprint = installed && state.kind === 'ready' ? state.status.fingerprint : undefined;
+    const backups = state.kind === 'ready' ? state.status.backups : undefined;
+    const needsRecovery = !!backups?.length;
+    const unsupported = state.kind === 'ready' && backups === undefined;
+    const fingerprint =
+        installed && state.kind === 'ready' && !needsRecovery && !unsupported ? state.status.fingerprint : undefined;
     const update = updateResult && fingerprint === updateResult.fingerprint ? updateResult.value : 'checking';
 
     useEffect(() => {
@@ -41,11 +45,36 @@ export function RecommendedSkill({ onInstalled, revision }: { onInstalled: () =>
                 status =>
                     current &&
                     setState(previous =>
-                        previous.kind === 'ready' && previous.status.fingerprint === status.fingerprint
+                        previous.kind === 'ready' &&
+                        previous.status.fingerprint === status.fingerprint &&
+                        JSON.stringify(previous.status.backups) === JSON.stringify(status.backups)
                             ? previous
-                            : { kind: 'ready', status }
+                            : {
+                                  kind: 'ready',
+                                  status,
+                                  error:
+                                      previous.kind === 'ready'
+                                          ? previous.status.backups?.length && !status.backups?.length
+                                              ? undefined
+                                              : previous.error
+                                          : previous.kind === 'failed' && previous.installationError
+                                            ? previous.message
+                                            : undefined,
+                              }
                     ),
-                () => current && setState(previous => (previous.kind === 'ready' ? previous : { kind: 'failed' }))
+                error =>
+                    current &&
+                    setState(previous =>
+                        previous.kind === 'ready' || (previous.kind === 'failed' && previous.installationError)
+                            ? previous
+                            : {
+                                  kind: 'failed',
+                                  message:
+                                      error instanceof TransportError && error.status === 404
+                                          ? 'After active work finishes, restart Clowdy to use Briefback installation'
+                                          : "Couldn't check Briefback installation. Try again",
+                              }
+                    )
             );
         void refresh();
         // Missing skill roots have no watcher until they are created.
@@ -70,7 +99,7 @@ export function RecommendedSkill({ onInstalled, revision }: { onInstalled: () =>
     }, [transport, fingerprint, updateAttempt]);
 
     const install = useCallback(() => {
-        if (state.kind !== 'ready' || installing) return;
+        if (state.kind !== 'ready' || installing || !state.status.backups || state.status.backups.length) return;
         const { status } = state;
         openConfirmModal({
             title: installed ? 'Update Briefback' : 'Install Briefback',
@@ -95,7 +124,7 @@ export function RecommendedSkill({ onInstalled, revision }: { onInstalled: () =>
                         const next = await transport.getBriefbackStatus();
                         setState({ kind: 'ready', status: next, error: message });
                     } catch {
-                        setState({ kind: 'failed', message });
+                        setState({ kind: 'failed', message, installationError: true });
                     }
                 } finally {
                     setInstalling(false);
@@ -110,11 +139,15 @@ export function RecommendedSkill({ onInstalled, revision }: { onInstalled: () =>
             ? 'Checking…'
             : state.kind === 'failed'
               ? 'Unavailable'
-              : installed
-                ? 'Installed'
-                : partial
-                  ? 'Partially installed'
-                  : 'Not installed';
+              : needsRecovery
+                ? 'Recovery needed'
+                : unsupported
+                  ? 'Unavailable'
+                  : installed
+                    ? 'Installed'
+                    : partial
+                      ? 'Partially installed'
+                      : 'Not installed';
 
     return (
         <SettingsSection title="Recommended skills">
@@ -127,25 +160,32 @@ export function RecommendedSkill({ onInstalled, revision }: { onInstalled: () =>
                                 {label}
                             </Badge>
                         </div>
-                        <Text variant="sm" color="secondary">
-                            A workflow for researching, planning, building and reviewing software
-                        </Text>
-                        {state.kind === 'failed' && (
+                        {needsRecovery ? (
+                            <div className={styles.recovery} role="alert">
+                                <Text color="danger" variant="sm">
+                                    To restore each backup, first move any current briefback folder aside. Then move the
+                                    backup into its skill folder under the name briefback, without overwriting anything.
+                                    Check again when finished
+                                </Text>
+                                {backups?.map(path => (
+                                    <Text key={path} variant="sm">
+                                        {path}
+                                    </Text>
+                                ))}
+                            </div>
+                        ) : unsupported ? (
                             <Text color="danger" variant="sm" role="alert">
-                                {state.message ?? "Couldn't check Briefback installation"}
+                                After active work finishes, restart Clowdy to use Briefback installation
                             </Text>
-                        )}
-                        {state.kind === 'ready' && state.error && (
-                            <Text color="danger" variant="sm" role="alert">
-                                {state.error}
-                            </Text>
-                        )}
-                        {installing && (
+                        ) : installing ? (
                             <Text variant="sm" color="secondary" role="status">
                                 Installing Briefback…
                             </Text>
-                        )}
-                        {installed && !installing && (
+                        ) : state.kind === 'failed' || (state.kind === 'ready' && state.error) ? (
+                            <Text color="danger" variant="sm" role="alert">
+                                {state.kind === 'failed' ? state.message : state.error}
+                            </Text>
+                        ) : installed ? (
                             <Text variant="sm" color="secondary" data-testid="briefback-update-status">
                                 {update === 'checking'
                                     ? 'Checking for updates…'
@@ -155,14 +195,17 @@ export function RecommendedSkill({ onInstalled, revision }: { onInstalled: () =>
                                         ? 'Update available'
                                         : 'Up to date'}
                             </Text>
+                        ) : (
+                            <Text variant="sm" color="secondary">
+                                A workflow for researching, planning, building and reviewing software
+                            </Text>
                         )}
                     </div>
-                    {state.kind === 'failed' ? (
+                    {state.kind === 'failed' || needsRecovery || unsupported ? (
                         <Button
                             size="sm"
                             variant="bordered"
                             onPress={() => {
-                                setState({ kind: 'loading' });
                                 setAttempt(n => n + 1);
                             }}
                         >

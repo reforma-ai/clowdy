@@ -30,6 +30,7 @@ const API_URL = 'https://api.github.com/repos/reforma-ai/briefback';
 export interface BriefbackStatus {
     copies: { exists: boolean; installed: boolean }[];
     fingerprint: string;
+    backups: string[];
 }
 
 function maybeStat(path: string) {
@@ -49,7 +50,23 @@ function references(content: string): string[] {
 /** Captures each entry and, for a linked skill directory, its resolved contents without following nested links. */
 export function briefbackStatus(roots: readonly string[]): BriefbackStatus {
     const hash = createHash('sha256');
+    const backups: string[] = [];
     const copies = roots.map(root => {
+        let rootDirectory = false;
+        try {
+            rootDirectory = statSync(root).isDirectory();
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        }
+        if (rootDirectory) {
+            for (const name of readdirSync(root).sort()) {
+                if (!name.startsWith('.briefback-install-')) continue;
+                const folder = join(root, name);
+                if (!maybeStat(folder)?.isDirectory()) continue;
+                const backup = join(folder, 'backup');
+                if (maybeStat(backup)) backups.push(backup);
+            }
+        }
         const target = join(root, 'briefback');
         const entry = maybeStat(target);
         hash.update(`${resolve(target)}\0`);
@@ -103,7 +120,7 @@ export function briefbackStatus(roots: readonly string[]): BriefbackStatus {
         }
         return { exists: !!entry, installed };
     });
-    return { copies, fingerprint: hash.digest('hex') };
+    return { copies, fingerprint: hash.digest('hex'), backups };
 }
 
 /** Read only regular files from the checked-out skill, with bounded size and no symlink traversal. */
@@ -283,6 +300,7 @@ async function install(
         throw new Error('Invalid skill folders');
     }
     const observed = briefbackStatus(roots);
+    if (observed.backups.length) throw conflict('Move retained Briefback backups to a safe place before installing');
     if (observed.fingerprint !== fingerprint) throw conflict('Skill folders changed; review them again');
     let download: string | undefined;
     const work: {
@@ -364,6 +382,8 @@ async function install(
                 writeFileSync(dest, file.data, { flag: 'wx' });
             }
         }
+        if (briefbackStatus(roots).backups.length)
+            throw conflict('Move retained Briefback backups to a safe place before installing');
         const checks = roots.map(root => briefbackStatus([root]).fingerprint);
         if (briefbackStatus(roots).fingerprint !== fingerprint)
             throw conflict('Skill folders changed; review them again');
@@ -388,7 +408,10 @@ async function install(
         const result = briefbackStatus(roots);
         if (!result.copies.every(copy => copy.installed)) throw new Error('Installed skill could not be verified');
         complete = true;
-        return result;
+        return {
+            ...result,
+            backups: result.backups.filter(path => !work.some(item => join(item.temp, 'backup') === path)),
+        };
     } catch (error) {
         // Move our incomplete copies aside, then restore originals. Never delete a backup if restoration fails.
         const failures: string[] = [];

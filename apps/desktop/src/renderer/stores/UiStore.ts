@@ -26,6 +26,7 @@ export const SETTINGS_PAGES = [
     'shortcuts',
     'projects',
     'providers',
+    'delegation',
     'skills',
     'about',
 ] as const;
