@@ -2,10 +2,10 @@ import { afterAll, describe, expect, test } from 'bun:test';
 import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { LEFTOVER_GRACE_MS, runProgram } from '../src/providers/exec';
+import { LEFTOVER_GRACE_MS, runProgram } from '../src/process/run';
 import { cleanTempDirs, tempDir, waitFor } from './helpers';
 
-import type { RunOptions } from '../src/providers/exec';
+import type { RunOptions } from '../src/process/run';
 
 afterAll(cleanTempDirs);
 

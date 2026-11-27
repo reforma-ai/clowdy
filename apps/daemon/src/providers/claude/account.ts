@@ -1,4 +1,4 @@
-import { runProgram } from '../exec';
+import { runProgram } from '../../process/run';
 import { jsonObject, planLabel, text } from '../parse';
 
 import type { AgentAccount, AgentUsage, AgentUsageWindow } from '@clowdy/protocol';

@@ -13,7 +13,8 @@ import {
 } from '../db/pullRequests';
 import { gitAnswer, gitLine, gitRead } from '../domain/git';
 import { CommandError, conflict, invalid, unavailable } from '../errors';
-import { runProgram } from '../providers/exec';
+import { TtlCache } from '../lib/cache';
+import { runProgram } from '../process/run';
 import { parseRemote } from './githubRemote';
 import { asObject, asString, assemblePullRequest, choosePullRequest, readPullRequest } from './pullRequestRollup';
 import { workingTreeRoot } from './state';
@@ -28,7 +29,7 @@ import type {
     GitPullRequestSummary,
 } from '@clowdy/protocol';
 import type { Place } from '../domain/places';
-import type { RunResult } from '../providers/exec';
+import type { RunResult } from '../process/run';
 import type { Store } from '../store';
 import type { Json } from './pullRequestRollup';
 
@@ -151,58 +152,6 @@ type Found = { signedIn: false } | { signedIn: true; defaultBranch?: string; pul
 
 /** What is known about reaching a host: `gh` and its path, or why not. */
 type Access = { kind: 'ready'; gh: string } | { kind: Exclude<GitHubAccess, 'ready' | 'no_remote'> };
-
-/** Values kept for a time, by key, each asked for once at a time however many ask. */
-class Cache<V> {
-    readonly #kept = new Map<string, { value: V; until: number }>();
-    readonly #pending = new Map<string, Promise<V>>();
-
-    constructor(
-        private readonly now: () => number,
-        private readonly limit: number
-    ) {}
-
-    /** The value kept for `key`, else what `load` finds, asked once for everyone who asks meanwhile. `load` says how long the value is kept (0: not at all); one that throws keeps nothing and fails all of them. */
-    get(key: string, load: () => Promise<{ value: V; keepMs: number }>): Promise<V> {
-        const kept = this.#kept.get(key);
-
-        if (kept && kept.until > this.now()) return Promise.resolve(kept.value);
-
-        let pending = this.#pending.get(key);
-
-        if (!pending) {
-            pending = load()
-                .then(({ value, keepMs }) => {
-                    if (keepMs > 0) this.set(key, value, keepMs);
-
-                    return value;
-                })
-                .finally(() => this.#pending.delete(key));
-            this.#pending.set(key, pending);
-        }
-
-        return pending;
-    }
-
-    /** The value kept for `key`, if it is still good. */
-    peek(key: string): V | undefined {
-        const kept = this.#kept.get(key);
-
-        return kept && kept.until > this.now() ? kept.value : undefined;
-    }
-
-    set(key: string, value: V, keepMs: number): void {
-        this.#kept.delete(key);
-
-        while (this.#kept.size >= this.limit) this.#kept.delete(this.#kept.keys().next().value as string);
-
-        this.#kept.set(key, { value, until: this.now() + keepMs });
-    }
-
-    delete(key: string): void {
-        this.#kept.delete(key);
-    }
-}
 
 export interface PullRequestsOptions {
     /** The environment `gh` runs in, and the `PATH` it is looked for on: the daemon's own, which already has the login shell's `PATH`. Read at each call. */
@@ -344,14 +293,14 @@ async function movedPast(cwd: string, headCommit: string): Promise<boolean> {
 export class PullRequests {
     readonly #env: () => Env;
     readonly #fallbackPaths?: readonly string[];
-    readonly #presence: Cache<string | undefined>;
-    readonly #logins: Cache<boolean>;
-    readonly #answers: Cache<GitPullRequestInfo>;
-    readonly #historyAnswers: Cache<GitBranchPullRequests>;
+    readonly #presence: TtlCache<string | undefined>;
+    readonly #logins: TtlCache<boolean>;
+    readonly #answers: TtlCache<GitPullRequestInfo>;
+    readonly #historyAnswers: TtlCache<GitBranchPullRequests>;
     #historyRunning = 0;
     readonly #historyWaiting: Array<() => void> = [];
     /** The base of the pull request last found for a place, and the branch it was found for. */
-    readonly #hints: Cache<{ branch: string; base: string }>;
+    readonly #hints: TtlCache<{ branch: string; base: string }>;
     /** What a host's server does not have of `OPTIONAL_FIELDS`. */
     readonly #omitted = new Map<string, Set<string>>();
     readonly #stopper = new AbortController();
@@ -359,11 +308,11 @@ export class PullRequests {
     constructor({ env = () => process.env, fallbackPaths, now = Date.now, keep = MAX_KEPT }: PullRequestsOptions = {}) {
         this.#env = env;
         this.#fallbackPaths = fallbackPaths;
-        this.#presence = new Cache(now, keep);
-        this.#logins = new Cache(now, keep);
-        this.#answers = new Cache(now, keep);
-        this.#historyAnswers = new Cache(now, keep);
-        this.#hints = new Cache(now, keep);
+        this.#presence = new TtlCache({ limit: keep, now });
+        this.#logins = new TtlCache({ limit: keep, now });
+        this.#answers = new TtlCache({ limit: keep, now });
+        this.#historyAnswers = new TtlCache({ limit: keep, now });
+        this.#hints = new TtlCache({ limit: keep, now });
     }
 
     /** Ends the `gh` runs that are going on, and refuses new ones. */

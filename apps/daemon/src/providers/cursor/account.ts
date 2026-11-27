@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { runProgram } from '../exec';
+import { runProgram } from '../../process/run';
 
 import type { AgentAccount, AgentUsage, AgentUsageWindow } from '@clowdy/protocol';
 import type { ProbeContext, Provider, ProviderRead } from '../types';

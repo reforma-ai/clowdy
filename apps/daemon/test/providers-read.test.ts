@@ -13,7 +13,7 @@ import {
     readCursorIdentity,
     readCursorToken,
 } from '../src/providers/cursor/account';
-import { runProgram } from '../src/providers/exec';
+import { runProgram } from '../src/process/run';
 import { planLabel } from '../src/providers/parse';
 
 import type { ProbeContext } from '../src/providers/types';

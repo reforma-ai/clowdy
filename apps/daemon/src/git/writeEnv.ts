@@ -3,7 +3,7 @@ import { isAbsolute, join } from 'node:path';
 
 import { gitLine } from '../domain/git';
 import { NEVER_INHERITED } from '../engine/acp/env';
-import { runProgram } from '../providers/exec';
+import { runProgram } from '../process/run';
 
 type Env = Record<string, string | undefined>;
 
