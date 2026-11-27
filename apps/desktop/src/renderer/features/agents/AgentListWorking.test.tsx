@@ -134,7 +134,8 @@ describe('the agent icon of a chat with agents inside', () => {
 
     it('says how many agents work inside by its label: the sub-agents and the threads that work, and not the ones that are over', () => {
         // c-1: r-na-03, r-na-02 and r-na-05 (below r-na-02) work, r-na-01 and r-na-04 are over.
-        expect(insideOf('c-1')).toBe('3 agents work inside');
+        expect(insideOf('c-1')).toBeNull();
+        expect(marks('c-1')).toEqual(['Working']);
         // c-6: its threads c-6a (works) and c-6e (rests for background work); c-6b, c-6c and c-6a1 are over, and so is its sub-agent r-na-07.
         expect(insideOf('c-6')).toBe('2 agents work inside');
         expect(insideOf('c-4')).toBeNull();
@@ -144,7 +145,7 @@ describe('the agent icon of a chat with agents inside', () => {
         await draw(() => chatListPreferences.setExpandRunningAgents(false));
 
         expect(shown('c-6a', 'c-6e', 'r-na-03')).toEqual([]);
-        expect(insideOf('c-1')).toBe('3 agents work inside');
+        expect(marks('c-1')).toEqual(['Working']);
         expect(insideOf('c-6')).toBe('2 agents work inside');
 
         await draw(() => {
@@ -152,15 +153,15 @@ describe('the agent icon of a chat with agents inside', () => {
             ui().toggleChatExpanded('c-6');
         });
 
-        expect(insideOf('c-1')).toBe('3 agents work inside');
+        expect(marks('c-1')).toEqual(['Working']);
         expect(insideOf('c-6')).toBe('2 agents work inside');
     });
 
-    it('is the only mark of a chat that works itself, in the place of its working dot, and of one at rest', async () => {
+    it('shows the working dot for the chat itself, then the agent icon when only its agents work', async () => {
         const orchestrator = project().runs.get('r-orch-1')!;
 
         expect(orchestrator.status).toBe('running');
-        expect(marks('c-1')).toEqual(['3 agents work inside']);
+        expect(marks('c-1')).toEqual(['Working']);
         expect(marks('c-6')).toEqual(['2 agents work inside']);
 
         await draw(() => project().runs.set(orchestrator.id, { ...orchestrator, status: 'succeeded', finishedAt: 1 }));

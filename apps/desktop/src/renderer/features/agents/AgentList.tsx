@@ -760,9 +760,8 @@ export function AgentList({
         const run = runOf(chat);
         const busy = actions.busy(chat);
         const below = project.threadsBelow(chat.id);
-        // The agents that work inside the chat, its sub-agents and its threads with theirs, whether its row is folded or not and whether the chat works itself. The row says it with
-        // an agent icon where its dot would be: a chat with an agent inside and a working dot (or a command's icon) shows the agent icon only, and only what needs the person
-        // (a failure, a question, a request) is shown over it. A native sub-agent never asks for the chat's dot or counts as unread: its question is a card in the stream.
+        // Count working agents inside the chat, including descendants of its threads and sub-agents.
+        // The chat's own work and requests for the person take priority in the status indicator.
         const agentsInside = agentsWorkingInside(chat, below, project.runs, agentsOf);
         const threads = below.some(thread => thread.archivedAt === undefined && asksThePerson(thread, project.runs))
             ? ('asking' as const)
