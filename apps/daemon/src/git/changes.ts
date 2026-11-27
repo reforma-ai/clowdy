@@ -8,7 +8,7 @@ import {
     turnScopeTrees,
 } from '@clowdy/protocol';
 
-import { gitLine, gitRead, gitRecords } from '../domain/git';
+import { gitAnswer, gitLine, gitRead, gitRecords } from '../domain/git';
 import { invalid, notFound, unavailable } from '../errors';
 import { isBelow } from '../fs/paths';
 import { workingTreeRoot } from './state';
@@ -244,7 +244,7 @@ async function planOf(place: Place, scope: GitScope, options: FileOptions): Prom
 
         if (!commit) throw notFound('Commit', sha);
 
-        const parents = (await gitLine(cwd, ['rev-list', '--parents', '-n', '1', commit]))?.split(' ') ?? [];
+        const parents = (await gitAnswer(cwd, ['rev-list', '--parents', '-n', '1', commit]))?.split(' ') ?? [];
 
         return { ...(parents[1] && { from: parents[1] }), to: commit, untracked: false };
     }
