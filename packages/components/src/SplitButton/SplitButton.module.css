@@ -1,0 +1,46 @@
+@layer components {
+    .split {
+        display: inline-flex;
+        gap: var(--spacing-2);
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .split[data-full-width] {
+        display: flex;
+        width: 100%;
+    }
+
+    /* The main button, or the stand-in that holds it while it is off with a reason, takes what the menu button leaves. */
+    .split > :first-child {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    .split .main[data-size] {
+        --clowdy-button-transform-pressed: none;
+
+        width: 100%;
+        border-start-end-radius: 0;
+        border-end-end-radius: 0;
+    }
+
+    .split .more[data-size] {
+        --clowdy-button-transform-pressed: none;
+
+        flex-shrink: 0;
+        align-self: stretch;
+        height: auto;
+        border-start-start-radius: 0;
+        border-end-start-radius: 0;
+    }
+
+    .split[data-wrap] .main[data-size] {
+        justify-content: flex-start;
+        height: auto;
+        min-height: var(--clowdy-button-size);
+        padding-block: var(--spacing-4);
+        text-align: start;
+        white-space: normal;
+    }
+}

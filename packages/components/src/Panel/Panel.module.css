@@ -116,6 +116,13 @@
         min-height: 50px;
     }
 
+    .foldButton[data-fold-size='xxs'] {
+        --clowdy-button-size: var(--spacing-16);
+
+        border-radius: calc(var(--radius-sm) * var(--squircle-radius-factor));
+        corner-shape: superellipse(var(--squircle-value));
+    }
+
     /* Out of flow — indent is the row's paddingLeft only; icons stay aligned.
        Hit box is the 8px glyph plus 4px on each side. `right` gives that padding back so the glyph stays put. */
     .treeChevron {
