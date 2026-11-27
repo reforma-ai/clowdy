@@ -833,7 +833,7 @@ describe('when the models are not there', () => {
 
         expect(selectModel().textContent).toBe('claude-sonnet-3-7');
         expect(slider()).toBeNull();
-        expect(faceLayer().textContent).toContain('Claude Code does not list this model anymore.');
+        expect(faceLayer().textContent).toContain('Claude Code does not list this model anymore');
 
         await press(selectModel());
 
@@ -902,7 +902,7 @@ describe('the remembered choice', () => {
 
 describe('a chat with no model', () => {
     const bare = { engine: 'claude' } satisfies ModelChoice;
-    const sentence = "Runs on Claude Code's own default until you pick a model.";
+    const sentence = "Runs on Claude Code's own default until you pick a model";
 
     it('reads "Default model" on the face, with the provider\'s mark and a muted line, and the provider on the pill', async () => {
         await setup(bare, {}, ['claude']);
@@ -922,7 +922,7 @@ describe('a chat with no model', () => {
         await setup({ engine: 'codex' }, {}, ['codex']);
         await open();
 
-        expect(faceLayer().textContent).toBe("Default modelRuns on Codex's own default until you pick a model.");
+        expect(faceLayer().textContent).toBe("Default modelRuns on Codex's own default until you pick a model");
     });
 
     it('checks no row of the list', async () => {
@@ -997,7 +997,7 @@ describe("the face's spacing", () => {
         await setup({ engine: 'claude' }, {}, ['claude']);
         await open();
 
-        expect(reasoning()!.textContent).toBe("Runs on Claude Code's own default until you pick a model.");
+        expect(reasoning()!.textContent).toBe("Runs on Claude Code's own default until you pick a model");
     });
 
     it('has the block for the word that a pick applies later, and for that alone', async () => {

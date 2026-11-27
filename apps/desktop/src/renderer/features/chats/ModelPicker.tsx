@@ -120,9 +120,9 @@ function noteOf(provider: PickerProvider): { busy: true } | { busy: false; text:
 
     if (!answer) return { busy: true };
 
-    if (answer.state !== 'ok') return { busy: false, text: answer.detail ?? `${name} cannot list its models.` };
+    if (answer.state !== 'ok') return { busy: false, text: answer.detail ?? `${name} cannot list its models` };
 
-    return answer.models.length === 0 ? { busy: false, text: `${name} lists no models.` } : undefined;
+    return answer.models.length === 0 ? { busy: false, text: `${name} lists no models` } : undefined;
 }
 
 function Trigger({ choice, providers }: { choice: ModelChoice; providers: readonly PickerProvider[] }) {
@@ -190,11 +190,11 @@ interface FaceProps {
 function faceNote(held: Held): string | undefined {
     if (held.levels.length > 0) return undefined;
 
-    if (held.defaulted) return `Runs on ${held.provider?.name ?? 'the provider'}'s own default until you pick a model.`;
+    if (held.defaulted) return `Runs on ${held.provider?.name ?? 'the provider'}'s own default until you pick a model`;
 
     return (
         held.model?.description ??
-        (held.missing ? `${held.provider?.name ?? 'The provider'} does not list this model anymore.` : undefined)
+        (held.missing ? `${held.provider?.name ?? 'The provider'} does not list this model anymore` : undefined)
     );
 }
 
