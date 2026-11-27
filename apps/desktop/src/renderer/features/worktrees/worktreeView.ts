@@ -43,22 +43,25 @@ export function lockTip(locked: string): string {
 
 /** The one badge of a worktree's row: what it says, why (the tooltip), and the colour (the neutral grey when it has none). */
 export interface WorktreeMark {
-    label: 'Folder checkout' | 'Missing on disk' | 'Locked' | MergedMark['label'];
+    label: 'Folder checkout' | 'Missing on disk' | 'Locked' | 'Used elsewhere' | MergedMark['label'];
     tip: string;
     color?: MergedMark['color'];
 }
 
 /**
  * The single badge of a row: of everything that could be said of a worktree, the one that matters most, from the most to the least. The folder's own checkout is what it is
- * and has nothing else to say. A worktree gone from the disk has only its record left, so its lock and its work mean nothing. A locked one is held: git was told to keep it
+ * and has nothing else to say. A worktree used by another space or folder cannot be removed from here. A worktree gone from the disk has only its record left, so its lock and its work mean nothing. A locked one is held: git was told to keep it
  * (an agent that works in it locks it for as long as it does), and that outweighs whether its work has reached the base. The base only comes last: `Merged` or `Not merged`,
  * and nothing where there is no base to compare with.
  */
 export function worktreeMark(
-    worktree: Pick<WorktreeInfo, 'main' | 'missing' | 'locked' | 'merged' | 'base'>
+    worktree: Pick<WorktreeInfo, 'main' | 'missing' | 'locked' | 'merged' | 'base' | 'blocked'>
 ): WorktreeMark | undefined {
     if (worktree.main)
         return { label: 'Folder checkout', tip: 'The folder itself, where a chat works without a worktree' };
+
+    if (worktree.blocked === 'other-space')
+        return { label: 'Used elsewhere', tip: 'Another space or folder has chats in this worktree', color: 'warning' };
 
     if (worktree.missing)
         return { label: 'Missing on disk', tip: 'Git lists it, but its folder is gone', color: 'warning' };
@@ -74,6 +77,8 @@ export function worktreeMark(
  */
 export function removeHint({ blocked, locked }: Pick<WorktreeInfo, 'blocked' | 'locked'>): string | undefined {
     if (blocked === 'locked') return lockTip(locked ?? '');
+
+    if (blocked === 'other-space') return 'Another space or folder has chats in this worktree';
 
     if (blocked === 'main') return "The repository's own working tree, which git does not remove";
 

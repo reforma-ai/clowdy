@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
     createFixtureData,
+    FIXTURE_EMPTY_PROJECT_ID,
     FIXTURE_PROJECT_ID,
     type FixtureData,
     withFixtureWorktrees,
@@ -1001,6 +1002,101 @@ describe('Remove in Manage worktrees', () => {
             expect.objectContaining({ folderId: 'fld_api', path: DETACHED_MERGED, tidy: true }),
         ]);
         await checkTidyFailure(CLEAN_MERGED);
+    });
+
+    it('cleans dependent worktrees before deleting their selected base branches', async () => {
+        const data = dataWithKinds();
+        const child = '/Users/dev/worktrees/car-rental/child';
+        const grandchild = '/Users/dev/worktrees/car-rental/grandchild';
+        data.worktrees![CAR_RENTAL]!.push(
+            { path: child, branch: 'feature/child', base: 'feature/done', head: 'fff1111' },
+            { path: grandchild, branch: 'feature/grandchild', base: 'feature/child', head: 'fff2222' }
+        );
+        await open({ data });
+        await click(textButton(confirmation(), 'Tidy up…')!);
+        await click(textButton(confirmation(), 'Remove 4 worktrees…')!);
+        await settle();
+        await confirm('Remove 4 worktrees');
+        expect(removals()).toEqual([
+            expect.objectContaining({ path: grandchild, tidy: true, deleteBranch: true }),
+            expect.objectContaining({ path: child, tidy: true, deleteBranch: true }),
+            expect.objectContaining({ path: CLEAN_MERGED, tidy: true, deleteBranch: true }),
+            expect.objectContaining({ path: DETACHED_MERGED, tidy: true }),
+        ]);
+        expect(data.worktreeEdits?.[CAR_RENTAL]?.deleted).toEqual([
+            'feature/grandchild',
+            'feature/child',
+            'feature/done',
+        ]);
+        expect(toast.queue.visibleToasts.some(item => item.content.message === 'Removed 4 worktrees')).toBe(true);
+    });
+
+    it('keeps each folder’s dependency order when branch names in separate repositories form a cycle', async () => {
+        const data = dataWithKinds();
+        const child = '/Users/dev/worktrees/car-rental/child';
+        const apiBase = '/Users/dev/worktrees/car-rental-api/base';
+        const apiChild = '/Users/dev/worktrees/car-rental-api/child';
+        data.worktrees![CAR_RENTAL]!.push({
+            path: child,
+            branch: 'feature/child',
+            base: 'feature/done',
+            head: 'fff1111',
+        });
+        data.worktrees!['/Users/dev/car-rental-api']!.push(
+            { path: apiBase, branch: 'feature/child', head: 'fff2222' },
+            { path: apiChild, branch: 'feature/done', base: 'feature/child', head: 'fff3333' }
+        );
+        await open({ data });
+        await click(textButton(confirmation(), 'Tidy up…')!);
+        await click(textButton(confirmation(), 'Remove 5 worktrees…')!);
+        await settle();
+        await confirm('Remove 5 worktrees');
+        expect(data.worktreeEdits?.[CAR_RENTAL]?.deleted).toEqual(['feature/child', 'feature/done']);
+        expect(data.worktreeEdits?.['/Users/dev/car-rental-api']?.deleted).toEqual(['feature/done', 'feature/child']);
+        expect(toast.queue.visibleToasts.some(item => item.content.message === 'Removed 5 worktrees')).toBe(true);
+    });
+
+    it.each(['another space', 'another folder'] as const)('protects archived chats linked from %s', async owner => {
+        const data = dataWithKinds();
+        const project = data.projects.find(
+            candidate => candidate.id === (owner === 'another space' ? FIXTURE_EMPTY_PROJECT_ID : FIXTURE_PROJECT_ID)
+        )!;
+        const folder =
+            owner === 'another space'
+                ? project.folders[0]
+                : project.folders.find(candidate => candidate.id === 'fld_api')!;
+        const chat = data.chats.find(item => item.id === 'c-10')!;
+        data.chats.push({
+            ...chat,
+            id: 'foreign-chat',
+            projectId: project.id,
+            title: 'Foreign archive history',
+            parentChatId: undefined,
+            orchestratorRunId: undefined,
+            archivedAt: 1234,
+            workspace: {
+                id: 'foreign-workspace',
+                path: CLEAN_MERGED,
+                folderId: folder.id,
+                ready: true,
+                managed: false,
+            },
+        });
+        await open({ data });
+        expect(row(CLEAN_MERGED)?.textContent).toContain('Used elsewhere');
+        expect(row(CLEAN_MERGED)?.textContent).not.toContain('Foreign archive history');
+        const remove = await removeItem(CLEAN_MERGED);
+        expect(remove.getAttribute('aria-disabled')).toBe('true');
+        expect(remove.textContent).toContain('Another space or folder has chats in this worktree');
+        await click(row(CLEAN_MERGED)!.querySelector<HTMLElement>('button[aria-label^="More for"]')!);
+        await click(textButton(confirmation(), 'Tidy up…')!);
+        const selected = row(CLEAN_MERGED)?.querySelector<HTMLInputElement>('input[type="checkbox"]');
+        expect([selected?.disabled, selected?.checked]).toEqual([true, false]);
+        await click(textButton(confirmation(), 'Remove 1 worktree…')!);
+        await settle();
+        await confirm('Remove 1 worktree');
+        expect(removals()).toEqual([expect.objectContaining({ path: DETACHED_MERGED, tidy: true })]);
+        expect(data.chats.find(item => item.id === 'foreign-chat')?.archivedAt).toBe(1234);
     });
 
     it('lets the person select changed and unmerged worktrees after showing their consequences', async () => {

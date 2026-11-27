@@ -9,7 +9,7 @@ import { useState } from 'react';
 import { worktreeLabel } from '../agents/workspaceChoice';
 import { refreshFolderGit } from '../openWith';
 import { affectedChats, chatPreviewChanged, readRemoval, removeWorktree } from './worktreeActions';
-import { deleteBranchByDefault, removalPlan } from './worktreeView';
+import { deleteBranchByDefault, removalPlan, removeHint } from './worktreeView';
 
 import type { FolderId, Project, ProjectId, ProjectSnapshot, WorktreeInfo } from '@clowdy/protocol';
 import type { RootStore } from '../../stores';
@@ -38,7 +38,7 @@ export function eligible(row: WorktreeInfo, folderId: FolderId, snapshot: Projec
 }
 
 export function canRemove(row: WorktreeInfo): boolean {
-    return !row.main && row.blocked !== 'main' && row.blocked !== 'locked' && row.locked === undefined;
+    return !row.main && row.locked === undefined && removeHint(row) === undefined;
 }
 
 type TidyPreview = {
@@ -47,6 +47,42 @@ type TidyPreview = {
     safe: boolean;
     chats: ReturnType<typeof affectedChats>;
 };
+
+/** The base branch must outlive its dependents' merge checks. Groups can share a Git repository,
+ * so matching names across folder groups conservatively count as a dependency too. Unrelated ready rows
+ * stay in input order. Names in different repositories may form an apparent cycle, so prefer dependencies in the same folder
+ * if the cross-folder ordering stalls. If even that forms a cycle, keep the remaining input order and let the daemon check each row. */
+function removalOrder(previews: readonly TidyPreview[], deleteBranches: boolean): readonly TidyPreview[] {
+    if (!deleteBranches) return previews;
+    const remaining = [...previews];
+    const ordered: TidyPreview[] = [];
+    const baseUses = new Map<string, number>();
+    const localUses = new Map<string, number>();
+    const countBase = ({ row, folderId }: TidyPreview, delta: number) => {
+        if (!row.base) return;
+        const localKey = keyOf(folderId, row.base);
+        baseUses.set(row.base, (baseUses.get(row.base) ?? 0) + delta);
+        localUses.set(localKey, (localUses.get(localKey) ?? 0) + delta);
+    };
+    for (const preview of previews) {
+        countBase(preview, 1);
+    }
+    while (remaining.length) {
+        let index = remaining.findIndex(
+            ({ row }) => !row.branch || !deleteBranchByDefault(row) || !baseUses.get(row.branch)
+        );
+        if (index === -1) {
+            index = remaining.findIndex(
+                ({ row, folderId }) => !row.branch || !localUses.get(keyOf(folderId, row.branch))
+            );
+        }
+        if (index === -1) return [...ordered, ...remaining];
+        const [next] = remaining.splice(index, 1);
+        countBase(next, -1);
+        ordered.push(next);
+    }
+    return ordered;
+}
 
 /** Confirm the branch choice before handing off to the background operation. */
 function TidyConfirmation({
@@ -143,7 +179,7 @@ export function confirmTidyWorktrees({
             const errors: string[] = [];
             // An earlier selected worktree may archive a chat also linked to a later one.
             const archivedByThisAction = new Set<string>();
-            for (const { folderId, row, safe, chats } of previews) {
+            for (const { folderId, row, safe, chats } of removalOrder(previews, deleteBranches)) {
                 try {
                     const target = { root, projectId, folderId, path: row.path };
                     const read = await readRemoval(target, { worktree: row, chats });

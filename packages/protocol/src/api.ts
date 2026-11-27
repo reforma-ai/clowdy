@@ -260,8 +260,8 @@ export type FolderGit =
           worktrees: GitWorktree[];
       };
 
-/** Why a worktree has no Remove: it is the folder's own checkout (or the repository's primary working tree, which git never removes, or another folder of the project), git has it locked, or an unarchived chat works in it. The first that holds, in that order. */
-export type WorktreeBlock = 'main' | 'locked' | 'chats';
+/** Why a worktree has no Remove: it is the folder's own checkout (or the repository's primary working tree, which git never removes, or another folder of the project), git has it locked, another workspace has linked chats at or below it, or an unarchived chat works in it. The first that holds, in that order. */
+export type WorktreeBlock = 'main' | 'locked' | 'other-space' | 'chats';
 
 /** A chat that works in a worktree, as the Manage dialog lists it. */
 export interface WorktreeChat {

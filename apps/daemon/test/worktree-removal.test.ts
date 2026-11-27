@@ -13,7 +13,7 @@ import {
 import { basename, dirname, join } from 'node:path';
 
 import { getChat } from '../src/db/chats';
-import { chatsOfWorkspace, listWorkspacesOfProject } from '../src/db/workspaces';
+import { chatsOfWorkspace, insertWorkspace, listWorkspacesOfProject } from '../src/db/workspaces';
 import { createChat } from '../src/domain/chats';
 import { isBeingRemoved } from '../src/domain/workspaceRemoval';
 import { exclusive, pathKey } from '../src/domain/workspaces';
@@ -1246,7 +1246,7 @@ describe('explicit worktree disposition', () => {
     });
 
     test('refuses a worktree shared with a different project even if its chat is archived', async () => {
-        const { h, root, repo, project, start, remove, chatOf } = await setup();
+        const { h, root, repo, project, start, remove, chatOf, worktrees } = await setup();
         const first = await start();
         const path = first.workspace!.path;
         const secondFolder = join(root, 'second-project-folder');
@@ -1262,6 +1262,9 @@ describe('explicit worktree disposition', () => {
         };
         h.ok('chat.setArchived', { chatId: chat.id, archived: true });
         expect(other.id).not.toBe(project.id);
+        const listed = (await worktrees())[0]!.worktrees.find(row => row.workspaceId === first.workspace!.id)!;
+        expect(listed.blocked).toBe('other-space');
+        expect(listed.chats.map(link => link.id)).toEqual([first.id]);
         expect(await remove(path, { chatDisposition: 'delete', expectedChatIds: [first.id] })).toMatchObject({
             ok: false,
             error: { code: 'conflict' },
@@ -1275,6 +1278,39 @@ describe('explicit worktree disposition', () => {
             expect.any(Number),
             true,
         ]);
+    });
+
+    test('marks nested workspaces with archived chats as other-space without exposing their chats', async () => {
+        const { h, store, project, root, repo, start, worktrees, remove } = await setup();
+        const first = await start();
+        const path = first.workspace!.path;
+        const secondFolder = join(root, 'nested-space');
+        mkdirSync(secondFolder);
+        const { project: other } = h.ok('project.add', { name: 'Other', folders: [repo, secondFolder] }) as {
+            project: Project;
+        };
+        const nestedPath = join(path, 'nested');
+        mkdirSync(nestedPath);
+        insertWorkspace(store.db, {
+            id: 'nested-workspace',
+            projectId: other.id,
+            folderId: other.folders[0]!.id,
+            path: nestedPath,
+            managed: false,
+            ready: true,
+            createdAt: Date.now(),
+        });
+        const foreignChat = createChat(store, { projectId: other.id, workspaceId: 'nested-workspace' });
+        h.ok('chat.setArchived', { chatId: foreignChat.id, archived: true });
+        const listed = (await worktrees())[0]!.worktrees.find(row => row.workspaceId === first.workspace!.id)!;
+        expect(listed.blocked).toBe('other-space');
+        expect(listed.chats.map(link => link.id)).toEqual([first.id]);
+        expect(await remove(path, { chatDisposition: 'archive', expectedChatIds: [first.id] })).toMatchObject({
+            ok: false,
+            error: { code: 'conflict' },
+        });
+        expect(existsSync(path)).toBe(true);
+        expect(first.projectId).toBe(project.id);
     });
 
     test.each(['', 'nested'] as const)(
@@ -1414,6 +1450,109 @@ describe('tidy removal', () => {
         } finally {
             gate.release();
         }
+    });
+
+    test('uses the folder base for a deleted recorded base only when the work is merged', async () => {
+        const { store, found, make, remove, worktrees, chatOf, hasBranch } = await setup();
+        const merged = found('fallback-merged');
+        const mergedChat = await make({ mode: 'existing', path: merged });
+        store.db.query('UPDATE workspaces SET base = ? WHERE id = ?').run('deleted-parent', mergedChat.workspace!.id);
+        const unmerged = found('fallback-unmerged');
+        const unmergedChat = await make({ mode: 'existing', path: unmerged });
+        store.db.query('UPDATE workspaces SET base = ? WHERE id = ?').run('deleted-parent', unmergedChat.workspace!.id);
+        commit(unmerged);
+        const listed = (await worktrees())[0]!.worktrees;
+        expect(listed.find(row => row.workspaceId === mergedChat.workspace!.id)).toMatchObject({
+            base: 'main',
+            merged: true,
+        });
+        expect(listed.find(row => row.workspaceId === unmergedChat.workspace!.id)).toMatchObject({
+            base: 'main',
+            merged: false,
+        });
+        expect(
+            await remove(unmerged, { tidy: true, chatDisposition: 'archive', expectedChatIds: [unmergedChat.id] })
+        ).toMatchObject({ ok: false, error: { code: 'conflict' } });
+        expect([existsSync(unmerged), chatOf(unmergedChat.id).archivedAt]).toEqual([true, undefined]);
+        expect(
+            await remove(merged, {
+                tidy: true,
+                deleteBranch: true,
+                chatDisposition: 'archive',
+                expectedChatIds: [mergedChat.id],
+            })
+        ).toMatchObject({ ok: true, data: { branchDeleted: true } });
+        expect([existsSync(merged), hasBranch('fallback-merged'), chatOf(mergedChat.id).archivedAt]).toEqual([
+            false,
+            false,
+            expect.any(Number),
+        ]);
+    });
+
+    test('does not substitute a merged folder base when the recorded base still exists but is behind', async () => {
+        const { store, repo, found, make, remove, worktrees } = await setup();
+        git(repo, 'branch', 'older-base');
+        commit(repo, 'new-main.txt', 'New on main');
+        const path = found('recorded-behind');
+        const chat = await make({ mode: 'existing', path });
+        store.db.query('UPDATE workspaces SET base = ? WHERE id = ?').run('older-base', chat.workspace!.id);
+        expect((await worktrees())[0]!.worktrees.find(row => row.workspaceId === chat.workspace!.id)).toMatchObject({
+            base: 'older-base',
+            merged: false,
+        });
+        expect(
+            await remove(path, { tidy: true, chatDisposition: 'archive', expectedChatIds: [chat.id] })
+        ).toMatchObject({ ok: false, error: { code: 'conflict' } });
+        expect(existsSync(path)).toBe(true);
+    });
+
+    test('keeps the branch if the recorded base reappears while the worktree is removed', async () => {
+        if (process.platform === 'win32') return;
+        const { h, store, root, repo, found, make, remove, hasBranch } = await setup();
+        const path = found('fallback-race');
+        const chat = await make({ mode: 'existing', path });
+        h.ok('chat.setArchived', { chatId: chat.id, archived: true });
+        store.db.query('UPDATE workspaces SET base = ? WHERE id = ?').run('deleted-parent', chat.workspace!.id);
+        const bin = join(root, 'tidy-gate');
+        mkdirSync(bin);
+        writeFileSync(
+            join(bin, 'git'),
+            [
+                '#!/bin/sh',
+                'if [ "$1" = -c ] && [ "$2" = core.longpaths=true ] && [ "$3" = worktree ] && [ "$4" = remove ]; then',
+                '  "$REMOVAL_TEST_GIT" "$@"',
+                '  result=$?',
+                '  touch "$REMOVAL_TEST_GATE/ready"',
+                '  while [ ! -f "$REMOVAL_TEST_GATE/go" ]; do sleep 0.02; done',
+                '  exit "$result"',
+                'fi',
+                'exec "$REMOVAL_TEST_GIT" "$@"',
+            ].join('\n'),
+            { mode: 0o755 }
+        );
+        const previousPath = process.env.PATH;
+        process.env.REMOVAL_TEST_GIT = Bun.which('git')!;
+        process.env.REMOVAL_TEST_GATE = bin;
+        process.env.PATH = `${bin}:${previousPath}`;
+        const removing = remove(path, { tidy: true, deleteBranch: true });
+        try {
+            await waitFor(() => existsSync(join(bin, 'ready')), 'worktree removal to reach the gate');
+            git(repo, 'branch', 'deleted-parent');
+        } finally {
+            writeFileSync(join(bin, 'go'), '');
+            await removing;
+            process.env.PATH = previousPath;
+            delete process.env.REMOVAL_TEST_GIT;
+            delete process.env.REMOVAL_TEST_GATE;
+        }
+        expect(await removing).toMatchObject({
+            ok: false,
+            error: {
+                code: 'conflict',
+                message: 'The worktree was removed, but the branch or base changed. The branch was kept',
+            },
+        });
+        expect([existsSync(path), hasBranch('fallback-race')]).toEqual([false, true]);
     });
 
     test('rechecks merged state after a change to the branch', async () => {

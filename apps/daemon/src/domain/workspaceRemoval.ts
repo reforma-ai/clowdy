@@ -24,6 +24,7 @@ import {
     parseWorktrees,
     workingTreeRoot,
 } from '../git/state';
+import { readWorktreeBase, resolveWorktreeBase } from '../git/worktreeBase';
 import { archiveStoppedChats, deleteChat, parentChain, requireChat, stoppedSubtree } from './chats';
 import { gitRead } from './git';
 import {
@@ -37,6 +38,7 @@ import {
     samePlace,
     WorkspaceError,
 } from './workspaces';
+import { otherWorkspaceChatUse } from './worktreeOwnership';
 
 import type { Chat, ChatWorkspaceRemoval, Project, ProjectFolder } from '@clowdy/protocol';
 import type { AttachmentsService } from '../attachments/service';
@@ -69,7 +71,7 @@ interface Removable {
     /** The branch that goes with the worktree, and the commit it is at; none when the branch stays, the worktree has none, or the repository no longer names it. */
     branch?: { name: string; commit: string };
     /** Base checked at the start of a tidy operation. */
-    tidyBase?: string;
+    tidyBase?: { name: string; recorded?: string; projectId: string; folder: ProjectFolder };
     expectedBranch?: { name: string; commit: string };
 }
 
@@ -469,9 +471,27 @@ async function removeWorktreeAndBranch(
     // The tree is gone and the branch is still named by the repository: a chat that stays after this has the branch it can make the worktree from again.
     if (verdict.branch) {
         if (verdict.tidyBase) {
+            const guard = verdict.tidyBase;
+            let base: Awaited<ReturnType<typeof resolveWorktreeBase>>;
+            try {
+                const folder = getProject(store.db, guard.projectId)?.folders.find(item => item.id === guard.folder.id);
+                if (folder && folder.path === guard.folder.path) {
+                    base = await resolveWorktreeBase(
+                        guard.recorded,
+                        () => baseOf(folder),
+                        name => readWorktreeBase(folder.path, name)
+                    );
+                }
+            } catch {
+                // A read failure leaves the branch in place.
+            }
             const current = await commitOf(verdict.folder, `refs/heads/${verdict.branch.name}`);
-            const base = await readBaseCommit(verdict.folder, verdict.tidyBase);
-            if (!base || current !== verdict.branch.commit || !(await isMerged(verdict.folder, current, base))) {
+            if (
+                !base ||
+                base.name !== guard.name ||
+                current !== verdict.branch.commit ||
+                !(await isMerged(verdict.folder, current, base.commit))
+            ) {
                 throw conflict('The worktree was removed, but the branch or base changed. The branch was kept');
             }
         }
@@ -618,44 +638,28 @@ function otherProjectFolders(store: Store, projectId: string, folderId: string):
     );
 }
 
-/** Never dispose of or remove underneath another workspace's chats, even if its history is archived. */
-function otherWorkspaceChatUse(store: Store, path: string, workspaceId?: string): boolean {
-    const target = placeOf(path);
-    return listProjects(store.db).some(project =>
-        listWorkspacesOfProject(store.db, project.id).some(
-            record =>
-                record.id !== workspaceId &&
-                (samePlace(record.path, path) || isBelow(target, placeOf(record.path))) &&
-                chatsOfWorkspace(store.db, record.id).length > 0
-        )
-    );
-}
-
-async function readBaseCommit(folder: string, base: string): Promise<string | undefined> {
-    return (
-        (await commitOf(folder, `refs/heads/${base}`)) ?? (await commitOf(folder, `refs/remotes/${base}`)) ?? undefined
-    );
-}
-
 async function checkTidy(
     verdict: Removable,
     folder: ProjectFolder,
     record: WorkspaceRecord | undefined
 ): Promise<string> {
-    const base = record?.base ?? (await baseOf(folder));
-    const commit = base && (await readBaseCommit(folder.path, base));
-    if (!base || !commit || !(await isMerged(verdict.path, 'HEAD', commit))) {
+    const base = await resolveWorktreeBase(
+        record?.base,
+        () => baseOf(folder),
+        name => readWorktreeBase(folder.path, name)
+    );
+    if (!base || !(await isMerged(verdict.path, 'HEAD', base.commit))) {
         throw conflict('The worktree is not merged into its base');
     }
     if (verdict.branch) {
-        if (verdict.branch.name === base || verdict.branch.name === base.slice(base.indexOf('/') + 1)) {
+        if (verdict.branch.name === base.name || verdict.branch.name === base.name.slice(base.name.indexOf('/') + 1)) {
             throw conflict('The base branch cannot be deleted by Tidy up');
         }
-        if (!(await isMerged(folder.path, verdict.branch.commit, commit))) {
+        if (!(await isMerged(folder.path, verdict.branch.commit, base.commit))) {
             throw conflict('The branch is not merged into its base');
         }
     }
-    return base;
+    return base.name;
 }
 
 /** What a removal by path asks for (`workspace.remove`). */
@@ -857,7 +861,14 @@ export async function removeWorktree(
                 await removeWorktreeAndBranch(
                     store,
                     config,
-                    { ...verdict, ...(record && { record }), tidyBase, expectedBranch: request.expectedBranch },
+                    {
+                        ...verdict,
+                        ...(record && { record }),
+                        ...(tidyBase && {
+                            tidyBase: { name: tidyBase, recorded: record?.base, projectId: project.id, folder },
+                        }),
+                        expectedBranch: request.expectedBranch,
+                    },
                     () => {
                         // Git succeeded. Release briefly inside this synchronous callback so ordinary lifecycle
                         // operations can perform the requested disposition without another caller interleaving.

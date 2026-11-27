@@ -596,7 +596,7 @@ describe('GET /v1/projects/:id/worktrees', () => {
         expect(await at(chat.workspace!.path)).toMatchObject({ merged: false, base: 'main' });
     });
 
-    test('leaves merged and base out when no base resolves', async () => {
+    test('uses the folder base when the recorded base was deleted', async () => {
         const { at, start, h } = await setup();
         const chat = await start();
 
@@ -604,8 +604,7 @@ describe('GET /v1/projects/:id/worktrees', () => {
 
         const row = await at(chat.workspace!.path);
 
-        expect(row.merged).toBeUndefined();
-        expect(row.base).toBeUndefined();
+        expect(row).toMatchObject({ merged: true, base: 'main' });
     });
 
     test('says an initialised submodule is checked out, so a plain removal would be refused', async () => {
