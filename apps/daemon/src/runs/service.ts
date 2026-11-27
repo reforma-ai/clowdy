@@ -1066,15 +1066,22 @@ export class RunService {
      * record until its next message tells the agent they are lost. Runs that only wait (queued, blocked) keep waiting; the driver starts them again.
      */
     async recover(): Promise<number> {
-        for (const { process: survivor } of listRunsWithProcess(this.store.db)) {
-            await killSurvivor(survivor, this.config.timings.killGraceMs);
-        }
+        // At the same time: each may take the whole grace period, and the server does not listen until they are gone.
+        await Promise.all(
+            listRunsWithProcess(this.store.db).map(({ process: survivor }) =>
+                killSurvivor(survivor, this.config.timings.killGraceMs)
+            )
+        );
+
+        // Asked of the OS before the transaction, which does not wait on a process the daemon does not control.
+        const recorded = listRunsWithProcess(this.store.db);
+        const mayLive = new Set(recorded.filter(entry => mayBeSameProcess(entry.process)).map(entry => entry.runId));
 
         return this.store.tx(() => {
             // What the sessions had open to the person is gone with them, wherever its run now rests.
             clearAwaitingUser(this.store.db);
 
-            const withProcess = new Set(listRunsWithProcess(this.store.db).map(entry => entry.runId));
+            const withProcess = new Set(recorded.map(entry => entry.runId));
             const durableWaiting = new Set(
                 listActiveRuns(this.store.db)
                     .filter(
@@ -1093,8 +1100,7 @@ export class RunService {
             // A crash may land between preparing the card and confirming the session stopped. Open it only once recovery can prove the recorded process is gone.
             for (const run of listActiveRuns(this.store.db)) {
                 if (!['running', 'waiting_user'].includes(run.status)) continue;
-                const process = getRunWork(this.store.db, run.id).process;
-                if (process && mayBeSameProcess(process)) continue;
+                if (mayLive.has(run.id)) continue;
                 const pending = listOpenQuestions(this.store.db, run.id).find(
                     item =>
                         item.body.kind === 'question' && item.body.durable === true && item.body.state === 'preparing'
@@ -1145,9 +1151,8 @@ export class RunService {
             for (const run of dead) {
                 // `setStatus` clears what a run had open in the background, since a run that ended has nothing open; what the restart cost it is kept first,
                 // for the next turn's message (`lostBackgroundMessage`).
-                const process = getRunWork(this.store.db, run.id).process;
                 setRunWork(this.store.db, run.id, {
-                    ...(process && mayBeSameProcess(process) ? {} : { process: null }),
+                    ...(mayLive.has(run.id) ? {} : { process: null }),
                     lostBackground: run.background,
                 });
                 this.setStatus(run.id, 'interrupted', { reason: 'Daemon restarted' });
