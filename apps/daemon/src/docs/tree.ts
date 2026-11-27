@@ -1,4 +1,3 @@
-import { existsSync, readdirSync, statSync } from 'node:fs';
 import { readdir, realpath, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { DOC_SOURCES, docSourcesOf } from '@clowdy/protocol';
@@ -6,7 +5,7 @@ import { DOC_SOURCES, docSourcesOf } from '@clowdy/protocol';
 import { CommandError, unavailable } from '../errors';
 import { isBelow } from '../fs/paths';
 import { TtlCache } from '../lib/cache';
-import { isDocFile, realPathBelow } from './paths';
+import { isDocFile } from './paths';
 
 import type { Dirent } from 'node:fs';
 import type { DocNode, DocsSource, DocsTree, Project } from '@clowdy/protocol';
@@ -23,102 +22,12 @@ const NEVER_LISTED = new Set(['.git', 'node_modules']);
 /** The `@` menu and quick search ask for the tree on every key; a checkout's sources are read once in this long. */
 const SOURCES_TTL_MS = 5000;
 
-/**
- * The documents under `root`: Markdown files and folders only, folders first, names in natural order
- * (`doc2` before `doc10`). Symbolic links are not listed, a folder that cannot be read lists nothing, and `.git` and `node_modules` are skipped; past `MAX_DOC_ENTRIES`
- * the rest of the source is left out.
- */
-export function listDocs(root: string, relative = '', budget = { left: MAX_DOC_ENTRIES }): DocNode[] {
-    const nodes: DocNode[] = [];
-    let entries: Dirent[];
-
-    try {
-        entries = readdirSync(relative ? `${root}/${relative}` : root, { withFileTypes: true });
-    } catch {
-        return nodes;
-    }
-
-    for (const entry of entries) {
-        if (budget.left <= 0) break;
-
-        const path = relative ? `${relative}/${entry.name}` : entry.name;
-
-        if (entry.isDirectory() && !NEVER_LISTED.has(entry.name)) {
-            budget.left--;
-            nodes.push({ path, name: entry.name, kind: 'dir', children: listDocs(root, path, budget) });
-        } else if (entry.isFile() && isDocFile(entry.name)) {
-            budget.left--;
-            nodes.push({ path, name: entry.name, kind: 'file' });
-        }
-    }
-
-    return nodes.sort((a, b) => (a.kind === b.kind ? collator.compare(a.name, b.name) : a.kind === 'dir' ? -1 : 1));
-}
-
-/** Whether `path` is a folder (a link to one is, and `realPathBelow` decides whether it may be read). */
-function isFolder(path: string): boolean {
-    try {
-        return statSync(path).isDirectory();
-    } catch {
-        return false;
-    }
-}
-
 /** Whether a tree has a document in it, at any depth. */
 const hasDocument = (nodes: readonly DocNode[]): boolean =>
     nodes.some(node => (node.kind === 'file' ? true : hasDocument(node.children ?? [])));
 
 /**
- * The document sources a checkout has, each with its Markdown tree: the roots of the registry (`DOC_SOURCES`) that are folders on the disk, in its order. A root that is a link
- * out of the checkout is left out (nothing is read through it, and it does not take the others down: a `specs` that is a link to a shared folder is no reason to list no
- * documents), and so is one with no Markdown file in it. Nothing here makes a folder.
- */
-function sourcesOf(checkout: string): DocsSource[] {
-    return docSourcesOf(path => isFolder(join(checkout, path))).flatMap(source => {
-        const root = realPathBelow(checkout, join(checkout, source.root));
-
-        if (!root) {
-            return [];
-        }
-
-        const nodes = listDocs(root);
-
-        return hasDocument(nodes) ? [{ id: source.id, label: source.label, root: source.root, nodes }] : [];
-    });
-}
-
-/**
- * The documents of a project, one entry per folder in the project's order, each with the sources it has. The main folder must be there, since the project cannot work
- * without it: a missing main folder is `unavailable`. Another folder that is missing is left out. A folder with no sources has an entry with none. Nothing here writes or
- * watches: the files are the file system's, which the app opens and edits through `fs`.
- *
- * With a `place` that is a worktree, the entry of its folder is the worktree's documents (a plan an agent wrote there is not in the main checkout), under the folder's own
- * id; the other folders are read as before.
- *
- * Sync and read on every call: the docs route serves it until it awaits `readDocsTree`, the async and cached one; `sourcesOf`, `listDocs` and `isFolder` go with it then.
- */
-export function docsTree(project: Project, place?: Place): DocsTree {
-    return project.folders.flatMap((folder, index) => {
-        const checkout = place?.folder.id === folder.id ? place.path : folder.path;
-
-        try {
-            if (!existsSync(checkout)) {
-                throw unavailable(`The ${checkout === folder.path ? 'folder' : 'worktree'} ${checkout} is missing`);
-            }
-
-            return [{ folderId: folder.id, sources: sourcesOf(checkout) }];
-        } catch (error) {
-            if (index === 0 || !(error instanceof CommandError)) {
-                throw error;
-            }
-
-            return [];
-        }
-    });
-}
-
-/**
- * The documents under `root` (`listDocs`), read without holding up the daemon: Markdown files and folders only, folders first, names in natural order. Symbolic links are
+ * The documents under `root`: Markdown files and folders only, folders first, names in natural order. Symbolic links are
  * not listed, a folder that cannot be read lists nothing, `.git` and `node_modules` are skipped, and past `MAX_DOC_ENTRIES` the rest of the source is left out.
  */
 export async function readDocs(root: string, relative = '', budget = { left: MAX_DOC_ENTRIES }): Promise<DocNode[]> {
@@ -155,7 +64,11 @@ const SOURCE_PATHS = [
     ...new Set(DOC_SOURCES.flatMap(source => [source.root, ...(source.requires ? [source.requires] : [])])),
 ];
 
-/** The document sources a checkout has, each with its Markdown tree (`sourcesOf`), read without holding up the daemon. */
+/**
+ * The document sources a checkout has, each with its Markdown tree: the roots of the registry (`DOC_SOURCES`) that are folders on the disk, in its order. A root that is a link
+ * out of the checkout is left out (nothing is read through it, and it does not take the others down: a `specs` that is a link to a shared folder is no reason to list no
+ * documents), and so is one with no Markdown file in it. Nothing here makes a folder.
+ */
 export async function readSources(checkout: string): Promise<DocsSource[]> {
     const folders = new Set(
         (
@@ -186,8 +99,13 @@ const keptSources = (checkout: string): Promise<DocsSource[]> =>
     kept.get(checkout, async () => ({ value: await readSources(checkout), keepMs: SOURCES_TTL_MS }));
 
 /**
- * The documents of a project (`docsTree`), read without holding up the daemon and kept per checkout for a few seconds: the `@` menu asks on every key. `read` is how a
- * checkout's sources are read (`readSources` for a fresh look).
+ * The documents of a project, one entry per folder in the project's order, each with the sources it has, kept per checkout for `SOURCES_TTL_MS` (`read` is how a checkout's
+ * sources are read: `readSources` for a fresh look). The main folder must be there, since the project cannot work without it: a missing main folder is `unavailable`. Another
+ * folder that is missing is left out. A folder with no sources has an entry with none. Nothing here writes or watches: the files are the file system's, which the app opens
+ * and edits through `fs`.
+ *
+ * With a `place` that is a worktree, the entry of its folder is the worktree's documents (a plan an agent wrote there is not in the main checkout), under the folder's own
+ * id; the other folders are read as before.
  */
 export async function readDocsTree(project: Project, place?: Place, read = keptSources): Promise<DocsTree> {
     const entries = await Promise.all(

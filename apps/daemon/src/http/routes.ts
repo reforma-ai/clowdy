@@ -13,7 +13,7 @@ import { contentDisposition, servedMediaType } from '../attachments/names';
 import { executeCommandAsync, waitsForAgent } from '../commands';
 import { getRun } from '../db/runs';
 import { clearViewed, listViewed, setViewed } from '../db/viewed';
-import { docsTree } from '../docs/tree';
+import { readDocsTree } from '../docs/tree';
 import { requireChat } from '../domain/chats';
 import { streamItems } from '../domain/items';
 import { resolvePlace, resolveWorkspacePlace } from '../domain/places';
@@ -831,10 +831,10 @@ export function createRoutes(context: RouteContext): Route[] {
         {
             method: 'GET',
             pattern: /^\/v1\/projects\/([^/]+)\/docs$/,
-            handle: (_request, url, [id]) => {
+            handle: async (_request, url, [id]) => {
                 const project = requireProject(store, id);
 
-                return json(docsTree(project, workspacePlaceOf(project, url)));
+                return json(await readDocsTree(project, workspacePlaceOf(project, url)));
             },
         },
         {
