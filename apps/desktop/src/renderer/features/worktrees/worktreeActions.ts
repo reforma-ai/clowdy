@@ -158,9 +158,18 @@ export async function readRemoval(target: WorktreeTarget, preview: RemovalPrevie
 export async function removeWorktree(
     target: WorktreeTarget,
     { worktree, plan, chats }: Pick<RemovalRead, 'worktree' | 'plan' | 'chats'>,
-    { deleteBranch, disposition }: RemoveChoice
+    { deleteBranch, disposition }: RemoveChoice,
+    { legacyTidy = false }: { legacyTidy?: boolean } = {}
 ): Promise<void> {
     if (deleteBranch && (!worktree.branch || !worktree.headOid)) throw new Error('Could not verify the branch commit');
+    // The old daemon cannot enforce the final tidy merge check with chat archival. Keep the named branch,
+    // which preserves its commits even if the base moves. Git cannot lock against an external checkout change
+    // between this preview and the legacy command; detached HEADs and discard are never eligible for fallback.
+    if (
+        legacyTidy &&
+        (deleteBranch || !worktree.branch || !worktree.headOid || worktree.merged !== true || plan.kind !== 'plain')
+    )
+        throw new Error('The daemon needs to update before this worktree can be cleaned up. Try again later');
     const discard = plan.kind === 'discard';
     const noChats = chats.ids.size === 0;
     try {
@@ -168,6 +177,17 @@ export async function removeWorktree(
         const currentChats = affectedChats(current.worktree, current.snapshot, target.folderId);
         if (chatPreviewChanged(chats.affected, currentChats.affected))
             throw new Error('The linked chats changed. Try again');
+        if (legacyTidy) {
+            const drift = removalDrift({ worktree, chats }, current.worktree, currentChats);
+            if (
+                drift.branch ||
+                drift.chats ||
+                current.worktree.active ||
+                currentChats.blocker ||
+                removeHint(current.worktree)
+            )
+                throw new Error('The worktree or linked chats changed. Try again');
+        }
         const linkedNow = noChats ? currentChats.ids.size : 0;
         const drift = confirmedRemovalDrift(worktree, current.worktree, linkedNow, {
             deleteBranch,
