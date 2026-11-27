@@ -1598,6 +1598,25 @@ export class FixtureTransport implements Transport {
         });
     }
 
+    #briefbackInstalled = false;
+
+    async getBriefbackStatus(): Promise<import('@clowdy/protocol').BriefbackStatus> {
+        return {
+            copies: [0, 1].map(() => ({ exists: this.#briefbackInstalled, installed: this.#briefbackInstalled })),
+            fingerprint: String(this.#briefbackInstalled),
+        };
+    }
+
+    async checkBriefbackUpdate(fingerprint: string): Promise<import('@clowdy/protocol').BriefbackUpdateStatus> {
+        return fingerprint === String(this.#briefbackInstalled) && this.#briefbackInstalled ? 'up-to-date' : 'unknown';
+    }
+
+    async installBriefback(fingerprint: string): Promise<import('@clowdy/protocol').BriefbackStatus> {
+        if (fingerprint !== String(this.#briefbackInstalled)) throw new TransportError('Installation changed', 409);
+        this.#briefbackInstalled = true;
+        return this.getBriefbackStatus();
+    }
+
     #sleepMode: SleepMode = DEFAULT_SLEEP_MODE;
 
     async getPowerSettings(): Promise<PowerSettings> {

@@ -358,6 +358,9 @@ export interface Transport {
     getProjectIcon: (projectId: ProjectId) => Promise<Blob | undefined>;
     /** The skills agents get: system and user ones, and with a project also that project's. */
     getSkills: (projectId?: ProjectId) => Promise<SkillCatalog>;
+    getBriefbackStatus: () => Promise<import('@clowdy/protocol').BriefbackStatus>;
+    checkBriefbackUpdate: (fingerprint: string) => Promise<import('@clowdy/protocol').BriefbackUpdateStatus>;
+    installBriefback: (fingerprint: string) => Promise<import('@clowdy/protocol').BriefbackStatus>;
     /** What the daemon says about itself: the bundle version it runs, its protocol and since when it has been running. The request carries no token and no protocol header, so a daemon of another major answers too. */
     getHealth: () => Promise<Health>;
     getPowerSettings: () => Promise<PowerSettings>;

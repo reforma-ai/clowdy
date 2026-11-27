@@ -122,6 +122,9 @@ export interface RunPromptSuggestion {
  *                                            come back `interrupted` at the next start, nothing is marked cancelled).
  *                                            `?ifGitIdle=1` refuses with 409 while Git operations are running or a follow-up sync may be about to start.
  * GET  /v1/skills?projectId=              -> SkillCatalog (system and user skills; with `projectId` also that project's skills)
+ * GET  /v1/skills/briefback               -> BriefbackStatus
+ * POST /v1/skills/briefback               -> BriefbackStatus (body: { fingerprint })
+ * GET  /v1/skills/briefback/update?fingerprint= -> BriefbackUpdateStatus
  * GET  /v1/agents/:id/models              -> AgentModels (the models the agent offers, read from its own program on first ask and kept for ten minutes; never starts a chat)
  * GET  /v1/agents                         -> AgentInfo[] (every agent the daemon knows, with whether it can start one on this machine, who is
  *                                            signed in, its subscription usage and its settings; answers at once with what is cached and
@@ -178,6 +181,8 @@ export const ROUTES = {
     terminal: (terminalId: string) => `/v1/terminals/${encodeURIComponent(terminalId)}`,
     terminalStream: (terminalId: string) => `/v1/terminals/${encodeURIComponent(terminalId)}/stream`,
     skills: '/v1/skills',
+    briefback: '/v1/skills/briefback',
+    briefbackUpdate: '/v1/skills/briefback/update',
     agents: '/v1/agents',
     agentModels: (agentId: string) => `/v1/agents/${encodeURIComponent(agentId)}/models`,
     shutdown: '/v1/shutdown',

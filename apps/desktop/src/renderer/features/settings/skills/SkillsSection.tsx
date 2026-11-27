@@ -12,6 +12,7 @@ import { SettingsCard } from '../ui/SettingsCard';
 import { SettingsEmpty } from '../ui/SettingsEmpty';
 import { SettingsPage } from '../ui/SettingsPage';
 import { SettingsSection } from '../ui/SettingsSection';
+import { RecommendedSkill } from './RecommendedSkill';
 import { SkillRow } from './SkillRow';
 import styles from './SkillsSection.module.css';
 import { groupSkills } from './skillView';
@@ -29,10 +30,12 @@ const INTRO = 'Skills give agents instructions for specific kinds of work';
 
 function SkillsBody({ projectId, projectName }: { projectId?: string; projectName?: string }) {
     const { state, pending, reload, toggle } = useSkills(projectId);
+    const { skillsRevision } = useRootStore();
 
     if (state.status === 'loading') {
         return (
             <SettingsPage description={INTRO}>
+                <RecommendedSkill onInstalled={reload} revision={skillsRevision} />
                 <Box direction="row" gap="md" align="center">
                     <Loader size="xs" />
                     <Text color="secondary">Loading skills…</Text>
@@ -44,6 +47,7 @@ function SkillsBody({ projectId, projectName }: { projectId?: string; projectNam
     if (state.status === 'failed') {
         return (
             <SettingsPage description={INTRO}>
+                <RecommendedSkill onInstalled={reload} revision={skillsRevision} />
                 <Box gap="md" align="start">
                     <Text color="danger">Skills could not be loaded. {state.message}</Text>
                     <Button variant="bordered" size="sm" onPress={reload}>
@@ -58,6 +62,7 @@ function SkillsBody({ projectId, projectName }: { projectId?: string; projectNam
 
     return (
         <SettingsPage description={INTRO}>
+            <RecommendedSkill onInstalled={reload} revision={skillsRevision} />
             {warnings.length > 0 && (
                 <Alert color="warning" role="status">
                     <AlertIcon>
