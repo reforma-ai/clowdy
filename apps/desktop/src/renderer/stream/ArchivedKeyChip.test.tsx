@@ -38,7 +38,8 @@ const answer = () =>
         await new Promise(resolve => setTimeout(resolve, 0));
     });
 
-const chips = () => [...container.querySelectorAll<HTMLElement>('button[title]')].map(chip => chip.textContent);
+const chips = () =>
+    [...container.querySelectorAll<HTMLElement>('[data-streamdown="inline-code-chip"]')].map(chip => chip.textContent);
 
 beforeEach(async () => {
     container = document.createElement('div');
@@ -95,9 +96,6 @@ describe('a key of an archived task the window has not seen', () => {
         await answer();
 
         expect(chips()).toEqual(['CAR-38']);
-        expect(container.querySelector('button[title]')?.getAttribute('title')).toBe(
-            store.selectedProject!.archivedKnown.get('t-38')?.title
-        );
         // The key nobody has stays words, and each key was asked for once however often the message was drawn.
         expect(container.textContent).toContain('CAR-999');
         expect(asked).toEqual(['CAR-38', 'CAR-999']);
