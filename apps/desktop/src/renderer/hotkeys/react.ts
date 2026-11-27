@@ -45,8 +45,8 @@ export function commandTooltip(label: string, id: string, registry?: HotkeyRegis
  * So a scope that opens later (a popover, a dialog, a picker) is always on top, but a scope pushed by a child that mounts in the same commit as its parent ends up below the parent's.
  * A screen pushes one scope for itself (`tasks`), and a nested scope that mounts with it should not reuse its keys.
  */
-export function useHotkeyScope(name: string, registry: HotkeyRegistry = hotkeys): void {
-    useEffect(() => registry.pushScope(name), [name, registry]);
+export function useHotkeyScope(name: string, registry: HotkeyRegistry = hotkeys, enabled = true): void {
+    useEffect(() => (enabled ? registry.pushScope(name) : undefined), [name, registry, enabled]);
 }
 
 /**
@@ -56,7 +56,8 @@ export function useHotkeyScope(name: string, registry: HotkeyRegistry = hotkeys)
 export function useCommands(
     scope: string,
     commands: readonly ScopedCommand[],
-    registry: HotkeyRegistry = hotkeys
+    registry: HotkeyRegistry = hotkeys,
+    enabled = true
 ): void {
     const latest = useRef(commands);
     const signature = JSON.stringify(
@@ -76,6 +77,7 @@ export function useCommands(
     });
 
     useEffect(() => {
+        if (!enabled) return;
         const current = (id: string) => latest.current.find(command => command.id === id);
         const disposers = latest.current.map(command =>
             registry.defineCommand({
@@ -88,5 +90,5 @@ export function useCommands(
         );
 
         return () => disposers.forEach(dispose => dispose());
-    }, [scope, signature, registry]);
+    }, [scope, signature, registry, enabled]);
 }

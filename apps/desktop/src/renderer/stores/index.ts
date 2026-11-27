@@ -1,4 +1,5 @@
 export {
+    ProjectProvider,
     RootStoreProvider,
     useAgentModels,
     useAgents,

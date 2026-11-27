@@ -169,7 +169,7 @@ export class RootStore {
         }
     }
 
-    selectProject(projectId: ProjectId): void {
+    prepareProject(projectId: ProjectId): ProjectState | undefined {
         const project = this.projects.find(candidate => candidate.id === projectId);
 
         if (!project) return;
@@ -180,6 +180,12 @@ export class RootStore {
             this.#states.set(projectId, state);
             void state.load();
         }
+
+        return this.#states.get(projectId);
+    }
+
+    selectProject(projectId: ProjectId): void {
+        if (!this.prepareProject(projectId)) return;
 
         this.selectedProjectId = projectId;
         writeStored(this.#storage, SELECTED_PROJECT_KEY, projectId);

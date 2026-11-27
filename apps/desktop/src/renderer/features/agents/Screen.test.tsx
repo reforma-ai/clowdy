@@ -3154,7 +3154,8 @@ describe('worktree cards', () => {
         await restart();
         const read = vi.spyOn(store.transport, 'getProjectWorktrees');
         await act(async () => window.dispatchEvent(new Event('focus')));
-        expect(read).not.toHaveBeenCalled();
+        expect(read).not.toHaveBeenCalledWith(FIXTURE_PROJECT_ID);
+        read.mockClear();
         await draw(() => ui().setGroupByWorktree(true));
         expect(read).toHaveBeenCalledExactlyOnceWith(FIXTURE_PROJECT_ID);
         read.mockClear();
@@ -3420,5 +3421,71 @@ describe('worktree cards', () => {
         await draw(() => ui().setGroupByWorktree(true));
         await press(rowOf(FIXTURE_WORKSPACE_CHAT_ID).querySelector<HTMLElement>('button[aria-label="Chat actions"]')!);
         expect([menuItem('Move up'), menuItem('Move down')]).toEqual([undefined, undefined]);
+    });
+
+    it('switches projects through the sidebar dots in menu order', async () => {
+        const navigation = container.querySelector<HTMLElement>('nav[aria-label="Switch project"]')!;
+        const buttons = [...navigation.querySelectorAll('button')];
+        const ordered = [
+            ...store.projects.filter(candidate => candidate.personal),
+            ...store.projects.filter(candidate => !candidate.personal),
+        ];
+
+        expect(buttons.map(button => button.getAttribute('aria-label'))).toEqual(ordered.map(item => item.name));
+        expect(buttons.find(button => button.getAttribute('aria-current'))?.getAttribute('aria-label')).toBe(
+            store.projects.find(candidate => candidate.id === FIXTURE_PROJECT_ID)?.name
+        );
+
+        await draw(() => buttons[0].click());
+        expect(store.selectedProjectId).toBe(FIXTURE_PERSONAL_PROJECT_ID);
+        expect(navigation.querySelector('button[aria-current]')?.getAttribute('aria-label')).toBe(ordered[0].name);
+    });
+
+    it('keeps the project until a horizontal gesture settles and ignores its inertia', async () => {
+        await store.prepareProject(FIXTURE_PERSONAL_PROJECT_ID)!.load();
+        await draw();
+        const sidebar = container.querySelector<HTMLElement>('[data-project-sidebar]')!;
+        const vertical = new WheelEvent('wheel', { deltaY: 100, bubbles: true, cancelable: true });
+        const horizontal = () => new WheelEvent('wheel', { deltaX: -120, bubbles: true, cancelable: true });
+        await act(async () => {
+            sidebar.dispatchEvent(vertical);
+            sidebar.dispatchEvent(horizontal());
+        });
+        expect(vertical.defaultPrevented).toBe(false);
+        expect(store.selectedProjectId).toBe(FIXTURE_PROJECT_ID);
+        expect(container.querySelector('[inert]')).not.toBeNull();
+
+        await act(async () => {
+            await new Promise(resolve => setTimeout(resolve, 450));
+        });
+        expect(store.selectedProjectId).toBe(FIXTURE_PERSONAL_PROJECT_ID);
+        await draw();
+        await act(async () => {
+            sidebar.dispatchEvent(horizontal());
+            await new Promise(resolve => setTimeout(resolve, 450));
+        });
+        expect(store.selectedProjectId).toBe(FIXTURE_PERSONAL_PROJECT_ID);
+    });
+
+    it('lets a swipe reach a project whose snapshot failed', async () => {
+        const neighbor = store.prepareProject(FIXTURE_PERSONAL_PROJECT_ID)!;
+        await neighbor.load();
+        await draw(() => {
+            runInAction(() => {
+                neighbor.status = 'failed';
+                neighbor.error = 'Offline';
+            });
+        });
+        const sidebar = container.querySelector<HTMLElement>('[data-project-sidebar]')!;
+        await act(async () => {
+            sidebar.dispatchEvent(new WheelEvent('wheel', { deltaX: -120, bubbles: true, cancelable: true }));
+        });
+        expect(container.querySelector('[inert]')?.textContent).toContain('Offline');
+        expect(store.selectedProjectId).toBe(FIXTURE_PROJECT_ID);
+        await act(async () => {
+            await new Promise(resolve => setTimeout(resolve, 450));
+        });
+        expect(store.selectedProjectId).toBe(FIXTURE_PERSONAL_PROJECT_ID);
+        expect(store.selectedProject?.status).toBe('failed');
     });
 });

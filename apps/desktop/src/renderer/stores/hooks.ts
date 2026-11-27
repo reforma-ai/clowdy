@@ -9,8 +9,10 @@ import type { RunStream } from './StreamStore';
 import type { ProjectUi } from './UiStore';
 
 const RootStoreContext = createContext<RootStore | null>(null);
+const ProjectContext = createContext<ProjectState | null>(null);
 
 export const RootStoreProvider = RootStoreContext.Provider;
+export const ProjectProvider = ProjectContext.Provider;
 
 export function useRootStore(): RootStore {
     const root = use(RootStoreContext);
@@ -22,7 +24,9 @@ export function useRootStore(): RootStore {
 
 /** The selected project. Screens render only while one is selected and loaded, so this does not return nothing. */
 export function useProjectState(): ProjectState {
-    const project = useRootStore().selectedProject;
+    const override = use(ProjectContext);
+    const root = useRootStore();
+    const project = override ?? root.selectedProject;
 
     if (!project) throw new Error('No project is selected');
 
@@ -32,10 +36,12 @@ export function useProjectState(): ProjectState {
 /** What the selected project's window shows: the section, and what is selected in it. */
 export function useProjectUi(): ProjectUi {
     const root = useRootStore();
+    const override = use(ProjectContext);
 
-    if (!root.selectedProjectId) throw new Error('No project is selected');
+    const projectId = override?.id ?? root.selectedProjectId;
+    if (!projectId) throw new Error('No project is selected');
 
-    return root.ui.forProject(root.selectedProjectId);
+    return root.ui.forProject(projectId);
 }
 
 /** A run's stream, fetched on first use and kept current by the event feed while the component shows it. */

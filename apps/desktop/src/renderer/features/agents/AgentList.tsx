@@ -26,7 +26,7 @@ import {
     useState,
 } from 'react';
 
-import { useCommands, useHotkeyScope } from '../../hotkeys';
+import { hotkeys, useCommands, useHotkeyScope } from '../../hotkeys';
 import { SidebarHeading, useRunLabel } from '../../shared';
 import { useFileDragHover } from '../../shared/useFileDragHover';
 import { ProjectSelect } from '../../shell/ProjectSelect';
@@ -141,6 +141,7 @@ export function AgentList({
     isCovered,
     projectInfo,
     sidebarWorktrees,
+    preview = false,
 }: {
     selection: AgentSelection;
     chats: readonly Chat[];
@@ -149,6 +150,7 @@ export function AgentList({
     isCovered: boolean;
     projectInfo?: ProjectInfo;
     sidebarWorktrees?: readonly FolderWorktrees[];
+    preview?: boolean;
 }) {
     const root = useRootStore();
     useDraftRevision();
@@ -217,6 +219,7 @@ export function AgentList({
     );
     // Remember Git's canonical path as soon as it is known, including for archived chats.
     useEffect(() => {
+        if (preview) return;
         const aliases = new Map(
             additionalCards.flatMap(card => (card.orderAliases ?? []).map(alias => [alias, card.key] as const))
         );
@@ -402,11 +405,13 @@ export function AgentList({
     const activeDraftFolder = activeDraft ? draftFolder(activeDraft) : undefined;
     const activeDraftCard = activeDraft ? draftCardKey(activeDraft) : undefined;
     useEffect(() => {
+        if (preview) return;
         if (!selection.draft) return;
         if (grouped && activeDraftFolder) ui.expandFolder(activeDraftFolder);
         if (groupedByWorktree && activeDraftCard) ui.expandWorktree(activeDraftCard);
-    }, [selection.draft, ui.draftId, activeDraftFolder, activeDraftCard, grouped, groupedByWorktree, ui]);
+    }, [preview, selection.draft, ui.draftId, activeDraftFolder, activeDraftCard, grouped, groupedByWorktree, ui]);
     useEffect(() => {
+        if (preview) return;
         if (openChatId === undefined) return;
 
         ui.expandChats(ancestorChats(project.chats, openChatId).map(chat => chat.id));
@@ -417,9 +422,9 @@ export function AgentList({
 
         if (folderId !== undefined) ui.expandFolder(folderId);
         if (selectedCard) ui.expandWorktree(selectedCard);
-    }, [openChatId, openRunId, grouped, selectedCard, selectedFolder, project, ui]);
+    }, [preview, openChatId, openRunId, grouped, selectedCard, selectedFolder, project, ui]);
 
-    useHotkeyScope(AGENTS_SCOPE);
+    useHotkeyScope(AGENTS_SCOPE, hotkeys, !preview);
     useCommands(
         AGENTS_SCOPE,
         agentCommands({
@@ -427,7 +432,9 @@ export function AgentList({
             // The headings are rows the arrows stop on, so they are in the order J and K step through; a group's note has no focus.
             ids: () => navigationIds,
             openId: () => selectedId,
-        })
+        }),
+        hotkeys,
+        !preview
     );
 
     // Right-click anywhere on a chat's row, or on the row of a sub-agent that is over: the rows are the list's own elements, so the click is found by its row's key.
@@ -870,6 +877,24 @@ export function AgentList({
             </PanelContent>
 
             <StarCard />
+
+            <nav className={styles.projectDots} aria-label="Switch project">
+                {[
+                    ...root.projects.filter(candidate => candidate.personal),
+                    ...root.projects.filter(candidate => !candidate.personal),
+                ].map(candidate => (
+                    <button
+                        key={candidate.id}
+                        type="button"
+                        className={styles.projectDot}
+                        aria-label={candidate.name}
+                        aria-current={candidate.id === project.id ? 'true' : undefined}
+                        onClick={() => root.selectProject(candidate.id)}
+                    >
+                        <span />
+                    </button>
+                ))}
+            </nav>
 
             <Show when={contextMenu.isOpen ? menuChat : null}>
                 {chat => (
