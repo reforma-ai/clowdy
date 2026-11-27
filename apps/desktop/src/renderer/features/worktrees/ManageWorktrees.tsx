@@ -1,4 +1,4 @@
-import { DialogLayout, openFormDialog } from '@clowdy/components/modals';
+import { openFormDialog } from '@clowdy/components/modals';
 import { folderNames } from '@clowdy/protocol';
 
 import { RootStoreProvider } from '../../stores';
@@ -42,9 +42,7 @@ export function openManageWorktrees({
         width: 540,
         component: (
             <RootStoreProvider value={root}>
-                <DialogLayout title="Worktrees">
-                    <FolderWorktreesList projectId={projectId} initialTidy={initialTidy} />
-                </DialogLayout>
+                <FolderWorktreesList projectId={projectId} initialTidy={initialTidy} />
             </RootStoreProvider>
         ),
     });

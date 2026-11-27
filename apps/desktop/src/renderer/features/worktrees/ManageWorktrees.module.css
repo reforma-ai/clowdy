@@ -203,6 +203,9 @@
 
 /* Cleanup choices and status sit at the vertical center of each row. */
 .tidyRows {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xxl);
     min-width: 0;
     max-height: 280px;
     overflow-y: auto;

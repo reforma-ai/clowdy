@@ -197,6 +197,7 @@ export const commandSchema = z.discriminatedUnion('type', [
      * switch, refused for a tree with any change, a merge or rebase under way, a chat working in the folder and a branch another worktree has: `conflict` with its short reason and `details.hint`; a
      * branch that does not exist or a name that is none is `invalid`), and the chat is made only when that is done: a refusal makes no chat and leaves the repository as it was. A branch the checkout
      * is on changes nothing. The answer is `{ chat }`, and `{ chat, warning }` when the switch was made and the person's `post-checkout` hook failed after it or a detached HEAD's commits are on no branch now.
+     * For a new worktree the answer also has `workspaceOrderPath`, its canonical path even before it exists, for retaining the list position if its workspace record is later removed.
      */
     z.object({
         ...base,

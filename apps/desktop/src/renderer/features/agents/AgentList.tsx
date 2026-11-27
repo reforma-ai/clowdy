@@ -61,6 +61,7 @@ import {
     busySubagents,
     type ChatRow,
     chatDotTone,
+    folderById,
     groupFolderOf,
     isActiveThread,
     nativeAgentsByRoot,
@@ -70,16 +71,16 @@ import {
 import { BranchPullRequestBadge } from './BranchPullRequestBadge';
 import { ChatIcon, ChatStatus } from './ChatIcon';
 import { chatListPreferences } from './chatListPreferences';
+import { ManageWorktreesButton } from './ManageWorktreesButton';
 import { openNewChat } from './openNewChat';
 import { ProjectMenu } from './ProjectMenu';
 import { RowFold } from './RowFold';
 import { StarCard } from './StarCard';
 import { SubagentMenu } from './SubagentMenu';
-import { TidyWorktreesButton } from './TidyWorktreesButton';
 import { useChatListOrder } from './useChatListOrder';
 import { useSidebarWorktrees } from './useSidebarWorktrees';
 import { WorktreeCardHeader } from './WorktreeCardHeader';
-import { chatWorktreeKey, type WorktreeCard, worktreeCards, worktreeKey } from './worktreeCards';
+import { chatWorktreeKey, type WorktreeCard, worktreeCards, worktreeKey, worktreeRank } from './worktreeCards';
 
 import type { Chat, ChatId, FolderId, ProjectInfo, Run } from '@clowdy/protocol';
 import type { NewChatDraft } from '../../stores/NewChatDrafts';
@@ -92,6 +93,7 @@ const NO_RUNS: readonly Run[] = [];
 /** The ids of the rows a grouped list adds: the heading of a folder's group, and the row of a group with no chat. Chat ids never look like them. */
 const GROUP_PREFIX = '@folder:';
 const EMPTY_PREFIX = '@empty:';
+const LINKED_THREAD_PREFIX = '@linked-thread:';
 const groupKey = (folderId: FolderId) => `${GROUP_PREFIX}${folderId}`;
 
 /** What a line of the list is: a chat (or a thread) or a sub-agent of one; the heading of a folder's group, or the note of a group that has no chat. */
@@ -100,7 +102,14 @@ type ListEntry =
     | { kind: 'draft'; draft: NewChatDraft }
     | { kind: 'group'; group: AgentGroup; isCollapsed: boolean }
     | { kind: 'empty'; folderId: FolderId }
-    | { kind: 'worktree'; card: WorktreeCard; isCollapsed: boolean; rows: AgentRow[]; drafts: NewChatDraft[] };
+    | {
+          kind: 'worktree';
+          card: WorktreeCard;
+          isCollapsed: boolean;
+          rows: AgentRow[];
+          drafts: NewChatDraft[];
+          linkedThreads: Chat[];
+      };
 
 /** The key of a line's row in the grid list: a chat's id, a sub-agent's run id, or the id of a heading or a note. */
 const entryKey = (entry: ListEntry) =>
@@ -209,6 +218,17 @@ export function AgentList({
         projectInfo,
         ui.worktreeOrder
     );
+    // Remember Git's canonical path as soon as it is known, including for archived chats.
+    useEffect(() => {
+        const aliases = new Map(
+            additionalCards.flatMap(card => (card.orderAliases ?? []).map(alias => [alias, card.key] as const))
+        );
+        const next = [
+            ...new Set(ui.worktreeOrder.flatMap(key => (aliases.has(key) ? [aliases.get(key)!, key] : [key]))),
+        ];
+        if (next.length !== ui.worktreeOrder.length || next.some((key, index) => key !== ui.worktreeOrder[index]))
+            ui.setWorktreeOrder(next);
+    });
     for (const draft of draftItems) {
         const key = additionalDraftKey(draft);
         if (!key || additionalCards.some(card => card.key === key) || draft.workspace?.mode !== 'existing') continue;
@@ -228,9 +248,7 @@ export function AgentList({
     }
     const { showFinishedThreads, expandRunningAgents, showUnusedWorktrees } = chatListPreferences;
     const shownAdditional = additionalCards.filter(
-        card =>
-            draftItems.some(draft => additionalDraftKey(draft) === card.key) ||
-            (card.used ? card.roots.length > 0 : showUnusedWorktrees)
+        card => draftItems.some(draft => additionalDraftKey(draft) === card.key) || card.used || showUnusedWorktrees
     );
     const mainCards: WorktreeCard[] = groupedByWorktree
         ? agentGroups(chats, folders).flatMap(group => {
@@ -246,7 +264,12 @@ export function AgentList({
                       pending: false,
                       used: true,
                       roots,
-                      linkedChats: roots,
+                      linkedChats: [...project.chats.values()].filter(
+                          chat =>
+                              !chat.workspace &&
+                              chat.archivedAt === undefined &&
+                              folderById(folders, chat.folderId).id === group.folder.id
+                      ),
                   },
               ];
           })
@@ -261,7 +284,7 @@ export function AgentList({
         (a, b) =>
             folders.indexOf(a.folder) - folders.indexOf(b.folder) ||
             Number(Boolean(b.main)) - Number(Boolean(a.main)) ||
-            (rank.get(a.key) ?? Infinity) - (rank.get(b.key) ?? Infinity)
+            worktreeRank(a, rank) - worktreeRank(b, rank)
     );
     const shownCards = cards.filter(card => card.main || shownAdditional.includes(card));
     const order = useChatListOrder(chats, openChatId, cards, shownCards);
@@ -298,6 +321,16 @@ export function AgentList({
                   isCollapsed,
                   rows: isCollapsed ? [] : rowsOf(card.roots),
                   drafts: isCollapsed ? [] : draftItems.filter(draft => draftCardKey(draft) === card.key),
+                  linkedThreads: isCollapsed
+                      ? []
+                      : card.linkedChats.filter(
+                            chat =>
+                                chat.parentChatId &&
+                                !card.roots.some(root => root.id === chat.id) &&
+                                !ancestorChats(project.chats, chat.id).some(ancestor =>
+                                    card.roots.some(root => root.id === ancestor.id)
+                                )
+                        ),
               };
           })
         : grouped
@@ -324,7 +357,12 @@ export function AgentList({
         const rows = entry.kind === 'worktree' ? entry.rows : entry.kind === 'row' ? [entry.row] : [];
         for (const row of rows) visibleRows.set(row.id, row);
         return entry.kind === 'worktree'
-            ? [entryKey(entry), ...entry.drafts.map(draft => `@draft:${draft.id}`), ...rows.map(row => row.id)]
+            ? [
+                  entryKey(entry),
+                  ...entry.drafts.map(draft => `@draft:${draft.id}`),
+                  ...rows.map(row => row.id),
+                  ...entry.linkedThreads.map(chat => `${LINKED_THREAD_PREFIX}${chat.id}`),
+              ]
             : [entryKey(entry)];
     });
     // A draft has a selected row only when the ungrouped list has a new-chat row.
@@ -461,7 +499,7 @@ export function AgentList({
         if (
             entry?.kind === 'worktree' &&
             entry.isCollapsed &&
-            (entry.card.roots.length > 0 || draftItems.some(draft => draftCardKey(draft) === entry.card.key))
+            (entry.card.used || draftItems.some(draft => draftCardKey(draft) === entry.card.key))
         )
             ui.expandWorktree(entry.card.key);
         else if (key === selectedId) showSelected();
@@ -470,7 +508,8 @@ export function AgentList({
     const select = (id: string) => {
         const row = visibleRows.get(id);
 
-        if (id.startsWith('@draft:')) ui.openDraftId(id.slice('@draft:'.length));
+        if (id.startsWith(LINKED_THREAD_PREFIX)) ui.openChat(id.slice(LINKED_THREAD_PREFIX.length));
+        else if (id.startsWith('@draft:')) ui.openDraftId(id.slice('@draft:'.length));
         else if (id === NEW_CHAT_ROW) openNewChat(project, ui);
         else if (row?.kind === 'subagent') ui.openRun(row.id);
         // A heading is a label, not a page: only its chevron, and Right and Left on it, fold the group.
@@ -594,17 +633,33 @@ export function AgentList({
                         />
                         {entry.drafts.map(renderDraft)}
                         {entry.rows.map(row => renderAgentRow(row, entry.card))}
-                        {!entry.isCollapsed && entry.rows.length === 0 && entry.drafts.length === 0 && (
+                        {entry.linkedThreads.map(chat => (
                             <GridListItem
-                                id={`${EMPTY_PREFIX}${entry.card.key}`}
-                                text="No chats"
+                                key={`${LINKED_THREAD_PREFIX}${chat.id}`}
+                                id={`${LINKED_THREAD_PREFIX}${chat.id}`}
+                                text={`Thread in another chat: ${chat.title}`}
                                 icon={<Message />}
-                                className={styles.empty}
-                                isDisabled
                             >
-                                <span className={styles.title}>No chats</span>
+                                <span
+                                    className={styles.title}
+                                    title="Also shown under its parent chat"
+                                >{`Thread in another chat: ${chat.title}`}</span>
                             </GridListItem>
-                        )}
+                        ))}
+                        {!entry.isCollapsed &&
+                            entry.rows.length === 0 &&
+                            entry.drafts.length === 0 &&
+                            entry.linkedThreads.length === 0 && (
+                                <GridListItem
+                                    id={`${EMPTY_PREFIX}${entry.card.key}`}
+                                    text="No chats"
+                                    icon={<Message />}
+                                    className={styles.empty}
+                                    isDisabled
+                                >
+                                    <span className={styles.title}>No chats</span>
+                                </GridListItem>
+                            )}
                     </GridListSection>
                 );
             case 'empty':
@@ -763,7 +818,7 @@ export function AgentList({
     return (
         <Panel side="left" className={isCovered ? styles.covered : undefined}>
             <SidebarHeading ref={heading} title={<ProjectSelect />} className={styles.heading}>
-                <TidyWorktreesButton />
+                <ManageWorktreesButton />
                 <ArchiveButton anchor={heading} />
                 <ProjectMenu />
             </SidebarHeading>

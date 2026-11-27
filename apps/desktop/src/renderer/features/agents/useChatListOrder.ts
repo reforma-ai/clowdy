@@ -171,10 +171,22 @@ export function useChatListOrder(
         const inGroup = new Set(siblings);
         siblings.splice(from, 1);
         siblings.splice(to + (position === 'after' ? 1 : 0) - (from < to ? 1 : 0), 0, id);
-        const known = new Set(ui.worktreeOrder);
-        const slots = [...ui.worktreeOrder, ...cards.map(card => card.key).filter(key => !known.has(key))];
+        const aliases = new Map(
+            cards.flatMap(card => (card.orderAliases ?? []).map(alias => [alias, card.key] as const))
+        );
+        const saved = [...new Set(ui.worktreeOrder.map(key => aliases.get(key) ?? key))];
+        const known = new Set(saved);
+        const slots = [...saved, ...cards.map(card => card.key).filter(key => !known.has(key))];
         let index = 0;
-        ui.setWorktreeOrder(slots.map(key => (inGroup.has(key) ? siblings[index++] : key)));
+        const moved = slots.map(key => (inGroup.has(key) ? siblings[index++] : key));
+        ui.markWorktreesMoved(
+            cards
+                .filter(card => card.key === id || card.key === targetId)
+                .flatMap(card => [card.key, ...(card.orderAliases ?? [])])
+        );
+        ui.setWorktreeOrder([
+            ...new Set(moved.flatMap(key => [key, ...(cards.find(card => card.key === key)?.orderAliases ?? [])])),
+        ]);
     };
 
     // Measure in the list's coordinate space before applying transforms, so hit testing

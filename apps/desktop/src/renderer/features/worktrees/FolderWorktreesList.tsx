@@ -1,8 +1,8 @@
 import { Alert, AlertAction, AlertDescription, AlertIcon } from '@clowdy/components/Alert';
-import { Box } from '@clowdy/components/Box';
 import { Button } from '@clowdy/components/Button';
 import { For } from '@clowdy/components/For';
 import { useModalContext } from '@clowdy/components/Modal';
+import { DialogLayout } from '@clowdy/components/modals';
 import { PanelEmptyState } from '@clowdy/components/Panel';
 import { AttentionCircle, Mop } from '@clowdy/icons/14';
 import { mainFolder } from '@clowdy/protocol';
@@ -100,50 +100,60 @@ export function FolderWorktreesList({
             }),
     };
 
-    if (tidy) return <TidyWorktreesMode projectId={projectId} reload={reload} onCancel={() => setTidy(false)} />;
-
     return (
-        <div className={styles.groups}>
-            <Box direction="row" justify="end" align="center">
-                <Button size="sm" variant="bordered" onPress={() => setTidy(true)}>
-                    <Mop />
-                    Tidy up…
-                </Button>
-            </Box>
-            {failed && (
-                <Alert color={groups ? 'warning' : 'danger'} role={groups ? 'status' : 'alert'}>
-                    <AlertIcon>
-                        <AttentionCircle />
-                    </AlertIcon>
-                    <AlertDescription>
-                        {groups ? "Couldn't refresh the list" : "Couldn't load the worktrees"}
-                    </AlertDescription>
-                    <AlertAction>
-                        <Button size="xs" onPress={() => void reload()}>
-                            Try again
-                        </Button>
-                    </AlertAction>
-                </Alert>
-            )}
-
-            <div className={styles.groups}>
-                {groups === undefined && !failed && <WorktreesSkeleton />}
-                {groups && groups.length === 0 && (
-                    <PanelEmptyState fill={false} label="No git repositories in this project" />
-                )}
-                <For each={groups ?? []}>
-                    {({ group, folder }) => (
-                        <WorktreeGroup
-                            key={group.folderId}
-                            projectId={projectId}
-                            group={group}
-                            folder={folder}
-                            onCreate={() => openCreateWorktree({ root, projectId, folderId: group.folderId, reload })}
-                            {...actions}
-                        />
+        <DialogLayout
+            title="Worktrees"
+            headerActions={
+                !tidy && (
+                    <Button size="sm" variant="bordered" onPress={() => setTidy(true)}>
+                        <Mop />
+                        Tidy up…
+                    </Button>
+                )
+            }
+        >
+            {tidy ? (
+                <TidyWorktreesMode projectId={projectId} reload={reload} onCancel={() => setTidy(false)} />
+            ) : (
+                <div className={styles.groups}>
+                    {failed && (
+                        <Alert color={groups ? 'warning' : 'danger'} role={groups ? 'status' : 'alert'}>
+                            <AlertIcon>
+                                <AttentionCircle />
+                            </AlertIcon>
+                            <AlertDescription>
+                                {groups ? "Couldn't refresh the list" : "Couldn't load the worktrees"}
+                            </AlertDescription>
+                            <AlertAction>
+                                <Button size="xs" onPress={() => void reload()}>
+                                    Try again
+                                </Button>
+                            </AlertAction>
+                        </Alert>
                     )}
-                </For>
-            </div>
-        </div>
+
+                    <div className={styles.groups}>
+                        {groups === undefined && !failed && <WorktreesSkeleton />}
+                        {groups && groups.length === 0 && (
+                            <PanelEmptyState fill={false} label="No git repositories in this project" />
+                        )}
+                        <For each={groups ?? []}>
+                            {({ group, folder }) => (
+                                <WorktreeGroup
+                                    key={group.folderId}
+                                    projectId={projectId}
+                                    group={group}
+                                    folder={folder}
+                                    onCreate={() =>
+                                        openCreateWorktree({ root, projectId, folderId: group.folderId, reload })
+                                    }
+                                    {...actions}
+                                />
+                            )}
+                        </For>
+                    </div>
+                </div>
+            )}
+        </DialogLayout>
     );
 }

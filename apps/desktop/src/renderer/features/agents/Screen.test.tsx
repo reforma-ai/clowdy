@@ -2385,8 +2385,9 @@ describe('worktree cards', () => {
         ).toBe(mainKey());
     });
 
-    it('keeps checkout chats grouped when only thread worktrees are hidden', async () => {
+    it('shows a linked thread in its worktree while keeping it under its parent', async () => {
         await restart();
+        const expectedWorktree = workspaceKey();
         const workspace = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
         await draw(() => {
             project().chats.delete(FIXTURE_WORKSPACE_CHAT_ID);
@@ -2395,8 +2396,40 @@ describe('worktree cards', () => {
         });
         await draw();
         expect(rowOf('c-4').closest('[data-worktree-card]')?.getAttribute('data-worktree-card')).toBe(mainKey());
-        await draw(() => chatListPreferences.setShowUnusedWorktrees(true));
-        expect(rowOf('c-4').closest('[data-worktree-card]')?.getAttribute('data-worktree-card')).toBe(mainKey());
+        const link = rowOf('@linked-thread:c-6a');
+        expect(link.closest('[data-worktree-card]')?.getAttribute('data-worktree-card')).toBe(expectedWorktree);
+        expect(link.textContent).toContain('Fix the price rounding');
+        const uninstall = installDispatcher(hotkeys);
+        try {
+            rowOf(expectedWorktree).focus();
+            await act(async () =>
+                document.activeElement!.dispatchEvent(
+                    new KeyboardEvent('keydown', { key: 'j', bubbles: true, cancelable: true })
+                )
+            );
+            expect(document.activeElement?.getAttribute('data-key')).toBe('@linked-thread:c-6a');
+        } finally {
+            uninstall();
+        }
+        await press(link);
+        expect(ui().chatId).toBe('c-6a');
+        await draw();
+        await draw();
+        expect(rowOf('c-6a').closest('[data-worktree-card]')?.getAttribute('data-worktree-card')).toBe(mainKey());
+    });
+
+    it('shows a thread in the main checkout of its own folder when its parent uses another worktree', async () => {
+        await restart();
+        const workspace = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
+        await draw(() => {
+            project().chats.set('c-6', { ...project().chats.get('c-6')!, workspace });
+            project().chats.set('c-6a', { ...project().chats.get('c-6a')!, folderId: 'fld_api', workspace: undefined });
+            ui().setGroupByWorktree(true);
+        });
+        await draw();
+        expect(rowOf('@linked-thread:c-6a').closest('[data-worktree-card]')?.getAttribute('data-worktree-card')).toBe(
+            worktreeKey('fld_api', '/Users/dev/car-rental-api')
+        );
     });
 
     it('groups each folder independently and starts a chat in the selected folder checkout', async () => {
@@ -3033,6 +3066,50 @@ describe('worktree cards', () => {
         expect(cardRows().slice(0, 3)).toEqual([cards[0], cards[2], cards[1]]);
     });
 
+    it('places a pending creation first after dragging two other worktrees', async () => {
+        await restart();
+        await draw(() => {
+            ui().setGroupByWorktree(true);
+            chatListPreferences.setShowUnusedWorktrees(true);
+        });
+        const cards = cardRows();
+        const pending = workspaceKey();
+        await drag(cards[2]!, cards[3]!);
+        const afterDrag = cardRows().filter(key => key !== pending);
+        await draw(() => ui().placeNewWorktree('fld_car_rental', [pending], Date.now(), 'cht_pending'));
+        expect(cardRows()).toEqual([afterDrag[0], pending, ...afterDrag.slice(1)]);
+    });
+
+    it('keeps a canonical worktree in its dragged place when its chat is archived and restored', async () => {
+        await restart();
+        const chat = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!;
+        const pending = worktreeKey(chat.workspace!.folderId, chat.workspace!.path);
+        const canonical = worktreeKey(chat.workspace!.folderId, '/canonical/tree');
+        const read = store.transport.getProjectWorktrees.bind(store.transport);
+        vi.spyOn(store.transport, 'getProjectWorktrees').mockImplementation(async projectId =>
+            (await read(projectId)).map(folder => ({
+                ...folder,
+                worktrees: folder.worktrees.map(tree =>
+                    tree.workspaceId === chat.workspace!.id ? { ...tree, path: '/canonical/tree' } : tree
+                ),
+            }))
+        );
+        await draw(() => {
+            ui().setWorktreeOrder([pending]);
+            ui().setGroupByWorktree(true);
+            chatListPreferences.setShowUnusedWorktrees(true);
+        });
+        await draw();
+        const cards = cardRows();
+        expect(cards[1]).toBe(canonical);
+        await drag(canonical, cards[2]!);
+        expect(cardRows().slice(0, 3)).toEqual([cards[0], cards[2], canonical]);
+        await draw(() => project().chats.set(chat.id, { ...chat, archivedAt: 1 }));
+        expect(cardRows().slice(0, 3)).toEqual([cards[0], cards[2], canonical]);
+        await draw(() => project().chats.set(chat.id, chat));
+        expect(cardRows().slice(0, 3)).toEqual([cards[0], cards[2], canonical]);
+    });
+
     it('uses the whole visible worktree group as the drag image', async () => {
         await restart();
         await draw(() => ui().setGroupByWorktree(true));
@@ -3170,7 +3247,7 @@ describe('worktree cards', () => {
         expect(rowOf(workspaceKey()).querySelector('[aria-label="Chats waiting for you"]')).toBeNull();
     });
 
-    it('hides a worktree used only by a thread while keeping the thread under its parent', async () => {
+    it('keeps a thread-only worktree visible regardless of the unused filter', async () => {
         await restart();
         const workspace = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
         const key = workspaceKey();
@@ -3181,10 +3258,10 @@ describe('worktree cards', () => {
             ui().openChat('c-6a');
         });
         await draw();
-        expect(cardRows()).not.toContain(key);
+        expect(cardRows()).toContain(key);
         expect(rowOf('c-6a')).not.toBeNull();
         await draw(() => chatListPreferences.setShowUnusedWorktrees(true));
-        expect(cardRows()).not.toContain(key);
+        expect(cardRows()).toContain(key);
         expect(cardRows().length).toBeGreaterThan(0);
     });
 
@@ -3203,6 +3280,7 @@ describe('worktree cards', () => {
         await draw(() => ui().openChat('c-6a1'));
         await draw();
         expect(rowOf('c-6a1')).not.toBeNull();
+        expect(rowOf('@linked-thread:c-6a')).toBeNull();
         expect(ui().collapsedWorktrees).not.toContain(key);
     });
 

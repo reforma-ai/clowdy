@@ -1115,6 +1115,33 @@ describe('UiStore', () => {
         });
     });
 
+    it('keeps later concurrent creations first when their responses arrive out of order', () => {
+        const storage = memoryStorage();
+        const ui = new UiStore(storage).forProject('p1');
+        const older = '@worktree:folder:older';
+        const newer = '@worktree:folder:newer';
+        const other = '@worktree:another:other';
+        ui.setWorktreeOrder([other, '@worktree:folder:manual']);
+        ui.placeNewWorktree('folder', [newer], 200, 'cht_b');
+        const restored = new UiStore(storage).forProject('p1');
+        restored.placeNewWorktree('folder', [older], 200, 'cht_a');
+        expect(restored.worktreeOrder).toEqual([newer, older, other, '@worktree:folder:manual']);
+        restored.setWorktreeOrder([older, other, newer, '@worktree:folder:manual']);
+        restored.placeNewWorktree('folder', [newer], 200, 'cht_b');
+        expect(restored.worktreeOrder).toEqual([older, other, newer, '@worktree:folder:manual']);
+    });
+
+    it('places a pending worktree first after a drag between other worktrees', () => {
+        const ui = new UiStore(memoryStorage()).forProject('p1');
+        const pending = '@worktree:folder:pending';
+        const first = '@worktree:folder:first';
+        const second = '@worktree:folder:second';
+        ui.markWorktreesMoved([first, second]);
+        ui.setWorktreeOrder([second, first, pending]);
+        ui.placeNewWorktree('folder', [pending], 100, 'cht_a');
+        expect(ui.worktreeOrder).toEqual([pending, second, first]);
+    });
+
     it('keeps each chat layout per project across a restart', () => {
         const storage = memoryStorage();
         const store = new UiStore(storage);

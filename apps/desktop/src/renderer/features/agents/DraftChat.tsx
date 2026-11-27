@@ -18,6 +18,7 @@ import { useFolderRepository } from './useFolderRepository';
 import { useMainBranch } from './useMainBranch';
 import { WorkspaceChips } from './WorkspaceChips';
 import { effectiveChoice } from './workspaceChoice';
+import { worktreeKey } from './worktreeCards';
 
 import type { FolderId } from '@clowdy/protocol';
 
@@ -71,16 +72,29 @@ export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
             chat?: import('@clowdy/protocol').Chat,
             firstMessage?: import('../../stores/NewChatDrafts').NewChatDraft['firstMessage'],
             attachments?: readonly import('@clowdy/protocol').Attachment[],
-            reply?: import('../../stream/MessageActions').ReplyMessage
-        ) =>
-            ui.newChatDrafts.updateOperation(
+            reply?: import('../../stream/MessageActions').ReplyMessage,
+            workspaceOrderPath?: string
+        ) => {
+            const previous = ui.newChatDrafts.get(id);
+            if (
+                chat?.workspace &&
+                !previous?.createdChat &&
+                previous?.operation?.type === 'chat.create' &&
+                previous.operation.workspace?.mode === 'new'
+            ) {
+                const key = worktreeKey(chat.workspace.folderId, chat.workspace.path);
+                const canonical = worktreeKey(chat.workspace.folderId, workspaceOrderPath ?? chat.workspace.path);
+                ui.placeNewWorktree(chat.workspace.folderId, [canonical, key], chat.createdAt, chat.id);
+            }
+            return ui.newChatDrafts.updateOperation(
                 id,
                 operation as import('../../stores/NewChatDrafts').NewChatDraft['operation'],
                 chat,
                 firstMessage,
                 attachments,
                 reply
-            ),
+            );
+        },
         setAttachments: (attachments: readonly import('@clowdy/protocol').Attachment[]) =>
             ui.newChatDrafts.updateAttachments(id, attachments),
         clearRefused: () => ui.newChatDrafts.clearRefused(id),

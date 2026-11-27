@@ -270,12 +270,16 @@ export function confirmedRemovalDrift(
     linkedNow: number,
     { deleteBranch, discard, noChats }: ConfirmedRemoval
 ): string | undefined {
+    if (shown.path !== current.path || shown.workspaceId !== current.workspaceId)
+        return 'The worktree changed. Try again';
+
     if (noChats && linkedNow > 0) return 'The chats linked to this worktree changed. Try again';
 
     if (
         deleteBranch &&
         (current.branch !== shown.branch ||
             current.head !== shown.head ||
+            current.headOid !== shown.headOid ||
             current.base !== shown.base ||
             current.merged !== shown.merged)
     )
@@ -286,7 +290,8 @@ export function confirmedRemovalDrift(
         (current.changes !== shown.changes ||
             current.submodules !== shown.submodules ||
             current.branch !== shown.branch ||
-            current.head !== shown.head)
+            current.head !== shown.head ||
+            current.headOid !== shown.headOid)
     )
         return 'The local changes in this worktree changed. Try again';
 

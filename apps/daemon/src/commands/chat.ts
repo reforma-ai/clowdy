@@ -15,7 +15,7 @@ import {
 import { resolvePlace } from '../domain/places';
 import { requireProject } from '../domain/projects';
 import { removeChatWorkspace } from '../domain/workspaceRemoval';
-import { readRepository } from '../domain/workspaces';
+import { placeOf, readRepository } from '../domain/workspaces';
 import { invalid } from '../errors';
 import { prepareEdit } from '../runs/edit';
 import { prepareFork } from '../runs/fork';
@@ -208,7 +208,14 @@ export const chatAsyncHandlers: Pick<AsyncHandlers, 'chat.create' | 'chat.fork' 
 
             const repository = await readRepository(folder);
 
-            return () => ({ chat: makeChat(services, command, repository) });
+            return () => {
+                const chat = makeChat(services, command, repository);
+                return {
+                    chat,
+                    ...(choice.mode === 'new' &&
+                        chat.workspace && { workspaceOrderPath: placeOf(chat.workspace.path) }),
+                };
+            };
         }
 
         const { warning } = await gitSwitch.switch(project, resolvePlace(store, project, folder.id), {
