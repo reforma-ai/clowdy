@@ -2094,7 +2094,7 @@ describe('a chat that works in a worktree', () => {
         const folderPath = data.projects
             .find(project => project.id === FIXTURE_PROJECT_ID)!
             .folders.find(folder => folder.id === folderId)!.path;
-        const pr = (number: number, state: 'open' | 'merged' | 'closed', head = branch) => ({
+        const pr = (number: number, state: 'open' | 'draft' | 'merged' | 'closed', head = branch) => ({
             number,
             state,
             head,
@@ -2120,7 +2120,7 @@ describe('a chat that works in a worktree', () => {
         await draw(() => ui().setChatListLayout('folder'));
 
         const badge = (id: string) => rowOf(id).querySelector('[data-pr-state]');
-        await vi.waitFor(() => expect(badge(first.id)?.getAttribute('aria-label')).toBe('1 pull request: 1 open'));
+        await vi.waitFor(() => expect(badge(first.id)?.getAttribute('aria-label')).toBe('Open pull request #11'));
         expect(badge(second.id)?.textContent).toBe('');
         expect(badge(second.id)?.getAttribute('data-pr-state')).toBe('open');
         expect(badge(second.id)?.querySelector('svg')?.getAttribute('width')).toBe('12');
@@ -2160,6 +2160,20 @@ describe('a chat that works in a worktree', () => {
         await act(async () => {
             fact.accept({
                 ...fact.value!,
+                pullRequests: [pr(8, 'merged'), pr(11, 'open'), pr(12, 'open'), pr(14, 'draft')],
+            });
+        });
+        expect(badge(first.id)?.getAttribute('aria-label')).toBe('2 open, 1 draft');
+        expect(badge(first.id)?.getAttribute('data-pr-state')).toBe('open');
+        await act(async () => {
+            fact.accept({ ...fact.value!, pullRequests: [pr(8, 'merged'), pr(14, 'draft')] });
+        });
+        expect(badge(first.id)?.getAttribute('aria-label')).toBe('Draft pull request #14');
+        expect(badge(first.id)?.getAttribute('data-pr-state')).toBe('draft');
+
+        await act(async () => {
+            fact.accept({
+                ...fact.value!,
                 pullRequests: [
                     pr(9, 'merged'),
                     { ...pr(10, 'merged'), archived: true },
@@ -2169,7 +2183,7 @@ describe('a chat that works in a worktree', () => {
             });
         });
         expect(badge(first.id)?.getAttribute('data-pr-state')).toBe('merged');
-        expect(badge(second.id)?.getAttribute('aria-label')).toBe('1 pull request: 1 merged');
+        expect(badge(second.id)?.getAttribute('aria-label')).toBe('Merged pull request #10');
         expect(badge(second.id)?.textContent).toBe('');
         await draw(() => ui().setGroupByWorktree(true));
         expect(badge(cardKey)?.getAttribute('data-pr-state')).toBe('merged');
@@ -3238,7 +3252,7 @@ describe('worktree cards', () => {
         );
         const badge = rowOf('c-6b').querySelector('[data-pr-state]')!;
         expect(badge.getAttribute('title')).toBeNull();
-        expect(badge.getAttribute('aria-label')).toBe('Thread works in a different worktree; 1 pull request: 1 open');
+        expect(badge.getAttribute('aria-label')).toBe('Thread works in a different worktree; Open pull request #42');
         expect(rowOf('c-6b').closest('[data-worktree-card]')?.getAttribute('data-worktree-card')).toBe(workspaceKey());
     });
 
