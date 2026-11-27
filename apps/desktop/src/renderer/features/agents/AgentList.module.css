@@ -76,10 +76,10 @@
     pointer-events: auto;
 }
 
-.pullRequests[data-pr-state='open'] > svg {
+.pullRequests[data-pr-state='open'] svg {
     color: var(--color-success-text);
 }
-.pullRequests[data-pr-state='merged'] > svg {
+.pullRequests[data-pr-state='merged'] svg {
     color: var(--color-accent-text);
 }
 
@@ -102,9 +102,7 @@
 }
 
 /* Keep hidden tooltip anchors measurable while freeing the title's space. A sub-agent that can be archived has the same end as a chat's row. */
-:is(.chatRow, .archivable):not(
-    :is(:hover, :focus-visible, :has(.rowAction:focus), [data-hovered], [data-open], [data-renaming])
-) {
+:is(.chatRow, .archivable):not(:is(:hover, :focus-within, [data-hovered], [data-open], [data-renaming])) {
     & .rowAction {
         visibility: hidden;
         pointer-events: none;
@@ -125,13 +123,12 @@
     }
 }
 
-.archivable:is(:hover, :focus-visible, :has(.rowAction:focus), [data-hovered], [data-open]) .archiveStatus {
+.archivable:is(:hover, :focus-within, [data-hovered], [data-open]) .archiveStatus {
     display: none;
 }
 
 /* A row's activity dot keeps the idle position; the place or PR is available beside the actions. */
-.chatRow:not(:is(:hover, :focus-visible, :has(.rowAction:focus), [data-hovered], [data-open]))
-    .pullRequests[data-hover-only] {
+.chatRow:not(:is(:hover, :focus-within, [data-hovered], [data-open])) .pullRequests[data-hover-only] {
     display: none;
 }
 

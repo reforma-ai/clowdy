@@ -2132,8 +2132,13 @@ describe('a chat that works in a worktree', () => {
         await store.load();
         await draw(() => ui().setChatListLayout('folder'));
 
-        const badge = (id: string) => rowOf(id).querySelector('[data-pr-state]');
+        const badge = (id: string) => rowOf(id).querySelector<HTMLElement>('[data-pr-state]');
+        const openUrl = vi.spyOn(window, 'open').mockImplementation(() => null);
         await vi.waitFor(() => expect(badge(first.id)?.getAttribute('aria-label')).toBe('Open pull request #11'));
+        const selectedBefore = ui().chatId;
+        await press(badge(first.id)!);
+        expect(openUrl).toHaveBeenLastCalledWith('https://github.com/acme/car-rental/pull/11', '_blank', 'noopener');
+        expect(ui().chatId).toBe(selectedBefore);
         expect(badge(second.id)?.textContent).toBe('');
         expect(badge(second.id)?.getAttribute('data-pr-state')).toBe('open');
         expect(badge(second.id)?.querySelector('svg')?.getAttribute('width')).toBe('12');
@@ -2142,6 +2147,9 @@ describe('a chat that works in a worktree', () => {
         await draw(() => ui().setGroupByWorktree(true));
         const cardKey = chatWorktreeKey(first)!;
         await vi.waitFor(() => expect(badge(cardKey)?.getAttribute('data-pr-state')).toBe('open'));
+        await press(badge(cardKey)!);
+        expect(openUrl).toHaveBeenLastCalledWith('https://github.com/acme/car-rental/pull/11', '_blank', 'noopener');
+        expect(ui().chatId).toBe(selectedBefore);
         expect(badge(first.id)).toBeNull();
         expect(badge(second.id)).toBeNull();
         await draw(() => ui().toggleWorktreeCollapsed(cardKey));
@@ -2161,6 +2169,16 @@ describe('a chat that works in a worktree', () => {
         await draw(() => project().runs.set(run.id, { ...run, status: 'running' }));
         expect(badge(first.id)?.getAttribute('data-pr-state')).toBe('open');
         expect(rowOf(first.id).querySelector('[aria-label="Working"]')).not.toBeNull();
+        openUrl.mockClear();
+        await act(async () => {
+            rowOf(first.id).focus();
+            badge(first.id)!.focus();
+            badge(first.id)!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+            badge(first.id)!.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }));
+        });
+        expect(openUrl).toHaveBeenCalledOnce();
+        expect(openUrl).toHaveBeenLastCalledWith('https://github.com/acme/car-rental/pull/11', '_blank', 'noopener');
+        expect(ui().chatId).toBe(selectedBefore);
         await draw(() => ui().setChatListLayout('simple'));
         expect(badge(first.id)?.getAttribute('data-pr-state')).toBe('open');
         expect(rowOf(first.id).querySelector('[aria-label="Working"]')).not.toBeNull();
@@ -2176,13 +2194,17 @@ describe('a chat that works in a worktree', () => {
                 pullRequests: [pr(8, 'merged'), pr(11, 'open'), pr(12, 'open'), pr(14, 'draft')],
             });
         });
-        expect(badge(first.id)?.getAttribute('aria-label')).toBe('2 open, 1 draft');
+        expect(badge(first.id)?.getAttribute('aria-label')).toBe('2 open, 1 draft, open pull request #12');
         expect(badge(first.id)?.getAttribute('data-pr-state')).toBe('open');
+        await press(badge(first.id)!);
+        expect(openUrl).toHaveBeenLastCalledWith('https://github.com/acme/car-rental/pull/12', '_blank', 'noopener');
         await act(async () => {
             fact.accept({ ...fact.value!, pullRequests: [pr(8, 'merged'), pr(14, 'draft')] });
         });
         expect(badge(first.id)?.getAttribute('aria-label')).toBe('Draft pull request #14');
         expect(badge(first.id)?.getAttribute('data-pr-state')).toBe('draft');
+        await press(badge(first.id)!);
+        expect(openUrl).toHaveBeenLastCalledWith('https://github.com/acme/car-rental/pull/14', '_blank', 'noopener');
 
         await act(async () => {
             fact.accept({
@@ -2197,6 +2219,9 @@ describe('a chat that works in a worktree', () => {
         });
         expect(badge(first.id)?.getAttribute('data-pr-state')).toBe('merged');
         expect(badge(second.id)?.getAttribute('aria-label')).toBe('Merged pull request #10');
+        await press(badge(second.id)!);
+        expect(openUrl).toHaveBeenLastCalledWith('https://github.com/acme/car-rental/pull/10', '_blank', 'noopener');
+        openUrl.mockRestore();
         expect(badge(second.id)?.textContent).toBe('');
         await draw(() => ui().setGroupByWorktree(true));
         expect(badge(cardKey)?.getAttribute('data-pr-state')).toBe('merged');
@@ -3223,9 +3248,10 @@ describe('worktree cards', () => {
             [workspaceKey(), null],
             [workspaceKey(), 'true'],
         ]);
-        expect(
-            rowOf('c-6b').querySelector('[aria-label="Thread works in a different worktree"]')?.getAttribute('title')
-        ).toBeNull();
+        const indicator = rowOf('c-6b').querySelector('[aria-label="Thread works in a different worktree"]');
+        expect(indicator?.getAttribute('title')).toBeNull();
+        expect(indicator?.tagName).toBe('SPAN');
+        expect(indicator?.getAttribute('role')).toBe('img');
     });
 
     it('shows a thread’s pull request from its own folder inside its ancestor’s worktree card', async () => {
