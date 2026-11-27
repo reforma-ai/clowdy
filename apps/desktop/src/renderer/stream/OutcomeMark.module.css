@@ -1,0 +1,7 @@
+.mark[data-outcome='finished'] {
+    color: var(--color-success);
+}
+
+.mark[data-outcome='failed'] {
+    color: var(--color-danger);
+}

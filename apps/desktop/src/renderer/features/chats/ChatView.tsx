@@ -162,6 +162,7 @@ export function ChatView({ chat, controls }: { chat: Chat; controls?: ReactNode 
                             chat={chat}
                             run={run}
                             controls={controls}
+                            suppressSuggestions={edit.session !== undefined}
                             onSendMessage={() => streamView.current?.followLatest()}
                             question={
                                 asked && run ? (

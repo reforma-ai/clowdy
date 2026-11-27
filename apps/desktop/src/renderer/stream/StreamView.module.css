@@ -22,12 +22,16 @@
     padding-block-end: var(--spacing-192);
 }
 
-/* Fade across the banner stack, to the message box's top edge, with at least 48px of fade. Keep the scrollbar unmasked. */
+/*
+ * Fade at the top, under the header of the page, over the height of the air above the first message (so a stream at rest is not dimmed), and across the banner stack
+ * at the bottom, to the message box's top edge, with at least 48px of fade. Keep the scrollbar unmasked.
+ */
 .root[data-composer-overlay] .scroll {
     mask-image:
         linear-gradient(
             to bottom,
-            #000 0,
+            transparent 0,
+            #000 var(--spacing-xxl),
             #000 max(0px, calc(100% - max(var(--composer-inset), var(--composer-surface-inset) + 48px))),
             transparent max(0px, calc(100% - var(--composer-surface-inset)))
         ),

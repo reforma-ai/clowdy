@@ -6,13 +6,14 @@ import { Separator } from '@clowdy/components/Separator';
 import { Spinner } from '@clowdy/components/Spinner';
 import { Text } from '@clowdy/components/Text';
 import { toast } from '@clowdy/components/Toast';
+import { ChevronDown } from '@clowdy/icons/8';
 import { Copy, Plus, Trash } from '@clowdy/icons/14';
 import { type KeyboardEvent, type MouseEvent, useEffect, useMemo, useState } from 'react';
 
 import { homeFolder } from '../../shared/homeFolder';
 import { PickerList } from '../../shared/PickerPopover';
 import styles from './BranchPicker.module.css';
-import { branchOptions } from './branchChoices';
+import { branchOptions, UNAVAILABLE_BRANCH_GROUP } from './branchChoices';
 import { SwitchReasons } from './SwitchReasons';
 
 import type { BranchSwitch } from './BranchSwitch';
@@ -33,6 +34,16 @@ export function BranchList({
 }) {
     const { listing } = model;
     const options = useMemo(() => (listing ? branchOptions(listing, homeFolder.path) : []), [listing]);
+    const [showUnavailable, setShowUnavailable] = useState(false);
+    const [query, setQuery] = useState('');
+    const hasUnavailable = options.some(option => option.group === UNAVAILABLE_BRANCH_GROUP);
+    const visibleOptions = useMemo(
+        () =>
+            showUnavailable || query.trim()
+                ? options
+                : options.filter(option => option.group !== UNAVAILABLE_BRANCH_GROUP),
+        [options, query, showUnavailable]
+    );
     const contextMenu = useContextMenu();
     const [menuBranch, setMenuBranch] = useState<string>();
     const local = listing?.local.find(branch => branch.name === menuBranch);
@@ -96,10 +107,12 @@ export function BranchList({
         <div className={styles.body} onContextMenu={openMenu} onKeyDown={openMenuFromKey}>
             {listing ? (
                 <PickerList
-                    options={options}
+                    options={visibleOptions}
                     selectedIds={current === undefined ? [] : [current]}
+                    highlightSelected
                     aria-label="Branches"
                     placeholder="Filter branches"
+                    onQueryChange={setQuery}
                     onPick={name => void pick(name)}
                 />
             ) : (
@@ -109,6 +122,19 @@ export function BranchList({
                         {model.loading ? 'Loading branches' : 'No branches to show'}
                     </Text>
                 </div>
+            )}
+            {hasUnavailable && !showUnavailable && !query.trim() && (
+                <Button
+                    variant="filling"
+                    color="secondary"
+                    size="xs"
+                    fullWidth
+                    contentClassName={styles.revealContent}
+                    onPress={() => setShowUnavailable(true)}
+                >
+                    <ChevronDown aria-hidden="true" />
+                    Show unavailable branches
+                </Button>
             )}
             <SwitchReasons model={model} />
             <Separator spacing={0} />

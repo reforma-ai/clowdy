@@ -1,10 +1,9 @@
 import { BoltBordered, Edit } from '@clowdy/icons/12';
-import { Message } from '@clowdy/icons/14';
+import { Robot2 } from '@clowdy/icons/14';
 import { shownRunStatus } from '@clowdy/protocol';
 
 import { RUN_STATUS_VIEW, StatusDot } from '../../shared';
-import { ProviderIcon } from '../settings/providers/ProviderIcon';
-import { PROVIDER_IDS } from '../settings/providers/providerView';
+import { AgentMark } from './AgentMark';
 import { chatDotTone, type ThreadsActivity } from './agentTree';
 import styles from './ChatIcon.module.css';
 
@@ -26,13 +25,7 @@ export function ChatIcon({
     showStatus?: boolean;
     unread?: boolean;
 }) {
-    const engine = chat.engine ?? run?.engine;
-    const icon =
-        chat.orchestratorRunId && engine && (PROVIDER_IDS as readonly string[]).includes(engine) ? (
-            <ProviderIcon agentId={engine} size={14} data-provider={engine} />
-        ) : (
-            <Message />
-        );
+    const icon = <AgentMark engine={chat.orchestratorRunId ? (chat.engine ?? run?.engine) : undefined} />;
     if (!showStatus || !chatDotTone(run, threads, false, unread)) return icon;
 
     return (
@@ -49,9 +42,12 @@ export function ChatStatus({
     className,
     draft = false,
     unread = false,
+    agentsInside,
 }: {
     run: Run | undefined;
     threads?: ThreadsActivity;
+    /** How many agents work inside the chat, for the icon's label when `threads` says some do (`agentsWorkingInside`). */
+    agentsInside?: number;
     className?: string;
     draft?: boolean;
     unread?: boolean;
@@ -60,6 +56,9 @@ export function ChatStatus({
 
     if (!tone) return null;
 
+    // An agent working inside is told by its icon alone, in the place of the working dot and of a command's icon of the chat itself: two marks for what works would say
+    // it twice. What the chat needs from the person (a failure, a question, a request) has its own dot, which is the tone here and keeps its place.
+    const showAgents = threads === 'working' && tone === 'success';
     // A thread's question takes priority over a completed or working run.
     const own =
         run !== undefined && chatDotTone(run, undefined, false, unread) === tone && threads !== 'asking'
@@ -67,22 +66,26 @@ export function ChatStatus({
             : undefined;
     const ownStatus = own && shownRunStatus(own);
     const showDraft = draft && tone === 'neutral' && ownStatus === undefined;
-    const showCommand = ownStatus === 'waiting_background' && own?.background?.some(item => item.kind === 'command');
-    const label = showCommand
-        ? 'Background command running'
-        : ownStatus
-          ? RUN_STATUS_VIEW[ownStatus].label
-          : showDraft
-            ? 'Unsent draft'
-            : threads === 'asking'
-              ? 'A thread is waiting for you'
-              : 'Threads working';
+    const showBackground = ownStatus === 'waiting_background';
+    const label = showAgents
+        ? agentsInside
+            ? `${agentsInside} ${agentsInside === 1 ? 'agent works' : 'agents work'} inside`
+            : 'Agents work inside'
+        : showBackground
+          ? 'Waiting for background work'
+          : ownStatus
+            ? RUN_STATUS_VIEW[ownStatus].label
+            : showDraft
+              ? 'Unsent draft'
+              : 'A thread is waiting for you';
 
     return (
         <span className={className} role="img" aria-label={label}>
-            {showDraft ? (
+            {showAgents ? (
+                <Robot2 className={styles.agents} aria-hidden />
+            ) : showDraft ? (
                 <Edit className={styles.draft} aria-hidden />
-            ) : showCommand ? (
+            ) : showBackground ? (
                 <BoltBordered className={styles.command} aria-hidden />
             ) : (
                 <StatusDot status={ownStatus} tone={tone} />

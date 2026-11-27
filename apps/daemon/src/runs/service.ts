@@ -37,6 +37,7 @@ import {
 import { getTask } from '../db/tasks';
 import { appendItem, updateItem } from '../domain/items';
 import { categoryOf, linkRunTask, moveTask, requireTask } from '../domain/tasks';
+import { assertChatAvailable, assertWorkspaceAvailable } from '../domain/workspaces';
 import { conflict, errorMessage, invalid, notFound, unavailable } from '../errors';
 import { newId } from '../ids';
 import { EngineLimits } from './limits';
@@ -181,6 +182,8 @@ export class RunService {
     createRun(input: NewRun): Run {
         return this.store.tx(() => {
             const { project } = input;
+            if (input.chatId) assertChatAvailable(this.store, input.chatId);
+            if (input.cwd !== undefined) assertWorkspaceAvailable(this.store, input.cwd);
             const assigned = input.assigned ?? [];
             const blockers = this.unfinishedDependencies(assigned);
             const id = newId('run');
@@ -342,6 +345,10 @@ export class RunService {
     /** Puts a finished or waiting run back in the queue for its next turn, with the message that starts it (none continues the conversation). */
     resume(runId: string, prompt?: string): Run {
         return this.store.tx(() => {
+            const run = this.require(runId);
+            if (run.chatId) assertChatAvailable(this.store, run.chatId);
+            const { cwd } = getRunWork(this.store.db, runId);
+            if (cwd !== undefined) assertWorkspaceAvailable(this.store, cwd);
             setRunWork(this.store.db, runId, { nextPrompt: prompt ?? null });
 
             return this.setStatus(runId, 'queued');

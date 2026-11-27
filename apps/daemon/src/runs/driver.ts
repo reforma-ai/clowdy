@@ -46,7 +46,7 @@ import type {
 } from '@clowdy/protocol';
 import type { Config } from '../config';
 import type { RunWork } from '../db/runs';
-import type { EngineRegistry, EngineSession, ToolDefinition } from '../engine/types';
+import type { EngineRegistry, EngineSession, LatePromptSuggestion, ToolDefinition } from '../engine/types';
 import type { Store } from '../store';
 import type { LimitSignal } from './limits';
 import type { PromptChat, PromptWorkspace } from './prompts';
@@ -99,6 +99,7 @@ interface LiveRun {
     calls?: string[];
     /** The items the latest lists lost and nothing has confirmed finished yet: one that comes back with the next list is the same item (`settleFinished`). */
     finishing?: Map<string, BackgroundItem>;
+    promptSuggestion?: string | LatePromptSuggestion;
     /** The background commands and tasks the person stopped alone this turn (`stopCommand`), by item id: their end is a stop, and the agent was told of it already. */
     stopped?: Map<string, BackgroundItem>;
     /** The session outlived a turn and the run waits for its background work (`waiting_background`): a message goes to the session. */
@@ -263,6 +264,9 @@ export class RunDriver {
      */
     launch(runId: string): void {
         this.deps.store.afterCommit(() => {
+            // A newly accepted turn wins over the previous turn's optional prediction,
+            // even if its flight still waits for a slot or workspace preparation.
+            this.deps.store.forgetPromptSuggestion(runId);
             const waiting = this.live.get(runId);
 
             // A session that is being shut down (a Stop, a daemon stop) takes nothing: its flight ends it, and the message starts the next flight behind it.
@@ -771,12 +775,15 @@ export class RunDriver {
         live.restart = false;
         live.interrupted = false;
         live.told = undefined;
+        live.promptSuggestion = undefined;
 
         // The message this turn sends is in the stream already; the record leaves it out, as the agent gets it in the prompt.
         const incoming = [prompt];
         const session = engine.start({
             ...surroundings,
             prompt,
+            promptSuggestions:
+                run.role === 'orchestrator' && run.chatId !== undefined && !this.isCompactCommand(run.engine, prompt),
             resumeSessionId: run.sessionId,
             ...(run.sessionId && {
                 history: () =>
@@ -1242,6 +1249,7 @@ export class RunDriver {
                         this.onBackground(run, live, writer, native, event.items, event.calls);
                         break;
                     case 'done':
+                        live.promptSuggestion = event.promptSuggestion ?? event.latePromptSuggestion;
                         result = event.result;
                         answered = true;
                         this.settleFinished(run, live, writer, native);
@@ -1593,6 +1601,16 @@ export class RunDriver {
 
             const { told } = live;
             const run = runs.setStatus(runId, 'succeeded', { result });
+            if (
+                live.promptSuggestion &&
+                run.chatId &&
+                run.finishedAt !== undefined &&
+                !getChat(store.db, run.chatId)?.queue?.length
+            ) {
+                store.rememberPromptSuggestion(runId, run.finishedAt, live.promptSuggestion);
+            } else if (live.promptSuggestion && typeof live.promptSuggestion !== 'string') {
+                live.promptSuggestion.cancel();
+            }
 
             // A session that ends after a `done` that was told already (it waited for background work) is no new turn end. It is told once more only when
             // that `done` left work open, so the parent learns that no report is coming.

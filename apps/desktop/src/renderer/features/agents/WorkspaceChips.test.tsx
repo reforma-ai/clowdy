@@ -763,6 +763,7 @@ describe('Folder settings…', () => {
             root: store,
             projectId: FIXTURE_PROJECT_ID,
             folderId: 'fld_car_rental',
+            initialTab: 'settings',
         });
         expect(menuItems()).toEqual([]);
     });
@@ -801,6 +802,7 @@ describe('Folder settings…', () => {
             root: store,
             projectId: FIXTURE_PROJECT_ID,
             folderId: API.id,
+            initialTab: 'settings',
         });
     });
 
@@ -848,12 +850,12 @@ describe('Folder settings…', () => {
             await new Promise(resolve => setTimeout(resolve, 400));
         });
 
-        expect(document.body.textContent).toContain('Name, worktree setup and worktrees of this folder');
+        expect(document.body.textContent).toContain('Name and worktree setup of this folder');
         expect(document.activeElement).not.toBe(chip());
 
         await key(document.activeElement as HTMLElement, 'Escape', 'Escape');
         await vi.waitFor(() => expect(document.activeElement).toBe(chip()));
-        expect(document.body.textContent).not.toContain('Name, worktree setup and worktrees of this folder');
+        expect(document.body.textContent).not.toContain('Name and worktree setup of this folder');
     });
 
     it('is in the menu of a repository with no commit too, where a new worktree is off', async () => {
@@ -1126,7 +1128,7 @@ describe('the first message', () => {
         expect(ui().draft).toBe(false);
     });
 
-    it("makes another chat when the worktree was changed after a first message that failed, since a chat's worktree is fixed from the start", async () => {
+    it('keeps a refused worktree draft separate from a main-folder draft and retries the original chat', async () => {
         const transport = new FixtureTransport();
         const original = transport.command.bind(transport);
         const commands = vi.spyOn(transport, 'command');
@@ -1139,17 +1141,37 @@ describe('the first message', () => {
 
         await send('First try');
         expect(made(before)).toHaveLength(1);
+        const worktreeChat = made(before)[0]!;
+        const worktreeDraft = ui().draftId!;
+        expect(chip()).toBeNull();
 
         commands.mockRestore();
-        await chooseMode('Main worktree');
-        await send('Second try');
+        await draw(() => ui().openDraft());
+        await settle();
+        expect(ui().draftId).not.toBe(worktreeDraft);
+        expect(chip()).not.toBeNull();
+        await send('Main message');
 
-        const chats = made(before);
+        expect(made(before)).toHaveLength(2);
+        const mainChat = made(before).find(chat => chat.id !== worktreeChat.id)!;
+        expect(mainChat.workspace).toBeUndefined();
+        await draw(() => ui().openDraftId(worktreeDraft));
+        await settle();
+        expect(editor().getText()).toBe('First try');
+        expect(chip()).toBeNull();
+        await act(async () => {
+            field()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+        });
+        await settle();
 
-        expect(chats).toHaveLength(2);
-        expect(chats.filter(chat => chat.workspace)).toHaveLength(1);
+        expect(made(before)).toHaveLength(2);
+        expect(worktreeChat.workspace?.managed).toBe(true);
         expect(ui().draft).toBe(false);
-        expect(ui().chatId).toBe(chats.find(chat => !chat.workspace)?.id);
+        expect(ui().chatId).toBe(worktreeChat.id);
+        const userMessages = async (chatId: string) =>
+            (await transport.getItems({ chatId })).flatMap(item => (item.body.kind === 'user' ? [item.body.text] : []));
+        expect(await userMessages(worktreeChat.id)).toEqual(['First try']);
+        expect(await userMessages(mainChat.id)).toEqual(['Main message']);
     });
 });
 

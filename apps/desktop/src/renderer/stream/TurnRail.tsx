@@ -4,6 +4,8 @@ import { Text } from '@clowdy/components/Text';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
+import cardStyles from '../shared/SlidingCard.module.css';
+import { placeCard } from '../shared/slidingCard';
 import styles from './TurnRail.module.css';
 import { scrollStreamToTurn, TURN_RAIL_MIN, type TurnMark } from './turnMarks';
 
@@ -14,9 +16,6 @@ const WAVE = 16;
 
 /** How far from its end a stream still counts as scrolled to it, in pixels: a fractional scroll position never lands on the exact end. */
 const AT_END = 2;
-
-/** Room between the card and the rail, and between the card and the window edge. */
-const CARD_GAP = 8;
 
 export interface TurnRailProps {
     marks: readonly TurnMark[];
@@ -68,34 +67,6 @@ function tickIdAt(root: HTMLElement, y: number): string | null {
 }
 
 /**
- * One card for the whole rail. `slide` moves it from where it already is;
- * the first placement, and a follow while the lane scrolls, snaps.
- */
-function placeCard(card: HTMLElement, frame: HTMLElement, tick: HTMLElement, slide: boolean) {
-    const frameBox = frame.getBoundingClientRect();
-    const tickBox = tick.getBoundingClientRect();
-    const height = card.offsetHeight;
-    let top = tickBox.top + tickBox.height / 2 - height / 2;
-    const max = window.innerHeight - CARD_GAP - height;
-
-    top = Math.min(Math.max(top, CARD_GAP), Math.max(CARD_GAP, max));
-
-    const instant = !slide || card.dataset.placed !== 'true';
-
-    if (instant) card.style.transition = 'none';
-
-    card.style.top = `${top}px`;
-    card.style.right = `${Math.max(CARD_GAP, window.innerWidth - frameBox.left + CARD_GAP)}px`;
-
-    if (instant) {
-        card.getBoundingClientRect();
-        card.style.transition = '';
-    }
-
-    card.dataset.placed = 'true';
-}
-
-/**
  * The turns of a stream, as a short column of ticks on its right.
  * Hidden below {@link TURN_RAIL_MIN} messages. Past 420px the column scrolls, faded at the edges, with no thumb.
  */
@@ -130,7 +101,7 @@ export function TurnRail({ marks, scroller }: TurnRailProps) {
         const slide = slideRef.current;
 
         slideRef.current = false;
-        placeCard(card, frame, tick, slide);
+        placeCard(card, frame, tick, 'left', slide);
     }, [cardMark]);
 
     useEffect(() => {
@@ -238,7 +209,7 @@ export function TurnRail({ marks, scroller }: TurnRailProps) {
 
         const tick = frame.querySelector<HTMLElement>(`[data-tick="${CSS.escape(id)}"]`);
 
-        if (tick) placeCard(card, frame, tick, false);
+        if (tick) placeCard(card, frame, tick, 'left', false);
     };
 
     return (
@@ -277,7 +248,7 @@ export function TurnRail({ marks, scroller }: TurnRailProps) {
             </Scrollable>
             {cardMark &&
                 createPortal(
-                    <div ref={cardRef} className={styles.card} data-turn-card="" aria-hidden="true">
+                    <div ref={cardRef} className={cardStyles.card} data-turn-card="" aria-hidden="true">
                         <Show when={cardMark.title !== ''}>
                             <Text as="p" variant="sm" weight="medium" className={styles.title}>
                                 {cardMark.title}

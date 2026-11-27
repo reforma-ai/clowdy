@@ -212,12 +212,6 @@
     gap: var(--spacing-xs);
 }
 
-.chatPreview > div {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
 .chatCount {
     text-decoration: underline dotted;
     text-underline-offset: 0.15em;
@@ -241,4 +235,40 @@
         opacity: 1;
         pointer-events: auto;
     }
+}
+
+/* Cleanup choices and status sit at the vertical center of each row. */
+.tidyRows {
+    min-width: 0;
+    max-height: 280px;
+    overflow-y: auto;
+}
+
+.tidyCheck {
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
+.tidyCheck > span:last-child {
+    flex: 1;
+    min-width: 0;
+}
+
+.tidySummary {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    width: 100%;
+    min-width: 0;
+}
+
+.tidyMark {
+    flex-shrink: 0;
+    align-self: center;
+}
+
+.tidyMarkIcon {
+    width: var(--spacing-12);
+    height: var(--spacing-12);
 }

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, setSystemTime, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { STOPPED_TOOL } from '@clowdy/protocol';
 
+import { textOf } from '../src/engine/acp/children';
 import { UpdateMapper } from '../src/engine/acp/mapper';
 import { UpdateMapperV2 } from '../src/engine/acp/mapper-v2';
 
@@ -324,6 +325,7 @@ describe("sub-agents, as Claude's adapter reports them without child sessions", 
                 parentToolCallId: 'agent-1',
                 name: 'Explore',
                 description: 'Map the router',
+                prompt: 'Find every route.',
                 state: 'running',
             },
             { type: 'text', delta: 'Looking ', done: false, agentId: 'agent-1' },
@@ -432,6 +434,7 @@ describe("sub-agents, as Claude's adapter reports them without child sessions", 
                 parentToolCallId: 'agent-1',
                 name: 'Explore',
                 description: 'Map the router',
+                prompt: 'Find every route.',
                 state: 'running',
             },
             {
@@ -526,8 +529,59 @@ describe("sub-agents, as Claude's adapter reports them without child sessions", 
                 parentToolCallId: 'agent-2',
                 name: 'Sub-agent',
                 description: `${long.slice(0, 120)}…`,
+                // The name is cut to a line; what the sub-agent was asked is whole.
+                prompt: `${long}\nMore detail`,
                 state: 'running',
             },
+        ]);
+    });
+
+    test("the call's prompt goes with its sub-agent whole, trimmed of the blank space around it; a call with no prompt, or a blank one, says none", () => {
+        const long = `${'word '.repeat(30_000)}end`;
+        const { events } = run([
+            agentCall('agent-1', { subagent_type: 'Explore', prompt: '  Find every route.\n\nSay what you found.\n' }),
+            childChunk('agent-1', 'Hi'),
+            agentCall('agent-2', { subagent_type: 'Plan', description: 'Plan it', prompt: long }),
+            childChunk('agent-2', 'Hi'),
+            agentCall('agent-3', { subagent_type: 'Explore', description: 'Say nothing', prompt: '   ' }),
+            childChunk('agent-3', 'Hi'),
+            agentCall('agent-4', { subagent_type: 'Explore', description: 'Say nothing either' }),
+            childChunk('agent-4', 'Hi'),
+            childChunk('ghost', 'Boo'),
+        ]);
+        const told = subagents(events).filter(event => event.type === 'subagent' && event.state === 'running');
+
+        expect(told.map(event => event.type === 'subagent' && event.agentId)).toEqual([
+            'agent-1',
+            'agent-2',
+            'agent-3',
+            'agent-4',
+            'ghost',
+        ]);
+        expect(told.map(event => event.type === 'subagent' && event.prompt)).toEqual([
+            'Find every route.\n\nSay what you found.',
+            long,
+            undefined,
+            undefined,
+            undefined,
+        ]);
+        // Left out, not empty: the runtime writes an item only for a key that is there.
+        expect(told.slice(2).map(event => 'prompt' in event)).toEqual([false, false, false]);
+    });
+
+    test('a prompt the call states after its sub-agent started is not sent: the sub-agent was told to the runtime without it', () => {
+        const { events } = run([
+            agentCall('agent-1', {}),
+            childChunk('agent-1', 'Hi'),
+            {
+                sessionUpdate: 'tool_call_update',
+                toolCallId: 'agent-1',
+                rawInput: { subagent_type: 'Explore', prompt: 'Find every route.' },
+            },
+        ]);
+
+        expect(subagents(events)).toEqual([
+            { type: 'subagent', agentId: 'agent-1', parentToolCallId: 'agent-1', name: 'Sub-agent', state: 'running' },
         ]);
     });
 
@@ -1872,6 +1926,7 @@ describe('sub-agents of ACP v2', () => {
                 parentToolCallId: call,
                 name: 'general-purpose',
                 description: 'Run echo ONE and TWO',
+                prompt: input.prompt,
                 state: 'running',
                 stoppable: true,
             },
@@ -1987,6 +2042,40 @@ describe('sub-agents of ACP v2', () => {
                 .filter(event => event.type === 'text' && event.agentId === undefined)
                 .map(event => event.type === 'text' && event.delta)
         ).toContain('4');
+    });
+
+    test('each sub-agent of the recorded wire is told to the runtime with the prompt its parent sent it, whole and the same on every event that says it runs', () => {
+        const asked = (scenario: string, agentId: string) =>
+            wire
+                .filter(line => line.scenario === scenario)
+                .map(
+                    line =>
+                        line.update as {
+                            sessionUpdate: string;
+                            recipientSessionId?: string;
+                            content?: Parameters<typeof textOf>[0];
+                        }
+                )
+                .find(update => update.sessionUpdate === 'session_message' && update.recipientSessionId === agentId);
+        const told = new Set<string>();
+
+        for (const scenario of new Set(wire.map(line => line.scenario))) {
+            for (const event of subagents(replay(scenario).events)) {
+                if (event.type !== 'subagent' || event.state !== 'running') {
+                    continue;
+                }
+
+                const message = asked(scenario, event.agentId);
+
+                expect(message).toBeDefined();
+                expect(event.prompt).toBe(textOf(message?.content));
+                expect(event.prompt).not.toBe('');
+                told.add(`${scenario}:${event.agentId}`);
+            }
+        }
+
+        // foreground 1, background 1, two-background 2, foreground-cancelled 1, message-while-background 1, nested-foreground 3, nested-background 3.
+        expect(told.size).toBe(12);
     });
 
     /**
@@ -2186,6 +2275,77 @@ describe('sub-agents of ACP v2', () => {
             expect(events[2]).toMatchObject({ type: 'tool', toolCallId: 'x1', name: 'Read', agentId: 'child-1' });
         });
 
+        test("a prompt that comes after the sub-agent's first call is not sent: the child was told to the runtime at the call, without it, and is not told again", () => {
+            const mapper = new UpdateMapperV2({ toolNames: [], costBefore: 0 });
+
+            mapper.update(announce());
+
+            const first = mapper.update(
+                {
+                    sessionUpdate: 'tool_call_update',
+                    toolCallId: 'x1',
+                    name: 'Read',
+                    status: 'in_progress',
+                    _meta: { claudeCode: { parentToolUseId: 'call-9' } },
+                },
+                'child-1'
+            );
+            const message = mapper.update({
+                sessionUpdate: 'session_message',
+                messageId: 'call-9',
+                senderSessionId: 'main',
+                recipientSessionId: 'child-1',
+                content: [{ type: 'text', text: 'Look around' }],
+            });
+
+            expect(first.filter(event => event.type === 'subagent')).toEqual([
+                {
+                    type: 'subagent',
+                    agentId: 'child-1',
+                    parentToolCallId: 'call-9',
+                    name: 'Explore',
+                    description: 'Look around',
+                    state: 'running',
+                },
+            ]);
+            expect(message).toEqual([]);
+        });
+
+        test('a very long prompt is sent whole, on the child and in the input of its card', () => {
+            const mapper = new UpdateMapperV2({ toolNames: [], costBefore: 0 });
+            const prompt = `${'Look at every file and say what you see. '.repeat(10_000)}Done.`;
+
+            mapper.update(announce());
+
+            const events = mapper.update({
+                sessionUpdate: 'session_message',
+                messageId: 'call-1',
+                senderSessionId: 'main',
+                recipientSessionId: 'child-1',
+                content: [{ type: 'text', text: prompt }],
+            });
+
+            expect(events).toHaveLength(2);
+            expect(events[0]).toMatchObject({ type: 'tool', input: { prompt } });
+            expect(events[1]).toMatchObject({ type: 'subagent', prompt });
+        });
+
+        test('a message to a child with no words in it is no prompt', () => {
+            const mapper = new UpdateMapperV2({ toolNames: [], costBefore: 0 });
+
+            mapper.update(announce());
+
+            const events = mapper.update({
+                sessionUpdate: 'session_message',
+                messageId: 'call-1',
+                senderSessionId: 'main',
+                recipientSessionId: 'child-1',
+                content: [{ type: 'image', data: 'AAAA', mimeType: 'image/png' }],
+            });
+
+            expect(events.filter(event => event.type === 'subagent').map(event => 'prompt' in event)).toEqual([false]);
+        });
+
         test('an agent that sends no message between sessions (Codex) has its sub-agents known by their session id and no card', () => {
             const mapper = new UpdateMapperV2({ toolNames: [], costBefore: 0 });
 
@@ -2332,6 +2492,7 @@ describe('sub-agents of ACP v2', () => {
                     parentToolCallId: 'call-2',
                     name: 'Explore',
                     description: 'Deeper',
+                    prompt: 'dig',
                     state: 'running',
                 },
             ]);

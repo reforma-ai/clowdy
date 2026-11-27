@@ -1111,7 +1111,9 @@ export class FixtureTransport implements Transport {
         if (!workspace) return { removable: false };
 
         const below = new Set([chat.id, ...this.#threadsBelow(chat).map(thread => thread.id)]);
-        const shared = this.#data.chats.some(other => other.workspace?.id === workspace.id && !below.has(other.id));
+        const shared = this.#data.chats.some(
+            other => other.workspace?.id === workspace.id && other.archivedAt === undefined && !below.has(other.id)
+        );
 
         return {
             removable: workspace.managed && workspace.ready && !shared && !this.#isStandaloneWorktree(workspace.path),
@@ -1195,10 +1197,78 @@ export class FixtureTransport implements Transport {
 
         if (!worktree) return fail('conflict', 'Git does not list it as a worktree of the folder');
 
-        if (worktree.chats.length > 0)
-            return fail('conflict', `The chat "${worktree.chats[0].title}" works in this worktree`);
+        if (
+            command.expectedBranch &&
+            (worktree.branch !== command.expectedBranch.name || worktree.headOid !== command.expectedBranch.commit)
+        )
+            return fail('conflict', 'The branch changed. Try again');
+
+        if (command.expectedChatIds !== undefined && !command.chatDisposition) {
+            return fail('invalid', 'Expected chats require a chat disposition');
+        }
+
+        if (command.tidy && (command.discard || command.chatDisposition)) {
+            return fail('invalid', 'Tidy up cannot discard changes or dispose of chats');
+        }
+
+        const linked = data.chats.filter(chat => worktree.chats.some(each => each.id === chat.id));
+        const affected = [
+            ...new Map(
+                linked.flatMap(chat => [chat, ...this.#threadsBelow(chat)]).map(chat => [chat.id, chat])
+            ).values(),
+        ];
+        if (command.expectedChatIds !== undefined) {
+            const expected = new Set(command.expectedChatIds);
+            if (expected.size !== affected.length || affected.some(chat => !expected.has(chat.id))) {
+                return fail('conflict', 'The chats linked to this worktree changed. Try again');
+            }
+        }
+        const depths = new Map(affected.map(chat => [chat.id, this.#threadsBelow(chat).length]));
+        affected.sort((a, b) => (depths.get(a.id) ?? 0) - (depths.get(b.id) ?? 0));
+        const busy = worktree.chats.find(chat => !chat.archived);
+
+        if (busy && !command.chatDisposition)
+            return fail('conflict', `The chat "${busy.title}" works in this worktree`);
+        if ((command.chatDisposition ? affected : linked).some(chat => this.#isChatBusy(chat))) {
+            return fail('conflict', 'The agents of this chat or of its threads are still working. Stop them first.');
+        }
 
         if (worktree.main) return fail('conflict', "That is the folder's own checkout");
+
+        if (
+            worktree.blocked === 'main' ||
+            data.projects.some(each =>
+                each.folders.some(
+                    candidate => candidate.path === worktree.path || candidate.path.startsWith(`${worktree.path}/`)
+                )
+            )
+        ) {
+            return fail('conflict', 'That is another folder of the project');
+        }
+        if (data.chats.some(chat => chat.projectId !== project.id && chat.workspace?.path === worktree.path)) {
+            return fail('conflict', 'Another project or folder has chats in this worktree');
+        }
+        if (
+            command.deleteBranch &&
+            worktree.branch &&
+            group.worktrees.some(each => each.path !== worktree.path && each.branch === worktree.branch)
+        ) {
+            return fail('conflict', 'The branch is checked out in another worktree');
+        }
+
+        if (command.tidy) {
+            if (worktree.missing || worktree.merged !== true || worktree.base === undefined) {
+                return fail('conflict', 'The worktree is not present and merged into its base');
+            }
+            if (
+                command.deleteBranch &&
+                worktree.branch !== undefined &&
+                (worktree.branch === worktree.base ||
+                    worktree.branch === worktree.base.slice(worktree.base.indexOf('/') + 1))
+            ) {
+                return fail('conflict', 'The base branch cannot be deleted by Tidy up');
+            }
+        }
 
         if (worktree.locked !== undefined) return fail('conflict', 'The worktree is locked');
 
@@ -1209,6 +1279,18 @@ export class FixtureTransport implements Transport {
                     ? 'The worktree has changes that are not committed'
                     : 'The worktree has submodules checked out'
             );
+        }
+
+        if (command.chatDisposition === 'archive') {
+            const now = Date.now();
+            for (const chat of affected) {
+                if (chat.archivedAt === undefined) {
+                    chat.archivedAt = now;
+                    this.#emit(chat.projectId, { type: 'chat.upserted', chat });
+                }
+            }
+        } else if (command.chatDisposition === 'delete') {
+            this.#deleteChats(affected);
         }
 
         const edits = this.#worktreeEdits(folder.path);
@@ -1279,6 +1361,10 @@ export class FixtureTransport implements Transport {
         return outcome.ok
             ? { ok: true, requestId, data: outcome.data }
             : { ok: false, requestId, error: outcome.error };
+    }
+
+    async getPromptSuggestion(): Promise<null> {
+        return null;
     }
 
     async getItems(target: StreamTarget, afterSeq = 0): Promise<StreamItem[]> {
@@ -2332,28 +2418,7 @@ export class FixtureTransport implements Transport {
                         'The agents of this chat or of its threads are still working. Stop them first.'
                     );
 
-                for (const deleted of gone) {
-                    const runIds = new Set(this.#runsOfChat(deleted).map(run => run.id));
-
-                    data.chats = data.chats.filter(candidate => candidate.id !== deleted.id);
-                    data.runs = data.runs.filter(run => !runIds.has(run.id));
-                    data.chatTaskLinks = data.chatTaskLinks.filter(link => link.chatId !== deleted.id);
-                    data.runTaskLinks = data.runTaskLinks.filter(link => !runIds.has(link.runId));
-                    runIds.forEach(runId => delete data.items[runId]);
-                    this.#emit(deleted.projectId, { type: 'chat.deleted', chatId: deleted.id, runIds: [...runIds] });
-                }
-
-                // Standalone rows outlive the last chat; other rows are opened again when needed.
-                for (const deleted of gone) {
-                    const workspace = deleted.workspace;
-
-                    if (
-                        workspace &&
-                        !this.#isStandaloneWorktree(workspace.path) &&
-                        !data.chats.some(candidate => candidate.workspace?.id === workspace.id)
-                    )
-                        this.#opened.delete(workspace.id);
-                }
+                this.#deleteChats(gone);
 
                 return ok({ chatId: chat.id });
             }
@@ -2398,6 +2463,8 @@ export class FixtureTransport implements Transport {
 
             case 'run.cancel':
                 return this.#cancelRun(command.runId);
+            case 'run.setArchived':
+                return this.#setRunArchived(command.runId, command.archived);
             case 'run.stopAgents':
                 return this.#stopAgents(command.runId);
             case 'run.stopBackground':
@@ -2436,6 +2503,8 @@ export class FixtureTransport implements Transport {
                 return fail('unavailable', 'The demo data cannot add or remove agents');
             case 'agent.update':
                 return this.#updateAgent(command);
+            case 'settings.setBranchPrefix':
+                return ok({ prefix: branchPrefixOf(command.prefix) });
             case 'agents.setCommitMessageProvider': {
                 for (const agent of data.agents) {
                     const setting = agent.settings?.find(candidate => candidate.id === COMMIT_MESSAGE_SETTING_ID);
@@ -2485,6 +2554,33 @@ export class FixtureTransport implements Transport {
                 run.chatId === chat.id ||
                 (chat.orchestratorRunId !== undefined && run.rootRunId === chat.orchestratorRunId)
         );
+    }
+
+    /** Drops the chats with their runs and history, deepest first. */
+    #deleteChats(gone: Chat[]): void {
+        const data = this.#data;
+        for (const deleted of gone) {
+            const runIds = new Set(this.#runsOfChat(deleted).map(run => run.id));
+
+            data.chats = data.chats.filter(candidate => candidate.id !== deleted.id);
+            data.runs = data.runs.filter(run => !runIds.has(run.id));
+            data.chatTaskLinks = data.chatTaskLinks.filter(link => link.chatId !== deleted.id);
+            data.runTaskLinks = data.runTaskLinks.filter(link => !runIds.has(link.runId));
+            runIds.forEach(runId => delete data.items[runId]);
+            this.#emit(deleted.projectId, { type: 'chat.deleted', chatId: deleted.id, runIds: [...runIds] });
+        }
+
+        // Standalone rows outlive the last chat; other rows are opened again when needed.
+        for (const deleted of gone) {
+            const workspace = deleted.workspace;
+
+            if (
+                workspace &&
+                !this.#isStandaloneWorktree(workspace.path) &&
+                !data.chats.some(candidate => candidate.workspace?.id === workspace.id)
+            )
+                this.#opened.delete(workspace.id);
+        }
     }
 
     /** An agent of the chat still works: what the daemon refuses an archive or a delete for. */
@@ -3220,6 +3316,43 @@ export class FixtureTransport implements Transport {
         }
 
         return ok({ cancelled: [...cancelled] });
+    }
+
+    /**
+     * Like the daemon's `run.setArchived`: only a native sub-agent goes away, and not while it or a sub-agent it started works. Archiving takes the sub-agents it
+     * started along, each before the one that started it; bringing one back brings only that one. What is set already changes nothing and is not announced. A run
+     * that is put away or brought back is no activity: no chat moves.
+     */
+    #setRunArchived(runId: RunId, archived: boolean): Outcome {
+        const { runs } = this.#data;
+        const target = runs.find(candidate => candidate.id === runId);
+
+        if (!target) return fail('not_found', 'No such run');
+
+        if (target.origin !== 'native') return fail('invalid', 'Only a sub-agent can be archived');
+
+        if (archived && target.archivedAt === undefined) {
+            const started = this.#subtree(runId);
+            const subtree = runs.filter(candidate => started.has(candidate.id));
+
+            if (subtree.some(candidate => !isTerminalRunStatus(candidate.status)))
+                return fail('conflict', 'A working sub-agent cannot be archived');
+
+            // The sub-agents it started come first, so no sub-agent is ever listed below one that is away.
+            const now = Date.now();
+
+            for (const away of [...subtree.filter(candidate => candidate !== target).reverse(), target]) {
+                if (away.archivedAt !== undefined) continue;
+
+                away.archivedAt = now;
+                this.#emit(away.projectId, { type: 'run.upserted', run: away });
+            }
+        } else if (!archived && target.archivedAt !== undefined) {
+            delete target.archivedAt;
+            this.#emit(target.projectId, { type: 'run.upserted', run: target });
+        }
+
+        return ok({ run: structuredClone(target) });
     }
 
     /** Like the daemon's `run.stopAgents`: the sub-agents of the orchestrator's session that can stop alone stop; the orchestrator itself goes on, and so does its queue. */

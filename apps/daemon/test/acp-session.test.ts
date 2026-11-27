@@ -2292,6 +2292,7 @@ describe('an ACP v2 session that outlives its turn', () => {
                     parentToolCallId: CALL,
                     name: 'general-purpose',
                     description: 'Map the docs',
+                    prompt: 'Do this: Map the docs',
                     state: 'running',
                     stoppable: true,
                 },
@@ -2605,6 +2606,7 @@ describe('an ACP v2 session that outlives its turn', () => {
                 parentToolCallId: 'toolu-child-1',
                 name: 'general-purpose',
                 description: 'Locked',
+                prompt: 'Do this: Locked',
                 state: 'running',
             });
 

@@ -1,7 +1,10 @@
 // @vitest-environment happy-dom
+
+import { Modal } from '@clowdy/components/Modal';
 import { openConfirmModal } from '@clowdy/components/modals';
 import { emptyComposerDoc, plainTextToDoc } from '@clowdy/components/RichInput';
 import { runInAction } from 'mobx';
+import { observer } from 'mobx-react-lite';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -9,21 +12,26 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     createFixtureData,
     FIXTURE_EMPTY_PROJECT_ID,
+    FIXTURE_PERSONAL_PROJECT_ID,
     FIXTURE_PROJECT_ID,
     FIXTURE_WORKSPACE_CHAT_ID,
     type FixtureData,
     withFixtureWorkspace,
+    withFixtureWorktrees,
 } from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { hotkeys, installDispatcher } from '../../hotkeys';
+import { NEW_CHAT_COMMAND, shellCommands } from '../../shell/shellCommands';
 import { RootStore, RootStoreProvider } from '../../stores';
 import { branchPullRequestsOf } from '../changes/branchPullRequests';
-import { saveDraft } from '../chats/composerDrafts';
+import { dropDraft, newChatDraftKey, saveDraft } from '../chats/composerDrafts';
 import { setFiles } from '../chats/composerFiles';
 import { refreshFolderGit } from '../openWith/useFolderGit';
 import { chatListPreferences } from './chatListPreferences';
+import { openNewChat } from './openNewChat';
 import { Screen } from './Screen';
 import { starCardPreferences } from './starCardState';
+import { chatWorktreeKey, worktreeKey } from './worktreeCards';
 
 import type { Editor } from '@tiptap/core';
 import type { ReactNode } from 'react';
@@ -31,6 +39,13 @@ import type { KeyValueStorage } from '../../stores/storage';
 
 // `Modal` cannot load under the desktop's Vitest (decorators), and no confirmation is opened here.
 vi.mock('@clowdy/components/modals', () => ({ openConfirmModal: vi.fn() }));
+
+vi.mock('../changes/BranchPicker', async importOriginal => ({
+    BranchPicker: observer((await importOriginal<typeof import('../changes/BranchPicker')>()).BranchPicker),
+}));
+vi.mock('../changes/BranchList', async importOriginal => ({
+    BranchList: observer((await importOriginal<typeof import('../changes/BranchList')>()).BranchList),
+}));
 
 // The pages beside the list are drawn by their own tests; here they only say which one was asked for. A chat's `controls` stand beside it, as the line under its message box.
 vi.mock('../chats/ChatView', () => ({
@@ -103,12 +118,23 @@ const press = async (target: HTMLElement) =>
         target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
         target.click();
     });
-const menuItem = (name: string) =>
-    [...document.body.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find(row =>
-        row.textContent?.includes(name)
-    )!;
+const menuItem = (name: string) => {
+    const rows = [...document.body.querySelectorAll<HTMLElement>('[role^="menuitem"]')];
+    return (rows.find(row => row.textContent?.trim() === name) ?? rows.find(row => row.textContent?.includes(name)))!;
+};
+
+/** Opens a submenu the way a keyboard user does, so both the menu and its controls are available. */
+const openProjectSubmenu = async (name: 'Layout' | 'Display') => {
+    await press(buttonNamed('Project menu'));
+    await act(async () => {
+        menuItem(name).dispatchEvent(
+            new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true })
+        );
+    });
+};
 
 beforeEach(async () => {
+    chatListPreferences.setShowUnusedWorktrees(false);
     chatListPreferences.setShowFinishedThreads(true);
     // These tests read the list as it was before working agents opened their chats by themselves; `AgentListWorking.test.tsx` has the setting on.
     chatListPreferences.setExpandRunningAgents(false);
@@ -117,16 +143,39 @@ beforeEach(async () => {
     reactRoot = createRoot(container);
     store = new RootStore(new FixtureTransport(), { storage: memoryStorage() });
     await store.load();
-    await draw();
+    await draw(() => ui().setChatListLayout('folder'));
 });
 
 afterEach(() => {
     act(() => reactRoot.unmount());
+    for (const id of [FIXTURE_PROJECT_ID, FIXTURE_EMPTY_PROJECT_ID, FIXTURE_PERSONAL_PROJECT_ID]) {
+        dropDraft(newChatDraftKey(id));
+    }
     container.remove();
     store.dispose();
+    chatListPreferences.setShowUnusedWorktrees(false);
     chatListPreferences.setShowFinishedThreads(true);
     chatListPreferences.setExpandRunningAgents(true);
 });
+
+const drag = async (from: string, to: string, before = false) => {
+    const transfer = new DataTransfer();
+    transfer.setDragImage = vi.fn();
+    const source = rowOf(from).querySelector<HTMLElement>('[draggable="true"]')!;
+    const target = rowOf(to);
+    const event = (type: string) => {
+        const drag = new MouseEvent(type, { bubbles: true, cancelable: true, clientY: before ? -1 : 0 });
+        Object.defineProperty(drag, 'dataTransfer', { value: transfer });
+        return drag;
+    };
+    await act(async () => {
+        source.dispatchEvent(event('dragstart'));
+        target.dispatchEvent(event('dragover'));
+        target.dispatchEvent(event('drop'));
+        source.dispatchEvent(event('dragend'));
+    });
+    await draw();
+};
 
 describe('the list', () => {
     it('keeps the chat panel from becoming a scroll container', () => {
@@ -135,9 +184,9 @@ describe('the list', () => {
         expect(panel?.style.overflow).toBe('clip');
     });
 
-    it('starts with the new-chat row, then the chats, and has no row for a run while the chats are folded', () => {
+    it('starts with the folder heading and chats, with no row for a run while chats are folded', () => {
         // The orchestrator is the chat, and a native sub-agent is a row below its chat once that is opened, or while it works with Expand running agents on.
-        expect(rowKeys()).toEqual(['@new-chat', MAIN_GROUP, 'c-4', 'c-5', 'c-3', 'c-6', 'c-1', 'c-2']);
+        expect(rowKeys()).toEqual([MAIN_GROUP, 'c-4', 'c-5', 'c-3', 'c-6', 'c-1', 'c-2']);
     });
 
     it('marks a chat that started with the provider it runs on, and one that has not with the speech bubble', async () => {
@@ -160,12 +209,51 @@ describe('the list', () => {
         expect(providerOf('c-1')).toBeUndefined();
     });
 
+    it('previews an expanded chat as a block and restores its position on cancellation', async () => {
+        await draw(() => ui().toggleChatExpanded('c-6'));
+        const before = rowKeys();
+        const rows = Array.from(container.querySelectorAll<HTMLElement>('[role="row"][data-depth]'));
+        const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+            this: HTMLElement
+        ) {
+            const index = rows.indexOf(this);
+            return index < 0 ? new DOMRect(0, 0, 200, 1000) : new DOMRect(0, index * 36, 200, 36);
+        });
+        try {
+            const transfer = new DataTransfer();
+            transfer.setDragImage = vi.fn();
+            const source = rowOf('c-6').querySelector<HTMLElement>('[draggable="true"]')!;
+            const target = rowOf('c-4');
+            const event = (type: string, y: number) => {
+                const e = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: 50, clientY: y });
+                Object.defineProperty(e, 'dataTransfer', { value: transfer });
+                return e;
+            };
+            await act(async () => {
+                source.dispatchEvent(event('dragstart', 0));
+                target.dispatchEvent(event('dragover', 1));
+            });
+            expect({
+                root: rowOf('c-6').style.getPropertyValue('--reorder-offset'),
+                child: rowOf('c-6a').style.getPropertyValue('--reorder-offset'),
+                displaced: rowOf('c-4').style.getPropertyValue('--reorder-offset'),
+                order: rowKeys(),
+            }).toEqual({ root: '-108px', child: '-108px', displaced: '216px', order: before });
+            await act(async () => source.dispatchEvent(event('dragend', 1)));
+            expect({
+                order: rowKeys(),
+                offsets: rows.map(row => row.style.getPropertyValue('--reorder-offset')).filter(Boolean),
+            }).toEqual({ order: before, offsets: [] });
+        } finally {
+            rect.mockRestore();
+        }
+    });
+
     it('keeps the hand-ordered list through activity and puts a newly created chat first', async () => {
         const chatKeys = () => rowKeys().filter(key => key?.startsWith('c-'));
 
         expect(chatKeys()).toEqual(['c-4', 'c-5', 'c-3', 'c-6', 'c-1', 'c-2']);
-        await press(rowOf('c-5').querySelector<HTMLElement>('button[aria-label="Chat actions"]')!);
-        await press(menuItem('Move up'));
+        await drag('c-5', 'c-4', true);
         await draw();
         expect(chatKeys()).toEqual(['c-5', 'c-4', 'c-3', 'c-6', 'c-1', 'c-2']);
         expect(isSelected('c-4')).toBe(true);
@@ -178,6 +266,15 @@ describe('the list', () => {
             project().chats.set('c-new', { ...chat, id: 'c-new', createdAt: now, updatedAt: now });
         });
         expect(chatKeys()).toEqual(['c-new', 'c-5', 'c-4', 'c-3', 'c-6', 'c-1', 'c-2']);
+    });
+
+    it('omits move actions from a chat menu while keeping its other actions', async () => {
+        await press(rowOf('c-5').querySelector<HTMLElement>('button[aria-label="Chat actions"]')!);
+        expect(menuItem('Move up')).toBeUndefined();
+        expect(menuItem('Move down')).toBeUndefined();
+        expect(menuItem('Rename')).toBeDefined();
+        expect(menuItem('Archive')).toBeDefined();
+        expect(menuItem('Delete')).toBeDefined();
     });
 
     it('keeps the row of an open `⋯` menu as if hovered, since the pointer is in the menu and not on the row', async () => {
@@ -261,7 +358,10 @@ describe('a side panel that covers the chat', () => {
 
         expect(covering()).toBe(false);
 
-        await cover(() => ui().openDraft());
+        await cover(() => {
+            ui().setChatListLayout('simple');
+            ui().openDraft();
+        });
         await press(rowOf('@new-chat'));
 
         expect(covering()).toBe(false);
@@ -294,6 +394,7 @@ describe('a side panel that covers the chat', () => {
 });
 
 describe('the new-chat row', () => {
+    beforeEach(async () => draw(() => ui().setChatListLayout('simple')));
     const field = () => container.querySelector<HTMLElement>('[contenteditable="true"]');
     const editor = () => (field() as HTMLElement & { editor: Editor }).editor;
 
@@ -313,7 +414,7 @@ describe('the new-chat row', () => {
 
         await draw(() => ui().openDraft());
 
-        expect(isSelected('@new-chat')).toBe(true);
+        expect(isSelected(`@draft:${ui().draftId}`)).toBe(true);
         expect(container.querySelector('[data-testid="chat"]')).toBeNull();
         expect(field()).not.toBeNull();
         expect(container.textContent).toContain('What should we work on?');
@@ -339,6 +440,51 @@ describe('the new-chat row', () => {
         expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe(made[0]);
     });
 
+    it('locks a sending draft when returning to it and opens its chat after success', async () => {
+        let release!: () => void;
+        const original = store.command.bind(store);
+        vi.spyOn(store, 'command').mockImplementation(async input => {
+            if (input.type === 'chat.send')
+                await new Promise<void>(resolve => {
+                    release = resolve;
+                });
+            return original(input);
+        });
+        await draw(() => ui().openDraft());
+        const draft = ui().draftId!;
+        type('First message');
+        await pressEnter();
+        await draw(() => ui().openChat('c-3'));
+        await draw(() => ui().openDraftId(draft));
+        expect(container.querySelector('[contenteditable="true"]')).toBeNull();
+        expect(container.textContent).toContain('Sending message');
+        await act(async () => release());
+        await draw();
+        expect(ui().draft).toBe(false);
+        expect(ui().chatId).not.toBe('c-3');
+        expect(ui().newChatDrafts.get(draft)).toBeUndefined();
+    });
+
+    it('does not change the selected chat when a first send completes elsewhere', async () => {
+        let release!: () => void;
+        const original = store.command.bind(store);
+        vi.spyOn(store, 'command').mockImplementation(async input => {
+            if (input.type === 'chat.send')
+                await new Promise<void>(resolve => {
+                    release = resolve;
+                });
+            return original(input);
+        });
+        await draw(() => ui().openDraft());
+        const draft = ui().draftId!;
+        type('First message');
+        await pressEnter();
+        await draw(() => ui().openChat('c-3'));
+        await act(async () => release());
+        await draw();
+        expect([ui().draft, ui().chatId, ui().newChatDrafts.get(draft)]).toEqual([false, 'c-3', undefined]);
+    });
+
     it('sends nothing for a message of spaces, and keeps what was typed when the row is left and opened again', async () => {
         const before = project().chats.size;
 
@@ -355,19 +501,68 @@ describe('the new-chat row', () => {
         expect(editor().getText()).toContain('half a thought');
     });
 
-    it('is what shows, and the only row, when the project has no chat', async () => {
+    it('shows a selected draft when the project has no chat', async () => {
         store.selectProject(FIXTURE_EMPTY_PROJECT_ID);
         await vi.waitFor(() => expect(store.selectedProject?.status).toBe('ready'));
-        await draw();
+        await draw(() => store.ui.forProject(FIXTURE_EMPTY_PROJECT_ID).setChatListLayout('simple'));
 
-        // The new-chat row, and the folder's group with its note that it has no chat.
-        expect(rowKeys()).toEqual(['@new-chat', expect.stringMatching(/^@folder:/), expect.stringMatching(/^@empty:/)]);
-        expect(isSelected('@new-chat')).toBe(true);
+        const draft = store.ui.forProject(FIXTURE_EMPTY_PROJECT_ID).draftId;
+        expect(rowKeys()).toEqual(['@new-chat', `@draft:${draft}`]);
+        expect(isSelected(`@draft:${draft}`)).toBe(true);
         expect(field()).not.toBeNull();
     });
 });
 
 describe('grouped by folder', () => {
+    it('shows a selected draft in an empty grouped project', async () => {
+        store.selectProject(FIXTURE_EMPTY_PROJECT_ID);
+        await vi.waitFor(() => expect(store.selectedProject?.status).toBe('ready'));
+        await draw(() => store.ui.forProject(FIXTURE_EMPTY_PROJECT_ID).setChatListLayout('folder'));
+
+        const draft = store.ui.forProject(FIXTURE_EMPTY_PROJECT_ID).draftId;
+        expect(rowKeys()).toEqual([expect.stringMatching(/^@folder:/), `@draft:${draft}`]);
+        expect(isSelected(`@draft:${draft}`)).toBe(true);
+        expect(container.querySelector('[contenteditable="true"]')).not.toBeNull();
+    });
+
+    it('creates a persistent draft when typing after closing the empty project draft', async () => {
+        store.selectProject(FIXTURE_EMPTY_PROJECT_ID);
+        await vi.waitFor(() => expect(store.selectedProject?.status).toBe('ready'));
+        await draw(() => store.ui.forProject(FIXTURE_EMPTY_PROJECT_ID).setChatListLayout('folder'));
+        const emptyUi = store.ui.forProject(FIXTURE_EMPTY_PROJECT_ID);
+        const first = emptyUi.draftId!;
+        await press(rowOf(`@draft:${first}`).querySelector<HTMLElement>('button[aria-label="Close draft"]')!);
+        await draw();
+        const input = container.querySelector<HTMLElement & { editor: Editor }>('[contenteditable="true"]')!;
+        await act(async () => {
+            input.editor.commands.insertContent('Keep this');
+        });
+        await draw();
+        expect(emptyUi.newChatDrafts.get(emptyUi.draftId!)?.doc).toBeDefined();
+        expect(emptyUi.draftId).not.toBe(first);
+        expect(rowKeys()).toContain(`@draft:${emptyUi.draftId}`);
+    });
+
+    it('sends the first message typed immediately after closing an empty project draft', async () => {
+        store.selectProject(FIXTURE_EMPTY_PROJECT_ID);
+        await vi.waitFor(() => expect(store.selectedProject?.status).toBe('ready'));
+        await draw(() => store.ui.forProject(FIXTURE_EMPTY_PROJECT_ID).setChatListLayout('folder'));
+        const emptyUi = store.ui.forProject(FIXTURE_EMPTY_PROJECT_ID);
+        await press(rowOf(`@draft:${emptyUi.draftId}`).querySelector<HTMLElement>('button[aria-label="Close draft"]')!);
+        await draw();
+        const input = container.querySelector<HTMLElement & { editor: Editor }>('[contenteditable="true"]')!;
+        const command = vi.spyOn(store, 'command');
+        await act(async () => {
+            input.editor.commands.insertContent('Send immediately');
+            input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+        });
+        await draw();
+        expect(command.mock.calls.map(([item]) => item).find(item => item.type === 'chat.send')).toMatchObject({
+            text: 'Send immediately',
+        });
+        expect(emptyUi.draft).toBe(false);
+    });
+
     const API = { id: 'fld_api', path: '/Users/dev/car-rental-api' };
     const MAIN = 'fld_car_rental';
     const head = (folderId: string) => `@folder:${folderId}`;
@@ -380,10 +575,12 @@ describe('grouped by folder', () => {
     const folderLine = () => container.querySelector<HTMLElement>('[role="group"][aria-label^="Current place:"]');
     const folderItem = (name: string) =>
         [...document.body.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find(row => row.textContent === name)!;
-    const filtersMenu = async () => {
-        await press(container.querySelector<HTMLElement>('button[aria-label="Filters"]')!);
+    const layoutMenu = async () => {
+        await openProjectSubmenu('Layout');
 
-        return [...document.body.querySelectorAll('[role^="menuitem"]')].map(row => row.textContent);
+        return [...document.body.querySelectorAll('[role="menu"][aria-label="Layout"] [role^="menuitem"]')].map(
+            row => row.textContent
+        );
     };
 
     /** The fixture project with a second folder, `car-rental-api`, where c-2 works; the switch is on unless `grouping` says otherwise, and `null` keeps no choice. */
@@ -400,7 +597,7 @@ describe('grouped by folder', () => {
         store = new RootStore(transport, { storage: memoryStorage() });
         await store.load();
         await draw(() => {
-            if (grouping !== null) ui().setGroupByFolder(grouping);
+            if (grouping !== null) ui().setChatListLayout(grouping ? 'folder' : 'simple');
         });
     }
 
@@ -414,37 +611,46 @@ describe('grouped by folder', () => {
         return data;
     }
 
-    it('offers the switch to a project of one folder as well, on until it is turned off', async () => {
-        // A project that kept no choice groups, whatever number of folders it has.
-        expect(await filtersMenu()).toEqual([
-            'Show finished sub-threads',
-            'Expand running agents',
-            'Group chats by folder',
-        ]);
-        expect(menuItem('Group chats by folder').getAttribute('aria-checked')).toBe('true');
+    it('offers a layout choice even for a project of one folder', async () => {
+        await restart({ grouping: null, transport: new FixtureTransport() });
+        // A project that kept no choice groups by folder and worktree.
+        expect(await layoutMenu()).toEqual(['Simple list', 'By folder', 'By folder and worktree']);
+        expect(menuItem('By folder and worktree').getAttribute('aria-checked')).toBe('true');
         expect(rowKeys()).toContain(MAIN_GROUP);
 
         await restart({ grouping: null });
 
-        expect(await filtersMenu()).toEqual([
-            'Show finished sub-threads',
-            'Expand running agents',
-            'Group chats by folder',
-        ]);
-        expect(menuItem('Group chats by folder').getAttribute('aria-checked')).toBe('true');
+        expect(await layoutMenu()).toEqual(['Simple list', 'By folder', 'By folder and worktree']);
+        expect(menuItem('By folder and worktree').getAttribute('aria-checked')).toBe('true');
         expect(rowKeys()).toContain(head(MAIN));
 
-        await press(menuItem('Group chats by folder'));
+        await press(menuItem('Simple list'));
         expect(ui().groupByFolder).toBe(false);
         await draw();
 
         expect(rowKeys()).not.toContain(head(MAIN));
     });
 
+    it('switches among the three list layouts and shows the selected mode', async () => {
+        await openProjectSubmenu('Layout');
+        await press(menuItem('By folder and worktree'));
+        expect([ui().groupByFolder, ui().groupByWorktree]).toEqual([true, true]);
+
+        await openProjectSubmenu('Layout');
+        expect(menuItem('By folder and worktree').getAttribute('aria-checked')).toBe('true');
+        await press(menuItem('Simple list'));
+        expect([ui().groupByFolder, ui().groupByWorktree]).toEqual([false, false]);
+
+        await openProjectSubmenu('Layout');
+        expect(menuItem('Simple list').getAttribute('aria-checked')).toBe('true');
+        await press(menuItem('By folder'));
+        expect([ui().groupByFolder, ui().groupByWorktree]).toEqual([true, false]);
+    });
+
     it('groups a project of one folder too, and keeps the list flat once the switch is off', async () => {
         await draw(() => ui().setGroupByFolder(true));
 
-        expect(rowKeys()).toEqual(['@new-chat', MAIN_GROUP, 'c-4', 'c-5', 'c-3', 'c-6', 'c-1', 'c-2']);
+        expect(rowKeys()).toEqual([MAIN_GROUP, 'c-4', 'c-5', 'c-3', 'c-6', 'c-1', 'c-2']);
 
         await draw(() => ui().setGroupByFolder(false));
 
@@ -454,7 +660,7 @@ describe('grouped by folder', () => {
     it('lists a group for each folder, main first, with the chats that work in it below; a chat with no folder is in the main one', async () => {
         await restart();
 
-        expect(rowKeys()).toEqual(['@new-chat', head(MAIN), 'c-4', 'c-5', 'c-3', 'c-6', 'c-1', head(API.id), 'c-2']);
+        expect(rowKeys()).toEqual([head(MAIN), 'c-4', 'c-5', 'c-3', 'c-6', 'c-1', head(API.id), 'c-2']);
         expect(rowOf(head(MAIN)).textContent).toContain('car-rental');
         expect(rowOf(head(API.id)).textContent).toContain('car-rental-api');
         // A group heading is no page: it is never the selected row.
@@ -469,7 +675,6 @@ describe('grouped by folder', () => {
         });
 
         expect(rowKeys()).toEqual([
-            '@new-chat',
             head(MAIN),
             'c-4',
             'c-5',
@@ -504,24 +709,22 @@ describe('grouped by folder', () => {
             await restart({ transport: new FixtureTransport({ data: withFixtureWorkspace(twoFolders()) }) });
             expect(name(MAIN)?.textContent).toBe('car-rental');
             await draw(() => ui().openChat(FIXTURE_WORKSPACE_CHAT_ID));
-            const workspace = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
-
             await press(name(MAIN)!);
             await press(menuItem('New chat'));
-            expect(ui().draftWorkspace).toEqual({ mode: 'existing', path: workspace.path });
+            expect(ui().draftWorkspace).toBeNull();
             await draw(() => ui().openChat(FIXTURE_WORKSPACE_CHAT_ID));
 
             await press(name(API.id)!);
             expect([ui().draft, ui().chatId]).toEqual([false, FIXTURE_WORKSPACE_CHAT_ID]);
             expect(isSelected(FIXTURE_WORKSPACE_CHAT_ID)).toBe(true);
-            expect(menuItems()).toEqual(['New chat', 'Copy path', 'Open in…', 'Folder settings…']);
+            expect(menuItems()).toEqual(['New chat', 'Copy path', 'Open in…', 'Tidy up…', 'Folder settings…']);
 
             await press(menuItem('New chat'));
             await draw();
 
             expect([ui().draft, ui().draftFolderId]).toEqual([true, API.id]);
             expect(ui().draftWorkspace).toBeNull();
-            expect(isSelected('@new-chat')).toBe(true);
+            expect(isSelected(`@draft:${ui().draftId}`)).toBe(true);
 
             // The built-in tabs can open the folder when it matches the current draft.
             await press(name(API.id)!);
@@ -531,6 +734,7 @@ describe('grouped by folder', () => {
                 'Open in Terminal',
                 'Copy path',
                 'Open in…',
+                'Tidy up…',
                 'Folder settings…',
             ]);
 
@@ -594,6 +798,7 @@ describe('grouped by folder', () => {
                 'New chat',
                 'Copy path',
                 'Open in…',
+                'Tidy up…',
                 'Folder settings…',
             ]);
             expect(item('New chat').getAttribute('aria-disabled')).toBe('true');
@@ -644,7 +849,7 @@ describe('grouped by folder', () => {
 
         expect(ui().collapsedFolders).toEqual([API.id]);
         await draw();
-        expect(rowKeys()).toEqual(['@new-chat', head(MAIN), 'c-4', 'c-5', 'c-3', 'c-6', 'c-1', head(API.id)]);
+        expect(rowKeys()).toEqual([head(MAIN), 'c-4', 'c-5', 'c-3', 'c-6', 'c-1', head(API.id)]);
         expect(rowOf(head(API.id)).hasAttribute('data-collapsed')).toBe(true);
         expect(rowOf(head(API.id)).hasAttribute('data-plateless')).toBe(true);
         expect(buttonNamed('Expand car-rental-api').getAttribute('aria-expanded')).toBe('false');
@@ -663,7 +868,7 @@ describe('grouped by folder', () => {
         await key('ArrowLeft');
         expect(ui().collapsedFolders).toEqual([MAIN]);
         await draw();
-        expect(rowKeys()).toEqual(['@new-chat', head(MAIN), head(API.id), 'c-2']);
+        expect(rowKeys()).toEqual([head(MAIN), head(API.id), 'c-2']);
         await key('ArrowRight');
         expect(ui().collapsedFolders).toEqual([]);
     });
@@ -688,9 +893,8 @@ describe('grouped by folder', () => {
         };
 
         try {
-            rowOf('@new-chat').focus();
+            rowOf(head(MAIN)).focus();
 
-            expect(await step('j')).toBe(head(MAIN));
             expect(await step('j')).toBe('c-4');
 
             rowOf('c-2').focus();
@@ -702,7 +906,39 @@ describe('grouped by folder', () => {
 
             rowOf(head(MAIN)).focus();
 
-            expect(await step('k')).toBe('@new-chat');
+            expect(await step('k')).toBe(head(MAIN));
+        } finally {
+            uninstall();
+        }
+    });
+
+    it.each([
+        ['simple', '@new-chat', 'c-4'],
+        ['folder', MAIN_GROUP, 'c-4'],
+        ['worktree', MAIN_GROUP, 'c-4'],
+    ] as const)('navigates the first rows in the %s layout with J and K', async (layout, first, second) => {
+        await draw(() => {
+            ui().setChatListLayout(layout);
+            ui().openDraft();
+        });
+        await vi.waitFor(() => expect(document.activeElement?.getAttribute('contenteditable')).toBe('true'));
+        const uninstall = installDispatcher(hotkeys);
+        const step = async (key: string) => {
+            await act(async () => {
+                document.activeElement!.dispatchEvent(
+                    new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
+                );
+            });
+            return document.activeElement?.getAttribute('data-key');
+        };
+        try {
+            rowOf(first).focus();
+            expect(await step('j')).toBe(`@draft:${ui().draftId}`);
+            expect(await step('j')).toBe(second);
+            expect(await step('k')).toBe(`@draft:${ui().draftId}`);
+            expect(await step('k')).toBe(first);
+            expect(await step('k')).toBe(first);
+            expect(rowKeys().includes('@new-chat')).toBe(layout === 'simple');
         } finally {
             uninstall();
         }
@@ -722,29 +958,31 @@ describe('grouped by folder', () => {
         expect(isSelected('c-2')).toBe(true);
     });
 
-    it('has a button in each heading for a chat in that folder: the page says where, and the new-chat row stays the open one', async () => {
+    it('selects the draft in the folder whose new chat button was pressed', async () => {
         await restart();
         await press(buttonNamed('New chat in car-rental-api'));
         await draw();
 
         expect([ui().draft, ui().draftFolderId]).toEqual([true, API.id]);
         expect(folderSelect()?.textContent).toContain('car-rental-api');
-        // Whatever folder the page is for, the row at the top is the one marked, and no heading is.
-        expect(isSelected('@new-chat')).toBe(true);
+        expect(isSelected(`@draft:${ui().draftId}`)).toBe(true);
         expect(rowOf(head(API.id)).hasAttribute('data-open')).toBe(false);
 
-        // The main group's button is the same page as the row at the top.
+        // The main group opens a draft in the main folder.
         await press(buttonNamed('New chat in car-rental'));
         await draw();
 
         expect([ui().draft, ui().draftFolderId]).toEqual([true, null]);
-        expect(isSelected('@new-chat')).toBe(true);
+        expect(isSelected(`@draft:${ui().draftId}`)).toBe(true);
         expect(folderSelect()?.textContent).toContain('car-rental');
     });
 
     it('starts New chat in the active chat’s folder when it uses the folder checkout', async () => {
         await restart();
-        await draw(() => ui().openChat('c-2'));
+        await draw(() => {
+            ui().openChat('c-2');
+            ui().setChatListLayout('simple');
+        });
         await press(rowOf('@new-chat'));
         await draw();
 
@@ -756,7 +994,7 @@ describe('grouped by folder', () => {
         await restart();
         await draw(() => ui().openDraft([], 'fld_gone'));
 
-        expect(isSelected('@new-chat')).toBe(true);
+        expect(container.querySelector('[role="row"][data-selected]')).toBeNull();
         expect(rowOf(head(API.id)).hasAttribute('data-open')).toBe(false);
         expect(folderSelect()?.textContent).toContain('car-rental');
         expect(container.textContent).not.toContain('fld_gone');
@@ -765,7 +1003,7 @@ describe('grouped by folder', () => {
     describe('the folder select of the new-chat page', () => {
         it('lists the folders of the project by name and ticks the one the chat is for, and picking another changes it', async () => {
             await restart();
-            await press(rowOf('@new-chat'));
+            await press(buttonNamed('New chat in car-rental'));
             await draw();
 
             expect(folderSelect()?.getAttribute('aria-label')).toContain('folder car-rental');
@@ -786,27 +1024,27 @@ describe('grouped by folder', () => {
 
             expect([ui().draft, ui().draftFolderId]).toEqual([true, API.id]);
             expect(folderSelect()?.textContent).toContain('car-rental-api');
-            // The new-chat row stays the open one, as when the heading's own button opened the page.
+            // Changing folders moves the selected draft.
             expect(rowOf(head(API.id)).hasAttribute('data-open')).toBe(false);
-            expect(isSelected('@new-chat')).toBe(true);
+            expect(isSelected(`@draft:${ui().draftId}`)).toBe(true);
 
             await press(folderSelect()!);
 
             expect(folderItem('car-rental').getAttribute('aria-checked')).toBe('false');
             expect(folderItem('car-rental-api').getAttribute('aria-checked')).toBe('true');
 
-            // The main folder is no folder of its own: it is the page the row at the top opens.
+            // The main folder uses the default draft folder.
             await press(folderItem('car-rental'));
             await draw();
 
             expect([ui().draft, ui().draftFolderId]).toEqual([true, null]);
             expect(folderSelect()?.textContent).toContain('car-rental');
-            expect(isSelected('@new-chat')).toBe(true);
+            expect(isSelected(`@draft:${ui().draftId}`)).toBe(true);
         });
 
         it('keeps the words of the message when another folder is picked', async () => {
             await restart();
-            await press(rowOf('@new-chat'));
+            await press(buttonNamed('New chat in car-rental'));
             await draw();
             editor().commands.insertContent('Fix the endpoint');
 
@@ -835,15 +1073,18 @@ describe('grouped by folder', () => {
 
             expect(reads).toBe(1);
 
-            await press(rowOf('@new-chat'));
+            await press(buttonNamed('New chat in car-rental'));
             await draw();
             await press(buttonNamed('New chat in car-rental-api'));
             await draw();
-            await draw(() => ui().openChat('c-2'));
+            await draw(() => {
+                ui().openChat('c-2');
+                ui().setChatListLayout('simple');
+            });
             await press(rowOf('@new-chat'));
             await draw();
 
-            expect(folderSelect()).not.toBeNull();
+            expect(folderSelect()?.textContent).toContain('car-rental-api');
             expect(allProjects()).toBe(reads);
         });
 
@@ -851,7 +1092,7 @@ describe('grouped by folder', () => {
             const before = new Set(project().chats.keys());
 
             await restart();
-            await press(rowOf('@new-chat'));
+            await press(buttonNamed('New chat in car-rental'));
             await draw();
             await press(folderSelect()!);
             await press(folderItem('car-rental-api'));
@@ -889,7 +1130,7 @@ describe('grouped by folder', () => {
             store = new RootStore(new FixtureTransport(), { storage: memoryStorage() });
             await store.load();
             await draw(() => {
-                ui().setGroupByFolder(true);
+                ui().setChatListLayout('folder');
                 ui().openDraft();
             });
 
@@ -913,7 +1154,7 @@ describe('grouped by folder', () => {
                 )
             );
             await restart({ transport });
-            await press(rowOf('@new-chat'));
+            await press(buttonNamed('New chat in car-rental'));
             await draw();
             await press(folderSelect()!);
 
@@ -936,7 +1177,7 @@ describe('grouped by folder', () => {
             await restart();
             await draw(() => ui().openChat('c-2'));
 
-            expect(folderLine()?.textContent).toBe('car-rental-api, feature/payments');
+            expect(folderLine()?.textContent).toBe('feature/payments');
             expect(folderLine()?.getAttribute('title')).toBe('~/car-rental-api');
             // Read only: nothing in it opens a list or takes a press.
             expect(folderSelect()).toBeNull();
@@ -945,14 +1186,14 @@ describe('grouped by folder', () => {
             // A chat with no folder works in the main one.
             await draw(() => ui().openChat('c-1'));
 
-            expect(folderLine()?.textContent).toBe('car-rental, main');
+            expect(folderLine()?.textContent).toBe('main');
         });
 
         it('is under the message box of the chat the page made, in the folder picked there', async () => {
             const before = new Set(project().chats.keys());
 
             await restart();
-            await press(rowOf('@new-chat'));
+            await press(buttonNamed('New chat in car-rental'));
             await draw();
             await press(folderSelect()!);
             await press(folderItem('car-rental-api'));
@@ -965,7 +1206,7 @@ describe('grouped by folder', () => {
 
             expect([...project().chats.keys()].some(id => !before.has(id))).toBe(true);
             expect(folderSelect()).toBeNull();
-            expect(folderLine()?.textContent).toBe('car-rental-api, feature/payments');
+            expect(folderLine()?.textContent).toBe('feature/payments');
         });
 
         it('says when the folder is gone from the disk', async () => {
@@ -993,15 +1234,17 @@ describe('grouped by folder', () => {
             expect(folderLine()?.hasAttribute('data-missing')).toBe(false);
         });
 
-        it('shows a chat folder only in a project with multiple folders, grouped or flat', async () => {
+        it('shows the folder in a flat list and hides it when grouped by folder or worktree', async () => {
             await restart({ grouping: false });
             await draw(() => ui().openChat('c-2'));
 
             expect(folderLine()?.textContent).toBe('car-rental-api, feature/payments');
 
-            await draw(() => ui().setGroupByFolder(true));
+            await draw(() => ui().setChatListLayout('folder'));
+            expect(folderLine()?.textContent).toBe('feature/payments');
 
-            expect(folderLine()?.textContent).toBe('car-rental-api, feature/payments');
+            await draw(() => ui().setChatListLayout('worktree'));
+            expect(folderLine()?.textContent).toBe('feature/payments');
 
             // The fixture project has one folder.
             act(() => reactRoot.unmount());
@@ -1010,11 +1253,15 @@ describe('grouped by folder', () => {
             store = new RootStore(new FixtureTransport(), { storage: memoryStorage() });
             await store.load();
             await draw(() => {
-                ui().setGroupByFolder(true);
+                ui().setChatListLayout('folder');
                 ui().openChat('c-1');
             });
 
             expect(folderLine()?.textContent).toBe('main');
+
+            await draw(() => ui().setGroupByFolder(false));
+
+            expect(folderLine()?.textContent).toBe('car-rental, main');
         });
     });
 
@@ -1083,17 +1330,64 @@ describe('grouped by folder', () => {
 });
 
 describe('the heading', () => {
-    it('has the history, as a button, to the left of the filters', () => {
+    it('has the history, as a button, to the left of the project menu', () => {
         // The rows have an Archive of their own, as a quick action: the heading's buttons are the ones outside the list.
         const buttons = [
-            ...container.querySelectorAll<HTMLElement>('button[aria-label="History"], button[aria-label="Filters"]'),
+            ...container.querySelectorAll<HTMLElement>(
+                'button[aria-label="History"], button[aria-label="Project menu"]'
+            ),
         ].filter(button => !button.closest('[role="grid"]'));
 
-        expect(buttons.map(button => button.getAttribute('aria-label'))).toEqual(['History', 'Filters']);
+        expect(buttons.map(button => button.getAttribute('aria-label'))).toEqual(['History', 'Project menu']);
         expect(buttons[0].parentElement).toBe(buttons[1].parentElement);
     });
 
-    it('has the new-chat page open by its row, which is selected only while it is open', async () => {
+    it('opens settings for the selected project', async () => {
+        await press(buttonNamed('Project menu'));
+        await press(menuItem('Project settings'));
+
+        expect([store.ui.settingsOpen, store.ui.settingsPage, store.ui.settingsProjectId]).toEqual([
+            true,
+            'projects',
+            FIXTURE_PROJECT_ID,
+        ]);
+    });
+
+    it('adds the folder selected from the project menu', async () => {
+        const previous = window.desktop;
+        const choose = vi.fn(async () => ['/Users/dev/notes']);
+        (window as { desktop?: unknown }).desktop = { chooseDirectories: choose };
+
+        try {
+            await press(buttonNamed('Project menu'));
+            await press(menuItem('Add folder'));
+            await act(async () => void (await new Promise(resolve => setTimeout(resolve, 0))));
+
+            expect(choose).toHaveBeenCalledOnce();
+            expect(store.ui.settingsOpen).toBe(false);
+            expect(
+                store.projects.find(project => project.id === FIXTURE_PROJECT_ID)?.folders.map(folder => folder.path)
+            ).toContain('/Users/dev/notes');
+        } finally {
+            (window as { desktop?: unknown }).desktop = previous;
+        }
+    });
+
+    it('does not offer adding folders to the personal space', async () => {
+        await draw(() => store.selectProject(FIXTURE_PERSONAL_PROJECT_ID));
+        await draw();
+        await press(buttonNamed('Project menu'));
+
+        expect(
+            [...document.body.querySelectorAll('[role^="menuitem"]')].some(row =>
+                row.textContent?.includes('Add folder')
+            )
+        ).toBe(false);
+        expect(menuItem('Project settings')).toBeTruthy();
+    });
+
+    it('selects the draft row only while its page is open', async () => {
+        await draw(() => ui().setChatListLayout('simple'));
         await press(rowOf('@new-chat'));
 
         expect(ui().draft).toBe(true);
@@ -1101,11 +1395,12 @@ describe('the heading', () => {
         // The test build has no observer, so the screen is drawn again by hand.
         await draw();
 
-        expect(isSelected('@new-chat')).toBe(true);
+        const draft = ui().draftId;
+        expect(isSelected(`@draft:${draft}`)).toBe(true);
 
         await draw(() => ui().openChat('c-3'));
 
-        expect(isSelected('@new-chat')).toBe(false);
+        expect(isSelected(`@draft:${draft}`)).toBe(false);
     });
 });
 
@@ -1122,8 +1417,7 @@ describe('the archive', () => {
     it('restores a manually positioned chat to its slot after moving other chats', async () => {
         await draw(() => ui().setChatOrder(['c-4', 'c-5', 'c-2', 'c-3', 'c-6', 'c-1']));
         await archive('c-2', true);
-        await press(rowOf('c-5').querySelector<HTMLElement>('button[aria-label="Chat actions"]')!);
-        await press(menuItem('Move up'));
+        await drag('c-5', 'c-4', true);
         await archive('c-2', false);
 
         expect(rowKeys().filter(key => key?.startsWith('c-'))).toEqual(['c-5', 'c-4', 'c-2', 'c-3', 'c-6', 'c-1']);
@@ -1276,17 +1570,18 @@ describe('the archive', () => {
         expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe('c-5');
     });
 
-    it('shows a green status in place of the archive shortcut while the chat works', () => {
+    it('shows a green status in place of the archive shortcut while the chat works, its agent icon when agents work inside it', () => {
         const busyActions = rowOf('c-1').querySelector('[slot="endAffix"]');
 
         expect(busyActions?.querySelector('button[aria-label="Archive"]')).toBeNull();
-        expect(busyActions?.querySelector('[aria-label="Working"] [data-tone="success"]')).not.toBeNull();
+        expect(busyActions?.querySelector('[aria-label="3 agents work inside"]')).not.toBeNull();
+        expect(busyActions?.querySelector('[aria-label="Working"]')).toBeNull();
         expect(rowOf('c-4').querySelector('button[aria-label="Archive"]')?.hasAttribute('disabled')).toBe(false);
     });
 
-    it('shows a bolt while a chat waits for commands, giving an active agent or a question its usual indicator', async () => {
+    it('shows a bolt while a chat waits for background work, giving an active agent or a question its usual indicator', async () => {
         const run = project().runs.get('r-orch-5')!;
-        expect(rowOf('c-5').querySelector('[aria-label="Background command running"] svg')).not.toBeNull();
+        expect(rowOf('c-5').querySelector('[aria-label="Waiting for background work"] svg')).not.toBeNull();
 
         await draw(() => project().runs.set(run.id, { ...run, status: 'running' }));
         expect(rowOf('c-5').querySelector('[aria-label="Working"] [data-tone="success"]')).not.toBeNull();
@@ -1295,7 +1590,7 @@ describe('the archive', () => {
         expect(rowOf('c-5').querySelector('[aria-label="Waiting"] [data-tone="accent"]')).not.toBeNull();
 
         await draw(() => project().runs.set(run.id, { ...run, background: [] }));
-        expect(rowOf('c-5').querySelector('[aria-label="Background"] [data-tone="success"]')).not.toBeNull();
+        expect(rowOf('c-5').querySelector('[aria-label="Waiting for background work"] svg')).not.toBeNull();
     });
 
     it('cannot be asked of a chat whose agents work, and the list keeps it', async () => {
@@ -1330,6 +1625,11 @@ describe('the archive', () => {
 
 describe('chat completion dots', () => {
     const dotOf = (key: string) => rowOf(key).querySelector('[role="img"]')?.getAttribute('aria-label');
+    // The sub-agents that work for c-1 in the fixture end with it: a chat with an agent working inside keeps its agent icon, over a completion.
+    const endAgentsOfC1 = () => {
+        for (const id of ['r-na-02', 'r-na-03', 'r-na-05'])
+            project().runs.set(id, { ...project().runs.get(id)!, status: 'succeeded', finishedAt: Date.now() });
+    };
 
     it('starts without dots for past successes and clears a new completion when its row is opened', async () => {
         const focus = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
@@ -1337,7 +1637,10 @@ describe('chat completion dots', () => {
         try {
             expect(dotOf('c-2')).toBeUndefined();
             const run = project().runs.get('r-orch-1')!;
-            await draw(() => project().runs.set(run.id, { ...run, status: 'succeeded', finishedAt: Date.now() + 1 }));
+            await draw(() => {
+                endAgentsOfC1();
+                project().runs.set(run.id, { ...run, status: 'succeeded', finishedAt: Date.now() + 1 });
+            });
             expect(dotOf('c-1')).toBe('Done');
             await press(rowOf('c-1'));
             await draw();
@@ -1359,7 +1662,10 @@ describe('chat completion dots', () => {
         try {
             const run = project().runs.get('r-orch-1')!;
             await draw(() => ui().openChat('c-1'));
-            await draw(() => project().runs.set(run.id, { ...run, status: 'succeeded', finishedAt: Date.now() + 1 }));
+            await draw(() => {
+                endAgentsOfC1();
+                project().runs.set(run.id, { ...run, status: 'succeeded', finishedAt: Date.now() + 1 });
+            });
             expect(dotOf('c-1')).toBe('Done');
             focus.mockReturnValue(true);
             await draw(() => window.dispatchEvent(new Event('focus')));
@@ -1378,7 +1684,10 @@ describe('chat completion dots', () => {
                 ui().openChat('c-1');
                 store.ui.openSettings();
             });
-            await draw(() => project().runs.set(run.id, { ...run, status: 'succeeded', finishedAt: Date.now() + 1 }));
+            await draw(() => {
+                endAgentsOfC1();
+                project().runs.set(run.id, { ...run, status: 'succeeded', finishedAt: Date.now() + 1 });
+            });
             expect(dotOf('c-1')).toBe('Done');
             await draw(() => store.ui.closeSettings());
             await draw();
@@ -1437,7 +1746,6 @@ describe('threads', () => {
         await draw();
 
         expect(rowKeys()).toEqual([
-            '@new-chat',
             MAIN_GROUP,
             'c-4',
             'c-5',
@@ -1445,6 +1753,8 @@ describe('threads', () => {
             'c-6',
             'c-6a',
             'c-6b',
+            // The sub-agent of the chat itself, made between its threads (it is over, and the finished are listed).
+            'r-na-07',
             'c-6c',
             'c-6e',
             'c-1',
@@ -1456,7 +1766,7 @@ describe('threads', () => {
         await act(async () => foldOf('c-6a')!.click());
         await draw();
 
-        expect(rowKeys().slice(5, 8)).toEqual(['c-6', 'c-6a', 'c-6a1']);
+        expect(rowKeys().slice(4, 7)).toEqual(['c-6', 'c-6a', 'c-6a1']);
         expect(depthOf('c-6a1')).toBe('2');
 
         // Folding the chat hides every thread below it, the thread's own threads too.
@@ -1464,6 +1774,7 @@ describe('threads', () => {
         await draw();
 
         expect(rowKeys().filter(key => key?.startsWith('c-6'))).toEqual(['c-6']);
+        expect(rowKeys()).not.toContain('r-na-07');
     });
 
     it('opens a fold with the right arrow and closes it with the left one', async () => {
@@ -1490,19 +1801,13 @@ describe('threads', () => {
         expect(rowKeys().filter(key => key?.startsWith('c-6'))).toEqual(['c-6', 'c-6a', 'c-6b', 'c-6c', 'c-6e']);
     });
 
-    it('has a check in the Filters menu, Show finished sub-threads, that hides the threads whose run is over', async () => {
+    it('hides finished threads when their filter is turned off', async () => {
         await draw(() => ['c-6', 'c-6a'].forEach(id => ui().toggleChatExpanded(id)));
-        await press(container.querySelector<HTMLElement>('button[aria-label="Filters"]')!);
+        await openProjectSubmenu('Display');
 
-        expect(menuItem('Show finished sub-threads').getAttribute('aria-checked')).toBe('true');
-        expect([...document.body.querySelectorAll('[role^="menuitem"]')].map(row => row.textContent)).toEqual([
-            'Show finished sub-threads',
-            'Expand running agents',
-            'Group chats by folder',
-        ]);
-        expect(document.body.querySelector('[role="menu"] header')).toBeNull();
+        expect(menuItem('Show completed threads').getAttribute('aria-checked')).toBe('true');
 
-        await press(menuItem('Show finished sub-threads'));
+        await press(menuItem('Show completed threads'));
         expect(chatListPreferences.showFinishedThreads).toBe(false);
         await draw();
 
@@ -1538,10 +1843,10 @@ describe('threads', () => {
         expect(ui().expandedChats).not.toContain('c-6');
     });
 
-    it('marks a chat at rest whose threads work with the working dot, and each thread with its own state', async () => {
+    it('marks a chat at rest whose threads work with the agent icon, and each thread with its own state', async () => {
         await draw(() => ui().toggleChatExpanded('c-6'));
 
-        expect(dotOf('c-6')).toBe('Threads working');
+        expect(dotOf('c-6')).toBe('2 agents work inside');
         expect(dotOf('c-6a')).toBe('Working');
         expect(dotOf('c-6c')).toBe('Failed');
         expect(dotOf('c-6b')).toBeUndefined();
@@ -1552,7 +1857,7 @@ describe('threads', () => {
         // The thread rests for its background work while its agent asks: its card is the only sign (`Run.awaitingUser`).
         await draw(() => project().runs.set('r-orch-6e', { ...project().runs.get('r-orch-6e')!, awaitingUser: true }));
 
-        expect(rowKeys()).toEqual(['@new-chat', MAIN_GROUP, 'c-4', 'c-5', 'c-3', 'c-6', 'c-6e', 'c-1', 'c-2']);
+        expect(rowKeys()).toEqual([MAIN_GROUP, 'c-4', 'c-5', 'c-3', 'c-6', 'c-6e', 'c-1', 'c-2']);
         expect(['c-6', 'c-6e'].map(depthOf)).toEqual(['0', '1']);
         expect(foldOf('c-6')?.getAttribute('aria-expanded')).toBe('false');
         expect(dotOf('c-6')).toBe('A thread is waiting for you');
@@ -1562,7 +1867,6 @@ describe('threads', () => {
         await act(async () => foldOf('c-6')!.click());
         await draw();
         expect(rowKeys()).toEqual([
-            '@new-chat',
             MAIN_GROUP,
             'c-4',
             'c-5',
@@ -1570,19 +1874,21 @@ describe('threads', () => {
             'c-6',
             'c-6a',
             'c-6b',
+            // The sub-agent of the chat itself, made between its threads (it is over, and the finished are listed).
+            'r-na-07',
             'c-6c',
             'c-6e',
             'c-1',
             'c-2',
         ]);
 
-        // Decided: the thread goes back behind the fold, and the chat's dot to its threads working.
+        // Decided: the thread goes back behind the fold, and the chat's dot gives way to the agent icon.
         await act(async () => foldOf('c-6')!.click());
         await draw(() =>
             project().runs.set('r-orch-6e', { ...project().runs.get('r-orch-6e')!, awaitingUser: undefined })
         );
         expect(rowKeys()).not.toContain('c-6e');
-        expect(dotOf('c-6')).toBe('Threads working');
+        expect(dotOf('c-6')).toBe('2 agents work inside');
     });
 
     it('offers no Archive on a chat whose threads work, and offers it on a finished thread', async () => {
@@ -1591,7 +1897,7 @@ describe('threads', () => {
         const busyActions = rowOf('c-6').querySelector('[slot="endAffix"]');
 
         expect(busyActions?.querySelector('button[aria-label="Archive"]')).toBeNull();
-        expect(busyActions?.querySelector('[aria-label="Threads working"] [data-tone="success"]')).not.toBeNull();
+        expect(busyActions?.querySelector('[aria-label="2 agents work inside"]')).not.toBeNull();
         expect(rowOf('c-6b').querySelector('button[aria-label="Archive"]')?.hasAttribute('disabled')).toBe(false);
 
         await press(rowOf('c-6').querySelector<HTMLElement>('button[aria-label="Chat actions"]')!);
@@ -1655,7 +1961,7 @@ describe('a chat that works in a worktree', () => {
         reactRoot = createRoot(container);
         store = new RootStore(transport, { storage: memoryStorage() });
         await store.load();
-        await draw();
+        await draw(() => ui().setChatListLayout('folder'));
     }
 
     it('shows the worktree below the composer without a worktree icon in the sidebar', async () => {
@@ -1676,6 +1982,16 @@ describe('a chat that works in a worktree', () => {
             ).toBe('Worktree clowdy/ab12cd34')
         );
 
+        await draw(() => ui().setChatListLayout('simple'));
+        expect(
+            container.querySelector('[aria-label="Current place: car-rental, Worktree, branch clowdy/ab12cd34"]')
+                ?.textContent
+        ).toBe('car-rental, Worktree clowdy/ab12cd34');
+        await draw(() => ui().setChatListLayout('worktree'));
+        expect(
+            container.querySelector('[aria-label="Current place: Worktree, branch clowdy/ab12cd34"]')?.textContent
+        ).toBe('Worktree clowdy/ab12cd34');
+
         await draw(() => ui().openChat('c-1'));
 
         await vi.waitFor(() =>
@@ -1685,7 +2001,10 @@ describe('a chat that works in a worktree', () => {
 
     it('shares the active chat’s worktree when the first message is sent from New chat', async () => {
         await restart();
-        await draw(() => ui().openChat(FIXTURE_WORKSPACE_CHAT_ID));
+        await draw(() => {
+            ui().setChatListLayout('simple');
+            ui().openChat(FIXTURE_WORKSPACE_CHAT_ID);
+        });
         const workspace = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
 
         await press(rowOf('@new-chat'));
@@ -1703,6 +2022,71 @@ describe('a chat that works in a worktree', () => {
         expect(ui().draft).toBe(false);
         expect(ui().chatId).not.toBe(FIXTURE_WORKSPACE_CHAT_ID);
         expect(project().chats.get(ui().chatId!)?.workspace?.id).toBe(workspace.id);
+    });
+
+    it('shares the active worktree when the new chat shortcut opens a grouped draft', async () => {
+        await restart();
+        await draw(() => {
+            ui().setChatListLayout('worktree');
+            ui().openChat(FIXTURE_WORKSPACE_CHAT_ID);
+        });
+        const workspace = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
+        const command = shellCommands(store).find(entry => entry.id === NEW_CHAT_COMMAND)!;
+        const dispose = hotkeys.defineCommand({ ...command, scope: 'app' });
+        const uninstall = installDispatcher(hotkeys);
+        try {
+            await act(async () => {
+                document.body.dispatchEvent(
+                    new KeyboardEvent('keydown', {
+                        key: 'n',
+                        code: 'KeyN',
+                        metaKey: hotkeys.family === 'mac',
+                        ctrlKey: hotkeys.family === 'win',
+                        bubbles: true,
+                        cancelable: true,
+                    })
+                );
+            });
+            await draw();
+            await vi.waitFor(() => expect(ui().draftWorkspaceRow?.id).toBe(workspace.id));
+            expect(rowKeys()).not.toContain('@new-chat');
+            expect(isSelected(`@draft:${ui().draftId}`)).toBe(true);
+
+            const field = container.querySelector<HTMLElement & { editor: Editor }>('[contenteditable="true"]')!;
+            await act(async () => {
+                field.editor.commands.insertContent('Check the worktree');
+            });
+            await act(async () => {
+                document.body.dispatchEvent(
+                    new KeyboardEvent('keydown', {
+                        key: 'n',
+                        code: 'KeyN',
+                        metaKey: hotkeys.family === 'mac',
+                        ctrlKey: hotkeys.family === 'win',
+                        bubbles: true,
+                        cancelable: true,
+                    })
+                );
+            });
+            expect(ui().draftWorkspace).toEqual({ mode: 'existing', path: workspace.path });
+            expect(field.editor.getText()).toBe('Check the worktree');
+
+            // The project may not have loaded yet when the shortcut is pressed.
+            await draw(() => openNewChat(undefined, ui()));
+            expect(ui().draftWorkspace).toEqual({ mode: 'existing', path: workspace.path });
+            expect(field.editor.getText()).toBe('Check the worktree');
+
+            await act(async () => {
+                field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+            });
+            await draw();
+            expect(ui().draft).toBe(false);
+            expect(ui().chatId).not.toBe(FIXTURE_WORKSPACE_CHAT_ID);
+            expect(project().chats.get(ui().chatId!)?.workspace?.id).toBe(workspace.id);
+        } finally {
+            uninstall();
+            dispose();
+        }
     });
 
     it('shares the automatically selected pull request badge across chats on the actual checked-out branch', async () => {
@@ -1738,7 +2122,7 @@ describe('a chat that works in a worktree', () => {
         reactRoot = createRoot(container);
         store = new RootStore(transport, { storage: memoryStorage() });
         await store.load();
-        await draw();
+        await draw(() => ui().setChatListLayout('folder'));
 
         const badge = (id: string) => rowOf(id).querySelector('[data-pr-state]');
         await vi.waitFor(() => expect(badge(first.id)?.getAttribute('aria-label')).toBe('1 pull request: 1 open'));
@@ -1835,5 +2219,651 @@ describe('the Star on GitHub card', () => {
         await draw(() => starCardPreferences.dismiss());
 
         expect(card()).toBeNull();
+    });
+});
+
+describe('worktree cards', () => {
+    async function restart(data = withFixtureWorktrees(createFixtureData())) {
+        act(() => reactRoot.unmount());
+        store.dispose();
+        reactRoot = createRoot(container);
+        store = new RootStore(new FixtureTransport({ data }), {
+            storage: memoryStorage(),
+        });
+        await store.load();
+        await draw(() => ui().setChatListLayout('folder'));
+    }
+    const mainKey = () => worktreeKey('fld_car_rental', '/Users/dev/car-rental');
+    const workspaceKey = () => chatWorktreeKey(project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!)!;
+    const cardRows = () =>
+        [...container.querySelectorAll<HTMLElement>('[data-worktree-card]')].map(row => row.dataset.worktreeCard);
+    const arrow = (key: string, direction: string) =>
+        act(async () => {
+            rowOf(key).dispatchEvent(new KeyboardEvent('keydown', { key: direction, bubbles: true, cancelable: true }));
+        });
+
+    it('keeps flat order when disabled and puts checkout chats before worktree cards when enabled', async () => {
+        await restart();
+        const before = rowKeys();
+        await openProjectSubmenu('Layout');
+        expect(menuItem('By folder and worktree').getAttribute('aria-checked')).toBe('false');
+        await press(menuItem('By folder and worktree'));
+        await draw();
+        expect(
+            rowOf('c-1').compareDocumentPosition(rowOf(workspaceKey())) & Node.DOCUMENT_POSITION_FOLLOWING
+        ).toBeTruthy();
+        expect(
+            rowOf(FIXTURE_WORKSPACE_CHAT_ID).closest('[data-worktree-card]')?.getAttribute('data-worktree-card')
+        ).toBe(workspaceKey());
+        await draw(() => ui().setGroupByWorktree(false));
+        expect(rowKeys()).toEqual(before);
+    });
+
+    it('groups ordinary chats only while an additional worktree is visible', async () => {
+        await restart();
+        await draw(() => ui().setGroupByWorktree(true));
+        await draw();
+        expect(rowOf('c-4').closest('[data-worktree-card]')?.getAttribute('data-worktree-card')).toBe(mainKey());
+        await arrow(mainKey(), 'ArrowLeft');
+        await draw();
+        expect(rowOf('c-4')).toBeNull();
+        await draw(() => ui().openChat(FIXTURE_WORKSPACE_CHAT_ID));
+        await draw(() => ui().openChat('c-4'));
+        await draw();
+        expect(isSelected('c-4')).toBe(true);
+        await press(rowOf(mainKey()).querySelector<HTMLElement>('button[aria-label^="Worktree actions:"]')!);
+        expect(menuItem('Remove worktree…')).toBeUndefined();
+        await press(menuItem('New chat'));
+        expect([ui().draft, ui().draftFolderId, ui().draftWorkspace]).toEqual([true, null, null]);
+        await draw();
+        expect(
+            rowOf(`@draft:${ui().draftId}`).closest('[data-worktree-card]')?.getAttribute('data-worktree-card')
+        ).toBe(mainKey());
+    });
+
+    it('keeps the main worktree available with no active chats regardless of the unused filter', async () => {
+        await restart();
+        await draw(() => {
+            for (const [id, chat] of project().chats) {
+                if (!chat.workspace && (!chat.folderId || chat.folderId === 'fld_car_rental'))
+                    project().chats.set(id, { ...chat, archivedAt: Date.now() });
+            }
+            ui().setGroupByWorktree(true);
+        });
+        await draw();
+        expect(cardRows()).toContain(workspaceKey());
+        expect(cardRows()).toContain(mainKey());
+        await draw(() => chatListPreferences.setShowUnusedWorktrees(true));
+        expect(cardRows()).toContain(mainKey());
+        await draw(() => chatListPreferences.setShowUnusedWorktrees(false));
+        expect(cardRows()).toContain(mainKey());
+        await press(rowOf(mainKey()).querySelector<HTMLElement>('button[aria-label^="New chat in "]')!);
+        await draw();
+        expect([ui().draft, ui().draftFolderId, ui().draftWorkspace]).toEqual([true, null, null]);
+        expect(
+            rowOf(`@draft:${ui().draftId}`).closest('[data-worktree-card]')?.getAttribute('data-worktree-card')
+        ).toBe(mainKey());
+    });
+
+    it('keeps ordinary chats flat when only thread worktrees are hidden and groups them when unused ones are shown', async () => {
+        await restart();
+        const workspace = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
+        await draw(() => {
+            project().chats.delete(FIXTURE_WORKSPACE_CHAT_ID);
+            project().chats.set('c-6a', { ...project().chats.get('c-6a')!, workspace });
+            ui().setGroupByWorktree(true);
+        });
+        await draw();
+        expect(rowOf('c-4').closest('[data-worktree-card]')).toBeNull();
+        await draw(() => chatListPreferences.setShowUnusedWorktrees(true));
+        expect(rowOf('c-4').closest('[data-worktree-card]')?.getAttribute('data-worktree-card')).toBe(mainKey());
+    });
+
+    it('groups each folder independently and starts a chat in the selected folder checkout', async () => {
+        await restart();
+        const second = worktreeKey('fld_api', '/Users/dev/car-rental-api');
+        await draw(() => {
+            const chat = project().chats.get('c-4')!;
+            project().chats.set(chat.id, { ...chat, folderId: 'fld_api' });
+            ui().setGroupByWorktree(true);
+            chatListPreferences.setShowUnusedWorktrees(true);
+        });
+        await draw();
+        expect(rowOf('c-4').closest('[data-worktree-card]')?.getAttribute('data-worktree-card')).toBe(second);
+        expect(rowOf('c-1').closest('[data-worktree-card]')?.getAttribute('data-worktree-card')).toBe(mainKey());
+        await press(rowOf(second).querySelector<HTMLElement>('button[aria-label^="New chat in "]')!);
+        expect([ui().draftFolderId, ui().draftWorkspace]).toEqual(['fld_api', null]);
+    });
+
+    it('joins the canonical Git path with its workspace card and opens the selected chat', async () => {
+        await restart();
+        const workspace = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
+        const read = store.transport.getProjectWorktrees.bind(store.transport);
+        vi.spyOn(store.transport, 'getProjectWorktrees').mockImplementation(async projectId =>
+            (await read(projectId)).map(folder => ({
+                ...folder,
+                worktrees: folder.worktrees.map(tree =>
+                    tree.workspaceId === workspace.id ? { ...tree, path: '/real/path/to/worktree' } : tree
+                ),
+            }))
+        );
+        await draw(() => {
+            ui().setGroupByWorktree(true);
+            ui().openChat(FIXTURE_WORKSPACE_CHAT_ID);
+        });
+        await draw();
+        expect(cardRows()).toHaveLength(2);
+        expect(
+            rowOf(FIXTURE_WORKSPACE_CHAT_ID).closest('[data-worktree-card]')?.getAttribute('data-worktree-card')
+        ).toContain(encodeURIComponent('/real/path/to/worktree'));
+        expect(isSelected(FIXTURE_WORKSPACE_CHAT_ID)).toBe(true);
+    });
+
+    it('keeps a manually folded card closed until a chat in it is opened from elsewhere', async () => {
+        await restart();
+        await draw(() => {
+            ui().setGroupByWorktree(true);
+            ui().openChat(FIXTURE_WORKSPACE_CHAT_ID);
+        });
+        const key = workspaceKey();
+        await arrow(key, 'ArrowLeft');
+        await draw();
+        expect(rowOf(FIXTURE_WORKSPACE_CHAT_ID)).toBeNull();
+        await draw(() => ui().openChat('c-4'));
+        await draw(() => ui().openChat(FIXTURE_WORKSPACE_CHAT_ID));
+        await draw();
+        expect(isSelected(FIXTURE_WORKSPACE_CHAT_ID)).toBe(true);
+        expect(ui().collapsedWorktrees).not.toContain(key);
+    });
+
+    it('opens a folded worktree on a row click without closing it on another click', async () => {
+        await restart();
+        await draw(() => ui().setGroupByWorktree(true));
+        const key = workspaceKey();
+        await arrow(key, 'ArrowLeft');
+        await draw();
+        expect(rowOf(FIXTURE_WORKSPACE_CHAT_ID)).toBeNull();
+        await press(rowOf(key));
+        await draw();
+        expect(rowOf(FIXTURE_WORKSPACE_CHAT_ID)).not.toBeNull();
+        await press(rowOf(key));
+        await draw();
+        expect(rowOf(FIXTURE_WORKSPACE_CHAT_ID)).not.toBeNull();
+    });
+
+    it('keeps a folded worktree closed when opening its actions menu', async () => {
+        await restart();
+        await draw(() => ui().setGroupByWorktree(true));
+        const key = workspaceKey();
+        await arrow(key, 'ArrowLeft');
+        await draw();
+        await press(rowOf(key).querySelector<HTMLElement>('button[aria-label^="Worktree actions:"]')!);
+        expect(menuItem('New chat')).toBeDefined();
+        expect(rowOf(FIXTURE_WORKSPACE_CHAT_ID)).toBeNull();
+    });
+
+    it('opens the worktree actions on right-clicking its header', async () => {
+        await restart();
+        await draw(() => ui().setGroupByWorktree(true));
+        await act(async () => {
+            rowOf(workspaceKey()).dispatchEvent(
+                new MouseEvent('contextmenu', {
+                    bubbles: true,
+                    cancelable: true,
+                    button: 2,
+                    clientX: 120,
+                    clientY: 120,
+                })
+            );
+        });
+        expect(menuItem('Remove worktree…')).toBeDefined();
+        expect(menuItem('Switch branch')).toBeDefined();
+    });
+
+    it('opens chat actions rather than worktree actions on a chat inside the card', async () => {
+        await restart();
+        await draw(() => ui().setGroupByWorktree(true));
+        await act(async () => {
+            rowOf(FIXTURE_WORKSPACE_CHAT_ID).dispatchEvent(
+                new MouseEvent('contextmenu', {
+                    bubbles: true,
+                    cancelable: true,
+                    button: 2,
+                    clientX: 120,
+                    clientY: 120,
+                })
+            );
+        });
+        expect(menuItem('Rename')).toBeDefined();
+        expect(menuItem('Remove worktree…')).toBeUndefined();
+    });
+
+    it('shows unused worktrees in the list when enabled in Display', async () => {
+        await restart();
+        await draw(() => ui().setGroupByWorktree(true));
+        expect(cardRows()).toEqual([mainKey(), workspaceKey()]);
+        expect(container.textContent).not.toContain('Unused worktrees');
+        await openProjectSubmenu('Display');
+        await press(menuItem('Show unused worktrees'));
+        await draw();
+        expect(cardRows().length).toBeGreaterThan(2);
+        expect(container.textContent).not.toContain('Unused worktrees');
+        await press(menuItem('Show unused worktrees'));
+        await draw();
+        expect(cardRows()).toEqual([mainKey(), workspaceKey()]);
+    });
+
+    it.each(['button', 'context menu'])(
+        'opens branch selection for the clicked unused worktree via %s without changing the selected chat',
+        async entry => {
+            await restart();
+            const original = store.transport.command.bind(store.transport);
+            const command = vi.spyOn(store.transport, 'command').mockImplementation(input =>
+                input.type === 'workspace.open'
+                    ? Promise.resolve({
+                          ok: true,
+                          requestId: 'test',
+                          data: {
+                              workspace: {
+                                  id: 'wks_ab12cd34',
+                                  folderId: input.folderId,
+                                  path: input.path,
+                                  ready: true,
+                                  managed: false,
+                              },
+                          },
+                      })
+                    : original(input)
+            );
+            await draw(() => {
+                ui().setGroupByWorktree(true);
+                ui().openChat('c-4');
+                chatListPreferences.setShowUnusedWorktrees(true);
+            });
+            await draw();
+            const card = cardRows().find(key => key?.includes('search-filters'))!;
+            if (entry === 'button')
+                await press(rowOf(card).querySelector<HTMLElement>('button[aria-label^="Worktree actions:"]')!);
+            else
+                await act(async () => {
+                    rowOf(card).dispatchEvent(
+                        new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 })
+                    );
+                });
+            await press(menuItem('Switch branch'));
+            await vi.waitFor(() =>
+                expect(command).toHaveBeenCalledWith({
+                    type: 'workspace.open',
+                    projectId: FIXTURE_PROJECT_ID,
+                    folderId: 'fld_car_rental',
+                    path: '/Users/dev/worktrees/car-rental/search-filters',
+                })
+            );
+            expect(ui().chatId).toBe('c-4');
+            await vi.waitFor(() =>
+                expect(document.querySelector('input[placeholder="Filter branches"]')).not.toBeNull()
+            );
+        }
+    );
+
+    it('starts a draft in a worktree with no chats from its own menu', async () => {
+        await restart();
+        await draw(() => ui().setGroupByWorktree(true));
+        await draw(() => chatListPreferences.setShowUnusedWorktrees(true));
+        const card = cardRows().find(key => key?.includes('search-filters'))!;
+        await press(rowOf(card).querySelector<HTMLElement>('button[aria-label^="Worktree actions:"]')!);
+        expect(menuItem('Open in Files')).toBeUndefined();
+        expect(menuItem('Open in Terminal')).toBeUndefined();
+        await press(menuItem('New chat'));
+        expect([ui().draft, ui().draftWorkspace]).toEqual([
+            true,
+            { mode: 'existing', path: '/Users/dev/worktrees/car-rental/search-filters' },
+        ]);
+    });
+
+    it('starts a draft in the worktree using its shortcut', async () => {
+        await restart();
+        await draw(() => ui().setGroupByWorktree(true));
+        const workspace = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
+        await press(rowOf(workspaceKey()).querySelector<HTMLElement>('button[aria-label^="New chat in "]')!);
+        expect([ui().draft, ui().draftWorkspace]).toEqual([true, { mode: 'existing', path: workspace.path }]);
+        await draw();
+        expect(rowKeys()).not.toContain('@new-chat');
+        expect(isSelected(`@draft:${ui().draftId}`)).toBe(true);
+    });
+
+    it('opens the folder checkout after starting a worktree draft', async () => {
+        await restart();
+        await draw(() => ui().setGroupByWorktree(true));
+        await press(rowOf(workspaceKey()).querySelector<HTMLElement>('button[aria-label^="New chat in "]')!);
+        const worktreeDraft = ui().draftId!;
+        await press(buttonNamed('New chat in car-rental'));
+        await draw();
+
+        expect(ui().draftWorkspace).toBeNull();
+        expect(ui().draftId).not.toBe(worktreeDraft);
+        expect(isSelected(`@draft:${ui().draftId}`)).toBe(true);
+        expect(rowKeys()).toContain(`@draft:${worktreeDraft}`);
+    });
+
+    it('keeps two worktree drafts and their text when switching and moving one into the other', async () => {
+        await restart();
+        await draw(() => {
+            ui().setGroupByWorktree(true);
+            chatListPreferences.setShowUnusedWorktrees(true);
+        });
+        const firstCard = workspaceKey();
+        const secondCard = cardRows().find(key => key?.includes('search-filters'))!;
+        await press(rowOf(firstCard).querySelector<HTMLElement>('button[aria-label^="New chat in "]')!);
+        await draw();
+        const first = ui().draftId!;
+        const editor = () =>
+            container.querySelector<HTMLElement & { editor: Editor }>('[contenteditable="true"]')!.editor;
+        await act(async () => {
+            editor().commands.insertContent('First worktree words');
+        });
+        await press(rowOf(secondCard).querySelector<HTMLElement>('button[aria-label^="New chat in "]')!);
+        await draw();
+        const second = ui().draftId!;
+        expect(second).not.toBe(first);
+        await act(async () => {
+            editor().commands.insertContent('Second worktree words');
+        });
+        await press(rowOf(`@draft:${first}`));
+        await draw();
+        expect([isSelected(`@draft:${first}`), editor().getText()]).toEqual([true, 'First worktree words']);
+        await draw(() =>
+            ui().setDraftWorkspace({ mode: 'existing', path: '/Users/dev/worktrees/car-rental/search-filters' })
+        );
+        expect(rowOf(`@draft:${first}`).closest('[data-worktree-card]')?.getAttribute('data-worktree-card')).toBe(
+            secondCard
+        );
+        await press(rowOf(`@draft:${second}`));
+        await draw();
+        expect([isSelected(`@draft:${second}`), editor().getText()]).toEqual([true, 'Second worktree words']);
+        await press(rowOf(`@draft:${first}`));
+        await draw();
+        expect(editor().getText()).toBe('First worktree words');
+    });
+
+    it.each(['simple', 'folder', 'worktree'] as const)('shows a selected draft in the %s layout', async layout => {
+        await restart();
+        await draw(() => {
+            ui().setChatListLayout(layout);
+            ui().openDraft([], null, { mode: 'existing', path: '/missing-from-git' });
+        });
+        expect(isSelected(`@draft:${ui().draftId}`)).toBe(true);
+    });
+
+    it('closes an empty draft row without removing another draft', async () => {
+        await restart();
+        await draw(() => {
+            ui().setChatListLayout('folder');
+            ui().openDraft([], null, { mode: 'existing', path: '/first' });
+        });
+        const first = ui().draftId!;
+        await draw(() => ui().openDraft([], null, { mode: 'existing', path: '/second' }));
+        const second = ui().draftId!;
+        await press(rowOf(`@draft:${first}`).querySelector<HTMLElement>('button[aria-label="Close draft"]')!);
+        await draw();
+        expect(rowKeys()).not.toContain(`@draft:${first}`);
+        expect(isSelected(`@draft:${second}`)).toBe(true);
+    });
+
+    it('disables the shortcut while a worktree is still being prepared', async () => {
+        await restart();
+        await draw(() => {
+            const chat = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!;
+            project().chats.set(chat.id, { ...chat, workspace: { ...chat.workspace!, ready: false } });
+            ui().setGroupByWorktree(true);
+        });
+        await draw();
+        const shortcut = rowOf(workspaceKey()).querySelector<HTMLButtonElement>('button[aria-label^="New chat in "]')!;
+        expect(shortcut.disabled).toBe(true);
+    });
+
+    it('explains that a pending worktree is not prepared and does not offer branch switching', async () => {
+        await restart();
+        await draw(() => {
+            const chat = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!;
+            project().chats.set(chat.id, {
+                ...chat,
+                workspace: { ...chat.workspace!, id: 'pending-worktree', path: '/pending-worktree', ready: false },
+            });
+            ui().setGroupByWorktree(true);
+        });
+        await draw();
+        await press(rowOf(workspaceKey()).querySelector<HTMLElement>('button[aria-label^="Worktree actions:"]')!);
+        const menu = document.querySelector<HTMLElement>('[role="menu"][aria-label="Worktree actions"]')!;
+        expect(menu.textContent).toContain('Worktree not prepared yet');
+        expect(menu.textContent).not.toContain('no longer exists');
+        expect(menuItem('Switch branch')).toBeUndefined();
+        expect(menuItem('New chat').getAttribute('aria-disabled')).toBe('true');
+    });
+
+    it('folds and unfolds a worktree with its icon control', async () => {
+        await restart();
+        await draw(() => ui().setGroupByWorktree(true));
+        const key = workspaceKey();
+        await press(rowOf(key).querySelector<HTMLElement>('button[aria-label^="Collapse "]')!);
+        await draw();
+        expect(rowOf(FIXTURE_WORKSPACE_CHAT_ID)).toBeNull();
+        await press(rowOf(key).querySelector<HTMLElement>('button[aria-label^="Expand "]')!);
+        await draw();
+        expect(rowOf(FIXTURE_WORKSPACE_CHAT_ID)).not.toBeNull();
+    });
+
+    it.each(['card', 'chip'] as const)('removes the selected worktree from the %s menu', async entry => {
+        await restart();
+        const create = Modal.create.bind(Modal);
+        const dialog = vi.spyOn(Modal, 'create').mockImplementation(options => create({ ...options, animate: false }));
+        window.desktop = {
+            getOpenApps: async () => ({ editors: [], terminals: [], fileManagers: [] }),
+            openPath: async () => undefined,
+        } as never;
+        try {
+            await draw(() => {
+                ui().setGroupByWorktree(entry === 'card');
+                ui().openChat(FIXTURE_WORKSPACE_CHAT_ID);
+            });
+            const button =
+                entry === 'card'
+                    ? rowOf(workspaceKey()).querySelector<HTMLElement>('button[aria-label^="Worktree actions:"]')!
+                    : container.querySelector<HTMLElement>('button[aria-label^="Current place:"]')!;
+            await press(button);
+            await press(menuItem('Remove worktree…'));
+            await vi.waitFor(() => expect(dialog).toHaveBeenCalled());
+            const confirm = () =>
+                [...document.querySelectorAll<HTMLButtonElement>('[data-modal-window] button')].find(
+                    button => button.textContent?.trim() === 'Remove worktree'
+                );
+            await vi.waitFor(() => expect(confirm()).toBeDefined());
+            await press(confirm()!);
+            await vi.waitFor(() => expect(Modal.opened).toHaveLength(0));
+            await draw();
+            const snapshot = await store.transport.getProjectSnapshot(FIXTURE_PROJECT_ID);
+            expect({
+                archived: snapshot.chats
+                    .filter(chat => ['c-9', 'c-10'].includes(chat.id))
+                    .map(chat => Boolean(chat.archivedAt)),
+                selected: rowOf(FIXTURE_WORKSPACE_CHAT_ID) !== null && isSelected(FIXTURE_WORKSPACE_CHAT_ID),
+                listed: (await store.transport.getProjectWorktrees(FIXTURE_PROJECT_ID))
+                    .flatMap(group => group.worktrees)
+                    .some(row => row.workspaceId === 'wks_ab12cd34'),
+            }).toEqual({ archived: [true, true], selected: false, listed: false });
+        } finally {
+            for (const modal of [...Modal.opened].reverse()) await act(async () => modal.close(false));
+            dialog.mockRestore();
+            window.desktop = undefined;
+        }
+    });
+
+    it('omits bulk archive and move actions from worktree menus', async () => {
+        await restart();
+        await draw(() => ui().setGroupByWorktree(true));
+        await press(rowOf(workspaceKey()).querySelector<HTMLElement>('button[aria-label^="Worktree actions:"]')!);
+        expect(menuItem('Archive all chats…')).toBeUndefined();
+        expect(menuItem('Move up')).toBeUndefined();
+        expect(menuItem('Move down')).toBeUndefined();
+        expect(menuItem('Remove worktree…')).toBeDefined();
+    });
+
+    it('does not read the worktree list when grouping is off, and refreshes it on focus and folder Git changes', async () => {
+        await restart();
+        const read = vi.spyOn(store.transport, 'getProjectWorktrees');
+        await act(async () => window.dispatchEvent(new Event('focus')));
+        expect(read).not.toHaveBeenCalled();
+        await draw(() => ui().setGroupByWorktree(true));
+        expect(read).toHaveBeenCalledWith(FIXTURE_PROJECT_ID);
+        read.mockClear();
+        await act(async () => window.dispatchEvent(new Event('focus')));
+        expect(read).toHaveBeenCalledWith(FIXTURE_PROJECT_ID);
+        read.mockClear();
+        await act(async () => refreshFolderGit(FIXTURE_PROJECT_ID, 'fld_car_rental'));
+        expect(read).toHaveBeenCalledWith(FIXTURE_PROJECT_ID);
+    });
+
+    it('refuses a cross-group drop and a drop onto a card header', async () => {
+        await restart();
+        await draw(() => ui().setGroupByWorktree(true));
+        const before = rowKeys();
+        await drag(FIXTURE_WORKSPACE_CHAT_ID, 'c-4');
+        await drag('c-4', workspaceKey());
+        expect(rowKeys()).toEqual(before);
+        expect(ui().chatOrder).toEqual([]);
+    });
+
+    it('moves a card with its entire group by dragging another card', async () => {
+        await restart();
+        await draw(() => ui().setGroupByWorktree(true));
+        await draw(() => chatListPreferences.setShowUnusedWorktrees(true));
+        const cards = cardRows();
+        await drag(cards[1]!, cards[2]!);
+        expect(cardRows().slice(0, 3)).toEqual([cards[0], cards[2], cards[1]]);
+    });
+
+    it('moves an occupied worktree among unused worktrees', async () => {
+        await restart();
+        await draw(() => {
+            ui().setGroupByWorktree(true);
+            chatListPreferences.setShowUnusedWorktrees(true);
+        });
+        const cards = cardRows();
+        await drag(cards[1]!, cards[2]!);
+        expect(cardRows().slice(0, 3)).toEqual([cards[0], cards[2], cards[1]]);
+        expect(
+            rowOf(FIXTURE_WORKSPACE_CHAT_ID).closest('[data-worktree-card]')?.getAttribute('data-worktree-card')
+        ).toBe(cards[1]);
+    });
+
+    it('keeps cross-worktree threads below their root and only shows the place indicator without another status', async () => {
+        await restart();
+        const workspace = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
+        await draw(() => {
+            project().chats.set('c-6', { ...project().chats.get('c-6')!, workspace });
+            ui().setGroupByWorktree(true);
+            ui().toggleChatExpanded('c-6');
+            ui().openChat('c-6b');
+        });
+        await draw();
+        expect(
+            ['c-6', 'c-6a', 'c-6b', 'c-6c'].map(id => [
+                rowOf(id).closest('[data-worktree-card]')?.getAttribute('data-worktree-card'),
+                rowOf(id).querySelector('[aria-label="Different worktree"]') !== null,
+            ])
+        ).toEqual([
+            [workspaceKey(), false],
+            [workspaceKey(), false],
+            [workspaceKey(), true],
+            [workspaceKey(), false],
+        ]);
+    });
+
+    it('marks a cross-worktree grandchild relative to its immediate parent, not to the root', async () => {
+        await restart();
+        const workspace = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
+        await draw(() => {
+            project().chats.set('c-6a', { ...project().chats.get('c-6a')!, workspace });
+            project().chats.set('c-6a1', { ...project().chats.get('c-6a1')!, workspace });
+            ui().setGroupByWorktree(true);
+            ui().openChat('c-6a1');
+        });
+        await draw();
+        expect(rowOf('c-6a1').querySelector('[aria-label="Different worktree"]')).toBeNull();
+        expect(rowOf(workspaceKey()).querySelector('[aria-label="Chats working"]')).toBeNull();
+        await arrow(workspaceKey(), 'ArrowLeft');
+        await draw();
+        expect(rowOf(workspaceKey()).querySelector('[aria-label="Chats working"]')).not.toBeNull();
+        await arrow(workspaceKey(), 'ArrowRight');
+        await draw();
+        expect(rowOf(workspaceKey()).querySelector('[aria-label="Chats working"]')).toBeNull();
+
+        await draw(() => {
+            const { workspace: _, ...chat } = project().chats.get('c-6a1')!;
+            project().chats.set(chat.id, chat);
+        });
+        expect(rowOf('c-6a1').querySelector('[aria-label="Different worktree"]')).not.toBeNull();
+    });
+
+    it('shows a waiting indicator on a collapsed worktree and hides it when expanded', async () => {
+        await restart();
+        const workspace = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
+        await draw(() => {
+            project().chats.set('c-6', { ...project().chats.get('c-6')!, workspace });
+            project().runs.set('r-orch-6e', { ...project().runs.get('r-orch-6e')!, awaitingUser: true });
+            ui().setGroupByWorktree(true);
+        });
+        expect(rowOf(workspaceKey()).querySelector('[aria-label="Chats waiting for you"]')).toBeNull();
+        await arrow(workspaceKey(), 'ArrowLeft');
+        await draw();
+        expect(
+            rowOf(workspaceKey()).querySelector('[aria-label="Chats waiting for you"] [data-tone="accent"]')
+        ).not.toBeNull();
+        await arrow(workspaceKey(), 'ArrowRight');
+        await draw();
+        expect(rowOf(workspaceKey()).querySelector('[aria-label="Chats waiting for you"]')).toBeNull();
+    });
+
+    it('hides a worktree used only by a thread while keeping the thread under its parent', async () => {
+        await restart();
+        const workspace = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
+        const key = workspaceKey();
+        await draw(() => {
+            project().chats.delete(FIXTURE_WORKSPACE_CHAT_ID);
+            project().chats.set('c-6a', { ...project().chats.get('c-6a')!, workspace });
+            ui().setGroupByWorktree(true);
+            ui().openChat('c-6a');
+        });
+        await draw();
+        expect(cardRows()).not.toContain(key);
+        expect(rowOf('c-6a')).not.toBeNull();
+        await draw(() => chatListPreferences.setShowUnusedWorktrees(true));
+        expect(cardRows()).not.toContain(key);
+        expect(cardRows().length).toBeGreaterThan(0);
+    });
+
+    it('opens the card of a restored thread whose parent remains archived', async () => {
+        await restart();
+        const workspace = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
+        const key = workspaceKey();
+        await draw(() => {
+            project().chats.set('c-6', { ...project().chats.get('c-6')!, archivedAt: 1 });
+            project().chats.set('c-6a', { ...project().chats.get('c-6a')!, workspace });
+            ui().setGroupByWorktree(true);
+            ui().openChat('c-4');
+            ui().toggleWorktreeCollapsed(key);
+        });
+        expect(rowOf('c-6a')).toBeNull();
+        await draw(() => ui().openChat('c-6a1'));
+        await draw();
+        expect(rowOf('c-6a1')).not.toBeNull();
+        expect(ui().collapsedWorktrees).not.toContain(key);
+    });
+
+    it('does not offer a chat move across checkout and worktree boundaries', async () => {
+        await restart();
+        await draw(() => ui().setGroupByWorktree(true));
+        await press(rowOf(FIXTURE_WORKSPACE_CHAT_ID).querySelector<HTMLElement>('button[aria-label="Chat actions"]')!);
+        expect([menuItem('Move up'), menuItem('Move down')]).toEqual([undefined, undefined]);
     });
 });

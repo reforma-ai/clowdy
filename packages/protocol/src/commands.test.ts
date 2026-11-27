@@ -329,3 +329,22 @@ describe('project.updateFolder', () => {
         expect(commandSchema.safeParse(update({ baseBranch: 3 })).success).toBe(false);
     });
 });
+
+describe('workspace.remove', () => {
+    test('accepts explicit disposition and tidy options without changing the ordinary request', () => {
+        const request = { ...base, type: 'workspace.remove', projectId: 'p1', folderId: 'f1', path: '/tree' };
+        expect(commandSchema.parse(request)).toEqual(request);
+        expect(commandSchema.parse({ ...request, chatDisposition: 'archive' })).toMatchObject({
+            chatDisposition: 'archive',
+        });
+        expect(
+            commandSchema.parse({ ...request, chatDisposition: 'delete', expectedChatIds: ['c1', 'c2'] })
+        ).toMatchObject({
+            chatDisposition: 'delete',
+            expectedChatIds: ['c1', 'c2'],
+        });
+        expect(commandSchema.safeParse({ ...request, expectedChatIds: [42] }).success).toBe(false);
+        expect(commandSchema.parse({ ...request, tidy: true })).toMatchObject({ tidy: true });
+        expect(commandSchema.safeParse({ ...request, chatDisposition: 'keep' }).success).toBe(false);
+    });
+});

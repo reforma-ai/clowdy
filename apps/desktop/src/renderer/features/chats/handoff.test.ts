@@ -38,7 +38,7 @@ const chat: Chat = {
 };
 const file = (name: string) => ({ id: name, name, mediaType: 'text/plain', size: 1 });
 /** The new-chat page of the fixture project: where the hand-off writes its sentence and looks at the files. */
-const NEW_CHAT_KEY = newChatDraftKey(FIXTURE_PROJECT_ID);
+let NEW_CHAT_KEY: string;
 /** A file the new-chat box already holds, uploaded and waiting for its message. */
 const held = (name: string, size = 1): DraftFile => ({
     key: name,
@@ -432,12 +432,13 @@ describe('startHandoff', () => {
 
     beforeEach(async () => {
         vi.mocked(toast.error).mockClear();
-        saveDraft(NEW_CHAT_KEY, emptyComposerDoc());
         data = createFixtureData();
         transport = new FixtureTransport({ data });
         root = new RootStore(transport, { storage: memoryStorage() });
         await root.load();
         await root.refreshAgents();
+        const draft = ui().newChatDrafts.createOrOpen(null, null);
+        NEW_CHAT_KEY = `${newChatDraftKey(FIXTURE_PROJECT_ID)}:${draft.id}`;
     });
 
     afterEach(() => {
@@ -639,6 +640,7 @@ describe('startHandoff', () => {
 
     it('follows words already in the new-chat draft after a blank line, and keeps them', async () => {
         saveDraft(NEW_CHAT_KEY, plainTextToDoc('Also check the footer'));
+        ui().newChatDrafts.updateDoc(ui().newChatDrafts.findPlace(null, null)!.id, draftOf(NEW_CHAT_KEY));
 
         expect(await handOff('c-1')).toBe(true);
 
@@ -656,6 +658,7 @@ describe('startHandoff', () => {
             ],
         });
 
+        ui().newChatDrafts.updateDoc(ui().newChatDrafts.findPlace(null, null)!.id, draftOf(NEW_CHAT_KEY));
         await handOff('c-1');
 
         expect(messageOf(draftOf(NEW_CHAT_KEY)).startsWith('Also check the footer\n\nContinue')).toBe(true);
@@ -771,6 +774,7 @@ describe('startHandoff', () => {
 
         saveDraft(other, plainTextToDoc('Words of the other project'));
         saveDraft(NEW_CHAT_KEY, plainTextToDoc('Also check the footer'));
+        ui().newChatDrafts.updateDoc(ui().newChatDrafts.findPlace(null, null)!.id, draftOf(NEW_CHAT_KEY));
 
         expect(await handOff('c-1')).toBe(true);
 
@@ -790,6 +794,7 @@ describe('startHandoff', () => {
 
         it('says so and changes nothing when it holds the most files a message takes', async () => {
             saveDraft(NEW_CHAT_KEY, plainTextToDoc('Also check the footer'));
+            ui().newChatDrafts.updateDoc(ui().newChatDrafts.findPlace(null, null)!.id, draftOf(NEW_CHAT_KEY));
             fill(MAX_ATTACHMENTS_PER_MESSAGE);
 
             expect(await handOff('c-1')).toBe(false);

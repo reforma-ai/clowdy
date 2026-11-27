@@ -169,6 +169,19 @@ describe('HttpTransport commands', () => {
         expect(sleeps).toEqual([500, 1000]);
     });
 
+    it('reuses a caller-supplied request id after the caller restarts', async () => {
+        const answer = (call: FetchCall) =>
+            json({ ok: true, requestId: JSON.parse(String(call.init.body)).requestId, data: {} });
+        const { fetchImpl, calls } = scriptedFetch([answer, answer]);
+        const command = { ...rename, requestId: 'persisted-request-1' };
+        await new HttpTransport({ url: 'http://d', token: 't', fetch: fetchImpl }).command(command);
+        await new HttpTransport({ url: 'http://d', token: 't', fetch: fetchImpl }).command(command);
+        expect(calls.map(call => JSON.parse(String(call.init.body)).requestId)).toEqual([
+            'persisted-request-1',
+            'persisted-request-1',
+        ]);
+    });
+
     it('uses a new request id for a new command', async () => {
         const answer = (call: FetchCall) =>
             json({ ok: true, requestId: JSON.parse(String(call.init.body)).requestId, data: {} });

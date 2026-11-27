@@ -6,20 +6,23 @@ import { browserStorage, type KeyValueStorage, readStored, writeStored } from '.
 import type { ChatWorkspaceChoice } from '@clowdy/protocol';
 
 const STORAGE_KEY = 'clowdy:branch-prefix';
+const PENDING_KEY = 'clowdy:branch-prefix-pending';
 
-/**
- * What the branch of a new worktree starts with (`<prefix>/<chat id8>`), a preference of this computer (Settings > Chat): `clowdy` until the person chooses another.
- * The daemon keeps no settings of the app, so the app sends it with `chat.create`; only a worktree made from now on follows it, and no branch is ever renamed. What is
- * kept is always a prefix the daemon takes: a stored value it would refuse reads as the default.
- */
+/** The prefix chosen on this computer, synchronized with the daemon for thread worktrees. */
 export class BranchPrefixPreference {
     value: string;
     readonly #storage: KeyValueStorage | undefined;
+    #send: ((prefix: string) => Promise<boolean>) | undefined;
+    #sending = false;
+    #pending = false;
+    #revision = 0;
+    #retry: ReturnType<typeof setTimeout> | undefined;
 
     constructor(storage: KeyValueStorage | undefined) {
         const stored = readStored(storage, STORAGE_KEY);
 
         this.#storage = storage;
+        this.#pending = readStored(storage, PENDING_KEY) === true;
         this.value =
             typeof stored === 'string' && branchPrefixProblem(stored) === undefined
                 ? branchPrefixOf(stored)
@@ -33,10 +36,56 @@ export class BranchPrefixPreference {
 
         if (problem) return problem;
 
+        this.#revision++;
         this.value = branchPrefixOf(text);
         writeStored(this.#storage, STORAGE_KEY, this.value);
+        this.#pending = true;
+        writeStored(this.#storage, PENDING_KEY, true);
+        void this.flush();
 
         return undefined;
+    }
+
+    /** Reconcile the saved renderer value on upgrade, or use the daemon's durable value. */
+    get revision(): number {
+        return this.#revision;
+    }
+
+    async connect(
+        prefix: string | undefined,
+        send: (prefix: string) => Promise<boolean>,
+        revision = this.#revision
+    ): Promise<void> {
+        this.#send = send;
+        if (prefix === undefined || this.#pending || revision !== this.#revision) {
+            this.#pending = true;
+            writeStored(this.#storage, PENDING_KEY, true);
+            await this.flush();
+        } else if (!branchPrefixProblem(prefix)) {
+            this.value = branchPrefixOf(prefix);
+            writeStored(this.#storage, STORAGE_KEY, this.value);
+        }
+    }
+
+    async flush(): Promise<void> {
+        if (this.#sending || !this.#send) return;
+        this.#sending = true;
+        clearTimeout(this.#retry);
+        try {
+            while (this.#pending) {
+                const value = this.value;
+                if (!(await this.#send(value))) {
+                    this.#retry = setTimeout(() => void this.flush(), 2000);
+                    return;
+                }
+                if (this.value === value) {
+                    this.#pending = false;
+                    writeStored(this.#storage, PENDING_KEY, false);
+                }
+            }
+        } finally {
+            this.#sending = false;
+        }
     }
 
     /**

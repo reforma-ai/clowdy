@@ -24,6 +24,17 @@ export function chatProvider(chat: Chat, run: Run | undefined): EngineId | undef
     return chat.engine ?? run?.engine;
 }
 
+/** The agent the chat with this id runs on, for a place that names a chat it does not hold (a card, a row of the queue): none for a chat the project no longer has. */
+export function chatEngine(
+    chats: { get(id: string): Chat | undefined },
+    runs: { get(id: string): Run | undefined },
+    chatId: string
+): EngineId | undefined {
+    const chat = chats.get(chatId);
+
+    return chat && chatProvider(chat, chat.orchestratorRunId ? runs.get(chat.orchestratorRunId) : undefined);
+}
+
 /**
  * The agents a conversation can be handed to from a chat: the ones a new chat can start on (switched on and installed, the cards of the Providers page) that are
  * not signed out (`unknown` or no reading is no reason, as in `chatWritability`), without the chat's own. In the order of the Providers page.

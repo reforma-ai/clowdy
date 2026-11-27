@@ -30,7 +30,7 @@ export const ModalTitleTabs = observer(
                 <Show when={showTabs}>
                     <ToggleButtonGroup
                         variant="transparent"
-                        size={options.titleTabSize ?? 'md'}
+                        size={options.titleTabSize ?? 'sm'}
                         selectedKeys={activeTabId ?? undefined}
                         onSelectionChange={keys => {
                             const key = keys.values().next().value;

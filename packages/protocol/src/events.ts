@@ -84,6 +84,7 @@ export interface ProjectSnapshot {
 }
 
 export interface RootSnapshot {
+    branchPrefix?: string;
     cursor: number;
     projects: Project[];
     /** The home folder of the person the daemon runs as: where a path is shown as `~`. Absent from a daemon that does not tell it. */

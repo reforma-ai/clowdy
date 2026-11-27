@@ -2082,6 +2082,12 @@
                     "name": "paint-bucket",
                     "sourceHash": "b7d4e7ba2f311ffd97a11af848a67c63c6d5e24dd6bd46e133ca755208a0c9b8"
                 },
+                "16707:129124": {
+                    "file": "mop.svg",
+                    "fingerprint": "3741563347a1756667621dedf90d67579474c6ceebbaaf88f03830ebd1dc3517",
+                    "name": "mop",
+                    "sourceHash": "a31c3afd20cb4fd7157fe9b5e6595dd27b1f47f413d94fb42b81ae4a68bb7816"
+                },
                 "4298:58141": {
                     "file": "mail.svg",
                     "fingerprint": "9a450f6623276412fd4c447266ee6dbbcec973e6130b908e7a29f0623b3957c6",
@@ -2723,6 +2729,18 @@
                     "fingerprint": "62da25a0735c77f7ae78ca028dd0e9cf01a5b0fd95a1758385e467bec37cf970",
                     "name": "robot",
                     "sourceHash": "5f4afc4f5e28bc3e83cb4ac8b82a1f77b334a132102389876c5835a8f688333a"
+                },
+                "16740:129174": {
+                    "file": "robot2.svg",
+                    "fingerprint": "a91f8a9a94175b00029bc5ab0a5ed78de639f304607ce73c35688ff32babcb5e",
+                    "name": "robot2",
+                    "sourceHash": "2df3e66ff5d999d6ba7a0420aa574072a6791b44f025b22b3cdc0273f5962fcd"
+                },
+                "16740:129188": {
+                    "file": "robot-done.svg",
+                    "fingerprint": "c1752c95fae122d98c4b01dc4eed99f78e4c3abbf24306b647097e63aa7bb295",
+                    "name": "robot-done",
+                    "sourceHash": "61239aed860dbf116754469f3bff89f20392579a95f0aad6f8bf8cda2e91416d"
                 },
                 "15811:3427": {
                     "file": "tokens.svg",

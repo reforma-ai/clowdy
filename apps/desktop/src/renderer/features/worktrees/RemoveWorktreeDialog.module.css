@@ -1,0 +1,9 @@
+.close {
+    position: absolute;
+    top: var(--spacing-md);
+    right: var(--spacing-md);
+}
+
+.title {
+    padding-right: var(--spacing-xl);
+}

@@ -569,7 +569,7 @@ describe('a chat whose orchestrator waits for background work', () => {
         // The commands are folded under one line that counts them. Opened, each has a row, and only the first can be stopped alone: the other is counted.
         const commands = [
             ...container.querySelectorAll<HTMLButtonElement>('[aria-label="Work in progress"] button[aria-expanded]'),
-        ].find(button => button.textContent === 'Background commands2 running')!;
+        ].find(button => button.textContent === 'Background work2 running')!;
 
         expect(commands.getAttribute('aria-expanded')).toBe('false');
 
@@ -579,7 +579,11 @@ describe('a chat whose orchestrator waits for background work', () => {
             [...container.querySelectorAll('[aria-label="Work in progress"] [class*="agentRows"] > div')].map(
                 row => row.textContent
             )
-        ).toEqual(['Command: bun run testStop', 'Command: bun run typecheck', 'Background task runningStop run']);
+        ).toEqual([
+            'Command: bun run testStop',
+            'Command: bun run typecheck',
+            "Some work can't be stopped separatelyStop run",
+        ]);
         expect(container.textContent).not.toContain('Waiting for background work…');
         expect(notice()).toBeNull();
         expect(field()).not.toBeNull();
@@ -600,7 +604,7 @@ describe('a chat whose orchestrator waits for background work', () => {
 });
 
 describe('the header of a chat', () => {
-    it('is its title over the stream, with nothing to press, and the status of its run while it works', async () => {
+    it('is its title over the stream, with nothing to press and no status of its run', async () => {
         await start();
         await draw('c-1');
 
@@ -608,7 +612,7 @@ describe('the header of a chat', () => {
 
         expect(path.textContent).toBe('Simplify booking');
         expect(path.querySelector('button')).toBeNull();
-        expect(container.querySelector('[data-tone]')?.textContent).toBe('Working');
+        expect(container.querySelector('header [data-tone]')).toBeNull();
     });
 });
 

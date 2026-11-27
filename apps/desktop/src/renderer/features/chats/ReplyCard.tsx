@@ -13,13 +13,14 @@ export interface ReplyCardProps {
     who: string;
     /** The X: reply to nothing. */
     onRemove: () => void;
+    disabled?: boolean;
 }
 
 /**
  * The message the box replies to, as a card above the field, where the files of a message are: an accent bar on its start, who wrote it, the words clamped to
  * three lines and an X. It is sent as a quote in front of what is typed; the words themselves stay out of the field, so the draft holds only what the person writes.
  */
-export function ReplyCard({ message, who, onRemove }: ReplyCardProps) {
+export function ReplyCard({ message, who, onRemove, disabled }: ReplyCardProps) {
     return (
         <div className={styles.card} role="group" aria-label={`Replying to ${who}`}>
             <div className={styles.text}>
@@ -36,6 +37,7 @@ export function ReplyCard({ message, who, onRemove }: ReplyCardProps) {
                 aria-label="Remove quote"
                 tooltip="Remove quote"
                 tooltipPlacement="bottom"
+                isDisabled={disabled}
                 onPress={onRemove}
             >
                 <Close />

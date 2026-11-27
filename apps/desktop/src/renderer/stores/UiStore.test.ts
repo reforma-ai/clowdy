@@ -82,6 +82,27 @@ describe('UiStore', () => {
         expect([ui.chatId, ui.runId, ui.draft]).toEqual(['c2', null, false]);
     });
 
+    it('keeps pending files with their draft across navigation and restores its current location from history', () => {
+        const ui = new UiStore(memoryStorage()).forProject('p1');
+        const first = new File(['first'], 'first.md');
+        const second = new File(['second'], 'second.md');
+        ui.openDraft([first], null, { mode: 'existing', path: '/one' });
+        const firstId = ui.draftId!;
+        const oldView = ui.view;
+        ui.setDraftWorkspace({ mode: 'existing', path: '/moved' });
+        ui.openDraft([second], null, { mode: 'existing', path: '/two' });
+        expect(ui.takePendingFiles()).toEqual([second]);
+        ui.show(oldView);
+        expect([ui.draftId, ui.draftWorkspace, ui.takePendingFiles()]).toEqual([
+            firstId,
+            { mode: 'existing', path: '/moved' },
+            [first],
+        ]);
+        ui.newChatDrafts.remove(firstId);
+        ui.show(oldView);
+        expect(ui.draft).toBe(false);
+    });
+
     it('holds the files a hand-off gives the new-chat page until the page takes them, once, and does not keep them', () => {
         const storage = memoryStorage();
         const ui = new UiStore(storage).forProject('p1');
@@ -1065,7 +1086,7 @@ describe('UiStore', () => {
 
         expect([ui.groupByFolder, ui.collapsedFolders]).toEqual([true, []]);
 
-        ui.setGroupByFolder(false);
+        ui.setChatListLayout('simple');
         ui.toggleFolderCollapsed('fld-api');
         ui.toggleFolderCollapsed('fld-notes');
         ui.toggleFolderCollapsed('fld-api');
@@ -1075,6 +1096,59 @@ describe('UiStore', () => {
             groupByFolder: false,
             collapsedFolders: ['fld-notes'],
         });
+    });
+
+    it('keeps worktree grouping, card order and folds per project across a restart', () => {
+        const storage = memoryStorage();
+        const store = new UiStore(storage);
+        const ui = store.forProject('p1');
+
+        expect(ui.groupByWorktree).toBe(true);
+        ui.setGroupByWorktree(false);
+        ui.setWorktreeOrder(['tree-b', 'tree-a']);
+        ui.toggleWorktreeCollapsed('tree-a');
+        expect(store.forProject('p2')).toMatchObject({ groupByWorktree: true, worktreeOrder: [] });
+        expect(new UiStore(storage).forProject('p1')).toMatchObject({
+            groupByWorktree: false,
+            worktreeOrder: ['tree-b', 'tree-a'],
+            collapsedWorktrees: ['tree-a'],
+        });
+    });
+
+    it('keeps each chat layout per project across a restart', () => {
+        const storage = memoryStorage();
+        const store = new UiStore(storage);
+        const ui = store.forProject('p1');
+
+        ui.setChatListLayout('simple');
+        expect([ui.groupByFolder, ui.groupByWorktree]).toEqual([false, false]);
+        ui.setChatListLayout('worktree');
+        expect([ui.groupByFolder, ui.groupByWorktree]).toEqual([true, true]);
+        expect(new UiStore(storage).forProject('p1')).toMatchObject({ groupByFolder: true, groupByWorktree: true });
+        expect(store.forProject('p2')).toMatchObject({ groupByFolder: true, groupByWorktree: true });
+        ui.setChatListLayout('folder');
+        expect([ui.groupByFolder, ui.groupByWorktree]).toEqual([true, false]);
+    });
+
+    it('migrates the old worktree-only layout to folders with worktrees', () => {
+        const storage = memoryStorage({ 'clowdy:ui:p1': '{"groupByFolder":false,"groupByWorktree":true}' });
+
+        expect(new UiStore(storage).forProject('p1')).toMatchObject({ groupByFolder: true, groupByWorktree: true });
+    });
+
+    it('defaults to folders and worktrees while preserving saved layouts', () => {
+        const read = (value: string) => new UiStore(memoryStorage({ 'clowdy:ui:p1': value })).forProject('p1');
+
+        expect(new UiStore(memoryStorage()).forProject('p1')).toMatchObject({
+            groupByFolder: true,
+            groupByWorktree: true,
+        });
+        expect(read('{"groupByFolder":true,"groupByWorktree":false}')).toMatchObject({
+            groupByFolder: true,
+            groupByWorktree: false,
+        });
+        expect(read('{"groupByFolder":false}')).toMatchObject({ groupByFolder: false, groupByWorktree: false });
+        expect(read('{"chatId":"c1"}')).toMatchObject({ groupByFolder: true, groupByWorktree: true });
     });
 
     it('opens the folded group of a chat opened from elsewhere, and changes nothing when it is open', () => {
@@ -1307,7 +1381,7 @@ describe('UiStore', () => {
     });
 
     describe('the agent the new chat starts on', () => {
-        it('is none unless the page was opened for one, and the next page opened starts over', () => {
+        it('keeps the requested agent when an existing draft is reopened', () => {
             const ui = new UiStore().forProject('p1');
 
             ui.openDraft();
@@ -1316,9 +1390,12 @@ describe('UiStore', () => {
             ui.openDraft([], null, null, 'codex');
             expect(ui.draftEngine).toBe('codex');
 
-            // The page opened from the list again is not for the agent a hand-off named.
+            const draftId = ui.draftId!;
+            ui.openChat('c1');
+            ui.openDraftId(draftId);
+            expect(ui.draftEngine).toBe('codex');
             ui.openDraft();
-            expect(ui.draftEngine).toBeNull();
+            expect(ui.draftEngine).toBe('codex');
         });
 
         it('is part of the place (`view`): forgotten once a chat or a run opens, and brought back with the page by back and forward', () => {

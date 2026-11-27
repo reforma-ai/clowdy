@@ -45,7 +45,7 @@ export interface ShellCommandsRoot
         | 'showsProjectScreen'
         | 'ui'
     > {
-    history: Pick<NavHistory, 'back' | 'forward' | 'canGoBack' | 'canGoForward'>;
+    history: Pick<NavHistory, 'back' | 'forward' | 'canGoBack' | 'canGoForward' | 'canSwitchChat' | 'switchChat'>;
 }
 
 /**
@@ -158,6 +158,15 @@ export function shellCommands(root: ShellCommandsRoot): ScopedCommand[] {
                 if (project) openProject(root, project);
             },
         })),
+        {
+            id: 'chats.switchRecent',
+            title: 'Switch to previous chat',
+            group: 'Navigation',
+            keys: 'Control+Tab',
+            inInputs: true,
+            when: () => root.showsProjectScreen && root.history.canSwitchChat,
+            handler: () => root.history.switchChat(),
+        },
         {
             id: 'nav.back',
             title: 'Go back',

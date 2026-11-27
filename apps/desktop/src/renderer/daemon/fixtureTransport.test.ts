@@ -1208,6 +1208,123 @@ describe('FixtureTransport', () => {
     });
 });
 
+describe('FixtureTransport sub-agent archive', () => {
+    const runsOf = async (transport: FixtureTransport) => (await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).runs;
+    const archivedIds = async (transport: FixtureTransport) =>
+        (await runsOf(transport)).filter(run => run.archivedAt !== undefined).map(run => run.id);
+    const runUpserts = (events: ClowdyEvent[]) =>
+        events.flatMap(event => (event.data.type === 'run.upserted' ? [event.data.run.id] : []));
+
+    it('archives a finished sub-agent and brings it back, keeping the run, and announces each change once', async () => {
+        const { transport, events } = await connected();
+        const before = await runsOf(transport);
+        const archived = await transport.command({ type: 'run.setArchived', runId: 'r-na-01', archived: true });
+
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(archived).toMatchObject({ ok: true, data: { run: { id: 'r-na-01', status: 'succeeded' } } });
+        expect(archived.ok && (archived.data as { run: { archivedAt?: number } }).run.archivedAt).toBeGreaterThan(0);
+        expect(await archivedIds(transport)).toEqual(['r-na-01']);
+        expect((await runsOf(transport)).length).toBe(before.length);
+        expect(runUpserts(events)).toEqual(['r-na-01']);
+
+        // What is set already is not announced again.
+        await transport.command({ type: 'run.setArchived', runId: 'r-na-01', archived: true });
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(runUpserts(events)).toEqual(['r-na-01']);
+
+        const back = await transport.command({ type: 'run.setArchived', runId: 'r-na-01', archived: false });
+
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(back.ok && (back.data as { run: object }).run).not.toHaveProperty('archivedAt');
+        expect(await archivedIds(transport)).toEqual([]);
+        expect(runUpserts(events)).toEqual(['r-na-01', 'r-na-01']);
+
+        await transport.command({ type: 'run.setArchived', runId: 'r-na-01', archived: false });
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(runUpserts(events)).toEqual(['r-na-01', 'r-na-01']);
+    });
+
+    it('is no activity: no chat is announced or moves in the order', async () => {
+        const { transport, types } = await connected();
+        const chats = async () => (await transport.getProjectSnapshot(FIXTURE_PROJECT_ID)).chats;
+        const before = await chats();
+
+        await transport.command({ type: 'run.setArchived', runId: 'r-na-06', archived: true });
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(types()).not.toContain('chat.upserted');
+        expect(await chats()).toEqual(before);
+    });
+
+    it('refuses what is not a native sub-agent, and a run it does not have', async () => {
+        const { transport } = await connected();
+
+        expect(await transport.command({ type: 'run.setArchived', runId: 'r-orch-2', archived: true })).toMatchObject({
+            ok: false,
+            error: { code: 'invalid' },
+        });
+        expect(await transport.command({ type: 'run.setArchived', runId: 'nope', archived: true })).toMatchObject({
+            ok: false,
+            error: { code: 'not_found' },
+        });
+        expect(await archivedIds(transport)).toEqual([]);
+    });
+
+    it('refuses a sub-agent that works, and one that has a sub-agent working below it, changing nothing', async () => {
+        const { transport } = await connected();
+        const refusal = {
+            ok: false,
+            error: { code: 'conflict', message: 'A working sub-agent cannot be archived' },
+        };
+
+        // r-na-02 works; r-na-05 below it rests for its background work.
+        expect(await transport.command({ type: 'run.setArchived', runId: 'r-na-02', archived: true })).toMatchObject(
+            refusal
+        );
+        expect(await transport.command({ type: 'run.setArchived', runId: 'r-na-05', archived: true })).toMatchObject(
+            refusal
+        );
+
+        // r-na-02 is stopped alone, and r-na-05 below it still works.
+        await transport.command({ type: 'run.cancel', runId: 'r-na-02' });
+
+        expect((await runsOf(transport)).find(run => run.id === 'r-na-02')?.status).toBe('cancelled');
+        expect(await transport.command({ type: 'run.setArchived', runId: 'r-na-02', archived: true })).toMatchObject(
+            refusal
+        );
+        expect(await archivedIds(transport)).toEqual([]);
+    });
+
+    it('archives the sub-agents it started with it, and brings back only the one it is told to', async () => {
+        const { transport, events } = await connected();
+
+        // r-na-05 rests for its background work below r-na-02: both are stopped so that both are over.
+        await transport.command({ type: 'run.cancel', runId: 'r-orch-1' });
+        await vi.advanceTimersByTimeAsync(0);
+        events.length = 0;
+
+        await transport.command({ type: 'run.setArchived', runId: 'r-na-02', archived: true });
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect((await archivedIds(transport)).sort()).toEqual(['r-na-02', 'r-na-05']);
+        // The one it started is announced before it: no sub-agent is ever listed below one that is away.
+        expect(runUpserts(events)).toEqual(['r-na-05', 'r-na-02']);
+
+        // One put away before keeps its own time.
+        const first = (await runsOf(transport)).find(run => run.id === 'r-na-05')!.archivedAt;
+
+        await transport.command({ type: 'run.setArchived', runId: 'r-na-02', archived: false });
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(await archivedIds(transport)).toEqual(['r-na-05']);
+        expect((await runsOf(transport)).find(run => run.id === 'r-na-05')?.archivedAt).toBe(first);
+    });
+});
+
 describe('FixtureTransport agents', () => {
     const agentsOf = async (transport: FixtureTransport) =>
         Object.fromEntries((await transport.getAgents()).map(agent => [agent.id, agent]));
@@ -1534,10 +1651,11 @@ describe('FixtureTransport threads', () => {
             ['c-6c', ['r-orch-6c']],
             ['c-6b', ['r-orch-6b']],
             ['c-6a', ['r-orch-6a']],
-            ['c-6', ['r-orch-6']],
+            // Its sub-agent r-na-07 goes with its orchestrator.
+            ['c-6', ['r-orch-6', 'r-na-07']],
         ]);
         expect(after.chats.some(chat => chat.id.startsWith('c-6'))).toBe(false);
-        expect(after.runs.some(run => run.id.startsWith('r-orch-6'))).toBe(false);
+        expect(after.runs.some(run => run.id.startsWith('r-orch-6') || run.id === 'r-na-07')).toBe(false);
     });
 
     it("takes a message to a thread in that thread's chat, and tells its parent at rest when the turn ends, which starts the parent's turn", async () => {
@@ -2087,5 +2205,57 @@ describe('FixtureTransport edits', () => {
             'c.txt',
             'd.txt',
         ]);
+    });
+});
+
+describe('the fixture sub-agents', () => {
+    it('begin their streams as the daemon writes them: what the parent asked, from the chat of the run they run inside, as the first message of a thread', async () => {
+        const { transport } = await connected();
+        const { runs, chats } = await transport.getProjectSnapshot(FIXTURE_PROJECT_ID);
+        const natives = runs.filter(run => run.origin === 'native');
+
+        expect(natives.map(run => run.id)).toEqual(
+            expect.arrayContaining(['r-na-01', 'r-na-02', 'r-na-03', 'r-na-04', 'r-na-05', 'r-na-06', 'r-na-07'])
+        );
+
+        for (const run of natives) {
+            const [first] = await transport.getItems({ runId: run.id });
+            const chat = chats.find(found => found.orchestratorRunId === run.rootRunId)!;
+
+            expect(first?.body).toMatchObject({
+                kind: 'user',
+                from: { kind: 'thread', chatId: chat.id, title: chat.title },
+            });
+            expect(first?.body.kind === 'user' && first.body.text.trim()).not.toBe('');
+        }
+    });
+
+    it("were asked the same thing by the call that started them, in the parent's stream, as by the first item of their own", async () => {
+        const { transport } = await connected();
+        const { runs } = await transport.getProjectSnapshot(FIXTURE_PROJECT_ID);
+
+        for (const run of runs.filter(found => found.origin === 'native' && found.parentToolCallId)) {
+            const [first] = await transport.getItems({ runId: run.id });
+            const call = (await transport.getItems({ runId: run.parentRunId! })).find(
+                item => item.body.kind === 'tool' && item.body.toolCallId === run.parentToolCallId
+            );
+
+            expect(call?.body.kind === 'tool' && (call.body.input as { prompt?: string }).prompt).toBe(
+                first?.body.kind === 'user' ? first.body.text : undefined
+            );
+        }
+    });
+
+    it('include a prompt of several lines, and one long enough to be clamped', async () => {
+        const { transport } = await connected();
+        const lines = async (runId: string) => {
+            const [first] = await transport.getItems({ runId });
+
+            return first?.body.kind === 'user' ? first.body.text.split('\n').length : 0;
+        };
+
+        expect(await lines('r-na-01')).toBe(1);
+        expect(await lines('r-na-03')).toBeGreaterThan(4);
+        expect(await lines('r-na-04')).toBeGreaterThan(16);
     });
 });

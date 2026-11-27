@@ -182,4 +182,38 @@ describe('ConversationView, the live line', () => {
 
         expect(text()).not.toContain('Waiting for a free slot…');
     });
+
+    it('shows the reason and reset time when a queued run waits for a usage limit', async () => {
+        const reason = 'Claude is at its usage limit until 14:00';
+
+        await draw({
+            run: { ...runOf('r-na-02'), status: 'queued', statusReason: reason },
+            stream: await streamOf('r-na-02'),
+        });
+
+        const message = "I've hit the Claude usage limit. I'll continue after 14:00.";
+
+        expect(text()).toContain(message);
+        expect(text()).not.toContain('Waiting for a free slot');
+        expect(container.querySelector('[role="status"][data-color="warning"]')?.textContent).toContain(message);
+        expect(container.querySelector('[role="status"][data-color="warning"] svg')).toBeNull();
+    });
+
+    it('shows when a paused run will continue', async () => {
+        const reason = 'Claude is at its usage limit until 14:00; this run continues then';
+
+        await draw({
+            run: { ...runOf('r-na-02'), status: 'blocked', statusReason: reason },
+            stream: await streamOf('r-na-02'),
+        });
+
+        const message = "I've hit the Claude usage limit. I'll continue after 14:00.";
+
+        expect(text()).toContain(message);
+        expect(container.querySelector('[role="status"][data-color="warning"]')?.textContent).toContain(message);
+
+        await draw({ run: { ...runOf('r-na-02'), status: 'running' }, stream: await streamOf('r-na-02') });
+
+        expect(container.querySelector('[role="status"][data-color="warning"]')).toBeNull();
+    });
 });

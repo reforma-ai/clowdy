@@ -3,7 +3,7 @@ import { Loader } from '@clowdy/components/Loader';
 import { Text } from '@clowdy/components/Text';
 import { useLayoutEffect, useRef, useState } from 'react';
 
-import { runSummary, useRunLabel } from '../../shared';
+import { useRunLabel } from '../../shared';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { type StreamLinks, StreamLinksContext } from '../../stream/StreamLinks';
 import { Comment } from './Comment';
@@ -76,12 +76,7 @@ export function CommentsSection({ taskId, onOpenRun, onOpenTask, isReadOnly = fa
 
         // The run may have been deleted since: the comment stays, and the name is only "Agent".
         return run ? (
-            <button
-                type="button"
-                className={styles.agent}
-                title={runSummary(run) ?? labelOf(run)}
-                onClick={() => onOpenRun(run.id)}
-            >
+            <button type="button" className={styles.agent} title={labelOf(run)} onClick={() => onOpenRun(run.id)}>
                 {labelOf(run)}
             </button>
         ) : (

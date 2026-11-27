@@ -1,138 +1,404 @@
+import { Alert, AlertDescription, AlertIcon } from '@clowdy/components/Alert';
 import { Box } from '@clowdy/components/Box';
-import { Checkbox } from '@clowdy/components/Checkbox';
+import { Button } from '@clowdy/components/Button';
 import { For } from '@clowdy/components/For';
-import { openConfirmModal } from '@clowdy/components/modals';
+import { Modal, useModalContext } from '@clowdy/components/Modal';
 import { Show } from '@clowdy/components/Show';
+import { Switch } from '@clowdy/components/Switch';
 import { Text } from '@clowdy/components/Text';
-import { toast } from '@clowdy/components/Toast';
-import { useId, useState } from 'react';
+import { AttentionCircle, Close } from '@clowdy/icons/14';
+import { useEffect, useId, useState } from 'react';
 
 import { PathText } from '../../shared/PathText';
-import { worktreeLabel } from '../agents/workspaceChoice';
-import { branchWarning, removalPlan, STRANDED_WARNING } from './worktreeView';
+import { samePath, worktreeLabel } from '../agents/workspaceChoice';
+import styles from './RemoveWorktreeDialog.module.css';
+import { affectedChats, readWorktree, refreshWorktreeTarget } from './worktreeActions';
+import { branchWarning, removalPlan, removeHint, STRANDED_WARNING } from './worktreeView';
 
-import type { FolderWorktrees, ProjectId, WorktreeInfo } from '@clowdy/protocol';
-import type { RootStore } from '../../stores';
+import type { ReactNode } from 'react';
+import type { WorktreeTarget } from './worktreeActions';
 import type { RemovalPlan } from './worktreeView';
 
-export interface RemoveWorktreeOptions {
-    root: RootStore;
-    projectId: ProjectId;
-    /** The folder the worktree is a checkout of. */
-    group: Pick<FolderWorktrees, 'folderId'>;
-    worktree: WorktreeInfo;
-    /** Reads the list again, once the command has answered: the removed row goes, and a refusal usually means the row changed under the person's hands. */
-    reload: () => Promise<void>;
+function Risk({ children, id }: { children: ReactNode; id?: string }) {
+    return (
+        <Alert color="warning" role="status">
+            <AlertIcon>
+                <AttentionCircle />
+            </AlertIcon>
+            <AlertDescription id={id}>{children}</AlertDescription>
+        </Alert>
+    );
 }
 
 /** What the person chose in the confirmation besides removing: it is read when the button is pressed. */
 interface RemoveChoice {
     deleteBranch: boolean;
+    disposition: 'archive' | 'delete';
+    branchTouched?: boolean;
+    chatsTouched?: boolean;
 }
 
 interface RemoveMessageProps {
-    worktree: WorktreeInfo;
+    worktree: { path: string; branch?: string; head?: string };
     plan: RemovalPlan;
     choice: RemoveChoice;
+    count: number;
+    outside: number;
+    onConfirm: () => Promise<void>;
+    checking?: boolean;
+    readFailure?: string;
+    changed?: boolean;
+    chatsKnown?: boolean;
+    partialChats?: boolean;
 }
 
 /**
- * The body of the confirmation: which worktree (its branch or commit, and its path), what goes with it, and the branch as a choice of its own. The box starts ticked only for a
- * branch whose work is in the base (and is not the base itself); otherwise the text explains the risk of deleting the branch. A detached HEAD has no branch to
- * offer, and when its commits are not in the base the dialog warns that commits may be lost.
+ * The worktree's identity and removal consequences. Deleting chats or the branch is an explicit choice; a detached HEAD has no branch to offer, and when its commits
+ * are not in the base the dialog warns that commits may be lost.
  */
-function RemoveMessage({ worktree, plan, choice }: RemoveMessageProps) {
-    const [deleteBranch, setDeleteBranch] = useState(choice.deleteBranch);
-    const warning = plan.branch && branchWarning(plan.branch);
+function RemoveMessage({
+    worktree,
+    plan,
+    choice,
+    count,
+    outside,
+    onConfirm,
+    checking,
+    readFailure,
+    changed,
+    chatsKnown = true,
+    partialChats = false,
+}: RemoveMessageProps) {
+    const { modal } = useModalContext();
+    const [, redraw] = useState(0);
+    const { deleteBranch, disposition } = choice;
+    const [pending, setPending] = useState(false);
+    const [failure, setFailure] = useState<string>();
+    const warning = deleteBranch && plan.branch ? branchWarning(plan.branch) : undefined;
     const warningId = useId();
+    const headingId = useId();
+    const name = worktree.branch || worktree.head ? worktreeLabel(worktree) : '';
+    const subject = `${count} linked ${count === 1 ? 'chat' : 'chats'}`;
+    const result = disposition === 'delete' ? 'permanently deleted' : 'archived';
 
     return (
-        <Box gap="lg">
-            <Box gap="xxs">
-                <Text weight="medium" wrap="anywhere">
-                    {worktreeLabel(worktree)}
+        <Box gap="xl" padding="xxl" role="dialog" aria-modal="true" aria-labelledby={headingId}>
+            <Button
+                className={styles.close}
+                size="sm"
+                iconOnly
+                variant="filling"
+                color="secondary"
+                aria-label="Close"
+                autoFocus
+                isDisabled={pending}
+                onPress={() => modal.cancel()}
+            >
+                <Close />
+            </Button>
+            <Box gap="xs">
+                <Text as="h2" id={headingId} variant="heading-3" wrap="anywhere" className={styles.title}>
+                    {plan.kind === 'record'
+                        ? `Remove worktree record ${name}`
+                        : `Remove worktree${name ? ` ${name}` : ''}`}
                 </Text>
                 <PathText path={worktree.path} variant="sm" color="secondary" />
             </Box>
 
-            <Box gap="xs">
-                <For each={plan.notes}>
-                    {note => (
-                        <Text key={note} variant="md" color="secondary">
-                            {note}
+            {checking && (
+                <Text role="status" color="secondary">
+                    Checking worktree and chats…
+                </Text>
+            )}
+            {!chatsKnown && checking && <Text color="secondary">Checking linked chats…</Text>}
+            {changed && <Risk>The worktree or linked chats changed. Review your choices again</Risk>}
+            {(plan.kind !== 'plain' || count > 0) && (
+                <Box gap="xs">
+                    <For each={plan.notes}>
+                        {note =>
+                            plan.kind === 'discard' ? (
+                                <Risk key={note}>{note}</Risk>
+                            ) : plan.kind === 'record' ? (
+                                <Text key={note} variant="md" color="secondary">
+                                    {note}
+                                </Text>
+                            ) : null
+                        }
+                    </For>
+                    {count > 0 && (
+                        <Text variant="md" color="secondary">
+                            {partialChats ? `At least ${subject}` : subject} will be {result}
+                            {outside > 0 &&
+                                `, including ${outside} ${outside === 1 ? 'thread' : 'threads'} in other worktrees`}
                         </Text>
                     )}
-                </For>
-            </Box>
+                </Box>
+            )}
 
-            <Show when={plan.branch}>
-                {branch => (
-                    <Box gap="xs">
-                        <Checkbox
+            {(count > 0 || plan.branch) && (
+                <Box gap="md">
+                    {count > 0 && (
+                        <Switch
                             size="sm"
-                            isSelected={deleteBranch}
-                            aria-label={`Also delete the branch ${branch.name}`}
-                            aria-describedby={warning ? warningId : undefined}
+                            isDisabled={pending}
+                            isSelected={disposition === 'delete'}
                             onChange={selected => {
-                                choice.deleteBranch = selected;
-                                setDeleteBranch(selected);
+                                choice.chatsTouched = true;
+                                choice.disposition = selected ? 'delete' : 'archive';
+                                redraw(n => n + 1);
                             }}
                         >
-                            Also delete the branch
-                        </Checkbox>
-                        <Show when={warning}>
-                            {text => (
-                                <Text id={warningId} variant="sm" color="warning">
-                                    {text}
-                                </Text>
-                            )}
-                        </Show>
-                    </Box>
-                )}
-            </Show>
+                            {count === 1 ? 'Delete the chat permanently' : 'Delete the chats permanently'}
+                        </Switch>
+                    )}
+                    <Show when={plan.branch}>
+                        {branch => (
+                            <Box gap="xl">
+                                <Switch
+                                    size="sm"
+                                    isDisabled={pending}
+                                    isSelected={deleteBranch}
+                                    aria-label={`Delete the branch ${branch.name}`}
+                                    aria-describedby={warning ? warningId : undefined}
+                                    onChange={selected => {
+                                        choice.branchTouched = true;
+                                        choice.deleteBranch = selected;
+                                        redraw(n => n + 1);
+                                    }}
+                                >
+                                    Delete the branch
+                                </Switch>
+                                <Show when={warning}>{text => <Risk id={warningId}>{text}</Risk>}</Show>
+                            </Box>
+                        )}
+                    </Show>
+                </Box>
+            )}
 
             <Show when={plan.stranded}>
-                <Text variant="md" color="warning">
-                    {STRANDED_WARNING}
-                </Text>
+                <Risk>{STRANDED_WARNING}</Risk>
             </Show>
+            {(failure || readFailure) && (
+                <Alert color="danger" role="alert">
+                    <AlertIcon>
+                        <AttentionCircle />
+                    </AlertIcon>
+                    <AlertDescription>
+                        {failure || readFailure} — close and reopen this dialog to try again
+                    </AlertDescription>
+                </Alert>
+            )}
+            <Button
+                color="danger"
+                fullWidth
+                isDisabled={pending || !!failure || checking || !!readFailure}
+                isPending={pending}
+                onPress={async () => {
+                    if (pending) return;
+                    setPending(true);
+                    modal.updateOptions({ clickOut: false, closeOnEscape: false });
+                    try {
+                        await onConfirm();
+                        modal.cancel();
+                    } catch (error) {
+                        setPending(false);
+                        modal.updateOptions({ clickOut: true, closeOnEscape: true });
+                        setFailure(error instanceof Error ? error.message : 'Something went wrong');
+                    }
+                }}
+            >
+                {plan.confirmLabel}
+            </Button>
         </Box>
     );
 }
 
-/**
- * Asks before a worktree of the Manage dialog is removed, and sends `workspace.remove`. `Remove worktree` is red (and sends `discard: true`) for a tree with uncommitted changes or
- * an initialised submodule; `Remove record` is used when its folder is gone. The
- * branch is a box of its own (`deleteBranch`), whatever the branch is called, ticked from the start only when its work is in the base. Cancelling sends nothing. The list is
- * read again once the daemon has answered, and a refusal toasts the daemon's own reason and closes the confirmation, so the next Remove asks about the row as the list now has it.
- */
-export function openRemoveWorktree({ root, projectId, group, worktree, reload }: RemoveWorktreeOptions): void {
-    const plan = removalPlan(worktree);
-    const choice: RemoveChoice = { deleteBranch: plan.branch?.selected ?? false };
-
-    openConfirmModal(
-        {
-            title: plan.title,
-            message: <RemoveMessage worktree={worktree} plan={plan} choice={choice} />,
-            confirmLabel: plan.confirmLabel,
-            destructive: plan.kind === 'discard',
-            onConfirm: async () => {
-                const result = await root.command({
-                    type: 'workspace.remove',
-                    projectId,
-                    folderId: group.folderId,
-                    path: worktree.path,
-                    ...(plan.kind === 'discard' && { discard: true }),
-                    ...(plan.branch && choice.deleteBranch && { deleteBranch: true }),
-                });
-
-                await reload();
-
-                // A refusal means the row is not what the confirmation showed. The reason is toasted and the confirmation closes, so the next Remove asks about the row as the list
-                // now has it (a thrown message would keep this stale one open).
-                if (!result.ok) toast.error({ title: "Couldn't remove the worktree", message: result.error.message });
-            },
-        },
-        { width: 440 }
+function ReadRemoval({ target }: { target: WorktreeTarget }) {
+    const [content, setContent] = useState<ReactNode>();
+    const [failure, setFailure] = useState<string>();
+    const [previewChats] = useState(() => {
+        const state = target.root.projectState(target.projectId);
+        if (!state || state.status !== 'ready') return undefined;
+        try {
+            return affectedChats(
+                target.preview ?? { path: target.path, workspaceId: target.workspaceId, chats: [] },
+                { chats: [...state.chats.values()], runs: [...state.runs.values()] },
+                target.folderId
+            );
+        } catch {
+            return undefined;
+        }
+    });
+    const [choice] = useState<RemoveChoice>(() => ({
+        deleteBranch:
+            !!target.preview &&
+            !target.preview.missing &&
+            target.preview.changes === 0 &&
+            !target.preview.submodules &&
+            !!removalPlan(target.preview).branch?.selected,
+        disposition: 'archive',
+    }));
+    useEffect(() => {
+        let active = true;
+        const { root, projectId, folderId } = target;
+        async function read() {
+            try {
+                const { worktree, snapshot } = await readWorktree(target);
+                if (!samePath(worktree.path, target.path))
+                    throw new Error('The worktree location changed. Close and reopen this dialog');
+                const chats = affectedChats(worktree, snapshot, folderId);
+                const hint = worktree.main ? 'This is the project checkout' : (removeHint(worktree) ?? chats.blocker);
+                if (hint) throw new Error(hint);
+                const plan = removalPlan(worktree);
+                const preview = target.preview;
+                const identityChanged =
+                    !!preview && (preview.path !== worktree.path || preview.workspaceId !== worktree.workspaceId);
+                const branchChanged =
+                    (!preview && target.previewLabel !== undefined && target.previewLabel !== worktree.branch) ||
+                    (!!preview &&
+                        (identityChanged ||
+                            preview.headOid !== worktree.headOid ||
+                            preview.branch !== worktree.branch ||
+                            preview.head !== worktree.head ||
+                            preview.base !== worktree.base ||
+                            preview.merged !== worktree.merged ||
+                            preview.missing !== worktree.missing ||
+                            preview.changes !== worktree.changes ||
+                            preview.submodules !== worktree.submodules));
+                const chatsChanged =
+                    identityChanged ||
+                    (!!previewChats &&
+                        (previewChats.outside !== chats.outside ||
+                            previewChats.ids.size !== chats.ids.size ||
+                            [...previewChats.ids].some(id => !chats.ids.has(id))));
+                const changed = branchChanged || chatsChanged;
+                if (!choice.branchTouched)
+                    choice.deleteBranch =
+                        !worktree.missing && worktree.changes === 0 && !worktree.submodules && !!plan.branch?.selected;
+                else if (branchChanged) choice.deleteBranch = false;
+                if (changed && (choice.branchTouched || choice.chatsTouched)) {
+                    choice.deleteBranch = false;
+                    choice.disposition = 'archive';
+                }
+                if (active)
+                    setContent(
+                        <RemoveMessage
+                            worktree={worktree}
+                            plan={plan}
+                            choice={choice}
+                            changed={changed}
+                            count={chats.ids.size}
+                            outside={chats.outside}
+                            onConfirm={async () => {
+                                const { deleteBranch, disposition } = choice;
+                                if (deleteBranch && (!worktree.branch || !worktree.headOid)) {
+                                    throw new Error('Could not verify the branch commit');
+                                }
+                                if (chats.ids.size === 0 || deleteBranch || plan.kind === 'discard') {
+                                    try {
+                                        const current = await readWorktree(target);
+                                        if (
+                                            chats.ids.size === 0 &&
+                                            affectedChats(current.worktree, current.snapshot, folderId).ids.size > 0
+                                        ) {
+                                            throw new Error('The chats linked to this worktree changed. Try again');
+                                        }
+                                        // The switch authorizes deleting the branch that was shown, not a different
+                                        // checkout or new commits made while this confirmation was open.
+                                        if (
+                                            deleteBranch &&
+                                            (current.worktree.branch !== worktree.branch ||
+                                                current.worktree.head !== worktree.head ||
+                                                current.worktree.base !== worktree.base ||
+                                                current.worktree.merged !== worktree.merged)
+                                        )
+                                            throw new Error('The branch changed. Try again');
+                                        if (
+                                            plan.kind === 'discard' &&
+                                            (current.worktree.changes !== worktree.changes ||
+                                                current.worktree.submodules !== worktree.submodules ||
+                                                current.worktree.branch !== worktree.branch ||
+                                                current.worktree.head !== worktree.head)
+                                        )
+                                            throw new Error('The local changes in this worktree changed. Try again');
+                                    } catch (error) {
+                                        await refreshWorktreeTarget(target);
+                                        throw error;
+                                    }
+                                }
+                                const result = await root.command({
+                                    type: 'workspace.remove',
+                                    projectId,
+                                    folderId,
+                                    path: worktree.path,
+                                    ...(plan.kind === 'discard' && { discard: true }),
+                                    ...(plan.branch &&
+                                        deleteBranch &&
+                                        worktree.headOid && {
+                                            deleteBranch: true,
+                                            expectedBranch: { name: plan.branch.name, commit: worktree.headOid },
+                                        }),
+                                    ...(chats.ids.size > 0 && {
+                                        chatDisposition: disposition,
+                                        expectedChatIds: [...chats.ids],
+                                    }),
+                                });
+                                await refreshWorktreeTarget(target, chats.affected);
+                                if (!result.ok) throw new Error(result.error.message);
+                            }}
+                        />
+                    );
+            } catch (error) {
+                if (active) {
+                    setFailure(error instanceof Error ? error.message : String(error));
+                    void refreshWorktreeTarget(target).catch(() => undefined);
+                }
+            }
+        }
+        void read();
+        return () => {
+            active = false;
+        };
+    }, [target, choice, previewChats]);
+    if (content) return content;
+    return (
+        <RemoveMessage
+            worktree={target.preview ?? { path: target.path, branch: target.previewLabel, head: undefined }}
+            plan={
+                target.preview
+                    ? removalPlan(target.preview)
+                    : { kind: 'plain', title: '', confirmLabel: 'Remove worktree', notes: [], stranded: false }
+            }
+            choice={choice}
+            count={previewChats?.ids.size ?? 0}
+            outside={previewChats?.outside ?? 0}
+            chatsKnown={!!previewChats}
+            partialChats={!target.preview}
+            checking={!failure}
+            readFailure={failure}
+            onConfirm={async () => {}}
+        />
     );
+}
+
+const openTargets = new Set<string>();
+
+/** Open immediately while reading current Git and chat state. */
+export async function openRemoveWorktree(target: WorktreeTarget): Promise<void> {
+    const key = `${target.projectId}\0${target.folderId}\0${target.path
+        .replace(/[\\/]+$/, '')
+        .replaceAll('\\', '/')
+        .toLowerCase()}`;
+    if (openTargets.has(key)) return;
+    openTargets.add(key);
+    Modal.create({
+        onClose: () => openTargets.delete(key),
+        width: 440,
+        zIndex: 101100,
+        shadow: true,
+        clickOut: true,
+        closeOnEscape: true,
+        closeButton: false,
+        component: <ReadRemoval target={target} />,
+    });
 }

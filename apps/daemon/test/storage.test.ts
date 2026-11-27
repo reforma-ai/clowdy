@@ -8,7 +8,7 @@ import { openDatabase } from '../src/db/connection';
 import { getItem, itemRef, setItemRef } from '../src/db/items';
 import { MIGRATIONS } from '../src/db/migrations';
 import { getProject, upsertProject } from '../src/db/projects';
-import { getRun, getRunWork, upsertRun } from '../src/db/runs';
+import { getRun, getRunWork, setRunArchivedAt, upsertRun } from '../src/db/runs';
 import {
     countTaskComments,
     getTaskComment,
@@ -247,6 +247,39 @@ describe('migrations', () => {
         expect(getRun(db, run.id)).toMatchObject({ startedAt: 2, activeSince: 100 });
         upsertRun(db, { ...run, status: 'succeeded', finishedAt: 200 });
         expect(getRun(db, run.id)).not.toHaveProperty('activeSince');
+        db.close();
+    });
+
+    test('version 30 gives the runs of an older database an archive column that reads as none, and a run saved again keeps what was set', () => {
+        const path = join(tempDir(), 'clowdy.db');
+        const before = openDatabase(
+            path,
+            MIGRATIONS.filter(migration => migration.version < 30)
+        );
+        before
+            .query('INSERT INTO projects (id, name, task_prefix, created_at) VALUES (?, ?, ?, ?)')
+            .run('prj_1', 'Old', 'OLD', 1);
+        before
+            .query(
+                'INSERT INTO runs (id, project_id, root_run_id, role, origin, name, status, engine, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+            )
+            .run('run_1', 'prj_1', 'run_1', 'executor', 'native', 'Explore', 'succeeded', 'claude', 1);
+        before.close();
+
+        const db = openDatabase(path);
+        const run = getRun(db, 'run_1')!;
+        expect(version(db)).toBe(MIGRATIONS.length);
+        expect(run).not.toHaveProperty('archivedAt');
+
+        setRunArchivedAt(db, run.id, 500);
+        expect(getRun(db, run.id)?.archivedAt).toBe(500);
+        upsertRun(db, { ...run, summary: 'Saved from a copy that knew nothing of it' });
+        expect(getRun(db, run.id)).toMatchObject({
+            summary: 'Saved from a copy that knew nothing of it',
+            archivedAt: 500,
+        });
+        setRunArchivedAt(db, run.id, undefined);
+        expect(getRun(db, run.id)).not.toHaveProperty('archivedAt');
         db.close();
     });
 

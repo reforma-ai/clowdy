@@ -1,5 +1,6 @@
 import { makeAutoObservable, observableRef, runInAction } from 'mobx';
 
+import { branchPrefix } from '../features/chats/branchPrefix';
 import { homeFolder } from '../shared/homeFolder';
 import { ModelsStore } from './ModelsStore';
 import { NavHistory } from './NavHistory';
@@ -139,8 +140,20 @@ export class RootStore {
         this.phase = 'loading';
 
         try {
+            const prefixRevision = branchPrefix.revision;
             const snapshot = await this.transport.getRootSnapshot();
 
+            await branchPrefix.connect(
+                snapshot.branchPrefix,
+                async prefix => {
+                    try {
+                        return (await this.transport.command({ type: 'settings.setBranchPrefix', prefix })).ok;
+                    } catch {
+                        return false;
+                    }
+                },
+                prefixRevision
+            );
             homeFolder.set(snapshot.home);
             runInAction(() => {
                 this.projects = sortProjects(snapshot.projects);
@@ -301,6 +314,7 @@ export class RootStore {
     /** What the feed reports. Public for tests and for the dev console. */
     handleFeedStatus(status: FeedStatus): void {
         if (status === 'connected') {
+            void branchPrefix.flush();
             clearTimeout(this.#bannerTimer);
             this.syncStatus = 'connected';
             this.bannerVisible = false;
@@ -387,8 +401,20 @@ export class RootStore {
         this.#unsubscribe?.();
 
         try {
+            const prefixRevision = branchPrefix.revision;
             const snapshot = await this.transport.getRootSnapshot();
 
+            await branchPrefix.connect(
+                snapshot.branchPrefix,
+                async prefix => {
+                    try {
+                        return (await this.transport.command({ type: 'settings.setBranchPrefix', prefix })).ok;
+                    } catch {
+                        return false;
+                    }
+                },
+                prefixRevision
+            );
             homeFolder.set(snapshot.home);
             // A project removed while the feed was away has no snapshot to load.
             runInAction(() => {

@@ -34,25 +34,20 @@
     cursor: grab;
 }
 
-.chatRow[data-drop-position]::after,
-.agentRow[data-drop-position]::after {
-    position: absolute;
-    inset-inline: 0;
-    height: var(--spacing-2);
-    border-radius: var(--radius-full);
-    background-color: var(--color-primary);
-    pointer-events: none;
-    content: '';
+/* Keep the accessible grid in place while each visible block previews its new slot. */
+:is(.chatRow, .agentRow, .worktreeCard) {
+    transform: translateY(var(--reorder-offset));
+    transition: transform 160ms cubic-bezier(0.25, 1, 0.5, 1);
 }
 
-.chatRow[data-drop-position='before']::after,
-.agentRow[data-drop-position='before']::after {
-    inset-block-start: 0;
+:is(.chatRow, .agentRow, .worktreeCard)[data-reorder-source] {
+    opacity: 0.4;
 }
 
-.chatRow[data-drop-position='after']::after,
-.agentRow[data-drop-position='after']::after {
-    inset-block-end: 0;
+@media (prefers-reduced-motion: reduce) {
+    :is(.chatRow, .agentRow, .worktreeCard) {
+        transition: none;
+    }
 }
 
 .end,
@@ -100,8 +95,10 @@
     height: var(--spacing-6);
 }
 
-/* Keep hidden tooltip anchors measurable while freeing the title's space. */
-.chatRow:not(:is(:hover, :focus-visible, :has(.rowAction:focus), [data-hovered], [data-open], [data-renaming])) {
+/* Keep hidden tooltip anchors measurable while freeing the title's space. A sub-agent that can be archived has the same end as a chat's row. */
+:is(.chatRow, .archivable):not(
+    :is(:hover, :focus-visible, :has(.rowAction:focus), [data-hovered], [data-open], [data-renaming])
+) {
     & .rowAction {
         visibility: hidden;
         pointer-events: none;
@@ -122,7 +119,7 @@
     }
 }
 
-.chatRow:is(:hover, :focus-visible, :has(.rowAction:focus), [data-hovered], [data-open])
+:is(.chatRow, .archivable):is(:hover, :focus-visible, :has(.rowAction:focus), [data-hovered], [data-open])
     :is(.archiveStatus, .pullRequests) {
     display: none;
 }
@@ -159,19 +156,17 @@
     transform: translate(-50%, -50%);
 }
 
-/* A thread below a chat: one level in from the row it belongs to, per level. A sub-agent, and the group of the finished ones, stand like a thread does. */
+/* A thread below a chat: one level in from the row it belongs to, per level. A sub-agent stands like a thread does. */
 .chatRow:not([data-depth='0']),
 .agentRow {
     padding-inline-start: calc(var(--clowdy-listbox-item-padding-inline) + var(--depth) * var(--spacing-20));
 }
 
 /*
- * A sub-agent's row has no actions, so its dot stays where it is on hover, in the room the chat's dot takes at rest (24px, the dot itself 6px) and as far
- * from the row's edge (a chat's row has a button at its end, which sets that inset: `ListBox.module.css`). The group of
- * finished sub-agents is muted, and its count stands in the same room, at the end.
+ * The row of a sub-agent that works has no actions, so its dot stays where it is on hover, in the room the chat's dot takes at rest (24px, the dot itself 6px) and as far
+ * from the row's edge (a chat's row has a button at its end, which sets that inset: `ListBox.module.css`). One that is over has its Archive button there (`.archivable`).
  */
-.agentStatus,
-.count {
+.agentStatus {
     display: grid;
     flex-shrink: 0;
     place-items: center;
@@ -189,17 +184,8 @@
     height: var(--spacing-6);
 }
 
-.agentRow {
+.agentRow:not(.archivable) {
     padding-inline-end: calc((var(--clowdy-listbox-item-height) - var(--spacing-24)) / 2);
-}
-
-.agentRow[data-finished] {
-    color: var(--color-secondary-muted-text);
-}
-
-.count {
-    font-size: var(--text-xs);
-    font-variant-numeric: tabular-nums;
 }
 
 /*
@@ -251,5 +237,87 @@
 
 /* The note of a group with no chat: a chat's own row, drawn in the muted colour, and nothing to press. */
 .empty {
+    color: var(--color-secondary-muted-text);
+}
+
+.worktreeCard {
+    position: relative;
+    background: var(--color-secondary-muted-light);
+    border-radius: var(--spacing-16);
+    corner-shape: superellipse(var(--squircle-value));
+    padding: var(--spacing-4);
+    margin-block: var(--spacing-2);
+    gap: 0;
+}
+
+.worktreeCard + .worktreeCard {
+    margin-block-start: var(--spacing-2);
+}
+
+.worktreeHeader {
+    font-weight: 500;
+    cursor: default;
+}
+
+.worktreeHeader:focus-within .restIcon {
+    opacity: 0;
+}
+
+.worktreeHeader:focus-within .fold {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.worktreeActions {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+}
+
+.worktreeStatus {
+    display: grid;
+    place-items: center;
+    width: var(--spacing-24);
+    height: var(--spacing-24);
+}
+
+.worktreeActionButtons {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+}
+
+/* Keep tooltip anchors measurable while the actions are hidden. */
+.worktreeCard:not(:is(:hover, :focus-within, :has(.worktreeHeader[data-open]))) .worktreeActionButtons {
+    position: absolute;
+    inset-inline-end: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.worktreeCard:is(:hover, :focus-within, :has(.worktreeHeader[data-open])) .worktreeStatus {
+    display: none;
+}
+
+.worktreeActions .worktreeStatusDot {
+    width: var(--spacing-6);
+    height: var(--spacing-6);
+}
+
+.worktreeHeader[data-missing] {
+    color: var(--color-warning-text);
+}
+
+.worktreeTitle {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+    min-width: 0;
+}
+
+.worktreeHeader[data-pending] {
     color: var(--color-secondary-muted-text);
 }

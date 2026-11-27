@@ -83,14 +83,14 @@ const launchKey = (agent: ResolvedAgent): string => [agent.program, agent.comman
  *
  * A session outlives its turn in two ways. A layer whose agent has background work open keeps its iterator going (the process stays recorded on the
  * run for the whole wait), reads the turns the agent starts on its own, and takes `send`; the layer ends when nothing is open, and with it the process.
- * After that, a new session whose title the runtime still waits for keeps the process for the name, up to `titleWaitMs` (`linger`), unrecorded.
+ * After that, a completed session may retain its transport briefly for a late title or prompt suggestion (`linger`), unrecorded.
  */
 export class AcpSession implements EngineSession {
     private closing = new AbortController();
     private signal: AbortSignal;
     private exited: Promise<void> = Promise.resolve();
     private launching?: Promise<AgentProcess | undefined>;
-    private stopTitle = new AbortController();
+    private stopLinger = new AbortController();
     private layer?: ProtocolLayer;
     /** The agent the session resolved, once it has. */
     private agent?: ResolvedAgent;
@@ -106,7 +106,7 @@ export class AcpSession implements EngineSession {
     private titleTaken = new Promise<void>(resolve => {
         this.tookTitle = resolve;
     });
-    /** The turn is over and the agent runs on for its title; `close()` leaves it to leave by itself. */
+    /** The turn is over and the agent runs on for optional metadata; `close()` does not wait for it. */
     private lingering = false;
 
     constructor(
@@ -277,7 +277,7 @@ export class AcpSession implements EngineSession {
         }
     }
 
-    /** Stops the session and waits until its process is gone, except one that runs on for its title: that leaves by itself, so the run does not wait for it. */
+    /** Stops the session and waits until its process is gone, except one retained briefly for optional metadata. */
     async close(options?: { ensureStopped?: boolean }): Promise<void> {
         const launching = this.launching;
         this.closing.abort();
@@ -289,7 +289,7 @@ export class AcpSession implements EngineSession {
             return;
         }
 
-        if (options?.ensureStopped) this.stopTitle.abort();
+        if (options?.ensureStopped) this.stopLinger.abort();
 
         const waitForExit = async () => {
             const started = await launching?.catch(() => undefined);
@@ -329,18 +329,29 @@ export class AcpSession implements EngineSession {
         return Boolean(layer?.answered && layer.naming && !this.titled && title && 'onTitle' in title);
     }
 
-    /** Keeps the agent running until the runtime took its title, the time is up, the signal of the turn is aborted (a cancel, the daemon stopping) or the agent leaves; then stops it. */
+    /** Keep the completed transport only for optional metadata. Neither the iterator nor close waits for it. */
     private async linger(proc: AgentProcess): Promise<void> {
         const { signal } = this.options;
-        const titleSignal = AbortSignal.any([signal, this.stopTitle.signal]);
+        const lingerSignal = AbortSignal.any([signal, this.stopLinger.signal]);
+        let onAbort: () => void = () => undefined;
         const cancelled = new Promise<void>(resolve => {
-            if (titleSignal.aborted) resolve();
-            else titleSignal.addEventListener('abort', () => resolve(), { once: true });
+            onAbort = resolve;
+            if (lingerSignal.aborted) resolve();
+            else lingerSignal.addEventListener('abort', onAbort, { once: true });
         });
+        const prediction = this.layer?.latePromptSuggestion;
+        const optional = [
+            ...(this.awaitsTitle()
+                ? [Promise.race([this.titleTaken, wait(this.deps.titleWaitMs ?? TITLE_WAIT_MS)])]
+                : []),
+            ...(prediction ? [prediction.result] : []),
+        ];
 
         try {
-            await Promise.race([this.titleTaken, cancelled, proc.exited, wait(this.deps.titleWaitMs ?? TITLE_WAIT_MS)]);
+            await Promise.race([Promise.all(optional), cancelled, proc.exited]);
         } finally {
+            lingerSignal.removeEventListener('abort', onAbort);
+            prediction?.close();
             proc.stop();
         }
     }
@@ -504,7 +515,7 @@ export class AcpSession implements EngineSession {
 
             // A cancelled run is stopped by `stopAgent`, which gives the agent its moment first.
             if (!this.signal.aborted) {
-                if (this.awaitsTitle()) {
+                if (this.awaitsTitle() || layer.latePromptSuggestion) {
                     this.lingering = true;
                     void this.linger(proc);
                 } else {
@@ -537,6 +548,7 @@ export class AcpSession implements EngineSession {
             offerTitle: title => this.offerTitle(title),
             pickPermission: (request, withdrawn) => this.pickPermission(agent, request, withdrawn),
             pickQuestion: async (request, withdrawn) => {
+                if (this.finished || this.lingering || signal.aborted || withdrawn.aborted) return undefined;
                 const form = request as {
                     mode?: string;
                     requestedSchema?: { properties?: { clowdy_answer?: { description?: unknown } } };
@@ -574,6 +586,8 @@ export class AcpSession implements EngineSession {
         withdrawn: AbortSignal
     ): Promise<string | undefined> {
         const { approve } = this.options;
+        // A transport retained for title or prediction metadata is not a running turn.
+        if (this.finished || this.lingering || this.signal.aborted || withdrawn.aborted) return undefined;
 
         if (agent.permission.answer === 'allow') {
             return optionFor(request.options, 'allow_once');

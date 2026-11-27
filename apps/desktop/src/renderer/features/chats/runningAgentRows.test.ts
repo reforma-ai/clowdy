@@ -4,7 +4,6 @@ import {
     agentRowLabel,
     backgroundItemText,
     backgroundRows,
-    backgroundRowText,
     canStopAlone,
     drawnRows,
     MAX_AGENT_ROWS,
@@ -49,13 +48,33 @@ describe('runningAgents', () => {
         expect(runningAgents(runs, 'orch').map(agent => agent.id)).toEqual(['asking', 'early', 'late', 'grandchild']);
         expect(runningAgents(runs, undefined)).toEqual([]);
     });
+
+    it('leaves out a sub-agent that is in the archive, whatever it does', () => {
+        const runs = [
+            run('orch', 'running', { parentRunId: undefined, origin: undefined, role: 'orchestrator' }),
+            run('away', 'running', { archivedAt: 5 }),
+            run('away-asking', 'waiting_user', { archivedAt: 5 }),
+            run('kept', 'running'),
+        ];
+
+        expect(runningAgents(runs, 'orch').map(agent => agent.id)).toEqual(['kept']);
+    });
 });
 
 describe("a row's words", () => {
-    it('names a sub-agent by its type', () => {
-        expect(agentRowLabel({ name: 'Explore' })).toBe('Explore agent');
-        expect(agentRowLabel({ name: 'general-purpose' })).toBe('General agent');
-        expect(agentRowLabel({ name: 'Sub-agent' })).toBe('Sub-agent');
+    it('names a sub-agent by what it was asked to do', () => {
+        expect(agentRowLabel({ name: 'general-purpose', summary: 'Review clone route diff' })).toBe(
+            'Review clone route diff'
+        );
+        expect(agentRowLabel({ name: 'Explore', summary: ' Find where\n the price is computed ' })).toBe(
+            'Find where the price is computed'
+        );
+    });
+
+    it('names a sub-agent that was given no purpose by its type', () => {
+        expect(agentRowLabel({ name: 'Explore', summary: '' })).toBe('Explore agent');
+        expect(agentRowLabel({ name: 'general-purpose', summary: '  ' })).toBe('General agent');
+        expect(agentRowLabel({ name: 'Sub-agent', summary: '' })).toBe('Sub-agent');
     });
 });
 
@@ -79,12 +98,6 @@ describe('the background row', () => {
         for (const status of ['succeeded', 'failed', 'cancelled', 'interrupted'] as const) {
             expect(openBackground(run('orch', status, { background: open })), status).toEqual([]);
         }
-    });
-
-    it('counts the items in the singular and the plural', () => {
-        expect(backgroundRowText(1)).toBe('Background task running');
-        expect(backgroundRowText(2)).toBe('2 background tasks running');
-        expect(backgroundRowText(12)).toBe('12 background tasks running');
     });
 });
 
@@ -145,12 +158,12 @@ describe('the rows of background items', () => {
         expect(counted).toEqual([plain]);
     });
 
-    it('never gives a sub-agent one: its row is its child run, and one with none is counted', () => {
+    it('shows a sub-agent without a child run as background work', () => {
         const explore = { id: 'call-1', kind: 'subagent' as const, title: 'Explore', canStopAlone: true };
         const child = run('child', 'running', { origin: 'native', parentToolCallId: 'call-1' });
 
         expect(backgroundRows([explore], [child])).toEqual({ own: [], counted: [] });
-        expect(backgroundRows([explore], [])).toEqual({ own: [], counted: [explore] });
+        expect(backgroundRows([explore], [])).toEqual({ own: [explore], counted: [explore] });
     });
 
     it('names a row by what the item is and what it runs', () => {

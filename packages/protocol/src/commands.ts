@@ -145,12 +145,15 @@ export const commandSchema = z.discriminatedUnion('type', [
     }),
     /**
      * Removes a worktree `git worktree list` names for a folder of the project, whoever made it, and answers `{ path, branchDeleted }`. Refused (`conflict`, nothing removed) for the
-     * folder's own checkout, another folder of the project and the repository's primary working tree; a locked worktree; one that a chat works in, an archived chat included; a path
+     * folder's own checkout, another folder of the project and the repository's primary working tree; a locked worktree; one that an unarchived chat works in (unless chatDisposition is specified); a path
      * git does not list for the folder; a tree with anything uncommitted, a new file or an initialised submodule included, unless `discard` is true, which removes it with
      * `git worktree remove --force`; and, with `deleteBranch`, a branch that is checked out in another worktree. `invalid` for a path that is not absolute and a folder the project
      * does not have, that is gone from the disk or that is not the root of a repository. The branch the worktree has checked out is deleted (`git branch -D`, merged or not) only
      * with `deleteBranch`: without it the branch stays and no commit is lost. A worktree whose folder is gone has its record removed alone, and no other stale record of the
-     * repository. The command waits for git.
+     * repository. With `chatDisposition` all linked chats and their descendants must be stopped; they are archived or permanently deleted only after the tree goes. `expectedChatIds` optionally pins the disposition to the exact set confirmed by the person.
+     * `expectedBranch` pins a branch deletion to the confirmed checkout and full commit; a changed checkout or tip is refused. If the branch changes after removing the tree,
+     * the branch is kept and the partial result is reported. External Git processes can race the final checks. `tidy: true` requires a present, clean, merged, unused worktree,
+     * refuses discard and disposition, and protects the base branch. The command waits for git.
      */
     z.object({
         ...base,
@@ -160,6 +163,12 @@ export const commandSchema = z.discriminatedUnion('type', [
         path: z.string().min(1),
         discard: z.boolean().optional(),
         deleteBranch: z.boolean().optional(),
+        expectedBranch: z
+            .object({ name: z.string().min(1), commit: z.string().regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/) })
+            .optional(),
+        chatDisposition: z.enum(['archive', 'delete']).optional(),
+        expectedChatIds: z.array(z.string().min(1)).optional(),
+        tidy: z.boolean().optional(),
     }),
 
     /* Chats */
@@ -355,6 +364,13 @@ export const commandSchema = z.discriminatedUnion('type', [
     /* Runs */
     z.object({ ...base, type: z.literal('run.cancel'), runId: z.string() }),
     /**
+     * Puts a native sub-agent away from the Agents list (`Run.archivedAt`), or brings it back, as `chat.setArchived` does for a chat: nothing is deleted, only its
+     * `archivedAt` is set or cleared. Refused (`invalid`) for a run that is not a native sub-agent, and (`conflict`) while the sub-agent or any sub-agent it started is
+     * active. Archiving takes the sub-agents it started along (all of them are over); bringing one back brings only that one, and the ones it started stay away.
+     * Setting what is set already changes nothing. It is not activity: no chat moves in the order. Answers `{ run: Run }`, the sub-agent as it is now.
+     */
+    z.object({ ...base, type: z.literal('run.setArchived'), runId: z.string(), archived: z.boolean() }),
+    /**
      * Stops the sub-agents of the run `runId` (a chat's orchestrator) and lets the run go on, knowing they were stopped: every sub-agent in its session that
      * can be stopped alone (`Run.canStopAlone`) is asked to stop; the run is not cancelled and its chat's queue is not held. Answers `{ stopped: RunId[] }`,
      * what it asked to stop.
@@ -420,6 +436,8 @@ export const commandSchema = z.discriminatedUnion('type', [
         type: z.literal('agents.setCommitMessageProvider'),
         provider: z.enum(COMMIT_MESSAGE_PROVIDERS).nullable(),
     }),
+
+    z.object({ ...base, type: z.literal('settings.setBranchPrefix'), prefix: z.string().max(500) }),
 
     /* Skills */
     /** Switches a user skill on or off for every run. `name` is the entry's name from `GET /v1/skills` (`user:deploy`). */

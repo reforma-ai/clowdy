@@ -6,8 +6,9 @@ import { mainFolder } from '@clowdy/protocol';
 
 import { tildePath } from '../../shared/displayPath';
 import { homeFolder } from '../../shared/homeFolder';
-import { useProjectState, useProjectUi } from '../../stores';
+import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { canOpenPaths, type OpenTarget, OpenWithMenu, useFolderGit, useFolderRepair } from '../openWith';
+import { worktreeMenuExtras } from '../worktrees/worktreeMenuExtras';
 import styles from './ChatFolder.module.css';
 import { ChipTrigger } from './ChipTrigger';
 
@@ -24,8 +25,9 @@ export interface ChatFolderProps {
     showFolder?: boolean;
 }
 
-/** The current place of an existing chat; its menu opens or copies that place, never changes it. */
+/** The current place of an existing chat, with path actions and guarded worktree management. */
 export function ChatFolder({ name, folder, missing, workspace, showFolder = true }: ChatFolderProps) {
+    const root = useRootStore();
     const project = useProjectState();
     const ui = useProjectUi();
     const git = useFolderGit(project.id, folder.id, workspace);
@@ -100,6 +102,18 @@ export function ChatFolder({ name, folder, missing, workspace, showFolder = true
                             folder.id === mainFolder(project.project).id ? null : folder.id,
                             workspace ? { mode: 'existing', path: workspace.path } : null
                         )
+                    }
+                    extra={
+                        workspace && workspace.ready
+                            ? worktreeMenuExtras({
+                                  root,
+                                  projectId: project.id,
+                                  folderId: folder.id,
+                                  path,
+                                  workspaceId: workspace.id,
+                                  previewLabel: branch,
+                              })
+                            : undefined
                     }
                     aria-label={workspace ? 'Worktree actions' : 'Open folder'}
                 />

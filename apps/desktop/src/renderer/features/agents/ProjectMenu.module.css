@@ -1,0 +1,29 @@
+.summary {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    color: var(--color-secondary-muted-text);
+}
+
+.summary svg {
+    flex-shrink: 0;
+}
+
+.switch {
+    display: flex;
+    align-items: center;
+    pointer-events: none;
+}
+
+.displayItem[data-selected] {
+    border-radius: calc(var(--clowdy-listbox-item-radius) * var(--squircle-radius-factor));
+}
+
+.displayItem[data-selected]::before {
+    inset: 0;
+    background-color: transparent;
+}
+
+.displayItem[data-selected]:is(:hover, [data-focus-visible], [data-hovered])::before {
+    background-color: var(--clowdy-listbox-item-bg--hover);
+}

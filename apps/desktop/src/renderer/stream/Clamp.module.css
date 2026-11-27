@@ -26,3 +26,16 @@
 .toggle[data-align='start'] {
     align-self: flex-start;
 }
+
+/*
+ * The toggle across the foot of a card, in its own look centred: its box runs to the card's edges, past the padding of the body it sits in (`--clamp-bleed-inline`, and
+ * `--clamp-bleed-bottom` when it is the last thing in the card), so the whole foot of the card presses and not only the words.
+ */
+.toggle[data-align='full'] {
+    align-self: stretch;
+    justify-content: center;
+    width: auto;
+    margin-inline: calc(var(--clamp-bleed-inline, 0px) * -1);
+    margin-bottom: calc(var(--clamp-bleed-bottom, 0px) * -1);
+    padding-block: var(--spacing-md);
+}

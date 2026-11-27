@@ -18,7 +18,7 @@ import { overrideTransport } from '../../daemon/testing';
 import { RootStore } from '../../stores';
 import { openManageWorktrees } from './ManageWorktrees';
 
-import type { FolderWorktrees } from '@clowdy/protocol';
+import type { CommandResult, FolderWorktrees } from '@clowdy/protocol';
 import type { Transport } from '../../daemon/transport';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -65,15 +65,9 @@ async function until<T>(find: () => T | null | undefined | false, message: strin
 /** The tooltip that a keyboard focus opens: it is there once the library's own timer has run. Each pause is inside `act`, which draws what the timer asked for. */
 const openTooltip = () => until(() => document.querySelector('[role="tooltip"]'), 'The tooltip did not open');
 
-/**
- * Moves the focus to `target` as a keyboard does. The dialog's first field takes the focus on a timer of its own, 50 ms after it is drawn, and a loaded machine fires
- * that timer after a focus the test gave earlier: the field takes the focus back, and the tooltip of `target` shuts. So the test waits for the field to have it first.
- */
+/** Moves focus after the modal has taken its initial focus, so its timer cannot steal the tooltip's focus. */
 async function focusByKeyboard(target: HTMLElement) {
-    await until(
-        () => document.activeElement?.matches('input[aria-label="Folder name"]'),
-        'The dialog did not take the focus'
-    );
+    await settle();
 
     await act(async () => {
         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
@@ -116,6 +110,10 @@ const buttonIn = (parent: HTMLElement, label: string) =>
 const textButton = (parent: HTMLElement, text: string) =>
     [...parent.querySelectorAll<HTMLButtonElement>('button')].find(candidate => candidate.textContent?.trim() === text);
 const click = (element: HTMLElement) => act(async () => element.click());
+const selectTab = async (tab: 'Settings' | 'Worktrees') => {
+    await click(textButton(dialog()!, tab)!);
+    await settle();
+};
 const isOpen = () => Modal.opened.length > 0;
 const items = () => [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')];
 const item = (text: string) => items().find(candidate => candidate.textContent?.startsWith(text));
@@ -220,7 +218,8 @@ describe('Manage worktrees', () => {
                 input.dispatchEvent(new Event('input', { bubbles: true }));
             });
 
-        expect(textButton(form, 'Cancel')?.dataset.variant).toBe('filled');
+        // No Cancel: the window's close button, Escape and a click outside already close it.
+        expect(textButton(form, 'Cancel')).toBeUndefined();
         expect(form.textContent).not.toContain('Repository:');
         expect(form.textContent).toContain('Settings → Chat → Branch prefix');
         expect(submit.disabled).toBe(true);
@@ -240,42 +239,83 @@ describe('Manage worktrees', () => {
         expect(groups()).toHaveLength(1);
     });
 
-    it('requires saving edited settings before creating a worktree', async () => {
+    it('preserves edited settings across tabs and requires saving before creating a worktree', async () => {
         await open({ folderId: 'fld_api' });
-        const name = dialog()!.querySelector<HTMLInputElement>('input[aria-label="Folder name"]')!;
-        const create = textButton(group('car-rental-api'), 'New worktree')!;
-        expect(create.disabled).toBe(false);
-        act(() => {
-            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(name, 'Backend');
-            name.dispatchEvent(new Event('input', { bubbles: true }));
-        });
-        expect(name.value).toBe('Backend');
-        expect(create.disabled).toBe(true);
+        expect(textButton(group('car-rental-api'), 'New worktree')!.disabled).toBe(false);
+        await selectTab('Settings');
+        const name = () => dialog()!.querySelector<HTMLInputElement>('input[aria-label="Folder name"]')!;
+        const typeName = (value: string) =>
+            act(() => {
+                Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(name(), value);
+                name().dispatchEvent(new Event('input', { bubbles: true }));
+            });
+        typeName('Backend');
+        await selectTab('Worktrees');
+        expect(textButton(group('car-rental-api'), 'New worktree')!.disabled).toBe(true);
         expect(dialog()!.textContent).toContain('Save folder settings before creating a worktree');
+        await selectTab('Settings');
+        expect(name().value).toBe('Backend');
+        typeName('');
+        await selectTab('Worktrees');
+        expect(textButton(group('car-rental-api'), 'New worktree')!.disabled).toBe(false);
+    });
+
+    it('allows retrying a refused save after switching tabs while it is pending', async () => {
+        let finish!: (result: CommandResult) => void;
+        const command = vi.fn<Transport['command']>(
+            () =>
+                new Promise(resolve => {
+                    finish = resolve;
+                })
+        );
+        await open({ folderId: 'fld_api', overrides: { command } });
+        await selectTab('Settings');
+        const name = () => dialog()!.querySelector<HTMLInputElement>('input[aria-label="Folder name"]')!;
+        const save = () => textButton(dialog()!, 'Save')!;
         act(() => {
-            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(name, '');
-            name.dispatchEvent(new Event('input', { bubbles: true }));
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(name(), 'Backend');
+            name().dispatchEvent(new Event('input', { bubbles: true }));
         });
-        expect(create.disabled).toBe(false);
+        act(() => name().closest('form')!.requestSubmit());
+        await selectTab('Worktrees');
+        expect(textButton(group('car-rental-api'), 'New worktree')!.disabled).toBe(true);
+        await selectTab('Settings');
+        act(() => name().closest('form')!.requestSubmit());
+        expect(command).toHaveBeenCalledTimes(1);
+        await act(async () =>
+            finish({ ok: false, requestId: 'refused', error: { code: 'conflict', message: 'Refused' } })
+        );
+        expect(name().value).toBe('Backend');
+        expect(save().hasAttribute('data-pending')).toBe(false);
+        act(() => name().closest('form')!.requestSubmit());
+        expect(command).toHaveBeenCalledTimes(2);
+        await selectTab('Worktrees');
+        await act(async () => finish({ ok: true, requestId: 'saved', data: {} }));
+        await settle();
+        expect(isOpen()).toBe(false);
     });
 
     it('keeps worktrees accessible in the personal space without offering unsupported settings', async () => {
         await open({ projectId: FIXTURE_PERSONAL_PROJECT_ID });
         expect(dialog()!.textContent).toContain('Worktrees');
+        await selectTab('Settings');
         expect(dialog()!.textContent).toContain('Folder settings are unavailable in the personal space');
         expect(dialog()!.querySelector('input[aria-label="Folder name"]')).toBeNull();
     });
 
-    it('shows only the selected folder, alongside its settings', async () => {
+    it('shows only the selected folder in its Worktrees tab, separate from Settings', async () => {
         await open({ folderId: 'fld_api' });
-        expect(dialog()!.textContent).toContain('Settings of car-rental-api');
         expect(groups().map(section => section.querySelector('h3')!.textContent)).toEqual(['car-rental-api']);
         expect(rowsOf(group('car-rental-api')).map(item => item.dataset.worktreePath)).toEqual([
             '/Users/dev/car-rental-api',
             '/Users/dev/Clowdy/workspaces/car-rental-api/ab12cd34/car-rental-api',
             DETACHED_WORKTREE,
         ]);
+        expect(dialog()!.querySelector('input[aria-label="Folder name"]')).toBeNull();
+        await selectTab('Settings');
+        expect(dialog()!.textContent).toContain('Settings of car-rental-api');
         expect(dialog()!.querySelector('input[aria-label="Folder name"]')).not.toBeNull();
+        expect(groups()).toHaveLength(0);
     });
 
     it("marks the folder's own checkout with its branch and whether it has local changes, and gives it no Remove", async () => {
@@ -368,7 +408,7 @@ describe('Manage worktrees', () => {
         expect(buttonIn(row(FOUND_WORKTREE), 'New chat in this worktree: search-filters')!.disabled).toBe(false);
     });
 
-    it('shows a chat count beside the changes and previews the chat names on keyboard focus', async () => {
+    it('shows a chat count beside the changes without a preview tooltip', async () => {
         await open();
 
         const worktree = row(CLOWDY_WORKTREE);
@@ -382,10 +422,8 @@ describe('Manage worktrees', () => {
 
         await focusByKeyboard(count);
 
-        const tooltip = await openTooltip();
-
-        expect(tooltip.textContent).toContain('Weekend surcharge in a worktree');
-        expect(tooltip.textContent).toContain('Show the weekend surcharge in the form (archived)');
+        await settle();
+        expect(document.querySelector('[role="tooltip"]')).toBeNull();
     });
 
     it('opens the chat that works in a worktree when it is pressed, and closes the dialog', async () => {
@@ -471,24 +509,23 @@ describe('Manage worktrees', () => {
         expect(document.activeElement).not.toBe(trigger);
     });
 
-    it("draws Remove in the More menu of every worktree but the folder's own checkout, and holds it off for a lock and for a chat that works in the worktree", async () => {
+    it("draws Remove in the More menu of every worktree but the folder's own checkout, and holds it off for a lock", async () => {
         await open();
 
-        for (const path of [FOUND_WORKTREE, MISSING_WORKTREE])
+        for (const path of [FOUND_WORKTREE, MISSING_WORKTREE, CLOWDY_WORKTREE])
             expect(removeOf(await moreMenu(path))?.off, path).toBe(false);
 
-        for (const path of [CLOWDY_WORKTREE, LOCKED_WORKTREE])
-            expect(removeOf(await moreMenu(path))?.off, path).toBe(true);
+        expect(removeOf(await moreMenu(LOCKED_WORKTREE))?.off).toBe(true);
 
         expect(removeOf(await moreMenu('/Users/dev/car-rental'))).toBeUndefined();
         // Remove is not a button of the row any more.
         expect(row(FOUND_WORKTREE).querySelector('button[aria-label^="Remove"]')).toBeNull();
     });
 
-    it('opens no confirmation from a Remove that is off, for a chat or for a lock', async () => {
+    it('opens no confirmation from a Remove that is off for a lock', async () => {
         await open();
 
-        for (const path of [CLOWDY_WORKTREE, LOCKED_WORKTREE]) {
+        for (const path of [LOCKED_WORKTREE]) {
             await openMore(path);
             await click(item('Remove')!);
             await pressEscape();
@@ -505,11 +542,20 @@ describe('Manage worktrees', () => {
         expect(removeOf(await moreMenu(FOUND_WORKTREE))?.text).toBe('Remove…');
     });
 
+    it('offers Remove for a worktree with only archived chats', async () => {
+        const data = withFixtureWorktrees(createFixtureData());
+        data.chats.find(chat => chat.id === FIXTURE_WORKSPACE_CHAT_ID)!.archivedAt = Date.now();
+        await open({ data });
+
+        expect(row(CLOWDY_WORKTREE).textContent).toContain('2 chats');
+        expect(removeOf(await moreMenu(CLOWDY_WORKTREE))?.text).toBe('Remove…');
+    });
+
     it('names, under a Remove that is off, the reason the daemon gave, and under no other', async () => {
         await open();
 
         expect(removeOf(await moreMenu(LOCKED_WORKTREE))?.text).toContain('Git has it locked: on an external drive');
-        expect(removeOf(await moreMenu(CLOWDY_WORKTREE))?.text).toContain('A chat works in it');
+        expect(removeOf(await moreMenu(CLOWDY_WORKTREE))?.off).toBe(false);
         // Nothing stops a worktree that nobody works in and nobody locked: its Remove waits for the confirmation, not for a reason.
         expect(removeOf(await moreMenu(FOUND_WORKTREE))?.text).toBe('Remove…');
     });

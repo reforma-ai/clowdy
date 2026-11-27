@@ -1,25 +1,34 @@
 import { Button } from '@clowdy/components/Button';
 import { Input } from '@clowdy/components/Input';
-import {
-    GridList,
-    GridListItem,
-    listBoxItemDataShow,
-    Menu,
-    MenuItem,
-    MenuSection,
-    useCellEditMode,
-} from '@clowdy/components/List';
+import { GridList, GridListItem, GridListSection, listBoxItemDataShow, useCellEditMode } from '@clowdy/components/List';
 import { Panel, PanelContent } from '@clowdy/components/Panel';
-import { Popover, PopoverScroll, PopoverTrigger, useContextMenu } from '@clowdy/components/Popover';
+import { Popover, PopoverTrigger, useContextMenu } from '@clowdy/components/Popover';
 import { Show } from '@clowdy/components/Show';
-import { Archive, Check, ChevronDown, ChevronRight, Merge, Message, More, NewChat, Robot } from '@clowdy/icons/14';
+import {
+    Archive,
+    Check,
+    ChevronDown,
+    ChevronRight,
+    Close,
+    Merge,
+    Message,
+    More,
+    NewChat,
+    Plus,
+    Robot2,
+    Split,
+} from '@clowdy/icons/14';
+import { cn } from '@clowdy/lib';
+import { mainFolder } from '@clowdy/protocol';
 import { observer } from 'mobx-react-lite';
 import {
     type CSSProperties,
     type KeyboardEvent,
     type MouseEvent,
+    memo,
     type ReactNode,
     type SyntheticEvent,
+    useCallback,
     useEffect,
     useRef,
     useState,
@@ -37,13 +46,14 @@ import {
     branchPullRequestsOf,
     useBranchPullRequests,
 } from '../changes/branchPullRequests';
-import { archiveChat } from '../chats/archiveChat';
+import { archiveChat, archiveRun } from '../chats/archiveChat';
 import { ChatMenu } from '../chats/ChatMenu';
 import { isRunActive } from '../chats/chatRun';
 import { perform } from '../chats/commands';
 import { draftOf, messageOf, useDraftRevision } from '../chats/composerDrafts';
 import { filesOf, useDraftFilesRevision } from '../chats/composerFiles';
 import { deleteChat } from '../chats/deleteChat';
+import { isDraftSending } from '../chats/draftSending';
 import { workspaceHead } from '../openWith/workspaceHead';
 import styles from './AgentList.module.css';
 import { ArchiveButton } from './ArchiveButton';
@@ -54,11 +64,12 @@ import {
     type AgentSelection,
     agentGroups,
     agentRows,
+    agentsWorkingInside,
     ancestorChats,
     asksThePerson,
+    busySubagents,
     type ChatRow,
     chatDotTone,
-    type FinishedRow,
     groupFolderOf,
     isActiveThread,
     nativeAgentsByRoot,
@@ -69,10 +80,16 @@ import { ChatIcon, ChatStatus } from './ChatIcon';
 import { chatListPreferences } from './chatListPreferences';
 import { GroupFolderName } from './GroupFolderName';
 import { openNewChat } from './openNewChat';
+import { ProjectMenu } from './ProjectMenu';
 import { StarCard } from './StarCard';
+import { SubagentMenu } from './SubagentMenu';
 import { useChatListOrder } from './useChatListOrder';
+import { useSidebarWorktrees } from './useSidebarWorktrees';
+import { WorktreeCardHeader } from './WorktreeCardHeader';
+import { chatWorktreeKey, type WorktreeCard, worktreeCards, worktreeKey } from './worktreeCards';
 
 import type { Chat, ChatId, FolderId, ProjectInfo, Run, RunId } from '@clowdy/protocol';
+import type { NewChatDraft } from '../../stores/NewChatDrafts';
 
 /** The id of the first row, the one that starts a chat. Chat ids never look like it. */
 export const NEW_CHAT_ROW = '@new-chat';
@@ -84,19 +101,25 @@ const GROUP_PREFIX = '@folder:';
 const EMPTY_PREFIX = '@empty:';
 const groupKey = (folderId: FolderId) => `${GROUP_PREFIX}${folderId}`;
 
-/** What a line of the list is: a chat (or a thread), a sub-agent of one, or a chat's group of finished sub-agents; the heading of a folder's group, or the note of a group that has no chat. */
+/** What a line of the list is: a chat (or a thread) or a sub-agent of one; the heading of a folder's group, or the note of a group that has no chat. */
 type ListEntry =
     | { kind: 'row'; row: AgentRow }
+    | { kind: 'draft'; draft: NewChatDraft }
     | { kind: 'group'; group: AgentGroup; isCollapsed: boolean }
-    | { kind: 'empty'; folderId: FolderId };
+    | { kind: 'empty'; folderId: FolderId }
+    | { kind: 'worktree'; card: WorktreeCard; isCollapsed: boolean; rows: AgentRow[]; drafts: NewChatDraft[] };
 
-/** The key of a line's row in the grid list: a chat's id, a sub-agent's run id, the id of a finished group, or the id of a heading or a note. */
+/** The key of a line's row in the grid list: a chat's id, a sub-agent's run id, or the id of a heading or a note. */
 const entryKey = (entry: ListEntry) =>
-    entry.kind === 'row'
-        ? entry.row.id
-        : entry.kind === 'group'
-          ? groupKey(entry.group.folder.id)
-          : `${EMPTY_PREFIX}${entry.folderId}`;
+    entry.kind === 'draft'
+        ? `@draft:${entry.draft.id}`
+        : entry.kind === 'row'
+          ? entry.row.id
+          : entry.kind === 'group'
+            ? groupKey(entry.group.folder.id)
+            : entry.kind === 'worktree'
+              ? entry.card.key
+              : `${EMPTY_PREFIX}${entry.folderId}`;
 
 /** The events a row's own buttons must not pass up: they are React children of the row, so the row would take their clicks and keys as its own. */
 const ownEvents = {
@@ -118,9 +141,9 @@ interface ChatActions {
 
 /**
  * The project's agents: the row that starts a chat, then the chats in use in the person's order, each with what works for it below: the native sub-agents it
- * started (a row each, and one group row for the finished ones) and the threads its agents started, folded until the person opens them, except what works
- * (with Expand running agents on) or waits for the person. Archived chats are not here, they are in the archive's list (the button
- * in the heading, beside the filters), and take their threads with them. `missing` are the folders gone from the disk (`Screen` reads them once for the list and the new-chat page): their group is marked and its button is off. With the menu's Group chats by folder on (it is, until the person turns it off), the
+ * started and the threads its agents started in one list, oldest first, folded until the person opens them, except what works (with Expand active threads on)
+ * or waits for the person. Archived chats are not here, they are in the archive's list (the button
+ * in the heading, beside the project menu), and take their threads with them. `missing` are the folders gone from the disk (`Screen` reads them once for the list and the new-chat page): their group is marked and its button is off. With the menu's folder layout (the default), the
  * chats stand in a group for the folder they work in, under a heading that folds the group. Its name opens the folder's menu (`GroupFolderName`), and the menu and heading both offer a new chat in that folder.
  */
 export function AgentList({
@@ -146,6 +169,8 @@ export function AgentList({
     const [renamingId, setRenamingId] = useState<ChatId | null>(null);
     const saveRename = useRef<() => void>(() => {});
     const [menuChat, setMenuChat] = useState<Chat | null>(null);
+    // The sub-agent whose right-click menu is open; at most one of this and `menuChat` is set.
+    const [menuRun, setMenuRun] = useState<Run | null>(null);
     // The chat whose `⋯` menu is open: its row keeps the hover plate while the pointer is in the menu.
     const [menuOpenId, setMenuOpenId] = useState<ChatId | null>(null);
     const list = useRef<HTMLDivElement>(null);
@@ -163,7 +188,7 @@ export function AgentList({
                 );
         }
     }, [projectInfo, histories]);
-    const order = useChatListOrder(chats, selection.draft ? undefined : selection.chat?.id);
+
     const runOf = (chat: Chat) => orchestratorOf(chat, project.runs);
     const actions: ChatActions = {
         // The popover hands focus back to its trigger as it closes: starting at once would have that blur end the rename.
@@ -185,11 +210,83 @@ export function AgentList({
     const openRun = selection.draft ? undefined : selection.run;
     const { folders } = project.project;
     const grouped = ui.groupByFolder;
-    const { showFinishedThreads, expandRunningAgents } = chatListPreferences;
+    const groupedByWorktree = ui.groupByWorktree;
+    const actual = useSidebarWorktrees(groupedByWorktree);
+    const draftItems = ui.newChatDrafts.drafts;
+    const draftFolder = (draft: NewChatDraft) => draft.folderId ?? mainFolder(project.project).id;
+    const additionalDraftKey = (draft: NewChatDraft) =>
+        draft.workspace?.mode === 'existing' ? worktreeKey(draftFolder(draft), draft.workspace.path) : undefined;
+    const additionalCards = worktreeCards(
+        chats,
+        project.chats.values(),
+        folders,
+        actual,
+        projectInfo,
+        ui.worktreeOrder
+    );
+    for (const draft of draftItems) {
+        const key = additionalDraftKey(draft);
+        if (!key || additionalCards.some(card => card.key === key) || draft.workspace?.mode !== 'existing') continue;
+        const folder = folders.find(candidate => candidate.id === draftFolder(draft));
+        if (!folder) continue;
+        additionalCards.push({
+            key,
+            folder,
+            folderName: folder.path,
+            path: draft.workspace.path,
+            missing: false,
+            pending: true,
+            used: false,
+            roots: [],
+            linkedChats: [],
+        });
+    }
+    const { showFinishedThreads, expandRunningAgents, showUnusedWorktrees } = chatListPreferences;
+    const shownAdditional = additionalCards.filter(
+        card =>
+            draftItems.some(draft => additionalDraftKey(draft) === card.key) ||
+            (card.used ? card.roots.length > 0 : showUnusedWorktrees)
+    );
+    const mainCards: WorktreeCard[] = groupedByWorktree
+        ? agentGroups(chats, folders).flatMap(group => {
+              const roots = group.roots.filter(chat => !chat.workspace);
+              if (!shownAdditional.some(card => card.folder.id === group.folder.id)) return [];
+              return [
+                  {
+                      key: worktreeKey(group.folder.id, group.folder.path),
+                      main: true,
+                      folder: group.folder,
+                      folderName: group.name,
+                      path: group.folder.path,
+                      missing: missing.has(group.folder.id),
+                      pending: false,
+                      used: true,
+                      roots,
+                      linkedChats: roots,
+                  },
+              ];
+          })
+        : [];
+    const draftCardKey = (draft: NewChatDraft) =>
+        additionalDraftKey(draft) ??
+        (!draft.workspace ? mainCards.find(card => card.folder.id === draftFolder(draft))?.key : undefined);
+    const rank = new Map(ui.worktreeOrder.map((key, index) => [key, index]));
+    const cards = [...mainCards, ...additionalCards].sort(
+        (a, b) => (rank.get(a.key) ?? Infinity) - (rank.get(b.key) ?? Infinity)
+    );
+    const shownCards = cards.filter(card => card.main || shownAdditional.includes(card));
+    const order = useChatListOrder(chats, openChatId, cards, shownCards);
     // The sub-agents of every chat, found in one pass over the project's runs and not once per chat.
     const agentsByRoot = nativeAgentsByRoot(project.runs.values());
     const agentsOf = (chat: Chat): readonly Run[] =>
         (chat.orchestratorRunId !== undefined && agentsByRoot.get(chat.orchestratorRunId)) || NO_RUNS;
+    // Put away from a row of a sub-agent. The rows are memoised, so the handler they get never changes; it reads the page that is open when it is pressed.
+    const archiveSubagent = useRef<(run: Run) => void>(() => {});
+    archiveSubagent.current = run =>
+        void archiveRun(root, project, ui, run, selection.draft ? undefined : selection.run);
+    const onArchiveSubagent = useCallback((run: Run) => archiveSubagent.current(run), []);
+    // The daemon refuses a sub-agent that works, or that started one that does: the row offers no Archive then.
+    const busySubagentIds = busySubagents(project.runs);
     const rowsOf = (roots: readonly Chat[]) =>
         agentRows({
             roots,
@@ -202,24 +299,76 @@ export function AgentList({
             openChatId,
             openRunId: openRun?.id,
         });
+    const rowEntries = (roots: readonly Chat[]): ListEntry[] => rowsOf(roots).map(row => ({ kind: 'row', row }));
+    const cardEntries = (roots: readonly Chat[], scoped: readonly WorktreeCard[]): ListEntry[] => {
+        const cardEntry = (card: WorktreeCard): ListEntry => {
+            const isCollapsed = ui.collapsedWorktrees.includes(card.key);
+            return {
+                kind: 'worktree',
+                card,
+                isCollapsed,
+                rows: isCollapsed ? [] : rowsOf(card.roots),
+                drafts: isCollapsed ? [] : draftItems.filter(draft => draftCardKey(draft) === card.key),
+            };
+        };
+        return [
+            ...rowEntries(
+                roots.filter(chat => !chat.workspace && !scoped.some(card => card.main && card.roots.includes(chat)))
+            ),
+            ...scoped.map(cardEntry),
+        ];
+    };
     const entries: ListEntry[] = grouped
         ? agentGroups(chats, folders).flatMap((group): ListEntry[] => {
               const isCollapsed = ui.collapsedFolders.includes(group.folder.id);
-              const groupRows = isCollapsed ? [] : rowsOf(group.roots);
-              const body: ListEntry[] = isCollapsed
+              const standalone = draftItems.filter(
+                  draft =>
+                      draftFolder(draft) === group.folder.id &&
+                      (!groupedByWorktree || !shownCards.some(card => card.key === draftCardKey(draft)))
+              );
+              const body = isCollapsed
                   ? []
-                  : groupRows.length > 0
-                    ? groupRows.map(row => ({ kind: 'row', row }))
-                    : [{ kind: 'empty', folderId: group.folder.id }];
-
-              return [{ kind: 'group', group, isCollapsed }, ...body];
+                  : [
+                        ...standalone.map(draft => ({ kind: 'draft' as const, draft })),
+                        ...(groupedByWorktree
+                            ? cardEntries(
+                                  group.roots,
+                                  shownCards.filter(card => card.folder.id === group.folder.id)
+                              )
+                            : rowEntries(group.roots)),
+                    ];
+              return [
+                  { kind: 'group', group, isCollapsed },
+                  ...(isCollapsed || body.length ? body : [{ kind: 'empty' as const, folderId: group.folder.id }]),
+              ];
           })
-        : rowsOf(chats).map(row => ({ kind: 'row', row }));
-    // The new-chat row is the open one on every new-chat page, whatever folder it is for: the folder is told by the select under the message box.
-    // A sub-agent that is not listed (its group is folded, or its chat is) leaves its chat's row as the open one, so the list never shows nothing open.
+        : groupedByWorktree
+          ? [
+                ...draftItems
+                    .filter(draft => !shownCards.some(card => card.key === draftCardKey(draft)))
+                    .map(draft => ({ kind: 'draft' as const, draft })),
+                ...cardEntries(chats, shownCards),
+            ]
+          : [...draftItems.map(draft => ({ kind: 'draft' as const, draft })), ...rowEntries(chats)];
+
+    const visibleRows = new Map<string, AgentRow>();
+    const navigationIds = entries.flatMap(entry => {
+        if (entry.kind === 'empty') return [];
+        const rows = entry.kind === 'worktree' ? entry.rows : entry.kind === 'row' ? [entry.row] : [];
+        for (const row of rows) visibleRows.set(row.id, row);
+        return entry.kind === 'worktree'
+            ? [entryKey(entry), ...entry.drafts.map(draft => `@draft:${draft.id}`), ...rows.map(row => row.id)]
+            : [entryKey(entry)];
+    });
+    // A draft has a selected row only when the ungrouped list has a new-chat row.
+    // A sub-agent that has no row (its chat's folder group is folded, or it is no native sub-agent) leaves its chat's row as the open one, so the list never shows nothing open.
     const selectedId = selection.draft
-        ? NEW_CHAT_ROW
-        : openRun && entries.some(entry => entry.kind === 'row' && entry.row.id === openRun.id)
+        ? ui.draftId && navigationIds.includes(`@draft:${ui.draftId}`)
+            ? `@draft:${ui.draftId}`
+            : grouped
+              ? undefined
+              : NEW_CHAT_ROW
+        : openRun && navigationIds.includes(openRun.id)
           ? openRun.id
           : openChatId;
     useFileDragHover(
@@ -234,25 +383,39 @@ export function AgentList({
         }
     );
 
-    // A thread or a sub-agent opened from elsewhere (a chip, a card, back and forward, the keyboard) may sit below a fold: open the folds above it, and the
-    // folded group of the chat it belongs to. For a sub-agent that is its chat, when its row is not listed already (a working one is, under a folded chat, and so
-    // is the open one that is over: it has a row of its own, outside its group, which stays folded). When the open page changes, and when the list turns
-    // grouped; not on other changes, so the person can still fold the chat or the group it sits in.
+    // A thread opened from elsewhere (a chip, a card, back and forward, the keyboard) may sit below a fold: open the folds above it, and the folded group of
+    // the chat it belongs to. A sub-agent needs no fold of its chat opened: its row stands below a folded chat while it is the open page. When the open page
+    // changes, and when the list turns grouped; not on other changes, so the person can still fold the chat or the group it sits in.
     const openRunId = openRun?.id;
-    const openRunListed = useRef(false);
-    openRunListed.current = openRunId !== undefined && selectedId === openRunId;
+    const opened = openChatId ? project.chats.get(openChatId) : undefined;
+    const ancestors = opened ? ancestorChats(project.chats, opened.id) : [];
+    // An unarchived child whose parent is archived/missing is itself a visible root.
+    const rootChat = opened && [opened, ...ancestors].find(chat => chats.some(root => root.id === chat.id));
+    const selectedCard =
+        groupedByWorktree && rootChat
+            ? (chatWorktreeKey(rootChat, cards) ?? mainCards.find(card => card.roots.includes(rootChat))?.key)
+            : undefined;
+    const selectedFolder = selectedCard ? cards.find(card => card.key === selectedCard)?.folder.id : undefined;
+    const activeDraft = ui.draftId ? ui.newChatDrafts.get(ui.draftId) : undefined;
+    const activeDraftFolder = activeDraft ? draftFolder(activeDraft) : undefined;
+    const activeDraftCard = activeDraft ? draftCardKey(activeDraft) : undefined;
+    useEffect(() => {
+        if (!selection.draft) return;
+        if (grouped && activeDraftFolder) ui.expandFolder(activeDraftFolder);
+        if (groupedByWorktree && activeDraftCard) ui.expandWorktree(activeDraftCard);
+    }, [selection.draft, ui.draftId, activeDraftFolder, activeDraftCard, grouped, groupedByWorktree, ui]);
     useEffect(() => {
         if (openChatId === undefined) return;
 
-        ui.expandChats([
-            ...ancestorChats(project.chats, openChatId).map(chat => chat.id),
-            ...(openRunId === undefined || openRunListed.current ? [] : [openChatId]),
-        ]);
+        ui.expandChats(ancestorChats(project.chats, openChatId).map(chat => chat.id));
 
-        const folderId = grouped ? groupFolderOf(project.chats, project.project.folders, openChatId) : undefined;
+        const folderId = grouped
+            ? (selectedFolder ?? groupFolderOf(project.chats, project.project.folders, openChatId))
+            : undefined;
 
         if (folderId !== undefined) ui.expandFolder(folderId);
-    }, [openChatId, openRunId, grouped, project, ui]);
+        if (selectedCard) ui.expandWorktree(selectedCard);
+    }, [openChatId, openRunId, grouped, selectedCard, selectedFolder, project, ui]);
 
     useHotkeyScope(AGENTS_SCOPE);
     useCommands(
@@ -260,29 +423,38 @@ export function AgentList({
         agentCommands({
             list: () => list.current,
             // The headings are rows the arrows stop on, so they are in the order J and K step through; a group's note has no focus.
-            ids: () => [NEW_CHAT_ROW, ...entries.filter(entry => entry.kind !== 'empty').map(entryKey)],
+            ids: () => (grouped ? navigationIds : [NEW_CHAT_ROW, ...navigationIds]),
             openId: () => selectedId,
         })
     );
 
-    // Right-click anywhere on a chat's row: the rows are the list's own elements, so the click is found by its row's key.
+    // Right-click anywhere on a chat's row, or on the row of a sub-agent that is over: the rows are the list's own elements, so the click is found by its row's key.
     const openContextMenu = (event: MouseEvent) => {
         const key = (event.target as Element).closest('[role="row"]')?.getAttribute('data-key');
         const chat = key ? project.chats.get(key) : undefined;
+        const row = key ? visibleRows.get(key) : undefined;
+        const run = row?.kind === 'subagent' && !busySubagentIds.has(row.id) ? row.run : undefined;
 
-        if (!chat) return;
+        if (!chat && !run) return;
 
-        setMenuChat(chat);
+        setMenuChat(chat ?? null);
+        setMenuRun(run ?? null);
         contextMenu.areaProps.onContextMenu(event);
     };
 
     /** The fold a row has, if any: the threads of a chat, or the chats of a folder's group. */
     const foldOf = (key: string | undefined): { isExpanded: boolean; toggle: () => void } | undefined => {
         const entry = entries.find(candidate => entryKey(candidate) === key);
+        const row = key === undefined ? undefined : visibleRows.get(key);
 
-        // The fold of a chat, and of its group of finished sub-agents, is kept with the chats' (`finishedGroupId`).
-        if (entry?.kind === 'row' && entry.row.childCount > 0)
-            return { isExpanded: entry.row.isExpanded, toggle: () => ui.toggleChatExpanded(entry.row.id) };
+        // Only a chat has a fold: a sub-agent's row has none.
+        if (row && row.childCount > 0)
+            return { isExpanded: row.isExpanded, toggle: () => ui.toggleChatExpanded(row.id) };
+        if (
+            entry?.kind === 'worktree' &&
+            (entry.card.roots.length > 0 || draftItems.some(draft => draftCardKey(draft) === entry.card.key))
+        )
+            return { isExpanded: !entry.isCollapsed, toggle: () => ui.toggleWorktreeCollapsed(entry.card.key) };
 
         if (entry?.kind === 'group')
             return { isExpanded: !entry.isCollapsed, toggle: () => ui.toggleFolderCollapsed(entry.group.folder.id) };
@@ -315,24 +487,30 @@ export function AgentList({
         }
     };
 
-    // A press on the row of the chat that is open, and not on a control of the row: the same as above, for the pointer. Read in the capture phase: a row stops the click it takes.
+    // Row controls handle their own clicks; an open chat stays selected and a folded worktree opens.
     const onClick = (event: MouseEvent) => {
         const target = event.target as Element;
+        if (target.closest('button')) return;
+        const key = target.closest('[role="row"]')?.getAttribute('data-key');
+        const entry = entries.find(candidate => entryKey(candidate) === key);
 
-        if (!target.closest('button') && target.closest('[role="row"]')?.getAttribute('data-key') === selectedId)
-            showSelected();
+        if (
+            entry?.kind === 'worktree' &&
+            entry.isCollapsed &&
+            (entry.card.roots.length > 0 || draftItems.some(draft => draftCardKey(draft) === entry.card.key))
+        )
+            ui.expandWorktree(entry.card.key);
+        else if (key === selectedId) showSelected();
     };
 
     const select = (id: string) => {
-        const entry = entries.find(candidate => entryKey(candidate) === id);
-        const row = entry?.kind === 'row' ? entry.row : undefined;
+        const row = visibleRows.get(id);
 
-        if (id === NEW_CHAT_ROW) openNewChat(project, ui);
-        // The group of finished sub-agents is no page, and a press on its row has nothing else to do but fold it.
-        else if (row?.kind === 'finished') ui.toggleChatExpanded(row.id);
+        if (id.startsWith('@draft:')) ui.openDraftId(id.slice('@draft:'.length));
+        else if (id === NEW_CHAT_ROW) openNewChat(project, ui);
         else if (row?.kind === 'subagent') ui.openRun(row.id);
         // A heading is a label, not a page: only its chevron, and Right and Left on it, fold the group.
-        else if (!id.startsWith(GROUP_PREFIX)) ui.openChat(id);
+        else if (row?.kind === 'chat') ui.openChat(id);
     };
 
     const renderGroup = (group: AgentGroup, isCollapsed: boolean) => {
@@ -397,12 +575,98 @@ export function AgentList({
         );
     };
 
+    const cardActivity = (card: WorktreeCard) => {
+        const active = [...card.linkedChats, ...card.roots.flatMap(chat => project.threadsBelow(chat.id))].filter(
+            chat => chat.archivedAt === undefined
+        );
+        return active.some(chat => asksThePerson(chat, project.runs))
+            ? 'asking'
+            : active.some(chat => isActiveThread(chat, project.runs))
+              ? 'working'
+              : undefined;
+    };
+
+    const renderDraft = (draft: NewChatDraft) => {
+        const label =
+            draft.workspace?.mode === 'new'
+                ? 'New worktree'
+                : draft.workspace?.mode === 'existing' && !groupedByWorktree
+                  ? (cards.find(card => card.key === draftCardKey(draft))?.branch ??
+                    draft.workspace.path.split(/[\\/]/).pop())
+                  : undefined;
+        return (
+            <GridListItem
+                key={`@draft:${draft.id}`}
+                id={`@draft:${draft.id}`}
+                text="New chat"
+                icon={<Plus />}
+                className={styles.chatRow}
+                data-depth={0}
+                endAffix={
+                    !isDraftSending(`@new-chat:${project.id}:${draft.id}`) &&
+                    !draft.operation &&
+                    !draft.firstMessage &&
+                    !messageOf(draft.doc) &&
+                    !draft.attachments?.length &&
+                    !draft.reply &&
+                    filesOf(`@new-chat:${project.id}:${draft.id}`).length === 0 &&
+                    ui.pendingFilesFor(draft.id).length === 0 ? (
+                        <span {...ownEvents}>
+                            <Button
+                                variant="filling"
+                                color="secondary"
+                                size="xs"
+                                iconOnly
+                                aria-label="Close draft"
+                                tooltip="Close draft"
+                                onPress={() => {
+                                    ui.newChatDrafts.remove(draft.id);
+                                    if (ui.draftId === draft.id) ui.openChat(null);
+                                }}
+                            >
+                                <Close />
+                            </Button>
+                        </span>
+                    ) : undefined
+                }
+            >
+                <span className={styles.title}>{label ? `New chat — ${label}` : 'New chat'}</span>
+            </GridListItem>
+        );
+    };
+
     const renderEntry = (entry: ListEntry) => {
         switch (entry.kind) {
+            case 'draft':
+                return renderDraft(entry.draft);
             case 'row':
                 return renderAgentRow(entry.row);
             case 'group':
                 return renderGroup(entry.group, entry.isCollapsed);
+            case 'worktree':
+                return (
+                    <GridListSection
+                        key={entry.card.key}
+                        id={entry.card.key + ':section'}
+                        className={styles.worktreeCard}
+                        data-worktree-card={entry.card.key}
+                        data-drop-position={
+                            order.drop?.indicatorId === entry.card.key ? order.drop.position : undefined
+                        }
+                    >
+                        <WorktreeCardHeader
+                            card={entry.card}
+                            collapsed={entry.isCollapsed}
+                            activity={cardActivity(entry.card)}
+                            hasDraft={draftItems.some(draft => draftCardKey(draft) === entry.card.key)}
+                            showFolder={!grouped && folders.length > 1}
+                            onToggle={() => ui.toggleWorktreeCollapsed(entry.card.key)}
+                            onDragStart={event => order.startCard(event, entry.card.key)}
+                        />
+                        {entry.drafts.map(renderDraft)}
+                        {entry.rows.map(renderAgentRow)}
+                    </GridListSection>
+                );
             case 'empty':
                 return (
                     <GridListItem
@@ -425,86 +689,53 @@ export function AgentList({
                 return renderRow(row);
             case 'subagent':
                 return renderSubagent(row);
-            case 'finished':
-                return renderFinished(row);
         }
     };
 
-    // A sub-agent is the page of its parent's work, not a chat of its own: nothing to rename, archive, delete, move or drag, and the parent's guards
-    // and unread mark do not read it. Its row opens the page and shows the state it is in.
-    const renderSubagent = ({ run, depth, id }: SubagentRow) => {
-        const label = runLabel(run);
-
-        return (
-            <GridListItem
-                key={id}
-                id={id}
-                text={label}
-                icon={<Robot />}
-                endAffix={
-                    <span className={styles.agentStatus}>
-                        <ChatStatus run={run} />
-                    </span>
-                }
-                className={styles.agentRow}
-                style={{ '--depth': depth } as CSSProperties}
-                data-depth={depth}
-                data-drop-position={order.drop?.indicatorId === id ? order.drop.position : undefined}
-            >
-                <span className={styles.title} title={run.summary || undefined}>
-                    {label}
-                </span>
-            </GridListItem>
-        );
-    };
-
-    const renderFinished = (row: FinishedRow) => {
-        const { depth, id, isExpanded, childCount } = row;
-
-        return (
-            <GridListItem
-                key={id}
-                id={id}
-                text={`Finished sub-agents of ${row.chat.title}`}
-                icon={
-                    <Fold
-                        label={`${isExpanded ? 'Collapse' : 'Expand'} finished sub-agents of ${row.chat.title}`}
-                        isExpanded={isExpanded}
-                        icon={<Robot />}
-                        onToggle={() => ui.toggleChatExpanded(id)}
-                    />
-                }
-                endAffix={<span className={styles.count}>{childCount}</span>}
-                className={styles.agentRow}
-                style={{ '--depth': depth } as CSSProperties}
-                data-finished
-                data-depth={depth}
-                data-drop-position={order.drop?.indicatorId === id ? order.drop.position : undefined}
-            >
-                <span className={styles.title}>Finished sub-agents</span>
-            </GridListItem>
-        );
-    };
+    // A sub-agent is the page of its parent's work, not a chat of its own: nothing to rename, delete, move or drag, and the parent's guards and unread mark do not
+    // read it. Its row opens the page and shows the state it is in, and once it and what it started are over it offers Archive, as a chat's row does.
+    const renderSubagent = ({ run, depth, id }: SubagentRow) => (
+        <SubagentItem
+            key={id}
+            run={run}
+            label={runLabel(run)}
+            depth={depth}
+            drop={order.drop?.indicatorId === id ? order.drop.position : undefined}
+            canArchive={!busySubagentIds.has(id)}
+            isMenuOpen={contextMenu.isOpen && menuRun?.id === id}
+            onArchive={onArchiveSubagent}
+        />
+    );
 
     const renderRow = (row: ChatRow) => {
         const { chat } = row;
         const run = runOf(chat);
         const busy = actions.busy(chat);
         const below = project.threadsBelow(chat.id);
-        // The dot tells what the threads below do. A native sub-agent adds nothing to it: it works inside the session of its chat's orchestrator (or its thread's),
-        // and that run is active for as long, so the dot is green already; and a sub-agent never asks for the chat's dot or counts as unread, its question is a card in the stream.
+        // The agents that work inside the chat, its sub-agents and its threads with theirs, whether its row is folded or not and whether the chat works itself. The row says it with
+        // an agent icon where its dot would be: a chat with an agent inside and a working dot (or a command's icon) shows the agent icon only, and only what needs the person
+        // (a failure, a question, a request) is shown over it. A native sub-agent never asks for the chat's dot or counts as unread: its question is a card in the stream.
+        const agentsInside = agentsWorkingInside(chat, below, project.runs, agentsOf);
         const threads = below.some(thread => thread.archivedAt === undefined && asksThePerson(thread, project.runs))
             ? ('asking' as const)
-            : below.some(thread => isActiveThread(thread, project.runs))
+            : agentsInside > 0
               ? ('working' as const)
               : undefined;
         const draft = messageOf(draftOf(chat.id)) !== '' || filesOf(chat.id).length > 0;
         const unread = ui.hasUnreadCompletion(run);
         const showPullRequests = chatDotTone(run, threads, draft, unread) === undefined;
         const status = (
-            <ChatStatus run={run} threads={threads} draft={draft} unread={unread} className={styles.archiveStatus} />
+            <ChatStatus
+                run={run}
+                threads={threads}
+                agentsInside={agentsInside}
+                draft={draft}
+                unread={unread}
+                className={styles.archiveStatus}
+            />
         );
         const icon = <ChatIcon chat={chat} run={run} threads={threads} showStatus={false} />;
+        const parent = chat.parentChatId ? project.chats.get(chat.parentChatId) : undefined;
 
         return (
             <GridListItem
@@ -547,9 +778,14 @@ export function AgentList({
                             busy={busy}
                             status={status}
                             showPullRequests={showPullRequests}
+                            crossWorktree={
+                                groupedByWorktree &&
+                                row.depth > 0 &&
+                                parent !== undefined &&
+                                chatWorktreeKey(chat, cards) !== chatWorktreeKey(parent, cards)
+                            }
                             isOpen={menuOpenId === chat.id}
                             onOpenChange={open => setMenuOpenId(open ? chat.id : null)}
-                            move={menuOpenId === chat.id ? order.actions(chat.id) : undefined}
                             branchKey={chatBranchKey(
                                 projectInfo,
                                 groupFolderOf(project.chats, folders, chat.id),
@@ -587,7 +823,7 @@ export function AgentList({
         <Panel side="left" className={isCovered ? styles.covered : undefined}>
             <SidebarHeading ref={heading} title={<ProjectSelect />} className={styles.heading}>
                 <ArchiveButton anchor={heading} />
-                <FilterMenu />
+                <ProjectMenu />
             </SidebarHeading>
 
             <PanelContent contentClass={styles.content}>
@@ -610,20 +846,22 @@ export function AgentList({
                             if (id !== undefined) select(String(id));
                         }}
                     >
-                        <GridListItem
-                            id={NEW_CHAT_ROW}
-                            text="New chat"
-                            icon={<NewChat />}
-                            className={styles.newChat}
-                            // The shortcut is a hint for the pointer on its way to the row, not a label the row wears at rest.
-                            endAffix={
-                                <span className={styles.end} data-show={listBoxItemDataShow.itemHover}>
-                                    <CommandHotkey id={NEW_CHAT_COMMAND} size="xs" />
-                                </span>
-                            }
-                        >
-                            <span className={styles.title}>New chat</span>
-                        </GridListItem>
+                        {!grouped && (
+                            <GridListItem
+                                id={NEW_CHAT_ROW}
+                                text="New chat"
+                                icon={<Plus />}
+                                className={styles.newChat}
+                                // The shortcut is a hint for the pointer on its way to the row, not a label the row wears at rest.
+                                endAffix={
+                                    <span className={styles.end} data-show={listBoxItemDataShow.itemHover}>
+                                        <CommandHotkey id={NEW_CHAT_COMMAND} size="xs" />
+                                    </span>
+                                }
+                            >
+                                <span className={styles.title}>New chat</span>
+                            </GridListItem>
+                        )}
                         {entries.map(renderEntry)}
                     </GridList>
                 </div>
@@ -640,8 +878,14 @@ export function AgentList({
                             onRename={() => actions.rename(chat)}
                             onArchive={() => actions.archive(chat)}
                             onDelete={() => actions.remove(chat)}
-                            {...order.actions(chat.id)}
                         />
+                    </Popover>
+                )}
+            </Show>
+            <Show when={contextMenu.isOpen ? menuRun : null}>
+                {run => (
+                    <Popover {...contextMenu.popoverProps} placement="bottom start" spacing="xs">
+                        <SubagentMenu onClose={contextMenu.close} onArchive={() => onArchiveSubagent(run)} />
                     </Popover>
                 )}
             </Show>
@@ -650,69 +894,70 @@ export function AgentList({
 }
 
 /**
- * The header's `⋯`: whether the list shows finished threads and sub-agents, whether the agents that work are listed under a folded chat, and whether chats
- * stand in groups by folder.
+ * A sub-agent's row. A component of its own that the list draws again only when its run, its place, its drop mark or what it can do changes, since a chat that
+ * ran a workflow lists hundreds of them and every change to any run draws the list again (so `onArchive` must be the same function every time). While it or a
+ * sub-agent it started works, the row shows its state; once they are over, its state gives way to Archive on hover, as a chat's row does.
  */
-function FilterMenu() {
-    const ui = useProjectUi();
-    const { showFinishedThreads, expandRunningAgents } = chatListPreferences;
-    const [isOpen, setIsOpen] = useState(false);
-    const shown = [
-        ...(showFinishedThreads ? ['finished'] : []),
-        ...(expandRunningAgents ? ['running'] : []),
-        ...(ui.groupByFolder ? ['folders'] : []),
-    ];
-
+const SubagentItem = memo(function SubagentItem({
+    run,
+    label,
+    depth,
+    drop,
+    canArchive,
+    isMenuOpen,
+    onArchive,
+}: {
+    run: Run;
+    label: string;
+    depth: number;
+    drop: 'before' | 'after' | undefined;
+    canArchive: boolean;
+    /** Its right-click menu is open: the row stays as if hovered, since the pointer is in the menu. */
+    isMenuOpen: boolean;
+    onArchive: (run: Run) => void;
+}) {
     return (
-        <PopoverTrigger isOpen={isOpen} onOpenChange={setIsOpen}>
-            <Button variant="filling" size="sm" iconOnly aria-label="Filters" tooltip="Filters">
-                <More />
-            </Button>
-            <Popover placement="bottom end" spacing="xs" width={240}>
-                <PopoverScroll>
-                    <Menu aria-label="Filters" size="sm">
-                        <MenuSection
-                            aria-label="Show"
-                            selectionMode="multiple"
-                            selectedKeys={shown}
-                            onSelectionChange={keys => {
-                                const on = (key: string) => keys === 'all' || keys.has(key);
-
-                                if (on('finished') !== showFinishedThreads)
-                                    chatListPreferences.setShowFinishedThreads(!showFinishedThreads);
-                                if (on('running') !== expandRunningAgents)
-                                    chatListPreferences.setExpandRunningAgents(!expandRunningAgents);
-                                if (on('folders') !== ui.groupByFolder) ui.setGroupByFolder(!ui.groupByFolder);
-                            }}
+        <GridListItem
+            id={run.id}
+            text={label}
+            icon={<Robot2 />}
+            endAffix={
+                canArchive ? (
+                    // The button is a React child of the row, so its clicks and keys would reach the row through the tree.
+                    <span className={styles.chatActions} {...ownEvents}>
+                        <ChatStatus run={run} className={styles.archiveStatus} />
+                        <Button
+                            className={styles.rowAction}
+                            variant="filling"
+                            color="secondary"
+                            size="xs"
+                            iconOnly
+                            aria-label="Archive"
+                            tooltip="Archive"
+                            preventFocusOnPress
+                            onPress={() => onArchive(run)}
                         >
-                            <MenuItem
-                                id="finished"
-                                textValue="Show finished sub-threads"
-                                endAffix={showFinishedThreads ? <Check /> : undefined}
-                            >
-                                Show finished sub-threads
-                            </MenuItem>
-                            <MenuItem
-                                id="running"
-                                textValue="Expand running agents"
-                                endAffix={expandRunningAgents ? <Check /> : undefined}
-                            >
-                                Expand running agents
-                            </MenuItem>
-                            <MenuItem
-                                id="folders"
-                                textValue="Group chats by folder"
-                                endAffix={ui.groupByFolder ? <Check /> : undefined}
-                            >
-                                Group chats by folder
-                            </MenuItem>
-                        </MenuSection>
-                    </Menu>
-                </PopoverScroll>
-            </Popover>
-        </PopoverTrigger>
+                            <Archive />
+                        </Button>
+                    </span>
+                ) : (
+                    <span className={styles.agentStatus}>
+                        <ChatStatus run={run} />
+                    </span>
+                )
+            }
+            className={cn(styles.agentRow, canArchive && styles.archivable)}
+            style={{ '--depth': depth } as CSSProperties}
+            data-depth={depth}
+            data-drop-position={drop}
+            data-open={isMenuOpen || undefined}
+        >
+            <span className={styles.title} title={label}>
+                {label}
+            </span>
+        </GridListItem>
     );
-}
+});
 
 /** The icon of a row that has lines below it (threads, sub-agents): on hover the chevron that folds them takes its place, in the same room. */
 function Fold({
@@ -759,9 +1004,9 @@ function RowEnd({
     status,
     isOpen,
     onOpenChange,
-    move,
     branchKey,
     showPullRequests,
+    crossWorktree,
 }: {
     chat: Chat;
     actions: ChatActions;
@@ -769,9 +1014,9 @@ function RowEnd({
     status: ReactNode;
     isOpen: boolean;
     onOpenChange: (isOpen: boolean) => void;
-    move?: { onMoveUp?: () => void; onMoveDown?: () => void };
     branchKey?: BranchPullRequestKey;
     showPullRequests: boolean;
+    crossWorktree: boolean;
 }) {
     const close = () => onOpenChange(false);
 
@@ -779,7 +1024,7 @@ function RowEnd({
         // The buttons and the popover are React children of the row, so their clicks and keys would reach the row through the tree.
         <span className={styles.chatActions} {...ownEvents}>
             {status}
-            <BranchPullRequestBadge branchKey={branchKey} visible={showPullRequests} />
+            <BranchPullRequestBadge branchKey={branchKey} visible={showPullRequests} crossWorktree={crossWorktree} />
             {!busy && (
                 <Button
                     className={styles.rowAction}
@@ -814,7 +1059,6 @@ function RowEnd({
                         onRename={() => actions.rename(chat)}
                         onArchive={() => actions.archive(chat)}
                         onDelete={() => actions.remove(chat)}
-                        {...move}
                     />
                 </Popover>
             </PopoverTrigger>
@@ -846,13 +1090,21 @@ function chatBranchKey(
 const BranchPullRequestBadge = observer(function BranchPullRequestBadge({
     branchKey,
     visible,
+    crossWorktree,
 }: {
     branchKey?: BranchPullRequestKey;
     visible: boolean;
+    crossWorktree: boolean;
 }) {
     const fact = useBranchPullRequests(branchKey);
     const pullRequests = fact?.visiblePullRequests ?? [];
-    if (!visible || pullRequests.length === 0) return null;
+    if (!visible) return null;
+    if (pullRequests.length === 0)
+        return crossWorktree ? (
+            <span className={styles.pullRequests} role="img" aria-label="Different worktree" title="Different worktree">
+                <Split aria-hidden="true" />
+            </span>
+        ) : null;
 
     const state = pullRequests.some(pr => pr.state === 'open')
         ? 'open'

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createFixtureData, FIXTURE_EMPTY_PROJECT_ID, FIXTURE_PROJECT_ID } from '../daemon/fixtureData';
 import { FixtureTransport } from '../daemon/fixtureTransport';
 import { overrideTransport } from '../daemon/testing';
+import { resolveSelection, visibleChats } from '../features/agents/agentTree';
 import { HISTORY_LIMIT } from './NavHistory';
 import { RootStore } from './RootStore';
 
@@ -60,6 +61,64 @@ afterEach(() => {
     vi.useRealTimers();
 });
 
+describe('recent chats', () => {
+    it('switches between the last two chats, including after choosing a third', () => {
+        expect(root.history.canSwitchChat).toBe(false);
+        ui().openChat('c-1');
+        ui().openChat('c-2');
+        root.history.switchChat();
+        expect(ui().chatId).toBe('c-1');
+        root.history.switchChat();
+        expect(ui().chatId).toBe('c-2');
+        ui().openChat('c-3');
+        root.history.switchChat();
+        expect(ui().chatId).toBe('c-2');
+    });
+
+    it('remembers the chat shown before any explicit selection', () => {
+        const state = root.selectedProject!;
+        const list = visibleChats([...state.chats.values()], ui().chatOrder);
+        const initial = resolveSelection(state.chats, list, state.runs, ui().chatId, ui().runId, ui().draft).chat!;
+        const next = list.find(chat => chat.id !== initial.id)!;
+
+        ui().openChat(next.id);
+        root.history.switchChat();
+
+        expect(ui().chatId).toBe(initial.id);
+    });
+
+    it('does not offer a chat that has been archived', () => {
+        ui().openChat('c-1');
+        ui().openChat('c-2');
+        runInAction(() => {
+            const chat = root.selectedProject!.chats.get('c-1')!;
+            root.selectedProject!.chats.set(chat.id, { ...chat, archivedAt: Date.now() });
+        });
+
+        expect(root.history.canSwitchChat).toBe(false);
+    });
+
+    it('does not offer a chat removed from the project', () => {
+        ui().openChat('c-1');
+        ui().openChat('c-2');
+        runInAction(() => root.selectedProject!.chats.delete('c-1'));
+
+        expect(root.history.canSwitchChat).toBe(false);
+        root.history.switchChat();
+        expect(ui().chatId).toBe('c-2');
+    });
+
+    it('keeps recent chats separate for each project', () => {
+        ui().openChat('c-1');
+        ui().openChat('c-2');
+        root.selectProject(FIXTURE_EMPTY_PROJECT_ID);
+        expect(root.history.canSwitchChat).toBe(false);
+        root.selectProject(FIXTURE_PROJECT_ID);
+        root.history.switchChat();
+        expect(ui().chatId).toBe('c-1');
+    });
+});
+
 describe('NavHistory recording', () => {
     it('starts with the place the first project opens on, so there is nowhere to go yet', () => {
         expect(root.selectedProjectId).toBe(FIXTURE_PROJECT_ID);
@@ -106,6 +165,35 @@ describe('NavHistory recording', () => {
         expect(place()).toBe('p-car/@new-chat');
         root.history.back();
         expect(place()).toBe('p-car/c-1');
+    });
+
+    it('returns to a draft even if the previously selected chat was deleted', () => {
+        ui().openChat('c-1');
+        ui().openDraft();
+        const draftId = ui().draftId;
+        ui().openChat('c-2');
+        runInAction(() => root.selectedProject!.chats.delete('c-1'));
+        root.history.back();
+        expect([ui().draft, ui().draftId]).toEqual([true, draftId]);
+    });
+
+    it('skips a draft removed after leaving it', () => {
+        ui().openChat('c-1');
+        ui().openDraft();
+        const draftId = ui().draftId!;
+        ui().openChat('c-2');
+        ui().newChatDrafts.remove(draftId);
+        root.history.back();
+        expect([ui().draft, ui().chatId]).toEqual([false, 'c-1']);
+    });
+
+    it('restores the current agent of a draft instead of its old history value', () => {
+        ui().openDraft();
+        const id = ui().draftId!;
+        ui().openChat('c-1');
+        ui().newChatDrafts.updateEngine(id, 'codex');
+        root.history.back();
+        expect(ui().draftEngine).toBe('codex');
     });
 
     it('records the new-chat row of each folder as a place of its own, and brings its folder back', () => {

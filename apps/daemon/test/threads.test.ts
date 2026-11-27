@@ -2,6 +2,7 @@ import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { BranchPrefixPreference } from '../../desktop/src/renderer/features/chats/branchPrefix';
 import { getChat } from '../src/db/chats';
 import { listItems } from '../src/db/items';
 import { getProject } from '../src/db/projects';
@@ -2162,6 +2163,75 @@ describe('worktree_name', () => {
 describe('thread_spawn with a worktree', () => {
     /** The part of a chat's id its worktree and branch are named after. */
     const id8 = (chatId: string) => chatId.slice(-8);
+
+    test('keeps the prefix after a daemon restart', async () => {
+        const { h, engine, project, on } = await setup();
+        on('After restart', held(latch()));
+        h.ok('settings.setBranchPrefix', { prefix: 'team/alice' });
+        await h.stop();
+        const restarted = await restartHarness(h, { engines: scriptEngines(engine) });
+        harnesses.push(restarted);
+        expect((await (await restarted.fetch('/v1/snapshot')).json()).branchPrefix).toBe('team/alice');
+        const { chat } = restarted.ok('chat.create', { projectId: project.id });
+        restarted.ok('chat.send', { chatId: chat.id, text: 'After restart' });
+        await waitFor(() => {
+            const current = getChat(restarted.store.db, chat.id);
+            return current?.orchestratorRunId && restarted.run(current.orchestratorRunId).status === 'running';
+        }, 'parent to start');
+        const current = getChat(restarted.store.db, chat.id)!;
+        const run = restarted.run(current.orchestratorRunId!);
+        const thread = restarted.daemon.services.threads.spawn(run, {
+            prompt: 'After restart thread',
+            worktree: true,
+            branch: 'persisted',
+        });
+        await waitFor(() => existsSync(thread.worktree!.path), 'worktree to be made');
+        expect(git(thread.worktree!.path, 'branch', '--show-current')).toBe('team/alice/persisted');
+    });
+
+    test('uses the configured prefix for project and nested threads, collisions and later changes', async () => {
+        const { h, project, root, spawn, exec } = await setup();
+        const parent = await root('Plan prefix test', latch());
+        const saved = new Map([['clowdy:branch-prefix', '"team/alice"']]);
+        const preference = new BranchPrefixPreference({
+            getItem: key => saved.get(key) ?? null,
+            setItem: (key, value) => {
+                saved.set(key, value);
+            },
+        });
+        await preference.connect(undefined, async prefix => {
+            const response = await h.fetch('/v1/commands', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ type: 'settings.setBranchPrefix', prefix, requestId: crypto.randomUUID() }),
+            });
+            return ((await response.json()) as { ok: boolean }).ok;
+        });
+        git(project.path, 'branch', 'team/alice/inspect-cache');
+        const first = await spawn(parent.run, 'Inspect cache', held(latch()), {
+            worktree: true,
+            title: 'Inspect cache',
+        });
+        expect(first.worktree?.branch).toBe(`team/alice/inspect-cache-${id8(first.threadId).slice(-4).toLowerCase()}`);
+        expect(git(first.worktree!.path, 'branch', '--show-current')).toBe(first.worktree!.branch);
+        const nested = await spawn(first.run(), 'Nested work', held(latch()), { worktree: true, branch: 'nested' });
+        expect(nested.worktree).toMatchObject({ branch: 'team/alice/nested', base: first.worktree!.branch });
+        expect(git(nested.worktree!.path, 'branch', '--show-current')).toBe('team/alice/nested');
+        await expect(
+            exec(parent.run, 'thread_spawn', { prompt: 'Collision', worktree: true, branch: 'nested' })
+        ).rejects.toMatchObject({ code: 'invalid' });
+        preference.setValue('');
+        await waitFor(
+            () =>
+                h.store.db
+                    .query<{ value: string }, []>("SELECT value FROM app_settings WHERE key = 'branchPrefix'")
+                    .get()?.value === 'clowdy',
+            'prefix delivery'
+        );
+        const next = await spawn(parent.run, 'Default work', held(latch()), { worktree: true, branch: 'default-work' });
+        expect(git(next.worktree!.path, 'branch', '--show-current')).toBe('clowdy/default-work');
+        expect(git(first.worktree!.path, 'branch', '--show-current')).toBe(first.worktree!.branch);
+    });
 
     test("gives the thread a worktree of its own on a branch of its own from the default branch, which its first turn makes and its agent works in, while one without it works in its parent's place", async () => {
         const { h, project, store, chatOf, runOf, bodies, turnOf, root, spawn } = await setup();

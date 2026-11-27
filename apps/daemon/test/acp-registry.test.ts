@@ -203,6 +203,7 @@ describe('AgentRegistry', () => {
             version: '2026.09.01',
             launch: 'cursor-agent acp',
             login: 'cursor-agent login',
+            settings: [expect.objectContaining({ id: 'promptSuggestions', value: true })],
             permissions: GENERIC_PERMISSIONS,
         });
         expect(await byId(reg, 'opencode')).toMatchObject({
@@ -240,6 +241,7 @@ describe('AgentRegistry', () => {
                 version: '1.0.0',
                 launch: 'plain-agent --acp',
                 login: 'plain-agent login',
+                settings: [expect.objectContaining({ id: 'promptSuggestions', value: true })],
                 permissions: GENERIC_PERMISSIONS,
             },
         ]);
@@ -458,6 +460,7 @@ describe('AgentRegistry', () => {
                 artifacts: false,
                 chatTitle: true,
                 commitMessage: false,
+                promptSuggestions: true,
             });
             expect((await byId(reg, 'claude'))?.settings?.[0]).toMatchObject({
                 id: 'memory',
@@ -481,6 +484,17 @@ describe('AgentRegistry', () => {
                 claudeCode: {
                     options: { disallowedTools: ['AskUserQuestion', 'ExitPlanMode'], allowedTools: ['Bash(clowdy:*)'] },
                 },
+            });
+        });
+
+        test('disabling Claude Code prompt predictions prevents native generation on the next session', async () => {
+            program('claude', '2.1.325 (Claude Code)');
+            const reg = registry();
+            reg.update('claude', { settings: { promptSuggestions: false } });
+            const agent = await start(reg);
+            expect({ enabled: agent.promptSuggestions, env: agent.env.CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION }).toEqual({
+                enabled: false,
+                env: 'false',
             });
         });
 
@@ -509,6 +523,7 @@ describe('AgentRegistry', () => {
                 artifacts: true,
                 chatTitle: true,
                 commitMessage: false,
+                promptSuggestions: true,
             });
 
             const agent = await start(reg);
@@ -541,6 +556,7 @@ describe('AgentRegistry', () => {
                 artifacts: true,
                 chatTitle: true,
                 commitMessage: false,
+                promptSuggestions: true,
             });
         });
 
@@ -564,6 +580,7 @@ describe('AgentRegistry', () => {
                 subagents: true,
                 chatTitle: true,
                 commitMessage: false,
+                promptSuggestions: true,
             });
 
             // Memory is stated both ways, so a feature the person turned on in their own Codex does not reach a run that has it off.
@@ -580,6 +597,7 @@ describe('AgentRegistry', () => {
                 subagents: false,
                 chatTitle: true,
                 commitMessage: false,
+                promptSuggestions: true,
             });
             expect(JSON.parse((await start(reg, 'codex')).env.CODEX_CONFIG ?? 'null')).toEqual({
                 'features.memories': true,
@@ -674,7 +692,9 @@ describe('AgentRegistry', () => {
             expect((await byId(registry(dir), 'claude'))?.overrides).toEqual({
                 env: { ENABLE_CLAUDEAI_MCP_SERVERS: 'true' },
             });
-            expect((await byId(reg, 'cursor'))?.settings).toBeUndefined();
+            expect((await byId(reg, 'cursor'))?.settings).toEqual([
+                expect.objectContaining({ id: 'promptSuggestions', value: true }),
+            ]);
         });
     });
 

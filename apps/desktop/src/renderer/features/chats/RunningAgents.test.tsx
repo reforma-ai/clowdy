@@ -111,8 +111,8 @@ describe('RunningAgents', () => {
                 [...row.querySelectorAll('button')].at(1)?.textContent,
             ])
         ).toEqual([
-            [expect.stringMatching(/^General agent.*5 calls$/), 'Stop'],
-            [expect.stringMatching(/^Explore agent.*1 call$/), 'Stop'],
+            [expect.stringMatching(/^Update the booking form.*5 calls$/), 'Stop'],
+            [expect.stringMatching(/^Find where the price is computed.*1 call$/), 'Stop'],
         ]);
     });
 
@@ -191,8 +191,8 @@ describe('RunningAgents, the header', () => {
 
         expect(lines().map(line => line.textContent)).toEqual([
             'Agents2 running',
-            expect.stringContaining('General agent'),
-            expect.stringContaining('Explore agent'),
+            expect.stringContaining('Update the booking form'),
+            expect.stringContaining('Find where the price is computed'),
         ]);
         expect(lines()[0]).toBe(header());
     });
@@ -203,7 +203,7 @@ describe('RunningAgents, the header', () => {
 
         expect(lines().map(line => line.textContent)).toEqual([
             'Agents1 running',
-            expect.stringContaining('Explore agent'),
+            expect.stringContaining('Find where the price is computed'),
         ]);
         expect(buttons(header())).toEqual([toggle().textContent]);
         expect(buttons(rows()[0]).slice(1)).toEqual(['Stop']);
@@ -215,8 +215,8 @@ describe('RunningAgents, the header', () => {
 
         expect(lines().map(line => line.textContent)).toEqual([
             'Agents2 running',
-            expect.stringContaining('General agent'),
-            expect.stringContaining('Explore agent'),
+            expect.stringContaining('Update the booking form'),
+            expect.stringContaining('Find where the price is computed'),
         ]);
         expect(buttons(header())).toEqual([toggle().textContent]);
     });
@@ -252,7 +252,7 @@ describe('RunningAgents, the header', () => {
         expect(lines().map(line => line.textContent)).toEqual([
             'Command: bun run testStop',
             'Command: bun run typecheck',
-            'Background task runningStop run',
+            "Some work can't be stopped separatelyStop run",
         ]);
     });
 });
@@ -361,6 +361,42 @@ describe('RunningAgents, folding the rows', () => {
         expect(rows()).toHaveLength(2);
     });
 
+    it('keeps background work visible when agents are folded, including tasks that cannot stop alone', async () => {
+        put({
+            ...runs().get('r-orch-1')!,
+            background: [{ id: 'bg-task', kind: 'task', title: 'Monitor: Build' }],
+        });
+        ui().toggleAgentsFolded('c-1');
+        await render('c-1');
+
+        const disclosure = [...container.querySelectorAll<HTMLButtonElement>('button[aria-expanded]')].find(
+            button => button.textContent === 'Background work1 running'
+        )!;
+        expect(disclosure.getAttribute('aria-expanded')).toBe('false');
+        await act(async () => disclosure.click());
+        expect(rows().map(row => row.textContent)).toEqual([
+            'Monitor: Build',
+            "Some work can't be stopped separatelyStop run",
+        ]);
+        await act(async () => disclosure.click());
+        expect(rows()).toEqual([]);
+    });
+
+    it('groups a background sub-agent without an agent row', async () => {
+        put({
+            ...runs().get('r-orch-5')!,
+            background: [{ id: 'bg-child', kind: 'subagent', title: 'Explore' }],
+        });
+        await render('c-5');
+        const disclosure = container.querySelector<HTMLButtonElement>('button[aria-expanded]')!;
+        expect(disclosure.textContent).toBe('Background work1 running');
+        await act(async () => disclosure.click());
+        expect(rows().map(row => row.textContent)).toEqual([
+            'Sub-agent: Explore',
+            "Some work can't be stopped separatelyStop run",
+        ]);
+    });
+
     it('keeps the commands section independent of the agents fold', async () => {
         put({
             ...runs().get('r-orch-1')!,
@@ -375,7 +411,7 @@ describe('RunningAgents, folding the rows', () => {
         expect(rows().map(row => row.textContent)).toEqual([
             'Command: bun run testStop',
             'Command: bun run typecheck',
-            'Background task runningStop run',
+            "Some work can't be stopped separatelyStop run",
         ]);
     });
 });
@@ -386,9 +422,9 @@ describe('RunningAgents, a sub-agent of a session that waits', () => {
         await draw('c-5');
 
         expect(rows().map(row => row.textContent)).toEqual([
-            'Explore agentStop',
+            'Find where the price is computedStop',
             'Command: bun run test',
-            'Background task runningStop run',
+            "Some work can't be stopped separatelyStop run",
         ]);
         // One agent: its own Stop is enough, so there is no Stop all.
         expect(toggle().textContent).toBe('Agents1 running');
@@ -398,7 +434,7 @@ describe('RunningAgents, a sub-agent of a session that waits', () => {
         waitWithSubagent([{ id: 'tc-agent-5', kind: 'subagent', title: 'Explore' }]);
         await draw('c-5');
 
-        expect(rows().map(row => buttons(row))).toEqual([['Explore agent', 'Stop']]);
+        expect(rows().map(row => buttons(row))).toEqual([['Find where the price is computed', 'Stop']]);
 
         const command = vi.spyOn(store, 'command');
 
@@ -424,7 +460,8 @@ describe('RunningAgents, a sub-agent of a session that waits', () => {
 
         expect(rows().map(row => row.textContent)).toEqual([
             'Command: bun run test',
-            '2 background tasks runningStop run',
+            'Sub-agent: Explore',
+            "Some work can't be stopped separatelyStop run",
         ]);
         expect(header()).toBeUndefined();
     });
@@ -434,14 +471,14 @@ describe('RunningAgents, a sub-agent of a session that waits', () => {
         put({ ...runs().get('r-orch-5')!, status: 'running' });
         await draw('c-5');
 
-        expect(rows().map(row => buttons(row))).toEqual([['Explore agent', 'Stop']]);
+        expect(rows().map(row => buttons(row))).toEqual([['Find where the price is computed', 'Stop']]);
     });
 
     it('has no Stop on a sub-agent whose session cannot end it alone, however the orchestrator waits', async () => {
         waitWithSubagent([{ id: 'tc-agent-5', kind: 'subagent', title: 'Explore' }], false);
         await draw('c-5');
 
-        expect(rows().map(row => buttons(row))).toEqual([['Explore agent']]);
+        expect(rows().map(row => buttons(row))).toEqual([['Find where the price is computed']]);
         expect(buttons(header())).toEqual([toggle().textContent]);
     });
 
@@ -471,7 +508,7 @@ describe('RunningAgents, the background row', () => {
         expect(rows().map(row => row.textContent)).toEqual([
             'Command: bun run test',
             'Command: bun run typecheck',
-            '2 background tasks runningStop run',
+            "Some work can't be stopped separatelyStop run",
         ]);
     });
 
@@ -481,7 +518,7 @@ describe('RunningAgents, the background row', () => {
         expect(rows().map(row => row.textContent)).toEqual([
             'Command: bun run testStop',
             'Command: bun run typecheck',
-            'Background task runningStop run',
+            "Some work can't be stopped separatelyStop run",
         ]);
     });
 
@@ -491,7 +528,7 @@ describe('RunningAgents, the background row', () => {
 
         expect(rows().map(row => row.textContent)).toEqual([
             'Command: bun run test',
-            'Background task runningStop run',
+            "Some work can't be stopped separatelyStop run",
         ]);
     });
 
@@ -515,10 +552,10 @@ describe('RunningAgents, the background row', () => {
         await draw();
 
         expect(rows().map(row => row.textContent)).toEqual([
-            expect.stringContaining('General agent'),
-            expect.stringContaining('Explore agent'),
+            expect.stringContaining('Update the booking form'),
+            expect.stringContaining('Find where the price is computed'),
             'Command: bun run test',
-            'Background task runningStop run',
+            "Some work can't be stopped separatelyStop run",
         ]);
     });
 
@@ -530,7 +567,7 @@ describe('RunningAgents, the background row', () => {
         expect(rows().map(row => row.textContent)).toEqual([
             'Command: bun run test',
             'Command: bun run typecheck',
-            '2 background tasks runningStop run',
+            "Some work can't be stopped separatelyStop run",
         ]);
     });
 
@@ -581,6 +618,16 @@ describe('RunningAgents, threads', () => {
             ],
         ]);
         expect(buttons(header())).toEqual([toggle().textContent]);
+    });
+
+    it('marks each thread with the provider of its own chat, as the chat list does, not with the mark of a worktree', async () => {
+        await draw('c-6');
+
+        // c-6a runs on Claude Code, c-6e on Codex.
+        expect(rows().map(row => row.querySelector('[data-provider]')?.getAttribute('data-provider'))).toEqual([
+            'claude',
+            'codex',
+        ]);
     });
 
     it('times the current period of work instead of the age of a resumed thread, including hours', async () => {
@@ -760,7 +807,7 @@ describe('RunningAgents, threads', () => {
                             ?.replace(/^Open /, '')
                             .split('.')[0] ?? row.textContent?.split(', ')[0]
                 )
-        ).toEqual(['General agent', 'Explore agent', 'Thread 1', 'Thread 2', 'Thread 3']);
+        ).toEqual(['Update the booking form', 'Find where the price is computed', 'Thread 1', 'Thread 2', 'Thread 3']);
         expect(buttons(rows().at(-1)).at(-1)).toBe('Stop');
     });
 });
@@ -778,7 +825,7 @@ describe('RunningAgents, a command that can be stopped alone', () => {
         put({ ...runs().get('r-orch-5')!, background: [command(1), command(2)] });
         await render('c-5');
         const disclosure = [...container.querySelectorAll<HTMLButtonElement>('button[aria-expanded]')].find(
-            button => button.textContent === 'Background commands2 running'
+            button => button.textContent === 'Background work2 running'
         )!;
         expect(disclosure.getAttribute('aria-expanded')).toBe('false');
         expect(container.textContent).not.toContain('Command: command 1');
@@ -795,15 +842,15 @@ describe('RunningAgents, a command that can be stopped alone', () => {
         });
         await render('c-5');
         const disclosure = [...container.querySelectorAll<HTMLButtonElement>('button[aria-expanded]')].find(
-            button => button.textContent === 'Background commands2 running'
+            button => button.textContent === 'Background work2 running'
         )!;
         expect(disclosure.getAttribute('aria-expanded')).toBe('false');
-        expect(container.textContent).not.toContain('Background task running');
+        expect(container.textContent).not.toContain("Some work can't be stopped separately");
         await act(async () => disclosure.click());
         expect(rows().map(row => row.textContent)).toEqual([
             'Command: command 1Stop',
             'Command: command 2',
-            'Background task runningStop run',
+            "Some work can't be stopped separatelyStop run",
         ]);
         expect(rows()[0].querySelector('button')?.getAttribute('aria-label')).toBe('Stop command: command 1');
         expect(rows()[1].querySelector('button')).toBeNull();
@@ -818,7 +865,7 @@ describe('RunningAgents, a command that can be stopped alone', () => {
         expect(rows().map(row => row.textContent)).toEqual([
             'Command: bun run testStop',
             'Command: bun run typecheck',
-            'Background task runningStop run',
+            "Some work can't be stopped separatelyStop run",
         ]);
         expect(rows()[0].querySelector('svg')).not.toBeNull();
 
@@ -839,7 +886,7 @@ describe('RunningAgents, a command that can be stopped alone', () => {
         await draw('c-5');
         expect(rows().map(row => row.textContent)).toEqual([
             'Command: bun run typecheck',
-            'Background task runningStop run',
+            "Some work can't be stopped separatelyStop run",
         ]);
         expect(runs().get('r-orch-5')?.status).toBe('waiting_background');
     });
@@ -865,7 +912,7 @@ describe('RunningAgents, a command that can be stopped alone', () => {
                         ?.replace(/^Open /, '')
                         .split('.')[0] ?? row.textContent?.split(', ')[0]
             )
-        ).toEqual(['General agent', 'Explore agent', 'Stop command: command 1']);
+        ).toEqual(['Update the booking form', 'Find where the price is computed', 'Stop command: command 1']);
         expect(buttons(header())).toEqual([toggle().textContent]);
     });
 
@@ -882,7 +929,7 @@ describe('RunningAgents, a command that can be stopped alone', () => {
         expect(rows().map(row => row.textContent)).toEqual([
             ...Array.from({ length: 7 }, (_, index) => `Command: command ${index + 1}Stop`),
             'Command: plain',
-            'Background task runningStop run',
+            "Some work can't be stopped separatelyStop run",
         ]);
     });
 

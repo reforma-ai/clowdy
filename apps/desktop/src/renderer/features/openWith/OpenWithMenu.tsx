@@ -30,6 +30,8 @@ export interface OpenWithMenuProps {
     target: OpenTarget;
     /** The folder is gone from the disk: what needs it is off, and the menu says so. */
     missing?: boolean;
+    /** A worktree is still being prepared and cannot yet be opened. */
+    notReady?: boolean;
     /** For a folder that is gone: Locate… and Remove from project, under the note (`useFolderRepair`). */
     repair?: FolderRepair;
     git: FolderGit | undefined;
@@ -137,6 +139,7 @@ export function ExtraMenuSection({ extra }: { extra: readonly OpenMenuExtra[] })
 export function OpenWithMenu({
     target,
     missing = false,
+    notReady = false,
     repair,
     git,
     onNewChat,
@@ -157,7 +160,7 @@ export function OpenWithMenu({
         target,
         programs: chosenPrograms(apps),
         git,
-        missing,
+        missing: missing || notReady,
         effects: openEffects,
         inFiles: isHere
             ? () =>
@@ -183,9 +186,13 @@ export function OpenWithMenu({
         <PopoverScroll>
             <Menu aria-label={label} size="sm" onAction={key => run(String(key))}>
                 <MenuSection aria-label="Open">
-                    {missing && (
+                    {(missing || notReady) && (
                         <MenuHeader>
-                            {target.workspace ? 'This worktree no longer exists' : 'This folder no longer exists'}
+                            {notReady
+                                ? 'Worktree not prepared yet'
+                                : target.workspace
+                                  ? 'This worktree no longer exists'
+                                  : 'This folder no longer exists'}
                         </MenuHeader>
                     )}
                     {repair && (
@@ -203,7 +210,7 @@ export function OpenWithMenu({
                             id="new-chat"
                             icon={<NewChat aria-hidden="true" />}
                             textValue="New chat"
-                            isDisabled={missing || !isPlaceReady(place)}
+                            isDisabled={missing || notReady || !isPlaceReady(place)}
                         >
                             New chat
                         </MenuItem>

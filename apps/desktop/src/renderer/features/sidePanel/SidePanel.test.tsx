@@ -722,12 +722,8 @@ describe('the Changes item of the rail', () => {
         return markup;
     };
     const iconOf = () => tab('Changes')!.querySelector('svg')!.innerHTML;
-    const dot = () => tab('Changes')!.querySelector('[data-tone]');
-    /** The count badge, which is hidden from a reader of the button (its name says it). */
-    const pill = () => tab('Changes')!.querySelector('[aria-hidden="true"]:not(svg):not([data-tone])');
-    const count = () => pill()?.textContent;
-    /** The arrow of the count badge, as markup to set against an icon's. */
-    const arrowOf = () => pill()?.querySelector('svg')?.innerHTML;
+    const dot = () => tab('Changes')!.querySelector('[class*="dot"]');
+    const nameOf = () => tab('Changes')!.getAttribute('aria-label');
     /** What the tooltip of the Changes tab says once the keyboard has brought focus to it. */
     async function tooltipText() {
         await act(async () => {
@@ -739,20 +735,29 @@ describe('the Changes item of the rail', () => {
         return document.querySelector('[role="tooltip"]')?.textContent ?? '';
     }
 
-    /** A window with the chat that works in a worktree open: three uncommitted files, two commits that the base does not have, and the pull request the script says. */
+    /**
+     * A window with the chat that works in a worktree open: three uncommitted files (none with `clean`), two commits that the base does not have, and the pull request the script says.
+     * `remote` is where the branch stands against its upstream.
+     */
     async function inWorktree(
         script: 'open' | 'none' | 'draft' | 'merged',
-        tweak?: (data: FixtureData) => void,
-        remote?: 'ahead' | 'behind' | 'level' | 'diverged'
+        {
+            clean,
+            remote,
+            tweak,
+        }: { clean?: true; remote?: 'ahead' | 'behind'; tweak?: (data: FixtureData) => void } = {}
     ) {
         const data = withFixtureWorkspace(createFixtureData());
 
         data.pullRequests['/Users/dev/car-rental'] = { checkout: 'none', worktree: script };
         tweak?.(data);
         store.dispose();
-        store = new RootStore(new FixtureTransport({ data, ...(remote && { gitWrites: { remote } }) }), {
-            storage: memory(),
-        });
+        store = new RootStore(
+            new FixtureTransport({ data, gitWrites: { ...(clean && { clean }), ...(remote && { remote }) } }),
+            {
+                storage: memory(),
+            }
+        );
         await store.load();
         store.selectProject(FIXTURE_PROJECT_ID);
         ui().openChat(FIXTURE_WORKSPACE_CHAT_ID);
@@ -760,21 +765,33 @@ describe('the Changes item of the rail', () => {
         await settle();
     }
 
+    /** A merged pull request that only the history knows (the script says none), which Source Control lists unless the branch has moved past it. */
+    const history = (movedPast?: true) => (data: FixtureData) => {
+        data.branchPullRequests = {
+            '/Users/dev/car-rental': {
+                'clowdy/ab12cd34': [
+                    {
+                        number: 9,
+                        state: 'merged',
+                        head: 'clowdy/ab12cd34',
+                        base: 'main',
+                        title: 'Earlier work',
+                        url: 'https://github.com/acme/car-rental/pull/9',
+                        updatedAt: 9,
+                        ...(movedPast && { movedPast }),
+                    },
+                ],
+            },
+        };
+    };
+
     it('is the commit icon with no dot while the place has nothing to land and nothing uncommitted', async () => {
         await draw(<Frame />);
         await settle();
 
         expect(iconOf()).toBe(markupOf(Commit));
         expect(dot()).toBeNull();
-        expect(count()).toBeUndefined();
-    });
-
-    it('draws a dot that counts the uncommitted files, and the icon of a pull request that is open', async () => {
-        await inWorktree('draft');
-
-        expect(iconOf()).toBe(markupOf(Merge));
-        expect(dot()?.getAttribute('data-tone')).toBe('warning');
-        expect(tab('Changes')!.getAttribute('aria-label')).toBe('Changes, 3 uncommitted files');
+        expect(nameOf()).toBeNull();
     });
 
     it('draws the merge icon while the branch has a pull request to show, as Source Control lists it: open, a draft, or a merged one', async () => {
@@ -786,113 +803,89 @@ describe('the Changes item of the rail', () => {
     });
 
     it('draws the commit icon in every other case: no pull request whether commits wait or not, and a merged one the branch has moved past', async () => {
-        const merged = (movedPast?: true) => ({
-            number: 9,
-            state: 'merged' as const,
-            head: 'clowdy/ab12cd34',
-            base: 'main',
-            title: 'Earlier work',
-            url: 'https://github.com/acme/car-rental/pull/9',
-            updatedAt: 9,
-            ...(movedPast && { movedPast }),
-        });
-        const history =
-            (...rows: ReturnType<typeof merged>[]) =>
-            (data: FixtureData) => {
-                data.branchPullRequests = { '/Users/dev/car-rental': { 'clowdy/ab12cd34': rows } };
-            };
-
         await inWorktree('none');
 
         expect(iconOf()).toBe(markupOf(Commit));
 
         // Only the history knows the pull request here, which Source Control lists as long as the branch has not moved past it.
-        await inWorktree('none', history(merged()));
+        await inWorktree('none', { tweak: history() });
 
         expect(iconOf()).toBe(markupOf(Merge));
 
-        await inWorktree('none', history(merged(true)));
+        await inWorktree('none', { tweak: history(true) });
 
         expect(iconOf()).toBe(markupOf(Commit));
     });
 
-    it('keeps its badge while the Changes tab is on show, and while the panel is shut', async () => {
+    it('draws a dot for files that are uncommitted, whatever the pull request says', async () => {
+        for (const script of ['open', 'draft', 'merged'] as const) {
+            await inWorktree(script);
+
+            expect(dot()).not.toBeNull();
+            expect(nameOf()).toBe('Changes, 3 uncommitted files');
+        }
+
+        // With no pull request the commits are unmerged too, and the name says both.
+        await inWorktree('none');
+
+        expect(dot()).not.toBeNull();
+        expect(nameOf()).toBe('Changes, 3 uncommitted files, 2 commits not merged');
+    });
+
+    it('draws a dot for commits that are not merged while no pull request holds them', async () => {
+        await inWorktree('none', { clean: true });
+
+        expect(dot()).not.toBeNull();
+        expect(nameOf()).toBe('Changes, 2 commits not merged');
+
+        // A merged pull request that the branch has moved past holds nothing of what is on it now.
+        await inWorktree('none', { clean: true, tweak: history(true) });
+
+        expect(dot()).not.toBeNull();
+    });
+
+    it('draws no dot for commits that a pull request holds, one that is open, a draft, or a merged one', async () => {
+        for (const script of ['open', 'draft', 'merged'] as const) {
+            await inWorktree(script, { clean: true });
+
+            expect(dot()).toBeNull();
+            expect(nameOf()).toBeNull();
+        }
+
+        await inWorktree('none', { clean: true, tweak: history() });
+
+        expect(dot()).toBeNull();
+    });
+
+    it('draws the dot only while the Changes tab is not the one on show: on another tab, and with the panel shut', async () => {
         await inWorktree('draft');
+
+        expect(dot()).not.toBeNull();
 
         await press(tab('Changes')!);
         await settle();
 
         expect(tab('Changes')?.getAttribute('aria-current')).toBe('page');
-        expect(dot()).not.toBeNull();
-        expect(tab('Changes')!.getAttribute('aria-label')).toBe('Changes, 3 uncommitted files');
+        expect(dot()).toBeNull();
+        expect(nameOf()).toBeNull();
         expect(iconOf()).toBe(markupOf(Merge));
 
+        await press(tab('Files')!);
+        await settle();
+
+        expect(dot()).not.toBeNull();
+
+        await press(tab('Changes')!);
+        await settle();
         await press(tab('Changes')!);
         await settle();
 
         expect(ui().sidePanelOpen).toBe(false);
         expect(dot()).not.toBeNull();
-
-        // The count is no different.
-        await inWorktree('draft', undefined, 'ahead');
-        await press(tab('Changes')!);
-        await settle();
-
-        expect(tab('Changes')?.getAttribute('aria-current')).toBe('page');
-        expect(count()).toBe('2');
-
-        await press(tab('Changes')!);
-        await settle();
-
-        expect(ui().sidePanelOpen).toBe(false);
-        expect(count()).toBe('2');
     });
 
-    it('draws the count of the sync button, with the arrow of its way, in place of the dot', async () => {
-        await inWorktree('draft', undefined, 'ahead');
-
-        expect(markupOf(ArrowUp)).not.toBe(markupOf(ArrowDown));
-        expect(count()).toBe('2');
-        expect(arrowOf()).toBe(markupOf(ArrowUp));
-        expect(dot()).toBeNull();
-        expect(tab('Changes')!.getAttribute('aria-label')).toBe('Changes, 2 commits to push');
-
-        await inWorktree('draft', undefined, 'behind');
-
-        expect(count()).toBe('2');
-        expect(arrowOf()).toBe(markupOf(ArrowDown));
-        expect(tab('Changes')!.getAttribute('aria-label')).toBe('Changes, 2 commits to pull');
-
-        // Level with its upstream, the base has a commit that the branch lacks: the button offers Update from the base, and so does the count.
-        await inWorktree('draft', undefined, 'level');
-
-        expect(count()).toBe('1');
-        expect(arrowOf()).toBe(markupOf(ArrowDown));
-        expect(tab('Changes')!.getAttribute('aria-label')).toMatch(/^Changes, 1 commit to merge from /);
-    });
-
-    it('counts the commits to push when the branch has diverged, and names both ways in its name', async () => {
-        await inWorktree('draft', undefined, 'diverged');
-
-        expect(count()).toBe('1');
-        expect(arrowOf()).toBe(markupOf(ArrowUp));
-        expect(tab('Changes')!.getAttribute('aria-label')).toBe('Changes, 2 commits to pull and 1 commit to push');
-    });
-
-    it('draws the small dot only while nothing counts', async () => {
-        await inWorktree('draft');
-
-        expect(dot()).not.toBeNull();
-        expect(count()).toBeUndefined();
-
-        await inWorktree('draft', undefined, 'ahead');
-
-        expect(dot()).toBeNull();
-        expect(count()).toBe('2');
-    });
-
-    it('says in its tooltip what the icon and the badge say, under its label', async () => {
-        await inWorktree('draft', undefined, 'ahead');
+    it('says in its tooltip what is behind the icon and the dot, under its label', async () => {
+        await inWorktree('draft', { remote: 'ahead' });
 
         const tip = await tooltipText();
 
@@ -900,15 +893,17 @@ describe('the Changes item of the rail', () => {
         expect(tip).toMatch(/Draft pull request #\d+, checks are running2 commits to push3 uncommitted files$/);
     });
 
-    it('says in its tooltip that the pull request is merged', async () => {
-        await inWorktree('merged');
+    it('says the pull request that merged, and the commits to merge from the base, in its tooltip', async () => {
+        await inWorktree('merged', { clean: true, remote: 'behind' });
 
-        expect(await tooltipText()).toMatch(/Pull request #\d+ is merged3 uncommitted files$/);
+        const tip = await tooltipText();
+
+        expect(tip).toMatch(/Pull request #\d+ is merged2 commits to pull$/);
     });
 
     it('has no dot on the other tabs', async () => {
         await inWorktree('draft');
 
-        expect([...rail()!.querySelectorAll('[data-tone]')]).toHaveLength(1);
+        expect([...rail()!.querySelectorAll('[class*="dot"]')]).toHaveLength(1);
     });
 });

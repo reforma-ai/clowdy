@@ -1,5 +1,7 @@
 import { makeAutoObservable, observable, observableRef, reaction } from 'mobx';
 
+import { isDraftSending } from '../features/chats/draftSending';
+import { NewChatDrafts } from './NewChatDrafts';
 import { type KeyValueStorage, readStored, removeStored, writeStored } from './storage';
 import { type RevealTasks, revealTask } from './taskReveal';
 
@@ -18,7 +20,6 @@ import type {
 /** The pages of the global Settings window, in the order they appear in its sidebar. */
 export const SETTINGS_PAGES = [
     'appearance',
-    'power',
     'chat',
     'files',
     'source-control',
@@ -55,6 +56,7 @@ export interface ProjectView {
     runId: RunId | null;
     /** Agents: the new-chat row is selected, and no chat exists yet. */
     draft: boolean;
+    draftId?: string | null;
     /** Agents: the folder the new chat is for, `null` for the main folder. Meaningful only with `draft`. */
     draftFolderId: FolderId | null;
     /** Agents: where the new chat works in its folder, `null` for the folder's own checkout. Meaningful only with `draft`. */
@@ -71,6 +73,9 @@ interface StoredProjectUi {
     chatOrder: ChatId[];
     groupByFolder: boolean;
     collapsedFolders: FolderId[];
+    groupByWorktree: boolean;
+    worktreeOrder: string[];
+    collapsedWorktrees: string[];
     agentsFoldedByChat: Record<ChatId, boolean>;
     sidePanelOpen: boolean;
     sidePanelTab: SidePanelTab;
@@ -107,6 +112,7 @@ export type InitialProjectUi = Partial<
         | 'runId'
         | 'expandedChats'
         | 'groupByFolder'
+        | 'groupByWorktree'
         | 'collapsedFolders'
         | 'sidePanelOpen'
         | 'sidePanelTab'
@@ -129,6 +135,8 @@ export function initialUiFromSearch(search: string): InitialProjectUi {
 
     if (params.has('group')) initial.groupByFolder = params.get('group') !== '0';
 
+    if (params.has('groupWorktrees')) initial.groupByWorktree = params.get('groupWorktrees') !== '0';
+
     if (params.get('collapsed')) initial.collapsedFolders = params.get('collapsed')!.split(',').filter(Boolean);
 
     if (params.has('agents')) initial.agentsFolded = params.get('agents') === 'folded';
@@ -146,6 +154,9 @@ export function initialUiFromSearch(search: string): InitialProjectUi {
 
 /** What a project's window shows, remembered per project. The `open*` actions are how one place links to another. */
 export class ProjectUi {
+    readonly newChatDrafts: NewChatDrafts;
+    draftId: string | null = null;
+    navigationVersion = 0;
     chatId: ChatId | null = null;
     taskId: TaskId | null = null;
     runId: RunId | null = null;
@@ -177,12 +188,14 @@ export class ProjectUi {
     chatOrder: readonly ChatId[] = [];
     /**
      * Agents: the list has a group for each folder of the project, each with a new-chat button that starts a chat in that folder. On until the person turns
-     * it off (a project that kept no choice groups); off, the list is flat and a new chat starts in the main folder. Only a project with several folders
-     * groups, whatever is kept here.
+     * it off (a project that kept no choice groups); off, the list is flat and a new chat starts in the main folder.
      */
     groupByFolder = true;
     /** Agents: the folders whose group is folded in the list. A folder that is not here is open, which is how every group starts. */
     collapsedFolders: readonly FolderId[] = [];
+    groupByWorktree = true;
+    worktreeOrder: readonly string[] = [];
+    collapsedWorktrees: readonly string[] = [];
     /** The side panel at the right of the window is open for this project. Closed until the person opens it, and kept for the project, whichever chat is on show. */
     sidePanelOpen = false;
     /** The tab the side panel shows, kept for the project: the one it was left on. */
@@ -210,7 +223,15 @@ export class ProjectUi {
      */
     tasksArchive = false;
     /** Agents: files that a hand-off from another chat left for the new-chat page, which takes them once it is open. Not kept between sessions. */
-    pendingFiles: readonly File[] = [];
+    private pendingByDraft = new Map<string, readonly File[]>();
+
+    get pendingFiles(): readonly File[] {
+        return this.draftId ? this.pendingFilesFor(this.draftId) : [];
+    }
+
+    pendingFilesFor(id: string): readonly File[] {
+        return this.pendingByDraft.get(id) ?? [];
+    }
 
     /** The tasks the project holds, for `openTask` to reveal a task in. Read when a task is opened, not kept. */
     readonly #tasks: (() => RevealTasks | undefined) | undefined;
@@ -231,6 +252,7 @@ export class ProjectUi {
         tasks?: () => RevealTasks | undefined,
         windowFitsHalf: () => boolean = () => true
     ) {
+        this.newChatDrafts = new NewChatDrafts(projectId, storage);
         const key = uiKey(projectId);
         const completionKey = completionsKey(projectId);
         const completions = readStored(storage, completionKey) as Partial<StoredChatCompletions> | undefined;
@@ -264,6 +286,12 @@ export class ProjectUi {
             this.collapsedFolders = Array.isArray(stored.collapsedFolders)
                 ? stored.collapsedFolders.filter(id => typeof id === 'string')
                 : [];
+            this.groupByWorktree =
+                typeof stored.groupByWorktree === 'boolean' ? stored.groupByWorktree : stored.groupByFolder !== false;
+            const strings = (value: unknown): string[] =>
+                Array.isArray(value) ? [...new Set(value.filter(id => typeof id === 'string'))] : [];
+            this.worktreeOrder = strings(stored.worktreeOrder);
+            this.collapsedWorktrees = strings(stored.collapsedWorktrees);
             // A project-wide choice from an older version cannot identify which chat was opened.
             if (
                 agentsFolded === undefined &&
@@ -288,14 +316,19 @@ export class ProjectUi {
         }
 
         Object.assign(this, initialView);
+        if (initialView.groupByFolder === false && initialView.groupByWorktree === undefined)
+            this.groupByWorktree = false;
+        // The old worktree-only layout becomes the nested layout, which keeps its worktree cards visible.
+        if (this.groupByWorktree) this.groupByFolder = true;
         makeAutoObservable(this, {
             projectId: false,
-            pendingFiles: observableRef,
             draftWorkspace: observableRef,
             draftWorkspaceRow: observableRef,
             expandedChats: observableRef,
             chatOrder: observableRef,
             collapsedFolders: observableRef,
+            worktreeOrder: observableRef,
+            collapsedWorktrees: observableRef,
             tasksCollapsed: observableRef,
         });
         reaction(
@@ -307,6 +340,9 @@ export class ProjectUi {
                 chatOrder: [...this.chatOrder],
                 groupByFolder: this.groupByFolder,
                 collapsedFolders: [...this.collapsedFolders],
+                groupByWorktree: this.groupByWorktree,
+                worktreeOrder: [...this.worktreeOrder],
+                collapsedWorktrees: [...this.collapsedWorktrees],
                 agentsFoldedByChat: Object.fromEntries(this.#agentsFoldedByChat),
                 sidePanelOpen: this.sidePanelOpen,
                 sidePanelTab: this.sidePanelTab,
@@ -349,6 +385,7 @@ export class ProjectUi {
             chatId: this.chatId,
             runId: this.runId,
             draft: this.draft,
+            draftId: this.draftId,
             draftFolderId: this.draftFolderId,
             draftWorkspace: this.draftWorkspace,
             draftEngine: this.draftEngine,
@@ -356,25 +393,31 @@ export class ProjectUi {
     }
 
     /** Shows a place kept from `view`, as one change. */
-    show({ chatId, runId, draft, draftFolderId, draftWorkspace, draftEngine }: ProjectView): void {
+    show({ chatId, runId, draft, draftId, draftFolderId, draftWorkspace, draftEngine }: ProjectView): void {
+        this.navigationVersion++;
         if (chatId !== this.chatId || runId !== this.runId || draft !== this.draft) this.showChat();
 
         this.chatId = chatId;
         this.runId = runId;
         this.draft = draft;
-        this.draftFolderId = draftFolderId;
-        this.draftWorkspace = draftWorkspace;
-        this.draftEngine = draftEngine;
+        const saved = draftId ? this.newChatDrafts.get(draftId) : undefined;
+        this.draftId = saved?.id ?? null;
+        this.draft = draft && !!saved;
+        this.draftFolderId = saved ? saved.folderId : draftFolderId;
+        this.draftWorkspace = saved ? saved.workspace : draftWorkspace;
+        this.draftEngine = saved ? (saved.engine ?? null) : draftEngine;
         // The row was the answer for the choice that was on show; the page asks again for the one it is given.
         this.draftWorkspaceRow = null;
     }
 
     /** Shows the chat; `null` leaves none selected. */
     openChat(chatId: ChatId | null): void {
+        this.navigationVersion++;
         this.showChat();
         this.chatId = chatId;
         this.runId = null;
         this.draft = false;
+        this.draftId = null;
         this.draftFolderId = null;
         this.draftWorkspace = null;
         this.draftWorkspaceRow = null;
@@ -393,15 +436,26 @@ export class ProjectUi {
         workspace: ChatWorkspaceChoice | null = null,
         engine: string | null = null
     ): void {
+        this.navigationVersion++;
         this.showChat();
         this.runId = null;
         this.draft = true;
+        this.draftId = this.newChatDrafts.createOrOpen(folderId, workspace).id;
+        if (engine) this.newChatDrafts.updateEngine(this.draftId, engine);
         this.draftFolderId = folderId;
         this.draftWorkspace = workspace;
         this.draftWorkspaceRow = null;
-        this.draftEngine = engine;
+        this.draftEngine = engine ?? this.newChatDrafts.get(this.draftId)?.engine ?? null;
 
-        if (attach.length > 0) this.pendingFiles = [...this.pendingFiles, ...attach];
+        if (attach.length > 0) this.pendingByDraft.set(this.draftId, [...this.pendingFiles, ...attach]);
+    }
+
+    openDraftId(id: string): void {
+        const item = this.newChatDrafts.get(id);
+        if (!item) return;
+        this.openDraft([], item.folderId, item.workspace);
+        this.draftId = id;
+        this.draftEngine = item.engine ?? null;
     }
 
     /**
@@ -409,7 +463,7 @@ export class ProjectUi {
      * repository, so what was chosen for the first (its base branch, its worktree) goes back to Project checkout.
      */
     setDraftFolder(folderId: FolderId | null): void {
-        if (!this.draft) return;
+        if (!this.draft || this.draftPlaceLocked()) return;
 
         if (folderId !== this.draftFolderId) {
             this.draftWorkspace = null;
@@ -417,11 +471,12 @@ export class ProjectUi {
         }
 
         this.draftFolderId = folderId;
+        if (this.draftId) this.newChatDrafts.updatePlace(this.draftId, folderId, this.draftWorkspace);
     }
 
     /** Changes where the new chat works in its folder, `null` for the folder's own checkout. Only with the new-chat page open. */
     setDraftWorkspace(choice: ChatWorkspaceChoice | null): void {
-        if (!this.draft) return;
+        if (!this.draft || this.draftPlaceLocked()) return;
 
         // The row answers for one worktree: it stays only while the choice is that same worktree again.
         const same =
@@ -432,6 +487,18 @@ export class ProjectUi {
         if (!same) this.draftWorkspaceRow = null;
 
         this.draftWorkspace = choice;
+        if (this.draftId) this.newChatDrafts.updatePlace(this.draftId, this.draftFolderId, choice);
+    }
+
+    private draftPlaceLocked(): boolean {
+        if (!this.draftId) return false;
+        const draft = this.newChatDrafts.get(this.draftId);
+        return Boolean(
+            draft?.operation ||
+                draft?.createdChat ||
+                draft?.firstMessage ||
+                isDraftSending(`@new-chat:${this.projectId}:${this.draftId}`)
+        );
     }
 
     /** Keeps the daemon's row of the worktree the new-chat page chose (`draftWorkspaceRow`), or drops it with `null`. Only with the new-chat page open. */
@@ -445,7 +512,7 @@ export class ProjectUi {
     takePendingFiles(): readonly File[] {
         const files = this.pendingFiles;
 
-        this.pendingFiles = [];
+        if (this.draftId) this.pendingByDraft.delete(this.draftId);
 
         return files;
     }
@@ -488,9 +555,11 @@ export class ProjectUi {
 
     /** Shows the run, below its chat; a root run is its chat. */
     openRun(runId: RunId | null): void {
+        this.navigationVersion++;
         this.showChat();
         this.runId = runId;
         this.draft = false;
+        this.draftId = null;
         this.draftFolderId = null;
         this.draftWorkspace = null;
         this.draftWorkspaceRow = null;
@@ -513,6 +582,30 @@ export class ProjectUi {
 
     setGroupByFolder(group: boolean): void {
         this.groupByFolder = group;
+    }
+
+    setGroupByWorktree(group: boolean): void {
+        this.groupByWorktree = group;
+    }
+
+    setChatListLayout(layout: 'simple' | 'folder' | 'worktree'): void {
+        this.groupByFolder = layout !== 'simple';
+        this.groupByWorktree = layout === 'worktree';
+    }
+
+    setWorktreeOrder(order: readonly string[]): void {
+        this.worktreeOrder = order;
+    }
+
+    toggleWorktreeCollapsed(key: string): void {
+        this.collapsedWorktrees = this.collapsedWorktrees.includes(key)
+            ? this.collapsedWorktrees.filter(id => id !== key)
+            : [...this.collapsedWorktrees, key];
+    }
+
+    expandWorktree(key: string): void {
+        if (this.collapsedWorktrees.includes(key))
+            this.collapsedWorktrees = this.collapsedWorktrees.filter(id => id !== key);
     }
 
     setChatOrder(order: readonly ChatId[], visibleChatId?: ChatId): void {

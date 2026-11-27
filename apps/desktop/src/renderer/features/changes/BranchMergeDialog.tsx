@@ -434,7 +434,14 @@ function BranchMergeDialog({
             : undefined;
     const done = result?.state === 'done';
     const isWorking = pending !== undefined;
-    const modeDisabled = isWorking || !selection || upToDate || (!preview && !failure);
+    // What the footer has to offer: the merge itself, or after it Abort for a merge or rebase that stopped on conflicts and Sync for one that is done. Nothing else is left to press.
+    const hasActions =
+        !result ||
+        (result.state === 'conflicts' && (result.conflicts > 0 || result.operation === 'rebase')) ||
+        result.state === 'done';
+    const modeDisabled = !selection || upToDate || (!preview && !failure);
+    // The mode menu is part of the merge button alone: while the merge and the sync after it run, one full-width button carries the spinner, so nothing is dimmed, hidden or resized halfway.
+    const showMode = !result && !isWorking;
     const syncLabel = syncPhase ? SYNC_WORDS[syncPhase] : 'Syncing…';
     const empty = loading ? (
         <Spinner
@@ -531,107 +538,106 @@ function BranchMergeDialog({
                 </div>
             )}
             {failure && <FailureText failure={failure} />}
-            <div className={styles.actions}>
-                {!result && (
-                    <div className={styles.split}>
-                        <span className={styles.visuallyHidden} role="status">
-                            {selection ? actionStatus : undefined}
-                        </span>
-                        <Button
-                            size="md"
-                            color="contrast"
-                            className={styles.primary}
-                            isDisabled={!canMerge}
-                            isPending={pending === 'merge'}
-                            onPress={merge}
-                        >
-                            {actionStatus ?? actionLabel}
-                        </Button>
-                        <MenuTrigger>
+            {hasActions && (
+                <div className={styles.actions}>
+                    {(!result || result.state === 'done') && (
+                        <div className={styles.split} data-mode={showMode || undefined}>
+                            {!result && (
+                                <span className={styles.visuallyHidden} role="status">
+                                    {selection ? actionStatus : undefined}
+                                </span>
+                            )}
                             <Button
                                 size="md"
                                 color="contrast"
-                                iconOnly
-                                className={styles.mode}
-                                aria-label="Choose merge mode"
-                                isDisabled={modeDisabled}
+                                className={styles.primary}
+                                isDisabled={!result && !canMerge}
+                                isPending={pending === 'merge' || pending === 'sync'}
+                                onPress={
+                                    result
+                                        ? () =>
+                                              void run({ action: 'sync', target: result.target, commit: result.commit })
+                                        : merge
+                                }
                             >
-                                <ChevronDown aria-hidden="true" />
+                                {result
+                                    ? pending === 'sync'
+                                        ? syncLabel
+                                        : `Sync ${result.target}`
+                                    : (actionStatus ?? actionLabel)}
                             </Button>
-                            <Popover placement="top end" spacing="xs" width={300}>
-                                <Menu
-                                    size="sm"
-                                    aria-label="Merge mode"
-                                    selectionMode="single"
-                                    selectedKeys={[strategy]}
-                                    disallowEmptySelection
-                                    onAction={key => {
-                                        const next = key as DialogStrategy;
-                                        if (next === strategy) return;
-                                        setStrategy(next);
-                                        if (choice) void compare(choice, next);
-                                    }}
-                                >
-                                    {(Object.keys(STRATEGIES) as DialogStrategy[])
-                                        .filter(id => direction === 'from' || id !== 'rebase')
-                                        .map(id => (
-                                            <MenuItem
-                                                key={id}
-                                                id={id}
-                                                text={STRATEGIES[id].label}
-                                                description={STRATEGIES[id].description}
-                                                endAffix={strategy === id ? <Check aria-hidden="true" /> : undefined}
-                                                stacked
-                                            />
-                                        ))}
-                                </Menu>
-                            </Popover>
-                        </MenuTrigger>
-                    </div>
-                )}
-                {result?.state === 'conflicts' && (result.conflicts > 0 || result.operation === 'rebase') && (
-                    <Button
-                        size="md"
-                        variant="bordered"
-                        isDisabled={isWorking}
-                        isPending={pending === 'abort'}
-                        onPress={() =>
-                            confirmAbortMerge(
-                                () =>
-                                    run({
-                                        action: 'abort',
-                                        target: result.target,
-                                        commit: result.commit,
-                                        sourceCommit: result.sourceCommit,
-                                        ...(result.operation && { operation: result.operation }),
-                                    }),
-                                result.operation
-                            )
-                        }
-                    >
-                        {result.operation === 'rebase' ? 'Abort rebase' : 'Abort merge'}
-                    </Button>
-                )}
-                {result?.state === 'done' && (
-                    <Button
-                        size="md"
-                        color="contrast"
-                        isPending={pending === 'sync'}
-                        onPress={() => void run({ action: 'sync', target: result.target, commit: result.commit })}
-                    >
-                        {pending === 'sync' ? syncLabel : `Sync ${result.target}`}
-                    </Button>
-                )}
-                <Button
-                    size="md"
-                    variant="filled"
-                    color="secondary"
-                    isDisabled={isWorking}
-                    onPress={() => modal.cancel()}
-                >
-                    {result ? 'Done' : 'Cancel'}
-                </Button>
-            </div>
+                            {showMode && (
+                                <MenuTrigger>
+                                    <Button
+                                        size="md"
+                                        color="contrast"
+                                        iconOnly
+                                        className={styles.mode}
+                                        aria-label="Choose merge mode"
+                                        isDisabled={modeDisabled}
+                                    >
+                                        <ChevronDown aria-hidden="true" />
+                                    </Button>
+                                    <Popover placement="top end" spacing="xs" width={300}>
+                                        <Menu
+                                            size="sm"
+                                            aria-label="Merge mode"
+                                            selectionMode="single"
+                                            selectedKeys={[strategy]}
+                                            disallowEmptySelection
+                                            onAction={key => {
+                                                const next = key as DialogStrategy;
+                                                if (next === strategy) return;
+                                                setStrategy(next);
+                                                if (choice) void compare(choice, next);
+                                            }}
+                                        >
+                                            {(Object.keys(STRATEGIES) as DialogStrategy[])
+                                                .filter(id => direction === 'from' || id !== 'rebase')
+                                                .map(id => (
+                                                    <MenuItem
+                                                        key={id}
+                                                        id={id}
+                                                        text={STRATEGIES[id].label}
+                                                        description={STRATEGIES[id].description}
+                                                        endAffix={
+                                                            strategy === id ? <Check aria-hidden="true" /> : undefined
+                                                        }
+                                                        stacked
+                                                    />
+                                                ))}
+                                        </Menu>
+                                    </Popover>
+                                </MenuTrigger>
+                            )}
+                        </div>
+                    )}
+                    {result?.state === 'conflicts' && (result.conflicts > 0 || result.operation === 'rebase') && (
+                        <Button
+                            size="md"
+                            variant="bordered"
+                            isDisabled={isWorking}
+                            isPending={pending === 'abort'}
+                            onPress={() =>
+                                confirmAbortMerge(
+                                    () =>
+                                        run({
+                                            action: 'abort',
+                                            target: result.target,
+                                            commit: result.commit,
+                                            sourceCommit: result.sourceCommit,
+                                            ...(result.operation && { operation: result.operation }),
+                                        }),
+                                    result.operation
+                                )
+                            }
+                        >
+                            {result.operation === 'rebase' ? 'Abort rebase' : 'Abort merge'}
+                        </Button>
+                    )}
+                    {/* No Cancel or Done: the window's close button and Escape already close it. */}
+                </div>
+            )}
         </div>
     );
 }

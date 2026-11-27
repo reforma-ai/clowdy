@@ -66,6 +66,7 @@ import type {
     ProjectInfo,
     ProjectSnapshot,
     RootSnapshot,
+    RunPromptSuggestion,
     SkillCatalog,
     SleepMode,
     StreamItem,
@@ -450,6 +451,10 @@ export class HttpTransport implements Transport {
         return this.#get(ROUTES.projectSnapshot(projectId));
     }
 
+    getPromptSuggestion(runId: string): Promise<RunPromptSuggestion | null> {
+        return this.#get(ROUTES.runPromptSuggestion(runId));
+    }
+
     getItems(target: StreamTarget, afterSeq = 0): Promise<StreamItem[]> {
         const route = 'runId' in target ? ROUTES.runItems(target.runId) : ROUTES.chatItems(target.chatId);
 
@@ -625,7 +630,7 @@ export class HttpTransport implements Transport {
 
     async command(command: CommandInput): Promise<CommandResult> {
         // One id for the whole user action: a retry after a lost response must not act twice.
-        const body = JSON.stringify({ ...command, requestId: crypto.randomUUID() });
+        const body = JSON.stringify({ ...command, requestId: command.requestId ?? crypto.randomUUID() });
         let failure: unknown;
 
         for (let attempt = 1; attempt <= COMMAND_ATTEMPTS; attempt++) {

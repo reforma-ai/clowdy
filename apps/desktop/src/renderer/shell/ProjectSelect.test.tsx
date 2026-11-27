@@ -55,7 +55,7 @@ async function flush() {
     });
 }
 
-async function open(data = createFixtureData()) {
+async function open(data = createFixtureData(), { pointer = false } = {}) {
     store = new RootStore(new FixtureTransport({ data }), { storage: storage() });
     await store.load();
     act(() =>
@@ -66,7 +66,13 @@ async function open(data = createFixtureData()) {
         )
     );
     await flush();
-    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Project"]')!.click());
+
+    const trigger = container.querySelector<HTMLButtonElement>('button[aria-label="Project"]')!;
+
+    // A press of the pointer is what makes the focus the menu takes show no ring, as a click of the mouse does.
+    if (pointer) trigger.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse' }));
+
+    await act(async () => trigger.click());
     await flush();
 }
 
@@ -110,21 +116,18 @@ describe('ProjectSelect', () => {
         expect(document.body.querySelectorAll('[role="separator"]')).toHaveLength(2);
     });
 
-    it('shows where each project is: its main folder, and +N for the folders it has besides', async () => {
+    it('names each project in its row and leaves the folders to the card beside it', async () => {
         const data = createFixtureData();
 
         data.projects
             .find(project => project.id === FIXTURE_PROJECT_ID)!
-            .folders.push(
-                { id: 'fld_api', path: '/Users/dev/car-rental-api' },
-                { id: 'fld_web', path: '/Users/dev/car-rental-web' }
-            );
+            .folders.push({ id: 'fld_api', path: '/Users/dev/car-rental-api' });
         await open(data);
 
-        // The path stands as `~` in the home folder the fixture daemon names, and the count of the other folders beside it.
-        expect(items()[1].textContent).toContain('~/car-rental+2');
-        expect(items()[2].textContent).toContain('~/clowdy');
-        expect(items()[2].textContent).not.toContain('+');
+        // The personal space says what it is; a project has no second line, neither a path nor a count of folders.
+        expect(items()[0].textContent).toContain('Chats without a project');
+        expect(items()[1].textContent).toBe('Car Rental');
+        expect(items()[2].textContent).toBe('Clowdy');
     });
 
     it('marks the open project with a plate and switches to the one chosen', async () => {
@@ -152,40 +155,101 @@ describe('ProjectSelect', () => {
             expect(settingsButton(name).getAttribute('data-show')).toBe('item-hover');
     });
 
-    it('shows a card beside the row the keyboard is on, with the name, the keys and every folder, the main one first', async () => {
-        const data = createFixtureData();
+    describe('the card beside the menu', () => {
+        const card = () => document.body.querySelector<HTMLElement>('[data-project-card]');
+        const cardFolders = () => [...card()!.querySelectorAll('li')].map(item => item.textContent);
+        const point = (target: Element, x: number) =>
+            act(async () =>
+                target.dispatchEvent(
+                    new PointerEvent('pointermove', { bubbles: true, clientX: x, clientY: 10, pointerType: 'mouse' })
+                )
+            );
 
-        data.projects
-            .find(project => project.id === FIXTURE_PROJECT_ID)!
-            .folders.push({ id: 'fld_api', path: '/Users/dev/car-rental-api' });
-        await open(data);
+        async function openWithTwoFolders(options?: { pointer: boolean }) {
+            const data = createFixtureData();
 
-        let disposers: (() => void)[] = [];
+            data.projects
+                .find(project => project.id === FIXTURE_PROJECT_ID)!
+                .folders.push({ id: 'fld_api', path: '/Users/dev/car-rental-api' });
+            await open(data, options);
+        }
 
-        act(() => {
-            disposers = shellCommands(store).map(command => hotkeys.defineCommand({ ...command, scope: 'app' }));
+        it('shows no card when the menu is opened with the pointer, until it moves onto a row', async () => {
+            await openWithTwoFolders({ pointer: true });
+
+            expect(card()).toBeNull();
+
+            await point(items()[1], 1);
+
+            expect(card()).not.toBeNull();
         });
 
-        try {
-            items()[0].focus();
-            await act(async () =>
-                items()[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
-            );
-            await flush();
+        it('shows the name and every folder of the row the pointer is on, the main one first, and moves to the next row with the same card', async () => {
+            await openWithTwoFolders({ pointer: true });
+            await point(items()[1], 1);
 
-            const card = document.body.querySelector<HTMLElement>('[role="tooltip"]')!;
+            const shown = card()!;
 
-            expect(card.querySelector('[class*="tipName"]')!.textContent).toBe('Car Rental');
-            // The modifiers depend on the platform the test runs on (`Ctrl Alt`, `⌥ ⌘` on a Mac): the digit is the slot.
-            expect(card.querySelector('kbd')!.parentElement!.textContent).toMatch(/1$/);
+            expect(shown.textContent).toContain('Car Rental');
             // Written as the row writes them: the home folder the fixture daemon names is `~`.
-            expect([...card.querySelectorAll('li')].map(item => item.textContent)).toEqual([
-                '~/car-rental',
-                '~/car-rental-api',
-            ]);
-        } finally {
-            for (const dispose of disposers) dispose();
-        }
+            expect(cardFolders()).toEqual(['~/car-rental', '~/car-rental-api']);
+            expect(shown.dataset.placed).toBe('true');
+
+            await point(items()[2], 2);
+
+            // The card stays mounted and slides: a new one would start from where it is placed.
+            expect(card()).toBe(shown);
+            expect(shown.textContent).toContain('Clowdy');
+            expect(cardFolders()).toEqual(['~/clowdy']);
+        });
+
+        it('keeps the card across the gap between rows and drops it once the pointer is off the menu', async () => {
+            await openWithTwoFolders({ pointer: true });
+            await point(items()[1], 1);
+            await point(document.body.querySelector('[role="separator"]')!, 2);
+
+            expect(card()).not.toBeNull();
+
+            await point(document.body, 3);
+
+            expect(card()).toBeNull();
+        });
+
+        it('shows the card for the row the keyboard is on, with the keys that open that project', async () => {
+            await openWithTwoFolders();
+
+            let disposers: (() => void)[] = [];
+
+            act(() => {
+                disposers = shellCommands(store).map(command => hotkeys.defineCommand({ ...command, scope: 'app' }));
+            });
+
+            try {
+                items()[0].focus();
+                await act(async () =>
+                    items()[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
+                );
+                // The focus ring is drawn on the next frame.
+                await act(async () => {
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                });
+
+                expect(card()!.textContent).toContain('Car Rental');
+                // The modifiers depend on the platform the test runs on (`Ctrl Alt`, `⌥ ⌘` on a Mac): the digit is the slot.
+                expect(card()!.querySelector('kbd')!.parentElement!.textContent).toMatch(/1$/);
+                expect(cardFolders()).toEqual(['~/car-rental', '~/car-rental-api']);
+            } finally {
+                for (const dispose of disposers) dispose();
+            }
+        });
+
+        it('takes the card away with the menu', async () => {
+            await openWithTwoFolders({ pointer: true });
+            await point(items()[1], 1);
+            await act(async () => items()[2].click());
+
+            expect(card()).toBeNull();
+        });
     });
 
     it('opens the page of a project in Settings from the button at the end of its row, without switching to it', async () => {
@@ -242,13 +306,13 @@ describe('ProjectSelect', () => {
         expect(settingsButton('Clowdy').tabIndex).toBe(-1);
     });
 
-    it('draws an icon before every project and sets it level with the middle of the two lines', async () => {
+    it('draws an icon before every row and sets the personal space, which has two lines, level with their middle', async () => {
         await open();
 
-        for (const item of items().slice(0, 3)) {
-            expect(item.querySelector('svg, img')).not.toBeNull();
-            expect(item.getAttribute('data-align')).toBe('center');
-        }
+        for (const item of items().slice(0, 3)) expect(item.querySelector('svg, img')).not.toBeNull();
+
+        expect(items()[0].getAttribute('data-align')).toBe('center');
+        expect(items()[1].hasAttribute('data-align')).toBe(false);
     });
 
     it("shows a project's picture, uploaded or found in its main folder, on the button and in the menu, and the folder icon without one", async () => {

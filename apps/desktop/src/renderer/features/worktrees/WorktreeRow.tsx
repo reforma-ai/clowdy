@@ -6,7 +6,7 @@ import { Show } from '@clowdy/components/Show';
 import { Badge } from '@clowdy/components/Tag';
 import { Text } from '@clowdy/components/Text';
 import { Tooltip } from '@clowdy/components/Tooltip';
-import { Folder, More, NewChat, Plus, Version } from '@clowdy/icons/14';
+import { Folder, Merge, MergeCancel, More, NewChat, Plus, Version } from '@clowdy/icons/14';
 import { useId, useState } from 'react';
 
 import { tildePath } from '../../shared/displayPath';
@@ -35,33 +35,14 @@ interface WorktreeRowProps extends WorktreeRowActions {
     worktree: WorktreeInfo;
 }
 
-const CHAT_PREVIEW_LIMIT = 6;
-
 function WorktreeChats({ chats, onOpenChat }: { chats: WorktreeChat[]; onOpenChat: (chat: WorktreeChat) => void }) {
-    const [open, setOpen] = useState(false);
     const count = chats.length;
-    const remaining = count - CHAT_PREVIEW_LIMIT;
 
     return (
-        <MenuTrigger isOpen={open} onOpenChange={setOpen}>
-            <Tooltip
-                placement="top start"
-                className={styles.chatPreview}
-                isDisabled={open}
-                shouldCloseOnPress
-                content={
-                    <>
-                        {chats.slice(0, CHAT_PREVIEW_LIMIT).map(chat => (
-                            <div key={chat.id}>{chat.archived ? `${chat.title} (archived)` : chat.title}</div>
-                        ))}
-                        {remaining > 0 && <div>{`+${remaining} more`}</div>}
-                    </>
-                }
-            >
-                <Button variant="inline" className={styles.chatCount}>
-                    {`${count} ${count === 1 ? 'chat' : 'chats'}`}
-                </Button>
-            </Tooltip>
+        <MenuTrigger>
+            <Button variant="inline" className={styles.chatCount}>
+                {`${count} ${count === 1 ? 'chat' : 'chats'}`}
+            </Button>
             <Popover placement="bottom start" spacing="xs" width={280}>
                 <PopoverScroll maxHeight={280}>
                     <Menu aria-label="Chats in this worktree" size="sm">
@@ -86,9 +67,83 @@ function WorktreeChats({ chats, onOpenChat }: { chats: WorktreeChat[]; onOpenCha
     );
 }
 
+/** Shared branch, status and facts for the folder settings list and the cleanup preview. */
+export function WorktreeRowSummary({
+    worktree,
+    onOpenChat,
+    tidy = false,
+}: {
+    worktree: WorktreeInfo;
+    onOpenChat?: (chat: WorktreeChat) => void;
+    tidy?: boolean;
+}) {
+    const label = worktreeLabel(worktree);
+    const mark = worktreeMark(worktree);
+    const path = tildePath(worktree.path, homeFolder.path);
+    const title = (
+        <Text variant="md" weight="medium" truncate title={onOpenChat ? undefined : path}>
+            {label}
+        </Text>
+    );
+
+    const MarkIcon = worktree.merged ? Merge : MergeCancel;
+    const badge = mark && (
+        <Badge
+            size="xs"
+            color={tidy && mark.label === 'Merged' ? 'accent' : mark.color}
+            textValue={mark.label}
+            tooltip={tidy ? undefined : mark.tip}
+            icon={tidy ? <MarkIcon className={styles.tidyMarkIcon} aria-hidden="true" /> : undefined}
+        >
+            {mark.label}
+        </Badge>
+    );
+
+    return (
+        <>
+            {!tidy && (
+                <span className={styles.icon}>
+                    {worktree.main ? <Folder aria-hidden="true" /> : <Version aria-hidden="true" />}
+                </span>
+            )}
+            <span className={styles.text}>
+                <span className={styles.title}>
+                    {onOpenChat ? (
+                        <Tooltip content={path} placement="top start" wrapTrigger>
+                            {title}
+                        </Tooltip>
+                    ) : (
+                        title
+                    )}
+                    {!tidy && badge}
+                </span>
+                {(!tidy || worktree.changes > 0 || worktree.chats.length > 0) && (
+                    <span className={styles.facts}>
+                        {!worktree.missing && (!tidy || worktree.changes > 0) && (
+                            <Text variant="sm" color="secondary">
+                                {changesLabel(worktree.changes)}
+                            </Text>
+                        )}
+                        {worktree.chats.length > 0 && (
+                            <Text as="span" variant="sm" color="secondary" className={styles.chatFact}>
+                                {onOpenChat ? (
+                                    <WorktreeChats chats={worktree.chats} onOpenChat={onOpenChat} />
+                                ) : (
+                                    `${worktree.chats.length} ${worktree.chats.length === 1 ? 'chat' : 'chats'}`
+                                )}
+                            </Text>
+                        )}
+                    </span>
+                )}
+            </span>
+            {tidy && <span className={styles.tidyMark}>{badge}</span>}
+        </>
+    );
+}
+
 /**
  * One worktree of a folder, as git lists it: its branch (or the commit it is on), the one badge that matters most (`worktreeMark`: the folder's own checkout, gone from the disk, locked, or whether its work is in the base), how
- * many files are changed, and a count of chats with a preview on hover and a menu for opening them. At the end: a new
+ * many files are changed, and a count of chats with a menu for opening them. At the end: a new
  * chat in it, and More (`WorktreeMenu`: the same new chat, the copy of the path, the programs that open it, and Remove, which the folder's own checkout does not have). A
  * worktree whose folder is gone has no chat to start in it.
  *
@@ -100,7 +155,6 @@ function WorktreeChats({ chats, onOpenChat }: { chats: WorktreeChat[]; onOpenCha
  */
 export function WorktreeRow({ projectId, group, folder, worktree, onNewChat, onOpenChat, onRemove }: WorktreeRowProps) {
     const label = worktreeLabel(worktree);
-    const mark = worktreeMark(worktree);
     const newChat = worktree.main ? 'New chat in this folder' : 'New chat in this worktree';
     const contextMenu = useContextMenu();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -115,35 +169,7 @@ export function WorktreeRow({ projectId, group, folder, worktree, onNewChat, onO
                 data-open={isMenuOpen || contextMenu.isOpen || undefined}
                 {...contextMenu.areaProps}
             >
-                <span className={styles.icon}>
-                    {worktree.main ? <Folder aria-hidden="true" /> : <Version aria-hidden="true" />}
-                </span>
-                <span className={styles.text}>
-                    <span className={styles.title}>
-                        <Tooltip content={tildePath(worktree.path, homeFolder.path)} placement="top start" wrapTrigger>
-                            <Text variant="md" weight="medium" truncate>
-                                {label}
-                            </Text>
-                        </Tooltip>
-                        {mark && (
-                            <Badge size="xs" color={mark.color} textValue={mark.label} tooltip={mark.tip}>
-                                {mark.label}
-                            </Badge>
-                        )}
-                    </span>
-                    <span className={styles.facts}>
-                        {!worktree.missing && (
-                            <Text variant="sm" color="secondary">
-                                {changesLabel(worktree.changes)}
-                            </Text>
-                        )}
-                        {worktree.chats.length > 0 && (
-                            <Text as="span" variant="sm" color="secondary" className={styles.chatFact}>
-                                <WorktreeChats chats={worktree.chats} onOpenChat={onOpenChat} />
-                            </Text>
-                        )}
-                    </span>
-                </span>
+                <WorktreeRowSummary worktree={worktree} onOpenChat={onOpenChat} />
                 <span className={styles.actions}>
                     <Unavailable
                         label={`${newChat}: ${label}`}

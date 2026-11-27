@@ -215,8 +215,8 @@ export const FIXTURE_EMPTY_PROJECT_ID = 'p-clowdy';
 export const FIXTURE_PERSONAL_PROJECT_ID = 'p-personal';
 /** The run (a native sub-agent), and the two items of its stream, that the fixture timeline keeps changing. */
 export const FIXTURE_LIVE_RUN_ID = 'r-na-03';
-export const FIXTURE_LIVE_TOOL_ID = 'r-na-03-7';
-export const FIXTURE_LIVE_TEXT_ID = 'r-na-03-8';
+export const FIXTURE_LIVE_TOOL_ID = 'r-na-03-8';
+export const FIXTURE_LIVE_TEXT_ID = 'r-na-03-9';
 
 const MINUTE = 60_000;
 
@@ -450,8 +450,8 @@ function fixtureAgents(now: number): AgentInfo[] {
             status: 'ready',
             path: '/Users/dev/.local/bin/claude',
             version: '2.1.322',
-            launch: 'bun x --bun @agentclientprotocol/claude-agent-acp@0.107.0',
-            fetches: '@agentclientprotocol/claude-agent-acp@0.107.0',
+            launch: 'bun x --bun @agentclientprotocol/claude-agent-acp@0.109.0',
+            fetches: '@agentclientprotocol/claude-agent-acp@0.109.0',
             login: 'claude auth login',
             canSignIn: true,
             canCompact: true,
@@ -466,6 +466,14 @@ function fixtureAgents(now: number): AgentInfo[] {
                 ],
             },
             settings: [
+                {
+                    id: 'promptSuggestions',
+                    label: 'Suggest next messages',
+                    description:
+                        'Let the agent predict your next message when supported. Applies to new sessions and may use an additional model request.',
+                    value: true,
+                    default: true,
+                },
                 {
                     id: 'memory',
                     label: 'Memory',
@@ -533,8 +541,16 @@ function fixtureAgents(now: number): AgentInfo[] {
                     { id: 'codex:secondary', label: 'Week', usedPercent: 17, resetsAt: inMinutes(24 * 60) },
                 ],
             },
-            // The only switch the fixture's Codex has: on, so the Changes tab shows its Generate button.
+            // Commit messages are on, so the Changes tab shows its Generate button.
             settings: [
+                {
+                    id: 'promptSuggestions',
+                    label: 'Suggest next messages',
+                    description:
+                        'Let the agent predict your next message when supported. Applies to new sessions and may use an additional model request.',
+                    value: true,
+                    default: true,
+                },
                 {
                     id: COMMIT_MESSAGE_SETTING_ID,
                     label: 'Commit messages',
@@ -567,7 +583,16 @@ function fixtureAgents(now: number): AgentInfo[] {
                 fetchedAt: now,
                 windows: [{ id: 'plan', label: 'Plan usage', usedPercent: 5, resetsAt: inMinutes(26 * 24 * 60) }],
             },
-            settings: [],
+            settings: [
+                {
+                    id: 'promptSuggestions',
+                    label: 'Suggest next messages',
+                    description:
+                        'Let the agent predict your next message when supported. Applies to new sessions and may use an additional model request.',
+                    value: true,
+                    default: true,
+                },
+            ],
             permissions: clientPresets(),
         },
     ];
@@ -610,6 +635,55 @@ const CURRENCY_ANSWER = 'Every currency in the table has two decimals except JPY
 const REFUND_ANSWER = 'The refund tests are in `src/payments/refund.test.ts`: 14 cases, all passing.';
 const MIGRATION_FAILURE = 'The migration stopped: the column amount_cents already exists in staging';
 const LOAD_ANSWER = 'The short run held 120 requests a second with no errors. The long run is still going.';
+
+/*
+ * What a parent asked of each native sub-agent. The daemon writes it twice, as the `prompt` of the call that started the sub-agent (in the parent's stream) and as the
+ * first item of the sub-agent's own stream, so the fixture does the same from one text.
+ */
+const PROMPT_MAP_FLOW = 'Find the components of the booking flow and where each step keeps its state.';
+const PROMPT_FIND_PRICE = 'Find where the booking price is computed and who calls it.';
+const PROMPT_FORM = [
+    'Update the booking form (CAR-24): one view with dates, car and live price instead of three steps.',
+    '',
+    'What to do:',
+    '1. Merge the three step components in `src/booking/steps.tsx` into one `BookingForm`.',
+    '2. Call `useBookingPrice` on every change, so the price is visible before the person commits.',
+    '3. Keep the existing validation messages, word for word.',
+    '',
+    'Do not touch the API client or the booking page itself. When you are done, run `bun run typecheck` and report which files changed.',
+].join('\n');
+const PROMPT_WEEKEND = [
+    'Add the weekend surcharge to the price helper and keep the typecheck green.',
+    '',
+    '## Context',
+    '',
+    '- The rule is in `docs/decisions/pricing.md`: weekend days cost 15% more, and a booking that spans a month end is priced per day.',
+    '- The helper is `src/booking/price.ts`. Nothing outside `src/booking` imports it directly.',
+    '',
+    '## Do',
+    '',
+    '1. Add `weekendRate = 1.15` and use it for Saturday and Sunday only.',
+    '2. Price a booking that spans a month end per day, not per month.',
+    '3. Round the total once, at the end, to the cent.',
+    '4. Add a case to `src/booking/price.test.ts` for a booking from Friday to Monday and one across a month end.',
+    '',
+    '## Do not',
+    '',
+    '- change the signature of `useBookingPrice`;',
+    '- touch `src/api`;',
+    '- silence a type error with a cast.',
+    '',
+    '## Report',
+    '',
+    '- the files you changed;',
+    '- the result of `bun run typecheck`;',
+    '- anything in the rule you could not decide.',
+].join('\n');
+const PROMPT_CALLERS =
+    'List every caller of `useBookingPrice` with its file and line, and say which ones pass the dates.';
+const PROMPT_FLEET = 'Build the fleet list page from the cars table.';
+const PROMPT_REFUNDS =
+    'Check the refund rules in `src/payments/refunds.ts` against the payment provider’s documentation, and list every case where they differ.';
 
 /** The `.briefback` of Car Rental: one feature that has all three kinds of page, a plan, a handoff and a research page. */
 const BRIEFBACK: Record<string, string> = {
@@ -731,7 +805,7 @@ const FIXTURE_CHANGES = 3;
 /**
  * What `GET /v1/projects/:id/worktrees` answers for a fixture project, from the data the other reads use: a group per folder in the project's order, a folder that is no repository
  * (no `git` entry) with no worktrees, else its own checkout first, then what `fixtureFolderGit` lists (the Clowdy-made worktree, changed and not merged) and `data.worktrees` adds
- * (found, locked, missing). The chats are the project's whose worktree is at the path, archived ones too; `blocked` is the daemon's order (the folder's own checkout, a lock, chats).
+ * (found, locked, missing). The chats are the project's whose worktree is at the path, archived ones too; `blocked` is the daemon's order (the folder's own checkout, a lock, unarchived chats).
  */
 export function fixtureProjectWorktrees(
     project: Pick<Project, 'id' | 'folders'>,
@@ -784,6 +858,7 @@ export function fixtureProjectWorktrees(
                 path: worktree.path,
                 ...(worktree.branch !== undefined && { branch: worktree.branch }),
                 head: worktree.head,
+                headOid: worktree.head.padEnd(40, '0'),
                 main: false,
                 missing: worktree.missing ?? false,
                 ...(locked !== undefined && { locked }),
@@ -795,7 +870,7 @@ export function fixtureProjectWorktrees(
                 chats: chats.map(chat => ({ id: chat.id, title: chat.title, archived: chat.archivedAt !== undefined })),
                 ...(locked !== undefined
                     ? { blocked: 'locked' as const }
-                    : chats.length > 0 && { blocked: 'chats' as const }),
+                    : chats.some(chat => chat.archivedAt === undefined) && { blocked: 'chats' as const }),
             };
         });
 
@@ -2273,6 +2348,17 @@ export function createFixtureData(now = Date.now()): FixtureData {
             startedAt: ago(50),
             finishedAt: ago(9),
         }),
+        // A sub-agent of Ship the checkout's own orchestrator, made between its threads (c-6b and c-6c): the Agents list stands it among them.
+        run('r-na-07', 'general-purpose', 'executor', 'succeeded', {
+            parentRunId: 'r-orch-6',
+            rootRunId: 'r-orch-6',
+            origin: 'native',
+            summary: 'Check the refund rules',
+            result: 'The refund rules match the payment provider’s.',
+            createdAt: ago(47.2),
+            startedAt: ago(47.2),
+            finishedAt: ago(47.1),
+        }),
         run('r-orch-6a', 'Orchestrator 07', 'orchestrator', 'running', {
             chatId: 'c-6a',
             summary: 'Fix the price rounding',
@@ -2382,7 +2468,7 @@ export function createFixtureData(now = Date.now()): FixtureData {
                 input: {
                     subagent_type: 'Explore',
                     description: 'Map the booking flow',
-                    prompt: 'Find the components of the booking flow and where each step keeps its state.',
+                    prompt: PROMPT_MAP_FLOW,
                 },
                 output: 'Three step components in src/booking/steps.tsx share one context; the price is computed only on the last step.',
             },
@@ -2419,7 +2505,7 @@ export function createFixtureData(now = Date.now()): FixtureData {
                 input: {
                     subagent_type: 'general-purpose',
                     description: 'Weekend pricing rules',
-                    prompt: 'Add the weekend surcharge to the price helper and keep the typecheck green.',
+                    prompt: PROMPT_WEEKEND,
                 },
                 error: 'Typecheck failed in 3 files and the run could not repair them.',
             },
@@ -2444,7 +2530,7 @@ export function createFixtureData(now = Date.now()): FixtureData {
                 input: {
                     subagent_type: 'general-purpose',
                     description: 'Update the booking form',
-                    prompt: 'Update the booking form (CAR-24): one view with dates, car and live price. Keep the existing validation messages.',
+                    prompt: PROMPT_FORM,
                 },
             },
         ],
@@ -2466,13 +2552,20 @@ export function createFixtureData(now = Date.now()): FixtureData {
                 input: {
                     subagent_type: 'Explore',
                     description: 'Find where the price is computed',
-                    prompt: 'Find where the booking price is computed and who calls it.',
+                    prompt: PROMPT_FIND_PRICE,
                 },
             },
         ],
     ]);
 
+    /** The first item of a native sub-agent's stream, as the daemon writes it: what its parent asked, from the chat of the run it runs inside. */
+    const asked = (minutesAgo: number, text: string, chatId: string): [number, StreamItemBody] => [
+        minutesAgo,
+        { kind: 'user', text, from: { kind: 'thread', chatId, title: chats.find(chat => chat.id === chatId)!.title } },
+    ];
+
     stream('r-na-01', [
+        asked(93, PROMPT_MAP_FLOW, 'c-1'),
         [
             93,
             {
@@ -2506,6 +2599,7 @@ export function createFixtureData(now = Date.now()): FixtureData {
     ]);
 
     stream('r-na-02', [
+        asked(2, PROMPT_FIND_PRICE, 'c-1'),
         [2, { kind: 'assistant', done: true, text: 'Looking for the price helper and its callers.' }],
         [
             1,
@@ -2519,9 +2613,27 @@ export function createFixtureData(now = Date.now()): FixtureData {
         ],
     ]);
 
-    stream('r-na-05', [[1, { kind: 'assistant', done: true, text: 'Listing the callers of useBookingPrice.' }]]);
+    stream('r-na-05', [
+        asked(1, PROMPT_CALLERS, 'c-1'),
+        [1, { kind: 'assistant', done: true, text: 'Listing the callers of useBookingPrice.' }],
+    ]);
+
+    stream('r-na-07', [
+        asked(47.2, PROMPT_REFUNDS, 'c-6'),
+        [47.1, { kind: 'assistant', done: true, text: 'The refund rules match the payment provider’s.' }],
+    ]);
+
+    // A sub-agent of an old chat: its stream is its prompt and its report.
+    stream('r-na-06', [
+        asked(60 * 24 * 5, PROMPT_FLEET, 'c-2'),
+        [
+            60 * 24 * 4 + 90,
+            { kind: 'assistant', done: true, text: 'The fleet list renders every car with its status.' },
+        ],
+    ]);
 
     stream('r-na-03', [
+        asked(21, PROMPT_FORM, 'c-1'),
         [21, { kind: 'assistant', done: true, text: 'I will start by reading the current form and the price helper.' }],
         [
             20,
@@ -2594,6 +2706,7 @@ export function createFixtureData(now = Date.now()): FixtureData {
     ]);
 
     stream('r-na-04', [
+        asked(70, PROMPT_WEEKEND, 'c-1'),
         [
             60,
             {
@@ -3051,7 +3164,7 @@ export function createFixtureData(now = Date.now()): FixtureData {
                 input: {
                     subagent_type: 'general-purpose',
                     description: 'Fleet list',
-                    prompt: 'Build the fleet list page from the cars table.',
+                    prompt: PROMPT_FLEET,
                 },
                 output: 'The fleet list renders every car with its status.',
             },

@@ -145,6 +145,7 @@ const unconfigured: Transport = {
     getChatWorkspaceRemoval: noDaemon,
     subscribe: () => () => undefined,
     command: noDaemon,
+    getPromptSuggestion: noDaemon,
     getItems: noDaemon,
     getTaskDetail: noDaemon,
     getTaskDetailByKey: noDaemon,

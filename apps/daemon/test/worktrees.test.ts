@@ -284,6 +284,7 @@ describe('GET /v1/projects/:id/worktrees', () => {
             path: folder,
             branch: 'main',
             head: git(folder, 'rev-parse', '--short=7', 'HEAD'),
+            headOid: git(folder, 'rev-parse', 'HEAD'),
             main: true,
             missing: false,
             changes: 0,
@@ -313,6 +314,7 @@ describe('GET /v1/projects/:id/worktrees', () => {
             path: real(path),
             branch: 'by-hand',
             head: git(path, 'rev-parse', '--short=7', 'HEAD'),
+            headOid: git(path, 'rev-parse', 'HEAD'),
             main: false,
             missing: false,
             changes: 0,
@@ -329,7 +331,7 @@ describe('GET /v1/projects/:id/worktrees', () => {
         });
     });
 
-    test('lists a worktree Clowdy made with its chats, archived ones too, and blocks Remove while they work in it', async () => {
+    test('lists a worktree with its chats but blocks Remove only for unarchived chats', async () => {
         const { at, start, h, folder } = await setup();
         const first = await start();
         const record = first.workspace!;
@@ -356,6 +358,14 @@ describe('GET /v1/projects/:id/worktrees', () => {
             { id: archived.id, title: archived.title, archived: true },
         ]);
         expect(await at(folder)).toMatchObject({ main: true, chats: [] });
+        h.ok('chat.setArchived', { chatId: first.id, archived: true });
+        h.ok('chat.setArchived', { chatId: second.id, archived: true });
+        const archivedOnly = await at(record.path);
+
+        expect(archivedOnly.blocked).toBeUndefined();
+        expect(archivedOnly.chats).toEqual(row.chats.map(chat => ({ ...chat, archived: true })));
+        h.ok('chat.setArchived', { chatId: archived.id, archived: false });
+        expect((await at(record.path)).blocked).toBe('chats');
     });
 
     test('lists a Clowdy-made worktree nobody works in with its record and no block', async () => {

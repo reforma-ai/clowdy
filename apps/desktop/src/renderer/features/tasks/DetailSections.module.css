@@ -92,14 +92,6 @@ button.row:focus-visible {
     white-space: nowrap;
 }
 
-.rowSummary {
-    min-width: 0;
-    overflow: hidden;
-    color: var(--color-secondary-muted-text);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
 .meta {
     @ruleset typography-text-xs;
 

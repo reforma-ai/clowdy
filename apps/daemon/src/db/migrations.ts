@@ -567,4 +567,18 @@ export const MIGRATIONS: Migration[] = [
             `);
         },
     },
+    {
+        version: 30,
+        up(db) {
+            // When the person put a native sub-agent away (Run.archivedAt), as `chats.archived_at` does for a chat. NULL for every run that is shown. Only `setRunArchivedAt` writes
+            // it: `upsertRun` never does after the insert, so a run saved from an older copy cannot bring a sub-agent back.
+            db.run('ALTER TABLE runs ADD COLUMN archived_at INTEGER');
+        },
+    },
+    {
+        version: 31,
+        up(db) {
+            db.run('CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
+        },
+    },
 ];

@@ -1,8 +1,10 @@
+import { Alert, AlertDescription, AlertIcon } from '@clowdy/components/Alert';
 import { Box } from '@clowdy/components/Box';
 import { Checkbox } from '@clowdy/components/Checkbox';
 import { openConfirmModal } from '@clowdy/components/modals';
 import { Text } from '@clowdy/components/Text';
 import { toast } from '@clowdy/components/Toast';
+import { AttentionCircle } from '@clowdy/icons/14';
 import { errorMessage } from '@clowdy/lib';
 import { useState } from 'react';
 
@@ -32,9 +34,14 @@ function DeleteMessage({ preview, choice }: { preview: GitBranchDeletePreview; c
                 </Text>
             )}
             {localUnmerged && (
-                <Text variant="sm" color="warning">
-                    The local branch has commits that are not merged into the base branch
-                </Text>
+                <Alert color="warning" role="status">
+                    <AlertIcon>
+                        <AttentionCircle />
+                    </AlertIcon>
+                    <AlertDescription>
+                        The local branch has commits that are not merged into the base branch
+                    </AlertDescription>
+                </Alert>
             )}
             {localCommit && originCommit && (
                 <Checkbox
@@ -49,9 +56,14 @@ function DeleteMessage({ preview, choice }: { preview: GitBranchDeletePreview; c
                 </Checkbox>
             )}
             {origin && originUnmerged && (
-                <Text variant="sm" color="warning">
-                    The branch on origin has commits that are not merged into the base branch
-                </Text>
+                <Alert color="warning" role="status">
+                    <AlertIcon>
+                        <AttentionCircle />
+                    </AlertIcon>
+                    <AlertDescription>
+                        The branch on origin has commits that are not merged into the base branch
+                    </AlertDescription>
+                </Alert>
             )}
         </Box>
     );

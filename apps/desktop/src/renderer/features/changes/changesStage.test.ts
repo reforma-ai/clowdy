@@ -194,8 +194,9 @@ describe('changesSummary', () => {
     });
 });
 
-describe('changesSummary, the count of the sync button', () => {
+describe('changesSummary, the words of the sync button', () => {
     const upstream = (ahead: number, behind: number) => ({ upstream: { name: 'origin/feature', ahead, behind } });
+    const line = (place: Repository) => changesSummary(place, undefined)?.syncLine;
     /** A status whose base has commits that the branch lacks, which is what the button's Update from the base is for. */
     const baseBehind = (behind: number, fields: Partial<Repository> = {}): Repository => {
         const place = status(fields);
@@ -203,73 +204,47 @@ describe('changesSummary, the count of the sync button', () => {
         return place.base.state === 'ready' ? { ...place, base: { ...place.base, behind } } : place;
     };
 
-    it('counts the commits to push before those to pull, as the button shows them, and says both in its line', () => {
-        expect(changesSummary(status(upstream(3, 0)), undefined)?.sync).toEqual({
-            arrow: 'up',
-            count: 3,
-            line: '3 commits to push',
-        });
-        expect(changesSummary(status(upstream(0, 2)), undefined)?.sync).toEqual({
-            arrow: 'down',
-            count: 2,
-            line: '2 commits to pull',
-        });
-        expect(changesSummary(status(upstream(1, 2)), undefined)?.sync).toEqual({
-            arrow: 'up',
-            count: 1,
-            line: '2 commits to pull and 1 commit to push',
-        });
+    it('says what the button says of the commits to push and to pull, both when there are both', () => {
+        expect(line(status(upstream(3, 0)))).toBe('3 commits to push');
+        expect(line(status(upstream(0, 2)))).toBe('2 commits to pull');
+        expect(line(status(upstream(1, 2)))).toBe('2 commits to pull and 1 commit to push');
     });
 
-    it('counts the commits to merge from the base when the branch has nothing to push or pull, as Update from the base does', () => {
-        const merge = (count: number) => ({ arrow: 'down', count, line: `${count} commits to merge from main` });
-
-        expect(changesSummary(baseBehind(17, upstream(0, 0)), undefined)?.sync).toEqual(merge(17));
+    it('says the commits to merge from the base when the branch has nothing to push or pull, as Update from the base does', () => {
+        expect(line(baseBehind(17, upstream(0, 0)))).toBe('17 commits to merge from main');
         // A branch that tracks something that is not on origin is moved by nothing else.
-        expect(
-            changesSummary(baseBehind(4, { upstream: { name: 'fork/feature', ahead: 1, behind: 0 } }), undefined)?.sync
-        ).toEqual(merge(4));
+        expect(line(baseBehind(4, { upstream: { name: 'fork/feature', ahead: 1, behind: 0 } }))).toBe(
+            '4 commits to merge from main'
+        );
         // What the button has to push or pull comes before the base's commits.
-        expect(changesSummary(baseBehind(5, upstream(2, 0)), undefined)?.sync).toMatchObject({ arrow: 'up', count: 2 });
+        expect(line(baseBehind(5, upstream(2, 0)))).toBe('2 commits to push');
     });
 
-    it('has no count while the button has none: level, not published, or stopped in a merge or a rebase', () => {
-        expect(changesSummary(status(upstream(0, 0)), undefined)?.sync).toBeUndefined();
-        expect(changesSummary(status(), undefined)?.sync).toBeUndefined();
-        expect(changesSummary(status({ ...upstream(2, 0), rebasing: true }), undefined)?.sync).toBeUndefined();
-        expect(
-            changesSummary(status({ ...upstream(2, 0), merging: { conflicts: 0 } }), undefined)?.sync
-        ).toBeUndefined();
-        expect(changesSummary(status({ ...upstream(2, 0), origin: false }), undefined)?.sync).toBeUndefined();
+    it('says nothing while the button counts nothing: level, not published, or stopped in a merge or a rebase', () => {
+        expect(line(status(upstream(0, 0)))).toBeUndefined();
+        expect(line(status())).toBeUndefined();
+        expect(line(status({ ...upstream(2, 0), rebasing: true }))).toBeUndefined();
+        expect(line(status({ ...upstream(2, 0), merging: { conflicts: 0 } }))).toBeUndefined();
+        expect(line(status({ ...upstream(2, 0), origin: false }))).toBeUndefined();
     });
 
-    it('has no count for a branch that is to be published, and none for a head that is on no branch', () => {
+    it('says nothing for a branch that is to be published, and for a head that is on no branch', () => {
         const head = { kind: 'detached' as const, commit: '1'.repeat(40) };
 
         // The upstream is gone from origin, or is on origin under another name: the button offers Publish branch, whatever the base has.
         expect(
-            changesSummary(
-                baseBehind(3, { upstream: { name: 'origin/feature', ahead: 0, behind: 0, gone: true } }),
-                undefined
-            )?.sync
+            line(baseBehind(3, { upstream: { name: 'origin/feature', ahead: 0, behind: 0, gone: true } }))
         ).toBeUndefined();
-        expect(
-            changesSummary(baseBehind(3, { upstream: { name: 'origin/other', ahead: 2, behind: 0 } }), undefined)?.sync
-        ).toBeUndefined();
-        expect(changesSummary(baseBehind(3, { head }), undefined)?.sync).toBeUndefined();
-        expect(
-            changesSummary(baseBehind(3, { head: { kind: 'unborn', name: 'feature' } }), undefined)?.sync
-        ).toBeUndefined();
+        expect(line(baseBehind(3, { upstream: { name: 'origin/other', ahead: 2, behind: 0 } }))).toBeUndefined();
+        expect(line(baseBehind(3, { head }))).toBeUndefined();
+        expect(line(baseBehind(3, { head: { kind: 'unborn', name: 'feature' } }))).toBeUndefined();
     });
 
-    it('has no count of the base for the branch that is the base', () => {
+    it('says nothing of the base for the branch that is the base', () => {
         const main = { kind: 'branch' as const, name: 'main', commit: '1'.repeat(40) };
 
         expect(
-            changesSummary(
-                baseBehind(3, { head: main, upstream: { name: 'origin/main', ahead: 0, behind: 0 } }),
-                undefined
-            )?.sync
+            line(baseBehind(3, { head: main, upstream: { name: 'origin/main', ahead: 0, behind: 0 } }))
         ).toBeUndefined();
     });
 });

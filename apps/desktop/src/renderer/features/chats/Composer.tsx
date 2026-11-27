@@ -2,8 +2,9 @@ import { Attachments, PreviewableAttachment } from '@clowdy/components/Attachmen
 import { Button } from '@clowdy/components/Button';
 import { ListBoxItem } from '@clowdy/components/List';
 import { type ComposerDoc, emptyComposerDoc, RichInput, type RichInputHandle } from '@clowdy/components/RichInput';
+import { toast } from '@clowdy/components/Toast';
 import { Clip } from '@clowdy/icons/14';
-import { type MouseEvent, type Ref, useImperativeHandle, useRef, useState } from 'react';
+import { type MouseEvent, type Ref, useEffect, useImperativeHandle, useRef, useState } from 'react';
 
 import { Unavailable } from '../../shared/Unavailable';
 import { useAgents, useProjectState, useRootStore } from '../../stores';
@@ -32,6 +33,7 @@ import {
 import { type DraftFile, filesOf, releaseFiles, restoreFiles, takeFiles } from './composerFiles';
 import { serializeMention } from './composerMentions';
 import { dropReplyQuote, restoreReplyQuote, setReplyQuote, takeReplyQuote, useReplyQuote } from './composerQuotes';
+import { isDraftSending, setDraftSending, useDraftSending } from './draftSending';
 import { MentionChip } from './MentionChip';
 import { ModelPicker, ModelPickerOff } from './ModelPicker';
 import { ModePicker } from './ModePicker';
@@ -40,13 +42,16 @@ import { ReplyCard } from './ReplyCard';
 import { useComposerFiles } from './useComposerFiles';
 import { useMentionTriggers } from './useMentionTriggers';
 import { NO_PROVIDER_HINT, useModelChoice } from './useModelChoice';
+import { usePromptSuggestion } from './usePromptSuggestion';
 
 import type {
+    Attachment,
     Chat,
     ChatId,
     ChatMode,
     ChatWorkspace,
     ChatWorkspaceChoice,
+    Command,
     CommandResult,
     FolderId,
     ProjectId,
@@ -62,6 +67,29 @@ const CONTROLS = 'button, [role="button"], [role="combobox"], [contenteditable="
 
 /** The height of one line of the field in px, as the card sets it (`--spacing-20`): the field's own minimum is counted in px. */
 const LINE_HEIGHT = 20;
+type FirstMessage = Omit<Extract<Command, { type: 'chat.send' }>, 'type' | 'requestId' | 'chatId'>;
+interface DraftJournal {
+    key: string;
+    get: () =>
+        | {
+              createdChat?: Chat;
+              operation?: Extract<Command, { type: 'chat.create' | 'chat.send' }>;
+              firstMessage?: FirstMessage;
+              attachments?: readonly Attachment[];
+              reply?: ReplyMessage;
+          }
+        | undefined;
+    set: (
+        operation: Extract<Command, { type: 'chat.create' | 'chat.send' }> | undefined,
+        chat?: Chat,
+        firstMessage?: FirstMessage,
+        attachments?: readonly Attachment[],
+        reply?: ReplyMessage
+    ) => boolean;
+    setAttachments?: (attachments: readonly Attachment[]) => void;
+    clearRefused?: () => boolean;
+    setReply?: (reply?: ReplyMessage) => void;
+}
 
 /** What a page around the composer may ask of it. */
 export interface ComposerHandle {
@@ -108,6 +136,12 @@ export interface ComposerProps {
      */
     start?: {
         projectId: ProjectId;
+        draftKey?: string;
+        draftDoc?: ComposerDoc;
+        journal?: DraftJournal;
+        ensureJournal?: () => DraftJournal;
+
+        onDraftChange?: (doc: ComposerDoc) => void;
         folderId?: FolderId;
         workspace?: ChatWorkspaceChoice;
         workspaceRow?: ChatWorkspace;
@@ -117,13 +151,15 @@ export interface ComposerProps {
          */
         around?: (create: () => Promise<CommandResult>) => Promise<CommandResult>;
         waiting?: string;
-        onStarted: (chatId: ChatId) => void;
+        onStarted: (chatId: ChatId, draftKey?: string) => void;
         defaults?: { engine?: string; mode?: ChatMode };
     };
     /** How many lines the empty field is tall (it still grows with the text). One by default. */
     minLines?: number;
     /** The box of an edit frame (see `EditMode`) in place of the chat's message box. */
     editMode?: EditMode;
+    /** The history editor takes precedence over suggestions in the bottom composer. */
+    suppressSuggestions?: boolean;
     /** What the line under the box holds at its start (where the chat works); the mode stands at its end. An edit frame has no line. */
     controls?: ReactNode;
     /** Called when a valid new message is sent from this composer. */
@@ -147,6 +183,7 @@ export function Composer({
     start,
     minLines,
     editMode,
+    suppressSuggestions,
     controls,
     onSendMessage,
     question,
@@ -156,12 +193,15 @@ export function Composer({
     const field = useRef<RichInputHandle>(null);
     const box = useRef<HTMLDivElement>(null);
     // The words and the files of a message box live under one key: the chat's id, the new-chat page of this project, or the edit session of a message.
-    const key = editMode?.draftKey ?? chat?.id ?? newChatDraftKey(start?.projectId);
+    const key = editMode?.draftKey ?? chat?.id ?? start?.draftKey ?? newChatDraftKey(start?.projectId);
     // The new-chat page of another project is this same composer drawn again, with words of its own: the state holds the draft last
     // edited, with its key, and any other key is read from the store (which every edit writes first).
-    const [shown, setShown] = useState({ key, doc: draftOf(key) });
-    const doc = shown.key === key ? shown.doc : draftOf(key);
+    const [shown, setShown] = useState({ key, doc: start?.draftDoc ?? draftOf(key) });
+    const doc = shown.key === key ? shown.doc : (start?.draftDoc ?? draftOf(key));
     const [isStopping, setIsStopping] = useState(false);
+    const inFlight = useDraftSending(start?.draftKey);
+    const unresolved = Boolean(start?.journal?.get()?.operation || start?.journal?.get()?.firstMessage);
+    const draftLocked = inFlight || unresolved;
     // The mode a new chat starts in: what was picked on this page for this project, else where the project and the last pick say it starts.
     const [rememberedMode, setRememberedMode] = useState(readRememberedMode);
     const [pickedMode, setPickedMode] = useState<{ projectId: ProjectId | undefined; mode: ChatMode }>();
@@ -172,12 +212,15 @@ export function Composer({
     // The chat a first message made, when sending the message then failed. It belongs to the project, the folder and the place in it (`where`: its worktree is fixed from
     // the start) it was made for: the page of another project, folder or place (the same composer, drawn again) starts its own chat, and a model picked there is not picked for this one.
     const where = JSON.stringify(start?.workspace ?? null);
-    const [madeIn, setMade] = useState<{ chat: Chat; where: string }>();
+    const [madeIn, setMade] = useState<{ chat: Chat; where: string; key: string }>();
+    const persistedChat = start?.journal?.get()?.createdChat;
+    const candidate = persistedChat ? { chat: persistedChat, where } : madeIn?.key === key ? madeIn : undefined;
     const made =
-        madeIn?.chat.projectId === start?.projectId &&
-        madeIn?.chat.folderId === start?.folderId &&
-        madeIn?.where === where
-            ? madeIn?.chat
+        candidate &&
+        candidate.chat.projectId === start?.projectId &&
+        candidate.chat.folderId === start?.folderId &&
+        candidate.where === where
+            ? candidate.chat
             : undefined;
     const target = chat ?? made;
     const running = isRunActive(run);
@@ -185,6 +228,29 @@ export function Composer({
     const busy = isRunBusy(run);
     const model = useModelChoice({ chat, made, run, preferredEngine: start?.defaults?.engine });
     const attach = useComposerFiles(key, chat?.projectId ?? start?.projectId);
+    const restoredAttachments = useRef(new Set<string>());
+    useEffect(() => {
+        const journal = start?.journal;
+        if (!journal || restoredAttachments.current.has(journal.key)) return;
+        restoredAttachments.current.add(journal.key);
+        const stored = journal.get()?.attachments ?? [];
+        const reply = journal.get()?.reply;
+        if (reply) restoreReplyQuote(journal.key, reply);
+        const present = new Set(filesOf(journal.key).map(file => file.attachment?.id));
+        restoreFiles(
+            journal.key,
+            stored
+                .filter(file => !present.has(file.id))
+                .map(attachment => ({
+                    key: attachment.id,
+                    name: attachment.name,
+                    mediaType: attachment.mediaType,
+                    size: attachment.size,
+                    status: 'ready' as const,
+                    attachment,
+                }))
+        );
+    }, [start?.journal?.key]);
     const { folders } = useProjectState().project;
     // Where the message is read: the chat's folder and its worktree, or the folder of the new chat and the worktree it chose when that exists (a new worktree is made by the first
     // message, so there is none to name before). The `@` menu lists that place's files and documents, and a path in the message is the one the agent reads from its working directory there.
@@ -199,8 +265,28 @@ export function Composer({
     const replyTo = useReplyQuote(key);
     const { agents } = useAgents();
     const agentName = agents.find(agent => agent.id === model.choice?.engine)?.name ?? 'Assistant';
+    const provider = agents.find(agent => agent.id === run?.engine);
+    const predictionEnabled = provider?.settings?.find(setting => setting.id === 'promptSuggestions')?.value !== false;
+    const empty = doc.content?.length === 1 && doc.content[0]?.type === 'paragraph' && !doc.content[0].content?.length;
+    const { suggestion, dismiss: dismissSuggestion } = usePromptSuggestion(
+        root.transport,
+        run,
+        Boolean(
+            chat &&
+                !editMode &&
+                !suppressSuggestions &&
+                question === undefined &&
+                predictionEnabled &&
+                empty &&
+                !replyTo &&
+                attach.files.length === 0 &&
+                !chat.queue?.length &&
+                !busy &&
+                !running
+        )
+    );
     const picker = useRef<HTMLInputElement>(null);
-    const hasMessage = messageOf(doc) !== '' || attach.files.length > 0;
+    const hasMessage = messageOf(doc) !== '' || attach.files.length > 0 || unresolved;
     // A file still going up, or one that failed, holds the message back until the person has dealt with it.
     const uploadHint = attach.uploading
         ? 'Wait until the files are uploaded'
@@ -213,22 +299,27 @@ export function Composer({
         ? running
             ? 'Stop the agent to edit'
             : uploadHint
-        : model.noProvider
+        : model.noProvider && !unresolved
           ? NO_PROVIDER_HINT
           : (uploadHint ?? (target ? undefined : start?.waiting));
 
     const edit = (next: ComposerDoc) => {
+        dismissSuggestion();
         saveDraft(key, next);
+        start?.onDraftChange?.(next);
         setShown({ key, doc: next });
     };
 
     const quote = (text: string) => {
+        if (draftLocked) return;
         const empty = emptyComposerDoc();
         const quoted = withQuoteLast(empty, text);
         if (quoted !== empty) field.current?.appendBlocks(quoted.content ?? []);
     };
 
     const reply = (message: ReplyMessage) => {
+        if (draftLocked) return;
+        start?.journal?.setReply?.(message);
         setReplyQuote(key, message);
         field.current?.focus();
     };
@@ -242,6 +333,7 @@ export function Composer({
         });
 
     const mentionFiles = (files: readonly ClipboardFile[]): boolean => {
+        if (draftLocked) return false;
         const input = field.current;
         const chips = mentionedFiles(files, folders, place);
 
@@ -252,12 +344,20 @@ export function Composer({
         return true;
     };
 
-    useImperativeHandle(ref, () => ({ addFiles: attach.add, pasteFiles: pasted, reply, quote }), [
-        attach.add,
-        pasted,
-        reply,
-        quote,
-    ]);
+    useImperativeHandle(
+        ref,
+        () => ({
+            addFiles: files => {
+                if (!draftLocked) attach.add(files);
+            },
+            pasteFiles: files => {
+                if (!draftLocked) pasted(files);
+            },
+            reply,
+            quote,
+        }),
+        [draftLocked, attach.add, pasted, reply, quote]
+    );
     // The side panel's Add to chat sends quotes and file references to this box, never to an edit frame.
     useRegisterComposer(editMode ? undefined : quote, editMode ? undefined : mentionFiles);
 
@@ -265,89 +365,167 @@ export function Composer({
     const send = async (from: ComposerDoc, mod = false) => {
         const message = messageOf(from, model.choice?.engine);
         const held = filesOf(key);
+        const pending = start?.journal?.get()?.operation ?? start?.journal?.get()?.firstMessage;
 
         if (
-            (!message && held.length === 0) ||
+            (!message && held.length === 0 && !pending) ||
             held.some(file => file.status !== 'ready') ||
-            model.noProvider ||
-            (!target && start?.waiting !== undefined)
+            (model.noProvider && !pending) ||
+            (!target && start?.waiting !== undefined && !pending)
         )
             return;
 
+        const journal = start?.journal ?? start?.ensureJournal?.();
+        const sendKey = journal?.key ?? key;
+        if (journal && isDraftSending(sendKey)) return;
+        if (journal) {
+            setDraftSending(sendKey, true);
+            if (sendKey !== key) {
+                restoreFiles(sendKey, takeFiles(key));
+                const quote = takeReplyQuote(key);
+                if (quote) restoreReplyQuote(sendKey, quote);
+                start?.onDraftChange?.(from);
+            }
+            saveDraft(sendKey, from);
+        }
         onSendMessage?.();
-        edit(emptyComposerDoc());
+        if (!journal) edit(emptyComposerDoc());
 
-        const files = takeFiles(key);
-        const replied = takeReplyQuote(key);
-        // Give the words, the files and the quote back, unless the person has already started something new.
+        const files = takeFiles(sendKey);
+        const replied = takeReplyQuote(sendKey);
+        // Keep both the attempted message and any replacement typed while it was in flight.
         const giveBack = () => {
-            if (!messageOf(draftOf(key))) edit(from);
-
-            restoreFiles(key, files);
-
-            if (replied) restoreReplyQuote(key, replied);
+            const current = draftOf(sendKey);
+            let restored = current;
+            if (journal && current !== from && message && messageOf(current) !== message) {
+                restored = { ...from, content: [...(from.content ?? []), ...(current.content ?? [])] };
+            } else if (!journal && !messageOf(current)) {
+                restored = from;
+            }
+            if (restored !== current) {
+                saveDraft(sendKey, restored);
+                start?.onDraftChange?.(restored);
+                setShown({ key: sendKey, doc: restored });
+            }
+            const present = new Set(filesOf(sendKey).map(file => file.attachment?.id ?? file.key));
+            restoreFiles(
+                sendKey,
+                files.filter(file => !present.has(file.attachment?.id ?? file.key))
+            );
+            if (replied) restoreReplyQuote(sendKey, replied);
         };
-        let chatId = target?.id;
+        try {
+            const previous = journal?.get();
+            const firstMessage = previous?.firstMessage ?? {
+                text: replied ? quotedMessage(replied.text, message) : message,
+                ...(files.some(file => file.attachment) && {
+                    attachmentIds: files.flatMap(file => (file.attachment ? [file.attachment.id] : [])),
+                }),
+                mode: sendMode(busyEnter.mode, mod),
+            };
+            const attachments = previous?.firstMessage
+                ? (previous.attachments ?? [])
+                : files.flatMap(file => (file.attachment ? [file.attachment] : []));
+            let chatId = previous?.createdChat?.id ?? target?.id;
 
-        if (!chatId) {
-            if (!start) {
+            if (!chatId) {
+                if (!start) {
+                    giveBack();
+
+                    return;
+                }
+
+                const { choice } = model;
+                // The chat starts on what the picker holds: the provider, its model and the level of that model.
+                const command =
+                    previous?.operation?.type === 'chat.create'
+                        ? previous.operation
+                        : {
+                              type: 'chat.create' as const,
+                              ...(journal && { requestId: crypto.randomUUID() }),
+                              projectId: start.projectId,
+                              ...(start.folderId && { folderId: start.folderId }),
+                              ...(start.workspace && { workspace: branchPrefix.withPrefix(start.workspace) }),
+                              mode: draftMode,
+                              ...(choice && {
+                                  engine: choice.engine,
+                                  ...(choice.model && { model: choice.model }),
+                                  ...(choice.effort && { effort: choice.effort }),
+                              }),
+                          };
+                if (
+                    journal &&
+                    !journal.set(
+                        { ...command, requestId: command.requestId! },
+                        undefined,
+                        firstMessage,
+                        attachments,
+                        replied ?? previous?.reply
+                    )
+                )
+                    throw new Error('Could not save the pending message');
+                const create = () => perform(root, command);
+                const created = await (start.around ? start.around(create) : create());
+                const fresh = (created.ok ? created.data : {}) as { chat?: Chat };
+
+                if (!fresh.chat) {
+                    if (journal && created.requestId !== 'unsent' && journal.clearRefused?.() === false)
+                        toast.error({ message: 'Could not save the pending message' });
+                    giveBack();
+
+                    return;
+                }
+
+                if (journal && !journal.set(undefined, fresh.chat)) throw new Error('Could not save the new chat');
+                setMade({ chat: fresh.chat, where, key });
+                chatId = fresh.chat.id;
+            }
+
+            // The daemon decides whether the orchestrator takes the message now or it waits; the mode says how it waits, so it goes with every message.
+            const command =
+                previous?.operation?.type === 'chat.send'
+                    ? previous.operation
+                    : {
+                          type: 'chat.send' as const,
+                          ...(journal && { requestId: crypto.randomUUID() }),
+                          chatId,
+                          ...firstMessage,
+                      };
+            if (
+                journal &&
+                !journal.set(
+                    { ...command, requestId: command.requestId! },
+                    undefined,
+                    firstMessage,
+                    attachments,
+                    replied ?? previous?.reply
+                )
+            )
+                throw new Error('Could not save the pending message');
+            const result = await perform(root, command);
+
+            if (!result.ok) {
+                if (journal && result.requestId !== 'unsent' && journal.clearRefused?.() === false)
+                    toast.error({ message: 'Could not save the pending message' });
                 giveBack();
 
                 return;
             }
 
-            const { choice } = model;
-            // The chat starts on what the picker holds: the provider, its model and the level of that model.
-            const create = () =>
-                perform(root, {
-                    type: 'chat.create',
-                    projectId: start.projectId,
-                    ...(start.folderId && { folderId: start.folderId }),
-                    // A copy of the choice (the store keeps the one it holds, and the command is what the transport sends on), with the app's branch prefix for a new worktree.
-                    ...(start.workspace && { workspace: branchPrefix.withPrefix(start.workspace) }),
-                    mode: draftMode,
-                    ...(choice && {
-                        engine: choice.engine,
-                        ...(choice.model && { model: choice.model }),
-                        ...(choice.effort && { effort: choice.effort }),
-                    }),
-                });
-            const created = await (start.around ? start.around(create) : create());
-            const fresh = (created.ok ? created.data : {}) as { chat?: Chat };
+            // The daemon keeps the files now; the message shows them.
+            releaseFiles(files);
+            if (journal) releaseFiles(takeFiles(sendKey));
 
-            if (!fresh.chat) {
-                giveBack();
-
-                return;
+            if (!chat) {
+                setMade(undefined);
+                if (journal) saveDraft(sendKey, emptyComposerDoc());
+                start?.onStarted(chatId, journal?.key);
             }
-
-            setMade({ chat: fresh.chat, where });
-            chatId = fresh.chat.id;
-        }
-
-        // The daemon decides whether the orchestrator takes the message now or it waits; the mode says how it waits, so it goes with every message.
-        const attachmentIds = files.flatMap(file => (file.attachment ? [file.attachment.id] : []));
-        const result = await perform(root, {
-            type: 'chat.send',
-            chatId,
-            // The message replied to goes first, as a quote, then a blank line and what was typed.
-            text: replied ? quotedMessage(replied.text, message) : message,
-            ...(attachmentIds.length > 0 && { attachmentIds }),
-            mode: sendMode(busyEnter.mode, mod),
-        });
-
-        if (!result.ok) {
+        } catch {
+            toast.error({ message: 'Could not save the pending message' });
             giveBack();
-
-            return;
-        }
-
-        // The daemon keeps the files now; the message shows them.
-        releaseFiles(files);
-
-        if (!chat) {
-            setMade(undefined);
-            start?.onStarted(chatId);
+        } finally {
+            if (journal) setDraftSending(sendKey, false);
         }
     };
 
@@ -427,8 +605,10 @@ export function Composer({
                             <ReplyCard
                                 message={replyTo}
                                 who={replyTo.role === 'user' ? 'You' : agentName}
+                                disabled={draftLocked}
                                 onRemove={() => {
                                     dropReplyQuote(key);
+                                    start?.journal?.setReply?.(undefined);
                                     field.current?.focus();
                                 }}
                             />
@@ -448,8 +628,19 @@ export function Composer({
                                         }}
                                         loading={file.status === 'uploading'}
                                         error={file.status === 'error'}
-                                        onRetry={() => attach.retry(file.key)}
-                                        onRemove={() => attach.remove(file.key)}
+                                        onRetry={draftLocked ? undefined : () => attach.retry(file.key)}
+                                        onRemove={
+                                            draftLocked
+                                                ? undefined
+                                                : () => {
+                                                      attach.remove(file.key);
+                                                      start?.journal?.setAttachments?.(
+                                                          filesOf(key).flatMap(item =>
+                                                              item.attachment ? [item.attachment] : []
+                                                          )
+                                                      );
+                                                  }
+                                        }
                                     />
                                 ))}
                             </Attachments>
@@ -457,6 +648,7 @@ export function Composer({
 
                         <RichInput
                             ref={field}
+                            disabled={draftLocked}
                             value={doc}
                             onChange={edit}
                             triggers={triggers}
@@ -469,6 +661,7 @@ export function Composer({
                             placeholder={
                                 editMode ? 'Edit message' : busy ? 'Queue another message…' : 'Write a message…'
                             }
+                            suggestion={suggestion}
                             submitOnEnter
                             onSubmit={(next, origin) =>
                                 editMode ? submitEdit(next) : void send(next, origin?.mod === true)
@@ -485,6 +678,7 @@ export function Composer({
                                     color="secondary"
                                     size="sm"
                                     iconOnly
+                                    isDisabled={draftLocked}
                                     aria-label="Attach files"
                                     tooltip="Attach files"
                                     onPress={() => picker.current?.click()}
@@ -535,8 +729,8 @@ export function Composer({
                                     <ComposerSend
                                         label={editMode ? 'Submit edit' : undefined}
                                         canSend={hasMessage}
-                                        blocked={blocked !== undefined}
-                                        isPending={editMode?.isPending}
+                                        blocked={blocked !== undefined || inFlight}
+                                        isPending={editMode?.isPending || inFlight}
                                         running={running && !editMode}
                                         waits={busy && !editMode ? busyEnter.mode : undefined}
                                         isStopping={isStopping}

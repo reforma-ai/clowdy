@@ -49,20 +49,25 @@ function parentToolUseOf(update: SessionUpdate): string | undefined {
     return typeof id === 'string' && id !== '' ? id : undefined;
 }
 
-/** A sub-agent's name and brief, from the input of the call that started it: Claude's `Agent` and `Task` take `subagent_type`, `description` and `prompt`. */
-function identityOf(input: unknown): { name: string; description?: string } {
+/**
+ * A sub-agent's name, brief and prompt, from the input of the call that started it: Claude's `Agent` and `Task` take `subagent_type`, `description` and
+ * `prompt`. The prompt is what the parent asked of it, whole; the brief (the first line of it, when the call has no description) is only its name.
+ */
+function identityOf(input: unknown): { name: string; description?: string; prompt?: string } {
     const field = (key: string) => {
         const value = isRecord(input) ? input[key] : undefined;
 
         return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined;
     };
-    const brief = field('prompt')?.split('\n')[0].trim();
+    const prompt = field('prompt');
+    const brief = prompt?.split('\n')[0].trim();
 
     return {
         name: field('name') ?? field('subagent_type') ?? 'Sub-agent',
         description:
             field('description') ??
             (brief && brief.length > MAX_BRIEF_CHARS ? `${brief.slice(0, MAX_BRIEF_CHARS)}…` : brief),
+        prompt,
     };
 }
 
@@ -180,7 +185,7 @@ export class UpdateMapper {
                 return this.drop(agentId, update);
             }
 
-            const { name, description } = identityOf(call?.input);
+            const { name, description, prompt } = identityOf(call?.input);
 
             child = { name, message: new Message(), thought: new Thought(), ended: false };
             this.children.set(agentId, child);
@@ -190,6 +195,7 @@ export class UpdateMapper {
                 parentToolCallId: agentId,
                 name,
                 ...(description !== undefined && { description }),
+                ...(prompt !== undefined && { prompt }),
                 state: 'running',
             });
         }

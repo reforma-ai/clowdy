@@ -86,9 +86,8 @@ describe('RunDetail, the page', () => {
 
         expect(container.textContent).toContain('Looking for the price helper and its callers.');
         expect(container.querySelector('nav[aria-label="Conversation path"]')?.textContent).toBe(
-            'Simplify bookingExplore agent'
+            'Simplify bookingFind where the price is computed'
         );
-        expect(container.textContent).toContain('Find where the price is computed');
         // The one header is the conversation's own, the path; the old one with the avatar, the Parent chip and the Stop button is gone.
         expect(
             [...container.querySelectorAll('header')].map(found =>
@@ -134,7 +133,7 @@ describe('RunDetail, the page', () => {
         await draw(runOf('r-na-02'));
 
         for (const label of banners) expect(container.querySelector(`[aria-label="${label}"]`)).toBeNull();
-        expect(container.querySelector('[aria-label^="Open General agent"]')).toBeNull();
+        expect(container.querySelector('[aria-label^="Open Update the booking form"]')).toBeNull();
     });
 
     it('reads a finished sub-agent without Reply, Fork or Edit under its answer, and keeps Copy', async () => {
@@ -148,7 +147,203 @@ describe('RunDetail, the page', () => {
         expect(container.querySelector('[aria-label*="Fork"]')).toBeNull();
     });
 
-    it('says so when a sub-agent has not written anything yet', async () => {
+    it('says so when a sub-agent has not written anything yet, and has no call to take what it was asked from', async () => {
+        const data = createFixtureData();
+
+        data.items['r-na-02'] = [];
+        data.runs.find(found => found.id === 'r-na-02')!.parentToolCallId = undefined;
+        await open(data);
+        await draw(runOf('r-na-02'));
+        await draw(runOf('r-na-02'));
+
+        expect(container.textContent).toContain('This sub-agent has not written anything yet');
+    });
+});
+
+describe('RunDetail, what its parent asked', () => {
+    const cards = () => [...container.querySelectorAll<HTMLElement>('[data-slot="thread-message"]')];
+    const parentCall = (data: FixtureData, toolCallId: string) =>
+        data.items['r-orch-1']!.find(found => found.body.kind === 'tool' && found.body.toolCallId === toolCallId)!;
+    /** The page, drawn twice: once the streams the page reads have been fetched. */
+    const show = async (id: string) => {
+        await draw(runOf(id));
+        await draw(runOf(id));
+    };
+
+    it("begins with the card of the first message of its stream, as a thread's page does, in the words of its parent", async () => {
+        await show('r-na-02');
+
+        expect(cards()).toHaveLength(1);
+        expect(cards()[0].textContent).toContain('Message from Simplify booking');
+        expect(cards()[0].textContent).toContain('Find where the booking price is computed and who calls it.');
+        // The card comes before everything the sub-agent did, and is the only thing in the stream that is not its own.
+        expect(container.querySelector('[data-turn]')).toBe(cards()[0]);
+        expect(container.querySelector('time')).toBeNull();
+    });
+
+    it('holds the whole prompt, with its lines, for a sub-agent that was given a long one', async () => {
+        await show('r-na-04');
+
+        const words = cards()[0].textContent!;
+
+        expect(words).toContain('Add the weekend surcharge to the price helper and keep the typecheck green.');
+        expect(words).toContain('Round the total once, at the end, to the cent.');
+        expect(cards()[0].querySelectorAll('li').length).toBeGreaterThan(4);
+    });
+
+    it('opens the chat that runs it from the title of the card', async () => {
+        await show('r-na-02');
+        store.ui.forProject(FIXTURE_PROJECT_ID).openChat('c-2');
+
+        const title = [...cards()[0].querySelectorAll('button')].find(
+            button => button.textContent === 'Simplify booking'
+        );
+
+        await act(async () => title!.click());
+
+        expect(store.ui.forProject(FIXTURE_PROJECT_ID).chatId).toBe('c-1');
+    });
+
+    it('names the chat of the root run for a sub-agent that runs inside another sub-agent', async () => {
+        await show('r-na-05');
+
+        expect(cards()[0].textContent).toContain('Message from Simplify booking');
+        expect(cards()[0].textContent).toContain('List every caller of');
+    });
+
+    it('is made from the prompt of the call that started a sub-agent stored before its stream began with one, and only then', async () => {
+        const data = createFixtureData();
+
+        data.items['r-na-02'] = data.items['r-na-02']!.slice(1);
+        await open(data);
+        await show('r-na-02');
+
+        expect(cards()).toHaveLength(1);
+        expect(cards()[0].textContent).toContain('Message from Simplify booking');
+        expect(cards()[0].textContent).toContain('Find where the booking price is computed and who calls it.');
+        expect(container.querySelector('[data-turn]')).toBe(cards()[0]);
+        // View state: the stream of the run is still what the daemon stored.
+        expect(store.streams.of('r-na-02').items.map(found => found.body.kind)).not.toContain('user');
+    });
+
+    it("takes the message a call carries when it has no prompt, as Codex's does", async () => {
+        const data = createFixtureData();
+
+        data.items['r-na-02'] = data.items['r-na-02']!.slice(1);
+        parentCall(data, 'tc-agent-2').body = {
+            kind: 'tool',
+            toolCallId: 'tc-agent-2',
+            name: 'spawnAgent',
+            input: { message: 'Look for the callers' },
+            state: 'running',
+        };
+        await open(data);
+        await show('r-na-02');
+
+        expect(cards()[0].textContent).toContain('Look for the callers');
+    });
+
+    it('does not make it a second time when the stream of a sub-agent begins with one, whatever the call says', async () => {
+        const data = createFixtureData();
+        const call = parentCall(data, 'tc-agent-2');
+
+        if (call.body.kind === 'tool') call.body.input = { prompt: 'Something the call said differently' };
+        await open(data);
+        await show('r-na-02');
+
+        expect(cards()).toHaveLength(1);
+        expect(cards()[0].textContent).toContain('Find where the booking price is computed and who calls it.');
+        expect(cards()[0].textContent).not.toContain('Something the call said differently');
+    });
+
+    it("shows nothing, and breaks nothing, for a sub-agent whose call has no prompt or is not in its parent's stream", async () => {
+        const data = createFixtureData();
+
+        data.items['r-na-02'] = data.items['r-na-02']!.slice(1);
+        data.items['r-na-03'] = data.items['r-na-03']!.slice(1);
+        data.items['r-orch-1'] = data.items['r-orch-1']!.filter(
+            found => !(found.body.kind === 'tool' && found.body.toolCallId === 'tc-agent-3')
+        );
+        parentCall(data, 'tc-agent-2').body = {
+            kind: 'tool',
+            toolCallId: 'tc-agent-2',
+            name: 'Agent',
+            input: { description: 'Find where the price is computed' },
+            state: 'running',
+        };
+        await open(data);
+
+        await show('r-na-02');
+
+        expect(cards()).toHaveLength(0);
+        expect(container.textContent).toContain('Looking for the price helper and its callers.');
+
+        await show('r-na-03');
+
+        expect(cards()).toHaveLength(0);
+        expect(container.textContent).toContain('I will start by reading the current form and the price helper.');
+    });
+
+    it('shows nothing for a sub-agent that no call started', async () => {
+        const data = createFixtureData();
+
+        data.items['r-na-02'] = data.items['r-na-02']!.slice(1);
+        data.runs.find(found => found.id === 'r-na-02')!.parentToolCallId = undefined;
+        await open(data);
+        await show('r-na-02');
+
+        expect(cards()).toHaveLength(0);
+    });
+
+    it('does not draw the stream until the parent stream it makes the card from is read, so the card does not come in above what is being read', async () => {
+        const data = createFixtureData();
+
+        data.items['r-na-02'] = data.items['r-na-02']!.slice(1);
+        await open(data);
+
+        const parent = store.streams.of('r-orch-1');
+        let release: () => void = () => undefined;
+        const held = new Promise<void>(resolve => (release = resolve));
+        const load = vi.spyOn(parent, 'load').mockImplementation(() => held);
+
+        await draw(runOf('r-na-02'));
+        await draw(runOf('r-na-02'));
+
+        expect(load).toHaveBeenCalled();
+        expect(container.textContent).toContain('Loading messages…');
+        expect(container.textContent).not.toContain('Looking for the price helper and its callers.');
+
+        load.mockRestore();
+        release();
+        await parent.load();
+        await draw(runOf('r-na-02'));
+        await draw(runOf('r-na-02'));
+
+        expect(container.textContent).not.toContain('Loading messages…');
+        expect(cards()[0].textContent).toContain('Find where the booking price is computed and who calls it.');
+        expect(container.querySelector('[data-turn]')).toBe(cards()[0]);
+    });
+
+    it('does not wait for a parent stream that cannot be read: the page is its stream, without the card', async () => {
+        const data = createFixtureData();
+
+        data.items['r-na-02'] = data.items['r-na-02']!.slice(1);
+        await open(data);
+
+        const getItems = store.transport.getItems.bind(store.transport);
+
+        vi.spyOn(store.transport, 'getItems').mockImplementation(async query => {
+            if ('runId' in query && query.runId === 'r-orch-1') throw new Error('Offline');
+
+            return getItems(query);
+        });
+        await show('r-na-02');
+
+        expect(cards()).toHaveLength(0);
+        expect(container.textContent).toContain('Looking for the price helper and its callers.');
+    });
+
+    it('stands alone for a sub-agent that has not written anything yet, without the empty notice', async () => {
         const data = createFixtureData();
 
         data.items['r-na-02'] = [];
@@ -156,7 +351,8 @@ describe('RunDetail, the page', () => {
         await draw(runOf('r-na-02'));
         await draw(runOf('r-na-02'));
 
-        expect(container.textContent).toContain('This sub-agent has not written anything yet');
+        expect(cards()).toHaveLength(1);
+        expect(container.textContent).not.toContain('This sub-agent has not written anything yet');
     });
 });
 
@@ -194,14 +390,14 @@ describe('RunDetail, the message box', () => {
         expect(runOf('r-orch-1').status).toBe('running');
     });
 
-    it('says why when the daemon refuses to stop it, naming the sub-agent as the person reads it', async () => {
+    it('says why when the daemon refuses to stop it, naming the sub-agent by what it was asked to do', async () => {
         await draw(runOf('r-na-02'));
         vi.spyOn(store, 'command').mockResolvedValueOnce(refusal('The session cannot end it'));
 
         await act(async () => stopButton()!.click());
 
         expect(toast.error).toHaveBeenCalledWith({
-            message: 'Could not stop Explore agent: The session cannot end it',
+            message: 'Could not stop Find where the price is computed: The session cannot end it',
         });
     });
 
@@ -220,10 +416,10 @@ describe('RunDetail, the message box', () => {
         expect(box()?.placeholder).toBe('Only its parent can write to this sub-agent');
     });
 
-    it('names a sub-agent that runs inside another sub-agent by its type', async () => {
+    it('names a sub-agent that runs inside another sub-agent by what that one was asked to do', async () => {
         await draw({ ...runOf('r-na-02'), canStopAlone: undefined, parentRunId: 'r-na-03' });
 
-        expect(box()?.placeholder).toBe('Runs inside General agent');
+        expect(box()?.placeholder).toBe('Runs inside Update the booking form');
     });
 });
 

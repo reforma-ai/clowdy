@@ -5,7 +5,7 @@ import { Loader } from '@clowdy/components/Loader';
 import { Text } from '@clowdy/components/Text';
 import { AttentionCircle } from '@clowdy/icons/14';
 import { shownRunStatus } from '@clowdy/protocol';
-import { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { useRootStore } from '../../stores';
 import { StreamView, type StreamViewHandle, type StreamViewProps } from '../../stream';
@@ -13,10 +13,20 @@ import styles from './ConversationView.module.css';
 import { isRunActive, liveLine } from './chatRun';
 import { perform } from './commands';
 
-import type { Run } from '@clowdy/protocol';
+import type { Run, StreamItem } from '@clowdy/protocol';
 import type { ReactNode, Ref } from 'react';
 import type { RunStream } from '../../stores';
 import type { ConversationLinks } from './useStreamLinks';
+
+const NO_ITEMS: StreamItem[] = [];
+
+/** Turn the daemon's queue and pause reasons into the agent's message, keeping unknown formats intact. */
+function usageLimitMessage(reason: string): string {
+    return reason.replace(
+        /^(.+?) is at its usage limit until (.+?)(?:; this run continues then)?$/,
+        (_, engine: string, time: string) => `I've hit the ${engine} usage limit. I'll continue after ${time}.`
+    );
+}
 
 export interface ConversationViewProps
     extends Pick<
@@ -29,6 +39,10 @@ export interface ConversationViewProps
     stream: RunStream | undefined;
     /** What the text may point at (`useStreamLinks`), read by the page that holds this one, which opens chats and reads files with it too. */
     links: ConversationLinks;
+    /** An item drawn before the stream's own: what the page makes of what it knows (a sub-agent's page, the prompt of the call that started it). It is not stored and not part of the stream. */
+    leading?: StreamItem;
+    /** The page waits for what its leading item is made from: the stream is not drawn yet and the page says it is loading, so the item does not appear above what the person has begun to read. */
+    holding?: boolean;
     /** Over the stream: the header that says where the conversation is, `ConversationHeader`. */
     top?: ReactNode;
     /** Over the stream's bottom, above the box: the plates that tell what the chat is doing (its agents, its last run, its tasks). */
@@ -52,6 +66,8 @@ export function ConversationView({
     run,
     stream,
     links,
+    leading,
+    holding = false,
     top,
     banners,
     bottom,
@@ -95,14 +111,21 @@ export function ConversationView({
     }, [measureOverlay]);
 
     // A stream that is read again (the app resyncs) keeps what it shows until the new items replace them, so the page keeps its place; only one with nothing to show says it is loading.
-    const items = stream?.items ?? [];
-    const hasItems = items.length > 0;
+    const streamItems = stream?.items ?? NO_ITEMS;
+    const hasItems = streamItems.length > 0;
+    const items = useMemo(() => (leading ? [leading, ...streamItems] : streamItems), [leading, streamItems]);
     const shown = run && shownRunStatus(run);
+    // The daemon's usage-limit reason carries the reset time; other queue and retry reasons remain ordinary live lines.
+    const usageLimit =
+        (shown === 'queued' || shown === 'blocked') && run?.statusReason?.includes(' is at its usage limit until ')
+            ? usageLimitMessage(run.statusReason)
+            : undefined;
     // The live line follows what the person reads of the run: none while a card waits for them.
     const working =
         isRunActive(run) &&
         shown !== undefined &&
-        (shown === 'waiting_background' && backgroundLine ? backgroundLine : liveLine(shown));
+        !usageLimit &&
+        (shown === 'waiting_background' && backgroundLine ? backgroundLine : liveLine(shown, run.statusReason));
 
     return (
         <div className={styles.page}>
@@ -124,7 +147,7 @@ export function ConversationView({
                 </div>
             )}
 
-            {stream && (stream.status === 'idle' || stream.status === 'loading') && !hasItems && (
+            {((stream && (stream.status === 'idle' || stream.status === 'loading') && !hasItems) || holding) && (
                 <div className={styles.center}>
                     <Loader size="xs" />
                     <Text color="secondary">Loading messages…</Text>
@@ -132,6 +155,7 @@ export function ConversationView({
             )}
 
             {composerInset !== undefined &&
+                !holding &&
                 (!stream || stream.status === 'ready' || (stream.status === 'loading' && hasItems)) && (
                     <StreamView
                         {...streamProps}
@@ -141,6 +165,7 @@ export function ConversationView({
                         items={items}
                         active={isRunActive(run)}
                         working={working}
+                        waitingNotice={usageLimit}
                         links={links}
                         // A question the run no longer waits on (stopped, interrupted) is shown but cannot be answered.
                         onAnswer={

@@ -1,14 +1,22 @@
 import { useRootStore } from '../../stores';
 import { pullRequestRows } from '../changes/BranchPullRequestList';
 import { partitionPullRequests, useBranchPullRequests } from '../changes/branchPullRequests';
+import { commitsWords } from '../changes/changesActions';
 import { type ChangesSummary, changesSummary } from '../changes/changesStage';
 import { useGitFacts } from '../changes/useGitFacts';
 import { currentPlace } from './currentPlace';
 
-/** What the rail says of the changes of a place: `changesSummary`, and whether the branch has a pull request to show. */
+/** What the rail says of the changes of a place: `changesSummary`, whether the branch has a pull request to show, and whether it has work that is nowhere else. */
 export interface RailChanges extends ChangesSummary {
     /** A pull request is shown under the sync button of Source Control (an open or draft one, or the newest merged one the branch has not moved past): the tab draws the merge icon. */
     pullRequest: boolean;
+    /**
+     * The branch has work that exists nowhere else: files that are uncommitted, or commits that are not merged and are in no pull request (not an open or draft one, and not a merged one
+     * that the branch has not moved past). The tab draws a dot for it while it is not the one on show.
+     */
+    unlanded: boolean;
+    /** What the dot stands for, for a screen reader: `3 uncommitted files, 2 commits not merged`. */
+    unlandedLabel: string;
 }
 
 /**
@@ -43,5 +51,10 @@ export function useChangesSummary(): RailChanges | undefined {
         facts.pullRequest.stale
     );
 
-    return { ...summary, pullRequest: partitionPullRequests(rows).visible.length > 0 };
+    const pullRequest = partitionPullRequests(rows).visible.length > 0;
+    const ahead = status?.isRepository === true && status.base.state === 'ready' ? status.base.ahead : 0;
+    const unmerged = ahead > 0 && !pullRequest ? `${commitsWords(ahead)} not merged` : undefined;
+    const reasons = [summary.uncommittedLine, unmerged].filter(reason => reason !== undefined);
+
+    return { ...summary, pullRequest, unlanded: reasons.length > 0, unlandedLabel: reasons.join(', ') };
 }

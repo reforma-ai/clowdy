@@ -255,6 +255,16 @@ describe('the scripted orchestrator', () => {
             result: agent.output,
         });
         expect(toolItems(items(h, native.id)).map(tool => tool.name)).toEqual(['grep']);
+        // What the call asked of it is the first item of its stream, a message from the chat as a thread's first message is, so the card shows in the fixture daemon.
+        expect(agent.input).toMatchObject({ prompt: expect.stringMatching(/^Find the callers of src\/.*\.ts/) });
+        expect(items(h, native.id)[0]).toMatchObject({
+            seq: 1,
+            body: {
+                kind: 'user',
+                text: (agent.input as { prompt: string }).prompt,
+                from: { kind: 'thread', chatId: chat.id, title: expect.any(String) },
+            },
+        });
     });
 
     test('a second message in a finished chat runs another turn on the same orchestrator run', async () => {

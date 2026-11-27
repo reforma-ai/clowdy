@@ -55,6 +55,7 @@ export interface ResolvedAgent {
     /** The ACP version the engine speaks to it: `AgentSpec.protocol`, and `v1` for a custom agent. */
     protocol: AgentProtocol;
     elicitation?: boolean;
+    promptSuggestions?: boolean;
     /** `AgentSpec.wakesOnBackgroundEnd`: the agent starts no report turn for background work that ended, so the runtime tells it. */
     wakesOnBackgroundEnd?: boolean;
     /** The `_meta` of `session/new`, for the options its adapter reads. */
@@ -142,9 +143,11 @@ export class AgentRegistry {
         return this.stored.overrides[id]?.enabled !== false;
     }
 
-    /** The value of a switch of the agent as the person left it, or `undefined` for an agent that has no such switch (a custom one has none). */
+    /** The value of a switch of the agent as the person left it, or `undefined` for an agent that has no such switch. */
     setting(id: string, settingId: string): boolean | undefined {
-        const setting = this.spec(id)?.settings?.find(candidate => candidate.id === settingId);
+        const setting = this.has(id)
+            ? settingsFor(this.spec(id)).find(candidate => candidate.id === settingId)
+            : undefined;
 
         return setting && settingValue(setting, this.stored.overrides[id] ?? {});
     }
@@ -260,7 +263,7 @@ export class AgentRegistry {
         const { name, command, args, path, enabled, env, settings, permission } = patch;
 
         for (const settingId of Object.keys(settings ?? {})) {
-            if (!this.spec(id)?.settings?.some(setting => setting.id === settingId)) {
+            if (!settingsFor(this.spec(id)).some(setting => setting.id === settingId)) {
                 throw new AgentRegistryError('invalid', `${this.nameOf(id)} has no setting called "${settingId}"`);
             }
         }
@@ -466,6 +469,7 @@ export class AgentRegistry {
                     env: { ...entry.agent.env, ...override.env },
                     scrub: [],
                     protocol: 'v1',
+                    promptSuggestions: settingValue(PROMPT_SUGGESTIONS_SETTING, override),
                     ...(entry.agent.elicitation && { elicitation: true }),
                     permission: permit.permission,
                 },
@@ -481,6 +485,7 @@ export class AgentRegistry {
 
         const applied = appliedSettings(spec, override, permit.effect);
         const base = {
+            promptSuggestions: settingValue(PROMPT_SUGGESTIONS_SETTING, override),
             id: spec.id,
             name: spec.name,
             scrub: spec.scrub ?? [],
@@ -564,7 +569,7 @@ export class AgentRegistry {
             ...(fetches && { fetches }),
             ...(spec?.login && { login: spec.login }),
             ...(spec?.compact && { canCompact: true }),
-            ...(spec?.settings?.length && { settings: settingsOf(spec, override) }),
+            settings: settingsOf(spec, override),
             permissions: permissionsInfo(this.permissionsOf(entry.id), override),
             ...((override.path || override.env) && {
                 overrides: {
@@ -699,8 +704,23 @@ const settingValue = (setting: AgentSettingSpec, override: AgentOverride): boole
     override.settings?.[setting.id] ?? setting.default;
 
 /** The agent's settings with their values, for a person to see and change. */
-function settingsOf(spec: AgentSpec, override: AgentOverride): AgentSetting[] {
-    return (spec.settings ?? []).map(setting => ({
+const PROMPT_SUGGESTIONS_SETTING: AgentSettingSpec = {
+    id: 'promptSuggestions',
+    label: 'Suggest next messages',
+    description:
+        'Let the agent predict your next message when supported. Applies to new sessions and may use an additional model request.',
+    default: true,
+};
+
+function settingsFor(spec?: AgentSpec): AgentSettingSpec[] {
+    const settings = spec?.settings ?? [];
+    return settings.some(setting => setting.id === PROMPT_SUGGESTIONS_SETTING.id)
+        ? settings
+        : [...settings, PROMPT_SUGGESTIONS_SETTING];
+}
+
+function settingsOf(spec: AgentSpec | undefined, override: AgentOverride): AgentSetting[] {
+    return settingsFor(spec).map(setting => ({
         id: setting.id,
         label: setting.label,
         description: setting.description,

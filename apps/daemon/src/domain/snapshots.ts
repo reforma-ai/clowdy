@@ -1,5 +1,6 @@
 import { homedir } from 'node:os';
 
+import { readBranchPrefix } from '../db/appSettings';
 import { listArtifactsOfTask } from '../db/artifacts';
 import { chatIdsOfTask, listChats, listChatTaskLinks } from '../db/chats';
 import { listProjects, listStatuses } from '../db/projects';
@@ -14,7 +15,12 @@ import type { Store } from '../store';
 
 /** The cursor and the state are read in one transaction, so a client resuming at `cursor` misses and repeats nothing. */
 export function rootSnapshot(store: Store): RootSnapshot {
-    return store.read(() => ({ cursor: store.headCursor(), projects: listProjects(store.db), home: homedir() }));
+    return store.read(() => ({
+        cursor: store.headCursor(),
+        projects: listProjects(store.db),
+        home: homedir(),
+        branchPrefix: readBranchPrefix(store.db),
+    }));
 }
 
 export function projectSnapshot(store: Store, projectId: string): ProjectSnapshot {

@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { startDaemon } from '../src/daemon';
+import { getChat } from '../src/db/chats';
 import { listItems } from '../src/db/items';
 import { projectSnapshot } from '../src/domain/snapshots';
 import { ToolBridge } from '../src/engine/acp/bridge';
@@ -54,6 +55,81 @@ async function setup(agentEnv: Record<string, string> = {}, taskTools?: 'cli' | 
 
     return { h, project, chat, say, texts };
 }
+
+describe('ephemeral prompt predictions', () => {
+    test('offers the prediction from a successful turn without writing it to the event log or transcript', async () => {
+        const { h, say, chat, texts } = await setup({ FAKE_ACP_PREDICTION: 'slow' });
+        const runId = say('say Done');
+        await waitFor(() => texts(runId).includes('Done'), 'the final words', 15_000);
+        const answeredAt = performance.now();
+        await waitFor(() => h.run(runId).status === 'succeeded', 'prediction', 15_000);
+        expect(performance.now() - answeredAt).toBeLessThan(1200);
+        const route = `/v1/runs/${runId}/prompt-suggestion`;
+        const prediction = await (await h.fetch(route)).json();
+        expect({
+            prediction,
+            inStream: JSON.stringify(listItems(h.store.db, runId, 0)).includes('Check the result'),
+            inEvents: JSON.stringify(h.events()).includes('Check the result'),
+        }).toEqual({
+            prediction: { finishedAt: h.run(runId).finishedAt, text: 'Check the result' },
+            inStream: false,
+            inEvents: false,
+        });
+
+        h.ok('agent.update', { id: 'fake-acp', settings: { promptSuggestions: false } });
+        expect(await (await h.fetch(route)).json()).toBeNull();
+        h.ok('chat.send', { chatId: chat.id, text: 'sleep 200\nsay New turn' });
+        expect(await (await h.fetch(route)).json()).toBeNull();
+        await waitFor(() => h.run(runId).status === 'succeeded', 'disabled prediction', 15_000);
+        expect(await (await h.fetch(route)).json()).toBeNull();
+    });
+    test('an agent with no prediction finishes without delaying the run or counting its idle transport as active', async () => {
+        const { h, say, texts } = await setup();
+        const runId = say('say Done');
+        await waitFor(() => texts(runId).includes('Done'), 'the final words', 15_000);
+        const answeredAt = performance.now();
+        await waitFor(() => h.run(runId).status === 'succeeded', 'completed run', 15_000);
+        expect(performance.now() - answeredAt).toBeLessThan(2000);
+        const health = await (await h.fetch('/v1/health')).json();
+        expect(health.activeRuns).toBe(0);
+        expect(await (await h.fetch(`/v1/runs/${runId}/prompt-suggestion`)).json()).toBeNull();
+    });
+
+    test('dispatches a queued message immediately after the answer, not after the late prediction', async () => {
+        const { h, say, chat, texts } = await setup({ FAKE_ACP_PREDICTION: 'slow' });
+        const runId = say('say First\nsleep 450\nsay Done');
+        await waitFor(() => texts(runId).includes('First'), 'first words', 15_000);
+        h.ok('chat.send', { chatId: chat.id, text: 'say Second', mode: 'queue' });
+        await waitFor(() => texts(runId).includes('Done'), 'first answer', 15_000);
+        const answeredAt = performance.now();
+        await waitFor(
+            () => texts(runId).includes('Second') && h.run(runId).status === 'succeeded',
+            'queued answer',
+            15_000
+        );
+        expect(performance.now() - answeredAt).toBeLessThan(1200);
+    });
+
+    test('a new message invalidates the pending prediction without waiting for it', async () => {
+        const { h, say, chat, texts } = await setup({ FAKE_ACP_PREDICTION: 'slow' });
+        const runId = say('say First');
+        await waitFor(() => h.run(runId).status === 'succeeded', 'first answer', 15_000);
+
+        const route = `/v1/runs/${runId}/prompt-suggestion`;
+        const oldPrediction = h.fetch(route).then(response => response.json());
+        await Bun.sleep(30);
+        const started = performance.now();
+        h.ok('chat.send', { chatId: chat.id, text: 'say Second' });
+        await waitFor(
+            () => texts(runId).includes('Second') && h.run(runId).status === 'succeeded',
+            'second answer',
+            15_000
+        );
+
+        expect({ old: await oldPrediction, answer: h.run(runId).result }).toEqual({ old: null, answer: 'Second' });
+        expect(performance.now() - started).toBeLessThan(1500);
+    });
+});
 
 describe('a message while an ACP agent works', () => {
     /** Starts a turn that says `first`, sleeps, and says `last`, and sends `say steered` as a steer once `first` is in the stream. */
@@ -270,7 +346,15 @@ describe('runs on an ACP agent, through the real runtime', () => {
             status: 'succeeded',
             result: 'Explore found the readme.',
         });
+        const chatId = h.run(runId).chatId as string;
+
+        // What the call asked of it is the first item of its stream, a message from the chat as a thread's first message is; the card of the call keeps the whole input.
         expect(body(child.id)).toEqual([
+            {
+                kind: 'user',
+                text: 'Look around',
+                from: { kind: 'thread', chatId, title: getChat(h.store.db, chatId)?.title as string },
+            },
             { kind: 'assistant', text: 'Looking around.', done: true },
             {
                 kind: 'tool',
@@ -366,11 +450,11 @@ describe('a chat on an ACP v2 agent that works in the background, through the re
     });
 
     /** A whole daemon whose only engine is the v2 fake agent, with a handoff guard of a fraction of a second. */
-    async function setupV2() {
+    async function setupV2(env?: Record<string, string>) {
         const config = testConfig({ engine: 'fake-acp' });
         const agents = testAgents(config);
 
-        agents.add({ id: 'fake-acp', name: 'Fake ACP', command: process.execPath, args: [FAKE_AGENT_V2] });
+        agents.add({ id: 'fake-acp', name: 'Fake ACP', command: process.execPath, args: [FAKE_AGENT_V2], env });
 
         // A custom agent speaks v1; this one is set to v2, as the built-in ones are once the real adapters pass their checks.
         const resolve = agents.resolve.bind(agents);
@@ -414,6 +498,29 @@ describe('a chat on an ACP v2 agent that works in the background, through the re
         return { h, chat, say, pid, stream };
     }
 
+    test('v2 lets a quiet turn settle before late prediction delivery', async () => {
+        const { h, say, stream } = await setupV2({ FAKE_ACP_PREDICTION: 'slow' });
+        const runId = say('say Done');
+        await waitFor(() => stream(runId).includes('< Done'), 'the final words', 15_000);
+        const answeredAt = performance.now();
+        await waitFor(() => h.run(runId).status === 'succeeded', 'completed run', 15_000);
+        expect(performance.now() - answeredAt).toBeLessThan(1200);
+        expect(await (await h.fetch(`/v1/runs/${runId}/prompt-suggestion`)).json()).toEqual({
+            finishedAt: h.run(runId).finishedAt,
+            text: 'Check the result',
+        });
+    });
+
+    test('does not offer a prediction from a turn that has background work or its autonomous report', async () => {
+        const { h, say } = await setupV2({ FAKE_ACP_PREDICTION: '1' });
+        const runId = say('say started\nbackground terminal 1000 sleep 60\nreport say finished');
+        const route = `/v1/runs/${runId}/prompt-suggestion`;
+        await waitFor(() => h.run(runId).status === 'waiting_background', 'the background command', 15_000);
+        expect(await (await h.fetch(route)).json()).toBeNull();
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the report turn', 15_000);
+        expect(await (await h.fetch(route)).json()).toBeNull();
+    });
+
     test('a turn that starts a command leaves the run waiting, the report turn is a message with no `user` item before it, and the run settles when nothing is open', async () => {
         const { h, say, pid, stream } = await setupV2();
         const runId = say(
@@ -453,6 +560,25 @@ describe('a chat on an ACP v2 agent that works in the background, through the re
         expect(h.run(runId).background).toBeUndefined();
         expect(h.run(runId).result).toBe('the command finished');
         await waitFor(() => pid(runId) === null && !alive(agent as number), 'the agent process to be gone', 15_000);
+    }, 30_000);
+
+    test('a sub-agent told over v2 starts its stream with the prompt its parent sent, as a message from the chat, before its own calls', async () => {
+        const { h, chat, say } = await setupV2();
+        const runId = say('say before\nsubagent 200 Map the docs\nsay after');
+
+        await waitFor(() => h.run(runId).status === 'succeeded', 'the run to settle', 15_000);
+
+        const [child] = projectSnapshot(h.store, h.run(runId).projectId).runs.filter(run => run.origin === 'native');
+        const bodies = listItems(h.store.db, child.id, 0).map(item => item.body);
+
+        expect(child).toMatchObject({ parentRunId: runId, summary: 'Map the docs', status: 'succeeded' });
+        expect(bodies[0]).toEqual({
+            kind: 'user',
+            text: 'Do this: Map the docs',
+            from: { kind: 'thread', chatId: chat.id, title: getChat(h.store.db, chat.id)?.title as string },
+        });
+        // The one message among what it did and said.
+        expect(bodies.map(body => body.kind)).toEqual(['user', 'assistant', 'tool', 'assistant']);
     }, 30_000);
 
     test('a workflow that goes on after the turn is a task of the run until it ends, and its call is finished by it', async () => {

@@ -31,6 +31,8 @@ export interface PickerListProps {
     options: readonly PickerOption[];
     /** The options that hold the current value; each gets a check. Picking one is still a pick, so a list that toggles can take a link off. */
     selectedIds?: readonly string[];
+    /** Highlight current options without moving keyboard focus to them. */
+    highlightSelected?: boolean;
     /** Names the list for a screen reader. */
     'aria-label': string;
     /** The hint in the search field. */
@@ -39,6 +41,8 @@ export interface PickerListProps {
     empty?: ReactNode;
     /** Styles for the list area below the filter. */
     listClassName?: string;
+    /** Reports the filter text to an owner that adjusts the options while searching. */
+    onQueryChange?: (query: string) => void;
     /** The person chose an option that is not disabled. The list does not close anything: its owner does. */
     onPick: (id: string) => void;
 }
@@ -100,10 +104,12 @@ const matches = (label: string, query: string) =>
 export function PickerList({
     options,
     selectedIds = [],
+    highlightSelected = false,
     'aria-label': ariaLabel,
     placeholder,
     empty = 'Nothing found',
     listClassName,
+    onQueryChange,
     onPick,
 }: PickerListProps) {
     const [query, setQuery] = useState('');
@@ -134,12 +140,15 @@ export function PickerList({
     const current = new Set(selectedIds);
     const groups = useMemo(() => groupsOf(options), [options]);
     // The rows are built once per option and kept: what a row reads from here (the mark of the current option) has to be said to the list, or it stays as it was.
-    const dependencies = [selectedIds.join('\n')];
+    const dependencies = [selectedIds.join('\n'), highlightSelected];
 
     return (
         <Autocomplete
             inputValue={query}
-            onInputChange={setQuery}
+            onInputChange={value => {
+                setQuery(value);
+                onQueryChange?.(value);
+            }}
             filter={matches}
             maxHeight="16rem"
             placeholder={placeholder}
@@ -169,6 +178,12 @@ export function PickerList({
                                     description={option.description}
                                     stacked={option.stacked}
                                     isDisabled={option.isDisabled}
+                                    data-highlighted={(highlightSelected && current.has(option.id)) || undefined}
+                                    aria-label={
+                                        highlightSelected && current.has(option.id)
+                                            ? `${option.label}, current`
+                                            : undefined
+                                    }
                                     endAffix={
                                         option.trailing || current.has(option.id) ? (
                                             <>
@@ -200,10 +215,12 @@ export function PickerPopover({
     anchor,
     options,
     selectedIds = [],
+    highlightSelected,
     'aria-label': ariaLabel,
     placeholder,
     empty,
     listClassName,
+    onQueryChange,
     footer,
     content,
     placement,
@@ -241,10 +258,12 @@ export function PickerPopover({
                         <PickerList
                             options={options}
                             selectedIds={selectedIds}
+                            highlightSelected={highlightSelected}
                             aria-label={ariaLabel}
                             placeholder={placeholder}
                             empty={empty}
                             listClassName={listClassName}
+                            onQueryChange={onQueryChange}
                             onPick={pick}
                         />
                         {footer}

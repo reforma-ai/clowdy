@@ -1,8 +1,10 @@
+import { setRunArchived } from '../domain/runArchive';
+
 import type { Handlers } from './context';
 
 export const runHandlers: Pick<
     Handlers,
-    'run.cancel' | 'run.stopAgents' | 'run.stopBackground' | 'run.answer' | 'run.decide'
+    'run.cancel' | 'run.setArchived' | 'run.stopAgents' | 'run.stopBackground' | 'run.answer' | 'run.decide'
 > = {
     /** Stopping a chat's orchestrator holds its queue: what the person wrote for the stopped work waits until they send it. */
     'run.cancel': ({ runs, queue }, command) => {
@@ -15,6 +17,9 @@ export const runHandlers: Pick<
 
         return { cancelled };
     },
+
+    /** Puts a native sub-agent away, or brings it back; archiving takes the sub-agents it started along (`setRunArchived`). */
+    'run.setArchived': ({ store }, command) => ({ run: setRunArchived(store, command.runId, command.archived) }),
 
     /** The run goes on and its queue is not held: only the agents below it stop (`RunService.stopAgents`). */
     'run.stopAgents': ({ runs }, command) => ({ stopped: runs.stopAgents(command.runId) }),

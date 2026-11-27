@@ -31,6 +31,7 @@ interface RunRow {
     usage: string | null;
     context: string | null;
     background: string | null;
+    archived_at: number | null;
     created_at: number;
     started_at: number | null;
     active_since: number | null;
@@ -64,6 +65,7 @@ const toRun = (row: RunRow): Run =>
         usage: parseJson<RunUsage>(row.usage),
         context: parseJson<RunContext>(row.context),
         background: parseJson<BackgroundItem[]>(row.background),
+        archivedAt: row.archived_at,
         createdAt: row.created_at,
         startedAt: row.started_at,
         activeSince: row.active_since,
@@ -84,11 +86,13 @@ export function listRuns(db: Database, projectId: string): Run[] {
     );
 }
 
+/** Writes the run. `archivedAt` goes in with a new row only: a run saved again, from a copy that may be older than the archive, keeps the flag the row has (`setRunArchivedAt`). */
 export function upsertRun(db: Database, run: Run): void {
     db.query(`
         INSERT INTO runs (id, project_id, parent_run_id, root_run_id, chat_id, role, origin, parent_tool_call_id, can_stop_alone, awaiting_user, name, summary, status,
-            status_reason, engine, model, effort, session_id, worktree, result, error, failure_code, usage, context, background, created_at, started_at, active_since, finished_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            status_reason, engine, model, effort, session_id, worktree, result, error, failure_code, usage, context, background, archived_at, created_at, started_at, active_since,
+            finished_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET summary = excluded.summary, status = excluded.status, status_reason = excluded.status_reason,
             model = excluded.model, effort = excluded.effort, session_id = excluded.session_id, worktree = excluded.worktree, result = excluded.result,
             error = excluded.error, failure_code = excluded.failure_code, usage = excluded.usage, context = excluded.context, background = excluded.background,
@@ -119,6 +123,7 @@ export function upsertRun(db: Database, run: Run): void {
         toJson(run.usage),
         toJson(run.context),
         toJson(run.background),
+        run.archivedAt ?? null,
         run.createdAt,
         run.startedAt ?? null,
         run.activeSince ?? null,
@@ -165,6 +170,27 @@ export function listActiveRuns(db: Database): Run[] {
     return (db.query(`SELECT * FROM runs WHERE status IN (${ACTIVE}) ORDER BY created_at, id`).all() as RunRow[]).map(
         toRun
     );
+}
+
+/** Sets or clears (`undefined`) the time a native sub-agent was put away; the one place that changes it after the row is made. */
+export function setRunArchivedAt(db: Database, runId: string, archivedAt: number | undefined): void {
+    db.query('UPDATE runs SET archived_at = ? WHERE id = ?').run(archivedAt ?? null, runId);
+}
+
+/** The runs below `runId` by their parent, at any depth, oldest first; the run itself is not in the list. */
+export function runDescendants(db: Database, runId: string): Run[] {
+    const rows = db
+        .query(`
+        WITH RECURSIVE tree(id) AS (
+            SELECT id FROM runs WHERE parent_run_id = ?
+            UNION
+            SELECT r.id FROM runs r JOIN tree ON r.parent_run_id = tree.id
+        )
+        SELECT runs.* FROM runs JOIN tree ON runs.id = tree.id ORDER BY runs.created_at, runs.id
+    `)
+        .all(runId) as RunRow[];
+
+    return rows.map(toRun);
 }
 
 /** The run and its descendants that are still active, deepest first, so children come before their parents. */

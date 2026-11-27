@@ -1,9 +1,10 @@
+import { toast } from '@clowdy/components/Toast';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { FIXTURE_PROJECT_ID } from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore } from '../../stores';
-import { archiveChat, openChat, openRun, unarchiveChat } from './archiveChat';
+import { archiveChat, archiveRun, openChat, openRun, unarchiveChat } from './archiveChat';
 
 import type { KeyValueStorage } from '../../stores/storage';
 
@@ -55,6 +56,119 @@ describe('archiveChat', () => {
 
         expect(isArchived('c-1')).toBe(false);
         expect(ui().chatId).toBe('c-1');
+    });
+});
+
+describe('a sub-agent in the archive', () => {
+    const isRunArchived = (runId: string) => project().runs.get(runId)?.archivedAt !== undefined;
+    const runArchived = (runId: string, expected: boolean) =>
+        vi.waitFor(() => expect(isRunArchived(runId)).toBe(expected));
+    /** r-na-02 started r-na-05, both below the orchestrator of c-1: the orchestrator is cancelled, so that every one of them is over. */
+    async function finishTheFirstChat() {
+        await store.command({ type: 'run.cancel', runId: 'r-orch-1' });
+        await vi.waitFor(() => expect(project().runs.get('r-na-05')?.status).toBe('cancelled'));
+    }
+    const run = (runId: string) => project().runs.get(runId)!;
+
+    describe('archiveRun', () => {
+        it('puts a finished sub-agent in the archive, and moves the page off it when it was the one open, to its chat', async () => {
+            ui().openRun('r-na-01');
+            await archiveRun(store, project(), ui(), run('r-na-01'), run('r-na-01'));
+            await runArchived('r-na-01', true);
+
+            expect(ui().runId).toBeNull();
+            expect(ui().chatId).toBe('c-1');
+        });
+
+        it('leaves the page where it is when another sub-agent was open', async () => {
+            ui().openRun('r-na-04');
+            await archiveRun(store, project(), ui(), run('r-na-01'), run('r-na-04'));
+            await runArchived('r-na-01', true);
+
+            expect(ui().runId).toBe('r-na-04');
+        });
+
+        it('moves the page off a sub-agent that went with the one archived', async () => {
+            await finishTheFirstChat();
+            ui().openRun('r-na-05');
+            await archiveRun(store, project(), ui(), run('r-na-02'), run('r-na-05'));
+            await runArchived('r-na-05', true);
+
+            expect(isRunArchived('r-na-02')).toBe(true);
+            expect(ui().runId).toBeNull();
+            expect(ui().chatId).toBe('c-1');
+        });
+
+        it('leaves the page and tells the person when the daemon refused, because the sub-agent works', async () => {
+            ui().openRun('r-na-02');
+            await archiveRun(store, project(), ui(), run('r-na-02'), run('r-na-02'));
+
+            expect(isRunArchived('r-na-02')).toBe(false);
+            expect(ui().runId).toBe('r-na-02');
+            expect(toast.error).toHaveBeenCalledWith({ message: 'A working sub-agent cannot be archived' });
+        });
+    });
+
+    describe('openRun', () => {
+        it('brings the sub-agent back before it shows it', async () => {
+            await store.command({ type: 'run.setArchived', runId: 'r-na-01', archived: true });
+            await runArchived('r-na-01', true);
+
+            await openRun(store, project(), ui(), 'r-na-01');
+            await runArchived('r-na-01', false);
+
+            expect(ui().runId).toBe('r-na-01');
+        });
+
+        it('brings back the archived sub-agents above it, the farthest first, and nothing beside them', async () => {
+            await finishTheFirstChat();
+            await store.command({ type: 'run.setArchived', runId: 'r-na-02', archived: true });
+            await runArchived('r-na-05', true);
+            await store.command({ type: 'run.setArchived', runId: 'r-na-01', archived: true });
+            await runArchived('r-na-01', true);
+
+            const command = vi.spyOn(store, 'command');
+
+            await openRun(store, project(), ui(), 'r-na-05');
+            await runArchived('r-na-05', false);
+
+            expect(
+                command.mock.calls.map(([input]) => (input.type === 'run.setArchived' ? input.runId : input.type))
+            ).toEqual(['r-na-02', 'r-na-05']);
+            expect(isRunArchived('r-na-02')).toBe(false);
+            expect(isRunArchived('r-na-01')).toBe(true);
+            expect(ui().runId).toBe('r-na-05');
+        });
+
+        it('brings back the chat of the sub-agent too, the chat first', async () => {
+            await finishTheFirstChat();
+            await store.command({ type: 'run.setArchived', runId: 'r-na-01', archived: true });
+            await store.command({ type: 'chat.setArchived', chatId: 'c-1', archived: true });
+            await archived('c-1', true);
+
+            const command = vi.spyOn(store, 'command');
+
+            await openRun(store, project(), ui(), 'r-na-01');
+            await archived('c-1', false);
+            await runArchived('r-na-01', false);
+
+            expect(command.mock.calls.map(([input]) => input.type)).toEqual(['chat.setArchived', 'run.setArchived']);
+            expect(ui().runId).toBe('r-na-01');
+        });
+
+        it('shows nothing when the daemon refused to bring it back', async () => {
+            await store.command({ type: 'run.setArchived', runId: 'r-na-01', archived: true });
+            await runArchived('r-na-01', true);
+            vi.spyOn(store, 'command').mockResolvedValue({
+                ok: false,
+                requestId: 'x',
+                error: { code: 'conflict', message: 'No' },
+            } as never);
+
+            await openRun(store, project(), ui(), 'r-na-01');
+
+            expect(ui().runId).not.toBe('r-na-01');
+        });
     });
 });
 

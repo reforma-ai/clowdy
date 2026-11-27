@@ -1,6 +1,6 @@
 import { isTerminalRunStatus, shownRunStatus } from '@clowdy/protocol';
 
-import { subagentLabel } from '../../stream/subagents';
+import { agentPurpose, subagentLabel } from '../../stream/subagents';
 import { orchestratorOf } from '../agents/agentTree';
 import { isRunActive } from './chatRun';
 
@@ -11,7 +11,7 @@ export const MAX_AGENT_ROWS = 5;
 
 /**
  * The agents of a chat that work now, oldest first: the native sub-agents below its orchestrator that are running or wait for the person.
- * Queued and blocked runs are not working yet, and finished ones are in the stream.
+ * Queued and blocked runs are not working yet, and finished ones are in the stream. One in the archive is not listed, whatever it does.
  */
 export function runningAgents(runs: Iterable<Run>, orchestratorRunId: RunId | undefined): Run[] {
     if (orchestratorRunId === undefined) return [];
@@ -21,6 +21,7 @@ export function runningAgents(runs: Iterable<Run>, orchestratorRunId: RunId | un
             run =>
                 run.rootRunId === orchestratorRunId &&
                 run.id !== orchestratorRunId &&
+                run.archivedAt === undefined &&
                 ['running', 'waiting_user'].includes(shownRunStatus(run))
         )
         .sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
@@ -51,18 +52,15 @@ export function unlistedBackground(
 }
 
 /**
- * Splits the background items no agent row shows into the ones that get a row of their own and the ones the single background row counts. An item gets its
- * own row for each command and each task that the agent lets the person stop alone. Items that cannot be stopped alone are also counted;
- * the Stop of the counting row ends the run, preserving a way to stop that work.
+ * Lists background items not shown as agents and identifies work without an individual Stop.
+ * Stop run remains available for that work.
  */
 export function backgroundRows(
     items: readonly BackgroundItem[],
     agents: readonly Pick<Run, 'parentToolCallId'>[]
 ): { own: BackgroundItem[]; counted: BackgroundItem[] } {
     const unlisted = unlistedBackground(items, agents);
-    const own = unlisted.filter(
-        item => item.kind === 'command' || (item.kind === 'task' && item.canStopAlone === true)
-    );
+    const own = unlisted;
 
     return { own, counted: unlisted.filter(item => item.canStopAlone !== true || item.kind === 'subagent') };
 }
@@ -85,13 +83,15 @@ export function canStopAlone(run: Pick<Run, 'canStopAlone'>): boolean {
     return run.canStopAlone === true;
 }
 
-/** The words of the background row: `Background task running`, `2 background tasks running`. Items of every kind are tasks to the person. */
-export function backgroundRowText(count: number): string {
-    return count === 1 ? 'Background task running' : `${count} background tasks running`;
-}
+/**
+ * How a sub-agent is named to the person: by what it was asked to do, the one line its agent gave it (`Run.summary`, `Review the clone route diff`), as a thread is by its
+ * title. A sub-agent that has none reads by its type (`Explore agent`). Users take a sub-agent and a thread for nearly the same thing, so the type is no name.
+ */
+export function agentRowLabel(run: Pick<Run, 'name' | 'summary'>): string {
+    const purpose = agentPurpose(run);
 
-/** How a row names its sub-agent: by its type (`Explore agent`). */
-export function agentRowLabel(run: Pick<Run, 'name'>): string {
+    if (purpose) return purpose;
+
     const label = subagentLabel(run.name) ?? 'Sub-agent';
 
     return /agent$/i.test(label) ? label : `${label} agent`;
