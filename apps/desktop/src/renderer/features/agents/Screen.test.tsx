@@ -2481,6 +2481,88 @@ describe('worktree cards', () => {
         expect(cardRows()).toEqual([mainKey(), workspaceKey()]);
     });
 
+    it('shows each checkout’s pull request on its card, including unused worktrees and other folders', async () => {
+        const data = withFixtureWorktrees(createFixtureData());
+        const pr = (head: string, state: 'open' | 'draft' | 'merged') => ({
+            number: 42,
+            state,
+            head,
+            base: 'main',
+            title: 'Change',
+            url: `https://github.com/acme/example/pull/${head}`,
+            updatedAt: 42,
+        });
+        data.branchPullRequests = {
+            '/Users/dev/car-rental': {
+                main: [pr('main', 'open')],
+                'search-filters': [pr('search-filters', 'merged')],
+                'old-pricing': [pr('old-pricing', 'open')],
+            },
+            '/Users/dev/car-rental-api': { 'feature/payments': [pr('feature/payments', 'draft')] },
+        };
+        await restart(data);
+        await draw(() => {
+            ui().setGroupByWorktree(true);
+            chatListPreferences.setShowUnusedWorktrees(true);
+        });
+        const unused = worktreeKey('fld_car_rental', '/Users/dev/worktrees/car-rental/search-filters');
+        const missing = worktreeKey('fld_car_rental', '/Users/dev/car-rental-old');
+        const api = worktreeKey('fld_api', '/Users/dev/car-rental-api');
+        const detached = worktreeKey('fld_api', '/Users/dev/worktrees/car-rental-api/readme');
+        const badge = (key: string) => rowOf(key)?.querySelector('[data-pr-state]')?.getAttribute('data-pr-state');
+        await vi.waitFor(() =>
+            expect([badge(mainKey()), badge(unused), badge(api)]).toEqual(['open', 'merged', 'draft'])
+        );
+        expect(badge(missing)).toBeUndefined();
+        expect(badge(detached)).toBeUndefined();
+        expect(badge('c-4')).toBeUndefined();
+        await draw(() => chatListPreferences.setShowUnusedWorktrees(false));
+        expect(rowOf(unused)).toBeNull();
+        expect(badge(mainKey())).toBe('open');
+        await draw(() => ui().setGroupByWorktree(false));
+        await vi.waitFor(() => expect(badge('c-4')).toBe('open'));
+    });
+
+    it('does not show the planned branch pull request while a worktree is pending', async () => {
+        const data = withFixtureWorktrees(createFixtureData());
+        const chat = data.chats.find(candidate => candidate.id === FIXTURE_WORKSPACE_CHAT_ID)!;
+        chat.workspace = { ...chat.workspace!, id: 'pending-pr', path: '/pending-pr', branch: 'planned', ready: false };
+        data.branchPullRequests = {
+            '/Users/dev/car-rental': {
+                main: [
+                    {
+                        number: 41,
+                        state: 'open',
+                        head: 'main',
+                        base: 'dev',
+                        title: 'Main',
+                        url: 'https://github.com/acme/car-rental/pull/41',
+                        updatedAt: 41,
+                    },
+                ],
+                planned: [
+                    {
+                        number: 42,
+                        state: 'open',
+                        head: 'planned',
+                        base: 'main',
+                        title: 'Planned',
+                        url: 'https://github.com/acme/car-rental/pull/42',
+                        updatedAt: 42,
+                    },
+                ],
+            },
+        };
+        await restart(data);
+        const reads = vi.spyOn(store.transport, 'getGitBranchPullRequests');
+        await draw(() => ui().setGroupByWorktree(true));
+        const pending = worktreeKey('fld_car_rental', '/pending-pr');
+        await vi.waitFor(() => expect(rowOf(mainKey()).querySelector('[data-pr-state]')).not.toBeNull());
+        expect(rowOf(pending).querySelector('[data-pr-state]')).toBeNull();
+        expect(rowOf(chat.id).querySelector('[data-pr-state]')).toBeNull();
+        expect(reads.mock.calls.some(([, , branch]) => branch === 'planned')).toBe(false);
+    });
+
     it.each(['button', 'context menu'])(
         'opens branch selection for the clicked unused worktree via %s without changing the selected chat',
         async entry => {
