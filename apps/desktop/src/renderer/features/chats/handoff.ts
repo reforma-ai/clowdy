@@ -7,6 +7,7 @@ import { noticeLine } from '../../stream/threadMessages';
 import { chatProvider } from './chatProvider';
 import { draftOf, messageOf, newChatDraftKey, saveDraft } from './composerDrafts';
 import { admitFiles, filesOf } from './composerFiles';
+import { isDraftSending } from './draftSending';
 
 import type { Chat, ChatId, MessageSource, Run, StreamItem } from '@clowdy/protocol';
 import type { ProjectUi, RootStore } from '../../stores';
@@ -339,9 +340,36 @@ export async function startHandoff({
             type: 'text/markdown',
         });
 
-        const draftKey = newChatDraftKey(ui.projectId);
-        // A file the box already holds (the same chat handed off twice) is not a refusal: it is attached already.
-        const [refusal] = admitFiles(filesOf(draftKey), [file]).refusals;
+        const folderId = chat.folderId ?? null;
+        const workspace = chat.workspace?.ready ? { mode: 'existing' as const, path: chat.workspace.path } : null;
+        const existing = ui.newChatDrafts.findPlace(folderId, workspace);
+        const existingKey = existing ? `${newChatDraftKey(ui.projectId)}:${existing.id}` : undefined;
+        if (
+            existing &&
+            (existing.operation ||
+                existing.createdChat ||
+                existing.firstMessage ||
+                (existingKey && isDraftSending(existingKey)))
+        ) {
+            toast.error({ message: 'Finish sending the existing draft before handing off' });
+            return false;
+        }
+        const pending = existing ? ui.pendingFilesFor(existing.id) : [];
+        const held = [
+            ...(existingKey ? filesOf(existingKey) : []),
+            ...pending.map((item, index) => ({
+                key: `pending:${index}`,
+                name: item.name,
+                mediaType: item.type,
+                size: item.size,
+                status: 'uploading' as const,
+            })),
+        ];
+        // Pending files count too, even before their draft's composer has mounted.
+        const {
+            accepted,
+            refusals: [refusal],
+        } = admitFiles(held, [file]);
 
         if (refusal) {
             toast.error({
@@ -352,14 +380,14 @@ export async function startHandoff({
             return false;
         }
 
-        saveDraft(draftKey, withSentence(draftOf(draftKey), handoffSentence(chat.title, fileName)));
+        const draft = existing ?? ui.newChatDrafts.createOrOpen(folderId, workspace);
+        ui.newChatDrafts.updateEngine(draft.id, startOn ?? null);
+        const draftKey = `${newChatDraftKey(ui.projectId)}:${draft.id}`;
+        const doc = withSentence(draft.doc, handoffSentence(chat.title, fileName));
+        saveDraft(draftKey, doc);
+        ui.newChatDrafts.updateDoc(draft.id, doc);
         // A chat in a worktree hands over to a chat in the same worktree, which is made and the folder the chat is pinned to. One whose worktree is not made yet has none to share.
-        ui.openDraft(
-            [file],
-            chat.folderId ?? null,
-            chat.workspace?.ready ? { mode: 'existing', path: chat.workspace.path } : null,
-            startOn ?? null
-        );
+        ui.openDraft(accepted, folderId, workspace, startOn ?? null);
 
         return true;
     } finally {

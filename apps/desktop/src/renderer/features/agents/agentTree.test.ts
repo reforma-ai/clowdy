@@ -4,6 +4,7 @@ import {
     type AgentRowsInput,
     agentGroups,
     agentRows,
+    agentsWorkingInside,
     ancestorChats,
     ancestorRuns,
     archivedChats,
@@ -1198,5 +1199,73 @@ describe('ancestorChats', () => {
                 candidate => candidate.id
             )
         ).toEqual(['b']);
+    });
+});
+
+describe('agentsWorkingInside', () => {
+    const native = (id: string, rootRunId: string, status: RunStatus, rest: Partial<Run> = {}) =>
+        run(id, status, { parentRunId: rootRunId, rootRunId, origin: 'native', ...rest });
+    const runIn = (...list: Run[]) => new Map(list.map(candidate => [candidate.id, candidate]));
+    const thread = (id: string, orchestratorRunId?: string, rest: Partial<Chat> = {}): Chat => ({
+        ...chat(id, orchestratorRunId),
+        parentChatId: 'top',
+        ...rest,
+    });
+    const countOf = (top: Chat, threads: Chat[], all: Run[]) =>
+        agentsWorkingInside(
+            top,
+            threads,
+            runIn(...all),
+            owner => nativeAgentsByRoot(all).get(owner.orchestratorRunId!) ?? []
+        );
+
+    it('counts the sub-agents of the chat that are not over, at any depth, and not its own orchestrator', () => {
+        // a and a1 work, b is over, c waits for the person: three, and the orchestrator that works is not one of them.
+        expect(countOf(chats[0], [], runs)).toBe(3);
+    });
+
+    it('is the same when the chat’s own orchestrator is over', () => {
+        const rest = runs.map(candidate =>
+            candidate.id === 'orch' ? { ...candidate, status: 'succeeded' as const } : candidate
+        );
+
+        expect(countOf(chats[0], [], rest)).toBe(3);
+    });
+
+    it('counts each thread below the chat that is not over, with the sub-agents it started, at any depth of threads', () => {
+        const all = [
+            run('top-run', 'succeeded', { role: 'orchestrator' }),
+            run('t1-run', 'running', { role: 'orchestrator' }),
+            native('t1-agent', 't1-run', 'running'),
+            native('t1-old', 't1-run', 'succeeded'),
+            run('t2-run', 'waiting_background', { role: 'orchestrator' }),
+            run('t3-run', 'failed', { role: 'orchestrator' }),
+            native('t3-agent', 't3-run', 'running'),
+        ];
+        const threads = [
+            thread('t1', 't1-run'),
+            thread('t2', 't2-run', { parentChatId: 't1' }),
+            thread('t3', 't3-run'),
+        ];
+
+        // t1 and its sub-agent, t2 that rests for its background work, and t3's sub-agent that still works though t3 is over.
+        expect(countOf(chat('top', 'top-run'), threads, all)).toBe(4);
+    });
+
+    it('leaves out a thread that never started, and a put-away thread and sub-agent', () => {
+        const all = [
+            run('top-run', 'running', { role: 'orchestrator' }),
+            native('away', 'top-run', 'running', { archivedAt: 5 }),
+            run('t1-run', 'running', { role: 'orchestrator' }),
+            native('t1-agent', 't1-run', 'running'),
+        ];
+        const threads = [thread('idle'), thread('t1', 't1-run', { archivedAt: 6 })];
+
+        expect(countOf(chat('top', 'top-run'), threads, all)).toBe(0);
+    });
+
+    it('is none for a chat without an orchestrator, and for one whose agents are all over', () => {
+        expect(countOf(chats[2], [], runs)).toBe(0);
+        expect(countOf(chat('done', 'done-run'), [], [run('done-run', 'succeeded', { role: 'orchestrator' })])).toBe(0);
     });
 });

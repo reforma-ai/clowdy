@@ -575,4 +575,10 @@ export const MIGRATIONS: Migration[] = [
             db.run('ALTER TABLE runs ADD COLUMN archived_at INTEGER');
         },
     },
+    {
+        version: 31,
+        up(db) {
+            db.run('CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
+        },
+    },
 ];

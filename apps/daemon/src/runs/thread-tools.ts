@@ -26,7 +26,7 @@ const NOTICES =
 
 /** What `thread_spawn`'s `worktree` does, for the model that chooses it. */
 const WORKTREE =
-    "Gives the thread a git worktree of its own, so it works and commits without touching your files or another thread's: the daemon makes it on a new branch, started from the branch you have checked out now (in your worktree, or in the folder you work in; on a detached HEAD in the folder, the repository's default branch, and in your worktree the spawn is refused unless you name a base); base names another branch to start from. The branch is called clowdy/<name>, the name made of the thread's title (a title in English words), or the one you give with branch. The thread starts at the last commit of its base as it stands when its first turn makes the worktree, so commit what it needs first (uncommitted changes are not in it). The answer has the worktree's path and branch. Bringing the branch back is your job, with git: merge it into your branch once the thread reports. The worktree stays with the thread's chat. Needs the project's folder to be the root of a git repository. Not together with cwd";
+    "Gives the thread a git worktree of its own, so it works and commits without touching your files or another thread's: the daemon makes it on a new branch, started from the branch you have checked out now (in your worktree, or in the folder you work in; on a detached HEAD in the folder, the repository's default branch, and in your worktree the spawn is refused unless you name a base); base names another branch to start from. The branch is called <prefix>/<name> using the configured Branch prefix, the name made of the thread's title (a title in English words), or the one you give with branch. The thread starts at the last commit of its base as it stands when its first turn makes the worktree, so commit what it needs first (uncommitted changes are not in it). The answer has the worktree's path and branch. Bringing the branch back is your job, with git: merge it into your branch once the thread reports. The worktree stays with the thread's chat. Needs the project's folder to be the root of a git repository. Not together with cwd";
 
 /** What the parent is told when its thread has a worktree of its own: where, on which branch, and what is left to it. */
 function worktreeNote({ path, branch, base }: NonNullable<Spawned['worktree']>): string {
@@ -86,7 +86,7 @@ export function threadTools({ threads }: ToolDeps, run: Run): ToolDefinition[] {
                     .string()
                     .optional()
                     .describe(
-                        "With worktree: the name of the thread's branch after clowdy/, lower-case words joined with dashes, such as fix-login-redirect; default made of title when you give one in English words, else the thread's id. Refused when a branch of that name exists"
+                        "With worktree: the name of the thread's branch after the configured Branch prefix/, lower-case words joined with dashes, such as fix-login-redirect; default made of title when you give one in English words, else the thread's id. Refused when a branch of that name exists"
                     ),
             }),
             input => {

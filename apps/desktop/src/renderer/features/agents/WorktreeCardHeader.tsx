@@ -29,6 +29,7 @@ export function WorktreeCardHeader({
     showFolder,
     onToggle,
     onDragStart,
+    hasDraft = false,
 }: {
     card: WorktreeCard;
     collapsed: boolean;
@@ -36,6 +37,7 @@ export function WorktreeCardHeader({
     showFolder: boolean;
     onToggle: () => void;
     onDragStart: (event: DragEvent<HTMLElement>) => void;
+    hasDraft?: boolean;
 }) {
     const project = useProjectState();
     const ui = useProjectUi();
@@ -97,7 +99,7 @@ export function WorktreeCardHeader({
             id={card.key}
             text={title}
             icon={
-                card.roots.length > 0 ? (
+                card.roots.length > 0 || hasDraft ? (
                     <span className={styles.foldIcon}>
                         <span className={styles.restIcon} data-show={listBoxItemDataShow.itemRest}>
                             <Split />

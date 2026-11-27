@@ -67,7 +67,7 @@ export type GitCloneProgress = Omit<Extract<GitCloneEvent, { type: 'progress' }>
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
 
 /** A command as the UI builds it. The transport adds the `requestId`. */
-export type CommandInput = DistributiveOmit<Command, 'requestId'>;
+export type CommandInput = DistributiveOmit<Command, 'requestId'> & { requestId?: string };
 
 /**
  * Which page of a paged read: how many rows (a whole number; the daemon holds it to 1 to 100 and answers 25 without one) and where to go on, the `nextCursor`

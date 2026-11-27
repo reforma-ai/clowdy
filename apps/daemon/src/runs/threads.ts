@@ -1,6 +1,7 @@
 import { isAbsolute } from 'node:path';
 import { isTerminalRunStatus, shownRunReason, shownRunStatus } from '@clowdy/protocol';
 
+import { readBranchPrefix } from '../db/appSettings';
 import { getChat, listChatDescendants, listChildChats } from '../db/chats';
 import { lastUserSeq, listItems, nextSeq } from '../db/items';
 import { getRun, getRunWork } from '../db/runs';
@@ -161,7 +162,7 @@ export interface SpawnInput {
     worktree?: boolean;
     /** With `worktree`: the branch the thread's own worktree starts from; the one the parent has checked out now, else (a checkout on a detached HEAD) the repository's default one. */
     base?: string;
-    /** With `worktree`: what the thread's branch is called after the daemon's prefix (`clowdy/<branch>`); made of `title` when it has one in ASCII words, else the thread's id. */
+    /** With `worktree`: what the thread's branch is called after the daemon's prefix (`<prefix>/<branch>`); made of `title` when it has one in ASCII words, else the thread's id. */
     branch?: string;
 }
 
@@ -205,7 +206,7 @@ export class ThreadService {
      *
      * Where it works: in its parent's worktree (the same row) when the parent has one, else in the folder its parent works in; `cwd` is a folder of its own,
      * which its run keeps; `worktree` is a new worktree for it alone (`createWorkspace` with the thread's own chat id, so its path and branch are its own), on
-     * `clowdy/<name>` (`branch`, else made of `title`, else the thread's id8), started from `base`, else from the branch the parent has checked out now, in its worktree
+     * `<prefix>/<name>` (`branch`, else made of `title`, else the thread's id8), started from `base`, else from the branch the parent has checked out now, in its worktree
      * (`threadBase`) or in the folder itself (`checkoutBranch`), else from the folder's default branch, and made by the thread's first turn like any chat's. `worktree` with `cwd` is `invalid`: two answers to where the thread works. Nothing is made when anything is
      * refused: the row and the chat are written in one transaction, and the disk is touched by the first turn only.
      */
@@ -345,10 +346,11 @@ export class ThreadService {
                     : checkoutBranch(project, parent.folderId));
             // The chat is made with the id it will have, so the branch is made of the title before the chat exists: the id is only a tie-breaker in it.
             const chatId = newId('cht');
+            const branchPrefix = readBranchPrefix(store.db);
             const branchName =
                 own.branch ??
                 (input.title?.trim()
-                    ? branchNameFor(store, config, project, parent.folderId, chatId, undefined, input.title)
+                    ? branchNameFor(store, config, project, parent.folderId, chatId, branchPrefix, input.title)
                     : undefined);
 
             return createChat(
@@ -358,6 +360,7 @@ export class ThreadService {
                     id: chatId,
                     workspace: {
                         mode: 'new',
+                        ...(branchPrefix !== undefined && { branchPrefix }),
                         ...(base !== undefined && { base }),
                         ...(branchName !== undefined && { branchName }),
                     },

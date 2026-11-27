@@ -283,6 +283,29 @@ describe('commands endpoint', () => {
     const post = (body: string) =>
         h.fetch('/v1/commands', { method: 'POST', body, headers: { 'content-type': 'application/json' } });
 
+    test('replays a lost first-message response without making another chat or message', async () => {
+        const project = h.openRepo();
+        const create = JSON.stringify({ type: 'chat.create', requestId: 'lost-create-1', projectId: project.id });
+        await post(create); // The client did not receive the response.
+        const created = (await (await post(create)).json()) as { ok: boolean; data: { chat: { id: string } } };
+        expect(created.ok).toBe(true);
+        const send = JSON.stringify({
+            type: 'chat.send',
+            requestId: 'lost-send-1',
+            chatId: created.data.chat.id,
+            text: 'Only once',
+        });
+        const first = await (await post(send)).json();
+        const replay = await (await post(send)).json();
+        expect(replay).toEqual(first);
+        expect(
+            (h.store.db.query('SELECT COUNT(*) AS n FROM chats WHERE project_id = ?').get(project.id) as { n: number })
+                .n
+        ).toBe(1);
+        const items = h.store.db.query('SELECT body FROM stream_items').all() as { body: string }[];
+        expect(items.filter(item => item.body.includes('Only once'))).toHaveLength(1);
+    });
+
     test('answers a CommandResult for success and for caller errors, with matching statuses', async () => {
         const { path } = { path: h.openRepo().path };
         const ok = await post(JSON.stringify({ requestId: 'req-http-open-1', type: 'project.add', folders: [path] }));

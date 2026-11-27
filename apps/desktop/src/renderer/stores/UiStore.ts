@@ -1,5 +1,7 @@
 import { makeAutoObservable, observable, observableRef, reaction } from 'mobx';
 
+import { isDraftSending } from '../features/chats/draftSending';
+import { NewChatDrafts } from './NewChatDrafts';
 import { type KeyValueStorage, readStored, removeStored, writeStored } from './storage';
 import { type RevealTasks, revealTask } from './taskReveal';
 
@@ -54,6 +56,7 @@ export interface ProjectView {
     runId: RunId | null;
     /** Agents: the new-chat row is selected, and no chat exists yet. */
     draft: boolean;
+    draftId?: string | null;
     /** Agents: the folder the new chat is for, `null` for the main folder. Meaningful only with `draft`. */
     draftFolderId: FolderId | null;
     /** Agents: where the new chat works in its folder, `null` for the folder's own checkout. Meaningful only with `draft`. */
@@ -151,6 +154,9 @@ export function initialUiFromSearch(search: string): InitialProjectUi {
 
 /** What a project's window shows, remembered per project. The `open*` actions are how one place links to another. */
 export class ProjectUi {
+    readonly newChatDrafts: NewChatDrafts;
+    draftId: string | null = null;
+    navigationVersion = 0;
     chatId: ChatId | null = null;
     taskId: TaskId | null = null;
     runId: RunId | null = null;
@@ -217,7 +223,15 @@ export class ProjectUi {
      */
     tasksArchive = false;
     /** Agents: files that a hand-off from another chat left for the new-chat page, which takes them once it is open. Not kept between sessions. */
-    pendingFiles: readonly File[] = [];
+    private pendingByDraft = new Map<string, readonly File[]>();
+
+    get pendingFiles(): readonly File[] {
+        return this.draftId ? this.pendingFilesFor(this.draftId) : [];
+    }
+
+    pendingFilesFor(id: string): readonly File[] {
+        return this.pendingByDraft.get(id) ?? [];
+    }
 
     /** The tasks the project holds, for `openTask` to reveal a task in. Read when a task is opened, not kept. */
     readonly #tasks: (() => RevealTasks | undefined) | undefined;
@@ -238,6 +252,7 @@ export class ProjectUi {
         tasks?: () => RevealTasks | undefined,
         windowFitsHalf: () => boolean = () => true
     ) {
+        this.newChatDrafts = new NewChatDrafts(projectId, storage);
         const key = uiKey(projectId);
         const completionKey = completionsKey(projectId);
         const completions = readStored(storage, completionKey) as Partial<StoredChatCompletions> | undefined;
@@ -307,7 +322,6 @@ export class ProjectUi {
         if (this.groupByWorktree) this.groupByFolder = true;
         makeAutoObservable(this, {
             projectId: false,
-            pendingFiles: observableRef,
             draftWorkspace: observableRef,
             draftWorkspaceRow: observableRef,
             expandedChats: observableRef,
@@ -371,6 +385,7 @@ export class ProjectUi {
             chatId: this.chatId,
             runId: this.runId,
             draft: this.draft,
+            draftId: this.draftId,
             draftFolderId: this.draftFolderId,
             draftWorkspace: this.draftWorkspace,
             draftEngine: this.draftEngine,
@@ -378,25 +393,31 @@ export class ProjectUi {
     }
 
     /** Shows a place kept from `view`, as one change. */
-    show({ chatId, runId, draft, draftFolderId, draftWorkspace, draftEngine }: ProjectView): void {
+    show({ chatId, runId, draft, draftId, draftFolderId, draftWorkspace, draftEngine }: ProjectView): void {
+        this.navigationVersion++;
         if (chatId !== this.chatId || runId !== this.runId || draft !== this.draft) this.showChat();
 
         this.chatId = chatId;
         this.runId = runId;
         this.draft = draft;
-        this.draftFolderId = draftFolderId;
-        this.draftWorkspace = draftWorkspace;
-        this.draftEngine = draftEngine;
+        const saved = draftId ? this.newChatDrafts.get(draftId) : undefined;
+        this.draftId = saved?.id ?? null;
+        this.draft = draft && !!saved;
+        this.draftFolderId = saved ? saved.folderId : draftFolderId;
+        this.draftWorkspace = saved ? saved.workspace : draftWorkspace;
+        this.draftEngine = saved ? (saved.engine ?? null) : draftEngine;
         // The row was the answer for the choice that was on show; the page asks again for the one it is given.
         this.draftWorkspaceRow = null;
     }
 
     /** Shows the chat; `null` leaves none selected. */
     openChat(chatId: ChatId | null): void {
+        this.navigationVersion++;
         this.showChat();
         this.chatId = chatId;
         this.runId = null;
         this.draft = false;
+        this.draftId = null;
         this.draftFolderId = null;
         this.draftWorkspace = null;
         this.draftWorkspaceRow = null;
@@ -415,15 +436,26 @@ export class ProjectUi {
         workspace: ChatWorkspaceChoice | null = null,
         engine: string | null = null
     ): void {
+        this.navigationVersion++;
         this.showChat();
         this.runId = null;
         this.draft = true;
+        this.draftId = this.newChatDrafts.createOrOpen(folderId, workspace).id;
+        if (engine) this.newChatDrafts.updateEngine(this.draftId, engine);
         this.draftFolderId = folderId;
         this.draftWorkspace = workspace;
         this.draftWorkspaceRow = null;
-        this.draftEngine = engine;
+        this.draftEngine = engine ?? this.newChatDrafts.get(this.draftId)?.engine ?? null;
 
-        if (attach.length > 0) this.pendingFiles = [...this.pendingFiles, ...attach];
+        if (attach.length > 0) this.pendingByDraft.set(this.draftId, [...this.pendingFiles, ...attach]);
+    }
+
+    openDraftId(id: string): void {
+        const item = this.newChatDrafts.get(id);
+        if (!item) return;
+        this.openDraft([], item.folderId, item.workspace);
+        this.draftId = id;
+        this.draftEngine = item.engine ?? null;
     }
 
     /**
@@ -431,7 +463,7 @@ export class ProjectUi {
      * repository, so what was chosen for the first (its base branch, its worktree) goes back to Project checkout.
      */
     setDraftFolder(folderId: FolderId | null): void {
-        if (!this.draft) return;
+        if (!this.draft || this.draftPlaceLocked()) return;
 
         if (folderId !== this.draftFolderId) {
             this.draftWorkspace = null;
@@ -439,11 +471,12 @@ export class ProjectUi {
         }
 
         this.draftFolderId = folderId;
+        if (this.draftId) this.newChatDrafts.updatePlace(this.draftId, folderId, this.draftWorkspace);
     }
 
     /** Changes where the new chat works in its folder, `null` for the folder's own checkout. Only with the new-chat page open. */
     setDraftWorkspace(choice: ChatWorkspaceChoice | null): void {
-        if (!this.draft) return;
+        if (!this.draft || this.draftPlaceLocked()) return;
 
         // The row answers for one worktree: it stays only while the choice is that same worktree again.
         const same =
@@ -454,6 +487,18 @@ export class ProjectUi {
         if (!same) this.draftWorkspaceRow = null;
 
         this.draftWorkspace = choice;
+        if (this.draftId) this.newChatDrafts.updatePlace(this.draftId, this.draftFolderId, choice);
+    }
+
+    private draftPlaceLocked(): boolean {
+        if (!this.draftId) return false;
+        const draft = this.newChatDrafts.get(this.draftId);
+        return Boolean(
+            draft?.operation ||
+                draft?.createdChat ||
+                draft?.firstMessage ||
+                isDraftSending(`@new-chat:${this.projectId}:${this.draftId}`)
+        );
     }
 
     /** Keeps the daemon's row of the worktree the new-chat page chose (`draftWorkspaceRow`), or drops it with `null`. Only with the new-chat page open. */
@@ -467,7 +512,7 @@ export class ProjectUi {
     takePendingFiles(): readonly File[] {
         const files = this.pendingFiles;
 
-        this.pendingFiles = [];
+        if (this.draftId) this.pendingByDraft.delete(this.draftId);
 
         return files;
     }
@@ -510,9 +555,11 @@ export class ProjectUi {
 
     /** Shows the run, below its chat; a root run is its chat. */
     openRun(runId: RunId | null): void {
+        this.navigationVersion++;
         this.showChat();
         this.runId = runId;
         this.draft = false;
+        this.draftId = null;
         this.draftFolderId = null;
         this.draftWorkspace = null;
         this.draftWorkspaceRow = null;

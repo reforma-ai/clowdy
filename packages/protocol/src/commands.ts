@@ -437,6 +437,8 @@ export const commandSchema = z.discriminatedUnion('type', [
         provider: z.enum(COMMIT_MESSAGE_PROVIDERS).nullable(),
     }),
 
+    z.object({ ...base, type: z.literal('settings.setBranchPrefix'), prefix: z.string().max(500) }),
+
     /* Skills */
     /** Switches a user skill on or off for every run. `name` is the entry's name from `GET /v1/skills` (`user:deploy`). */
     z.object({ ...base, type: z.literal('skills.setEnabled'), name: z.string().min(1), enabled: z.boolean() }),

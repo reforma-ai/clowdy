@@ -126,6 +126,61 @@ afterEach(() => {
     chatListPreferences.setExpandRunningAgents(true);
 });
 
+/** The count at the end of a chat's row: what works inside it (its sub-agents and its threads, and theirs), with the dot beside it. */
+describe('the count of agents inside a chat', () => {
+    const countOf = (key: string) => rowOf(key).querySelector('[title$="inside"]')?.textContent ?? null;
+
+    it('counts the sub-agents and the threads that work, and not the ones that are over', () => {
+        // c-1: r-na-03, r-na-02 and r-na-05 (below r-na-02) work, r-na-01 and r-na-04 are over.
+        expect(countOf('c-1')).toBe('3 agents');
+        // c-6: its threads c-6a (works) and c-6e (rests for background work); c-6b, c-6c and c-6a1 are over, and so is its sub-agent r-na-07.
+        expect(countOf('c-6')).toBe('2 agents');
+        expect(countOf('c-4')).toBeNull();
+    });
+
+    it('is on the row folded or not, with Expand active threads on or off', async () => {
+        await draw(() => chatListPreferences.setExpandRunningAgents(false));
+
+        expect(shown('c-6a', 'c-6e', 'r-na-03')).toEqual([]);
+        expect(countOf('c-1')).toBe('3 agents');
+        expect(countOf('c-6')).toBe('2 agents');
+
+        await draw(() => {
+            ui().toggleChatExpanded('c-1');
+            ui().toggleChatExpanded('c-6');
+        });
+
+        expect(countOf('c-1')).toBe('3 agents');
+        expect(countOf('c-6')).toBe('2 agents');
+    });
+
+    it('is on a chat that works itself, and on one at rest', async () => {
+        const orchestrator = project().runs.get('r-orch-1')!;
+
+        expect(orchestrator.status).toBe('running');
+        expect(countOf('c-1')).toBe('3 agents');
+
+        await draw(() => project().runs.set(orchestrator.id, { ...orchestrator, status: 'succeeded', finishedAt: 1 }));
+
+        expect(countOf('c-1')).toBe('3 agents');
+    });
+
+    it('says one agent in the singular, and drops away when the last one ends', async () => {
+        const thread = project().runs.get('r-orch-6e')!;
+
+        await draw(() => project().runs.set(thread.id, { ...thread, status: 'succeeded', finishedAt: 1 }));
+
+        expect(countOf('c-6')).toBe('1 agent');
+        expect(rowOf('c-6').querySelector('[title="1 agent works inside"]')).not.toBeNull();
+
+        const last = project().runs.get('r-orch-6a')!;
+
+        await draw(() => project().runs.set(last.id, { ...last, status: 'succeeded', finishedAt: 1 }));
+
+        expect(countOf('c-6')).toBeNull();
+    });
+});
+
 describe('the agents that work, under a folded chat', () => {
     it('lists the working threads and the working sub-agents, the ones below a sub-agent one level in, and leaves the finished out', () => {
         expect(shown('c-1', 'r-na-03', 'r-na-02', 'r-na-05', 'r-na-04', 'r-na-01')).toEqual([
@@ -225,7 +280,8 @@ describe('finished sub-agents', () => {
         // There is no group row, and no fold but the chat's.
         expect(rowKeys().some(candidate => candidate?.startsWith('@finished'))).toBe(false);
         expect(rowOf('r-na-01').textContent).toBe('Map the booking flow');
-        expect(rowOf('c-1').textContent).toBe('Simplify booking');
+        // The chat's row says its title and the count of what works inside it, and nothing else.
+        expect(rowOf('c-1').textContent).toBe('Simplify booking3 agents');
     });
 
     it('stand among the threads of their chat by the time each was made, a thread’s own below the thread', async () => {
