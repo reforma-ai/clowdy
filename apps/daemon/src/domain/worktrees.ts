@@ -3,8 +3,10 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { folderNames } from '@clowdy/protocol';
 
 import { getChat } from '../db/chats';
+import { getRunWork, listActiveRuns } from '../db/runs';
 import { chatsOfWorkspace, listWorkspacesOfProject } from '../db/workspaces';
 import { unavailable } from '../errors';
+import { isBelow } from '../fs/paths';
 import {
     baseOf,
     changedFiles,
@@ -18,7 +20,7 @@ import {
     workingTreeRoot,
 } from '../git/state';
 import { gitLine, gitRead } from './git';
-import { pathKey } from './workspaces';
+import { pathKey, placeOf as realPlace } from './workspaces';
 
 import type {
     FolderWorktrees,
@@ -53,6 +55,7 @@ export interface WorktreeOwner {
     primary?: boolean;
     /** Another folder of the project: a place the project works in, which a removal refuses even when it is a worktree of this folder's repository. */
     sibling?: boolean;
+    active?: boolean;
     record?: WorkspaceRecord;
     chats?: WorktreeChat[];
 }
@@ -172,6 +175,7 @@ export async function inspectWorktree(
         ...(merged !== undefined && base !== undefined && { merged, base }),
         ...(owner.record && { workspaceId: owner.record.id }),
         managed: owner.record?.managed ?? false,
+        ...(owner.active && { active: true }),
         chats,
         ...(blocked && { blocked }),
     };
@@ -237,7 +241,8 @@ async function folderWorktrees(
     name: string,
     siblings: readonly string[],
     records: readonly WorkspaceRecord[],
-    chatsOf: ReadonlyMap<string, WorktreeChat[]>
+    chatsOf: ReadonlyMap<string, WorktreeChat[]>,
+    activePaths: readonly string[]
 ): Promise<FolderWorktrees> {
     const none: FolderWorktrees = { folderId: folder.id, name, isRepository: false, worktrees: [] };
     const root = (await isFolder(folder.path)) ? await workingTreeRoot(folder.path) : undefined;
@@ -308,6 +313,8 @@ async function folderWorktrees(
                         main: false,
                         primary,
                         sibling,
+                        // Use the already-resolved Git row key, not a synchronous realpath for every pair.
+                        active: activePaths.some(cwd => isBelow(key, cwd, { allowSelf: true })),
                         ...(record && { record, chats: chatsOf.get(record.id) }),
                     });
                 })
@@ -325,6 +332,12 @@ async function folderWorktrees(
  */
 export async function projectWorktrees(store: Store, project: Project): Promise<FolderWorktrees[]> {
     const { records, chatsOf } = readWorkspaces(store, project.id);
+    const activePaths = store.read(() =>
+        listActiveRuns(store.db).flatMap(run => {
+            const { cwd } = getRunWork(store.db, run.id);
+            return cwd === undefined ? [] : [realPlace(cwd)];
+        })
+    );
     const names = folderNames(project.folders);
     const groups: FolderWorktrees[] = [];
 
@@ -335,7 +348,8 @@ export async function projectWorktrees(store: Store, project: Project): Promise<
                 names[index],
                 project.folders.filter(other => other.id !== folder.id).map(other => other.path),
                 records,
-                chatsOf
+                chatsOf,
+                activePaths
             )
         );
     }

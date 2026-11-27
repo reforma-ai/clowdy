@@ -8,7 +8,7 @@ import { useState } from 'react';
 
 import { worktreeLabel } from '../agents/workspaceChoice';
 import { refreshFolderGit } from '../openWith';
-import { affectedChats, chatPreviewChanged, linkedChatIds, readRemoval, removeWorktree } from './worktreeActions';
+import { affectedChats, chatPreviewChanged, readRemoval, removeWorktree } from './worktreeActions';
 import { deleteBranchByDefault, removalPlan } from './worktreeView';
 
 import type { FolderId, Project, ProjectId, ProjectSnapshot, WorktreeInfo } from '@clowdy/protocol';
@@ -19,8 +19,9 @@ export const keyOf = (folderId: FolderId, path: string) => JSON.stringify([folde
 export function eligible(row: WorktreeInfo, folderId: FolderId, snapshot: ProjectSnapshot) {
     if (
         row.main ||
+        row.active ||
         row.missing ||
-        row.blocked ||
+        (row.blocked && row.blocked !== 'chats') ||
         row.locked !== undefined ||
         row.changes !== 0 ||
         row.submodules ||
@@ -28,8 +29,12 @@ export function eligible(row: WorktreeInfo, folderId: FolderId, snapshot: Projec
         row.base === undefined
     )
         return false;
-    const linked = linkedChatIds(row, snapshot, folderId);
-    return !snapshot.chats.some(chat => linked.has(chat.id) && chat.archivedAt === undefined);
+    try {
+        return !affectedChats(row, snapshot, folderId).blocker;
+    } catch {
+        // A partial snapshot is not enough to judge whether every linked chat is stopped.
+        return false;
+    }
 }
 
 export function canRemove(row: WorktreeInfo): boolean {
@@ -57,9 +62,10 @@ function TidyConfirmation({
         previews.some(({ row }) => !row.missing && (row.changes > 0 || row.submodules)) &&
             'Uncommitted changes will be lost',
         previews.some(({ row }) => removalPlan(row).stranded) && 'Detached commits may be lost',
-        previews.some(({ safe, chats }) => !safe && chats.affected.some(chat => chat.archivedAt === undefined)) &&
+        previews.some(({ chats }) => chats.affected.some(chat => chat.archivedAt === undefined)) &&
             'Linked chats and their threads will be archived',
-        previews.some(({ chats }) => chats.blocker) && 'Worktrees with running chats will be skipped',
+        previews.some(({ row, chats }) => row.active || chats.blocker) &&
+            'Worktrees with running chats will be skipped',
     ].filter(Boolean);
     return (
         <ConfirmModalContent
@@ -155,6 +161,10 @@ export function confirmTidyWorktrees({
                             folderId,
                             path: row.path,
                             tidy: true,
+                            ...(read.chats.affected.some(chat => chat.archivedAt === undefined) && {
+                                chatDisposition: 'archive',
+                                expectedChatIds: [...read.chats.ids],
+                            }),
                             ...(deleteBranches && removalPlan(row).branch?.selected && { deleteBranch: true }),
                         });
                         if (!result.ok) throw new Error(result.error.message);
@@ -164,7 +174,7 @@ export function confirmTidyWorktrees({
                             disposition: 'archive',
                         });
                     }
-                    if (!safe) for (const chat of read.chats.affected) archivedByThisAction.add(chat.id);
+                    for (const chat of read.chats.affected) archivedByThisAction.add(chat.id);
                     removed++;
                 } catch (error) {
                     errors.push(`${worktreeLabel(row)} (${row.path}): ${errorMessage(error, 'Something went wrong')}`);

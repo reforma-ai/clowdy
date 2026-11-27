@@ -1213,8 +1213,11 @@ export class FixtureTransport implements Transport {
             return fail('invalid', 'Expected chats require a chat disposition');
         }
 
-        if (command.tidy && (command.discard || command.chatDisposition)) {
-            return fail('invalid', 'Tidy up cannot discard changes or dispose of chats');
+        if (command.tidy && (command.discard || command.chatDisposition === 'delete')) {
+            return fail('invalid', 'Tidy up cannot discard changes or delete chats');
+        }
+        if (command.tidy && command.chatDisposition === 'archive' && command.expectedChatIds === undefined) {
+            return fail('invalid', 'Tidy up requires the confirmed chat IDs when archiving');
         }
 
         const linked = data.chats.filter(chat => worktree.chats.some(each => each.id === chat.id));
@@ -1238,6 +1241,8 @@ export class FixtureTransport implements Transport {
         if ((command.chatDisposition ? affected : linked).some(chat => this.#isChatBusy(chat))) {
             return fail('conflict', 'The agents of this chat or of its threads are still working. Stop them first.');
         }
+
+        if (worktree.active) return fail('conflict', 'A run is still working in this worktree');
 
         if (worktree.main) return fail('conflict', "That is the folder's own checkout");
 
