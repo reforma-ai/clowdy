@@ -11,6 +11,7 @@ import {
 import { Panel, PanelContent } from '@clowdy/components/Panel';
 import { Popover, PopoverTrigger, useContextMenu } from '@clowdy/components/Popover';
 import { Show } from '@clowdy/components/Show';
+import { Tooltip } from '@clowdy/components/Tooltip';
 import { Archive, Check, Close, Message, More, NewChat, Plus, Robot2, Summary } from '@clowdy/icons/14';
 import { cn } from '@clowdy/lib';
 import { mainFolder } from '@clowdy/protocol';
@@ -28,6 +29,7 @@ import {
 
 import { hotkeys, useCommands, useHotkeyScope } from '../../hotkeys';
 import { SidebarHeading, useRunLabel } from '../../shared';
+import { ProjectIcon } from '../../shared/ProjectIcon';
 import { useFileDragHover } from '../../shared/useFileDragHover';
 import { ProjectSelect } from '../../shell/ProjectSelect';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
@@ -915,16 +917,27 @@ export function AgentList({
                     ...root.projects.filter(candidate => candidate.personal),
                     ...root.projects.filter(candidate => !candidate.personal),
                 ].map(candidate => (
-                    <button
+                    <Tooltip
                         key={candidate.id}
-                        type="button"
-                        className={styles.projectDot}
-                        aria-label={candidate.name}
-                        aria-current={candidate.id === project.id ? 'true' : undefined}
-                        onClick={() => root.selectProject(candidate.id)}
+                        placement="top"
+                        warmUp
+                        content={
+                            <span className={styles.projectTooltip}>
+                                <ProjectIcon project={candidate} />
+                                {candidate.name}
+                            </span>
+                        }
                     >
-                        <span />
-                    </button>
+                        <button
+                            type="button"
+                            className={styles.projectDot}
+                            aria-label={candidate.name}
+                            aria-current={candidate.id === project.id ? 'true' : undefined}
+                            onClick={() => root.selectProject(candidate.id)}
+                        >
+                            <span />
+                        </button>
+                    </Tooltip>
                 ))}
             </nav>
 
