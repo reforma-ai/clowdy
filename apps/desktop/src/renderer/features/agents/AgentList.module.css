@@ -271,6 +271,34 @@
     min-width: 0;
 }
 
+.worktreeTitle svg {
+    flex-shrink: 0;
+}
+
+.worktreeFolder,
+.worktreeBranch {
+    min-width: 0;
+}
+
+.worktreeTitle:has(.worktreeBranch) .worktreeFolder {
+    flex: 0 1 auto;
+    max-width: 50%;
+}
+
+.worktreeBranch {
+    flex: 1 1 0;
+    color: var(--color-secondary-muted-text);
+}
+
+.worktreeDivider {
+    align-self: stretch;
+    flex-shrink: 0;
+    width: 1px;
+    margin-block: var(--spacing-4);
+    background: currentColor;
+    opacity: 0.25;
+}
+
 .worktreeHeader[data-pending] {
     color: var(--color-secondary-muted-text);
 }

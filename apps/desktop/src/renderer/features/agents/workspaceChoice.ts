@@ -29,12 +29,6 @@ export function worktreeLabel(worktree: { branch?: string; head?: string }): str
     return worktree.branch ?? (worktree.head ? `Detached at ${worktree.head}` : 'Detached HEAD');
 }
 
-/** Name a worktree alongside its folder without repeating a branch's existing folder prefix. */
-export function worktreeGroupLabel(folder: string, worktree: { branch?: string; head?: string }): string {
-    const label = worktreeLabel(worktree);
-    return label.startsWith(`${folder}/`) ? label : `${folder}/${label}`;
-}
-
 /**
  * What the new chat is made with: the person's choice, as far as the folder's repository allows it, and `undefined` for Project checkout. The daemon refuses a worktree of a
  * folder that is no repository, a base that is no ref, and a path that is no worktree of the folder, so a choice that the read does not bear out (nothing read yet, the read

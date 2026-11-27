@@ -6,7 +6,6 @@ import {
     pickableWorktrees,
     repositoryOf,
     samePath,
-    worktreeGroupLabel,
     worktreeLabel,
 } from './workspaceChoice';
 
@@ -42,12 +41,6 @@ describe('the repository of a folder', () => {
         expect(pickableWorktrees(git).map(worktree => worktree.path)).toEqual(['/work/api-fix', '/work/api-detached']);
         expect(pickableWorktrees(git).map(worktreeLabel)).toEqual(['fix/price', 'Detached at 5c4d3e2']);
         expect(worktreeLabel({ head: '' })).toBe('Detached HEAD');
-    });
-
-    it('names worktree groups without repeating the folder name', () => {
-        expect(worktreeGroupLabel('clowdy', { branch: 'clowdy/dev' })).toBe('clowdy/dev');
-        expect(worktreeGroupLabel('reforma', { branch: 'feature' })).toBe('reforma/feature');
-        expect(worktreeGroupLabel('clowdy', { head: '1234567' })).toBe('clowdy/Detached at 1234567');
     });
 });
 
