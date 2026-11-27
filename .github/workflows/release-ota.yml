@@ -16,12 +16,10 @@ on:
             - '.github/workflows/release-ota.yml'
     workflow_dispatch: {}
 
-# A newer push makes the running publish moot. Cancelling it is safe: the manifest that points to a bundle is written
-# after the bundle, and an archive nothing names yet is pruned later. A run stopped while it replaces the manifest (gh
-# deletes the old one, then uploads) leaves none, which apps read as no update until the next publish.
+# A running publish completes before another starts. Archives stay available for clients holding an older manifest.
 concurrency:
     group: release-ota
-    cancel-in-progress: true
+    cancel-in-progress: false
 
 permissions:
     contents: read

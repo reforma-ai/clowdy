@@ -17,7 +17,7 @@ Everything here lives in the repository settings on GitHub (`reforma-ai/clowdy` 
 
 ## The environment
 
-The secrets are not repository secrets, which every branch and every pull request run can read. They live in the environment `desktop-release` (**Settings → Environments → New environment**), whose **Deployment branches and tags** is set to **Selected branches and tags** with the rules `main` and `next`. Only a job that declares `environment: desktop-release` reads them (the `macos` job of Release shell and the `publish` job of Release OTA bundle), and GitHub refuses that job on any other branch. Add them under the environment's **Environment secrets → Add environment secret**.
+The secrets are not repository secrets, which every branch and every pull request run can read. They live in the environment `desktop-release` (**Settings → Environments → New environment**), whose **Deployment branches and tags** is set to **Selected branches and tags** with the rules `main` and `next`. Only a job that declares `environment: desktop-release` reads them; GitHub refuses that job on any other branch. Add them under the environment's **Environment secrets → Add environment secret**.
 
 The variables are not secret and stay repository variables: **Settings → Secrets and variables → Actions → Variables → New repository variable**. The workflows' own GitHub token needs nothing: they ask for write access themselves where they publish.
 
@@ -25,7 +25,7 @@ A secret can only be written, never read back, and `gh secret set` replaces one 
 
 ## 1. Create the OTA key
 
-Do this before the first shell release. A shell carries the public key it was built with, and a shell built without one ignores OTA bundles until the next shell release.
+Do this before the first shell release. A shell carries the public key it was built with. Release builds require it, and publication requires a matching private key.
 
 In any folder outside the repository:
 
@@ -54,13 +54,15 @@ A release is cut from `main`, which work reaches through the pull request from `
 
 Raise `version` in `apps/desktop/package.json` above the newest release (`major.minor.patch` only, for example `0.1.1` to `0.2.0`) in that pull request and merge it. Or open **Actions → Release shell → Run workflow** on `main`, which releases the current version if no release has it yet. A push that keeps the version releases nothing, so to re-run a release that failed, use the manual run.
 
-The run takes about half an hour: `decide`, then `macos`, `windows` and `windows-test` side by side, then `publish`. The `windows-test` job runs the desktop tests on Windows beside the packaging, so a red desktop test stops the release at `publish`; the other CI checks are not part of it. `publish` runs only when both builds and the Windows tests succeed: a failed run publishes nothing and leaves the version unreleased, so fix it and run it again. When it is done, **Releases** shows `v<version>` marked Latest with `Clowdy-arm64.dmg`, `Clowdy-x64.dmg`, `Clowdy-Setup.exe`, the zips, the `clowdy-<version>-<arch>.nsis.7z` packages, `latest-mac.yml`, and `latest.yml`.
+The run takes about half an hour: `decide`, then `macos`, `windows` and `windows-test` side by side, then `publish`. The `windows-test` job runs the shell and release-script tests on Windows beside the packaging; the release does not run renderer tests. `publish` runs only when both builds and the Windows tests succeed. It signs and verifies a compatible bootstrap bundle and adds it to the draft release before making the installers public. A failed run leaves the version unreleased, so fix it and run it again. Each published `v<version>` release must keep its `manifest.json` and named bundle archive: that pair is the fallback for fresh installations of that shell.
+
+The installer contains the native shell, Bun and ripgrep. On first launch it downloads the newest signed compatible bundle available from the OTA feed or the bundle attached to its shell release. It needs a network connection for that first download; a verified installed bundle can start offline on later launches. Without a usable bundle, Clowdy offers Retry or Quit.
 
 Without working Apple secrets the `macos` job warns "Unsigned macOS build" and signs the apps ad hoc. They run, but they cannot update themselves: they show a Download button that opens the latest release instead. Windows builds are unsigned either way; they update, and SmartScreen names no publisher.
 
 ## 4. OTA bundles from then on
 
-Every push to `main` that touches `apps/desktop`, `apps/daemon`, `packages`, the root `package.json`, or `bun.lock` runs **Release OTA bundle**. It builds the bundle and publishes `bundle-<number>.tar.gz` and `manifest.json` to the prerelease tagged `ota`. Leave that release alone: don't edit it, delete files from it, or mark it Latest.
+Every push to `main` that touches `apps/desktop`, `apps/daemon`, `packages`, the root `package.json`, or `bun.lock` runs **Release OTA bundle**. It builds the bundle and publishes `bundle-<number>.tar.gz` and `manifest.json` to the prerelease tagged `ota`. Leave that release and its archives alone: clients may still be downloading an archive named by an earlier manifest. Do not mark it Latest.
 
 A run that publishes nothing says why in a notice at the top of its summary:
 

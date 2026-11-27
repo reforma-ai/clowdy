@@ -23,6 +23,8 @@ const READY_TIMEOUT_MS = 30_000;
 const CLOCK_SLACK_MS = 2000;
 /** What the first launch of a shell version waits for before its first window: the manifest, then the download. */
 const CATCH_UP_MS = { manifest: 3000, install: 60_000 };
+/** Background downloads may be slow, but must eventually release the check and try the other source. */
+const BACKGROUND_INSTALL_MS = 5 * 60_000;
 /** How many bundles whose daemon came up healthy `state.json` remembers. */
 const PROVEN_KEPT = 10;
 const STATE_FILE = 'state.json';
@@ -66,7 +68,7 @@ const NO_STATE: OtaState = { current: null, previous: null, unconfirmed: false, 
 /** A launch waiting for a bundle: its progress, 0 to 1 once the download begins, and how long it waits. */
 interface Waiting {
     onProgress: (fraction: number) => void;
-    wait: typeof CATCH_UP_MS;
+    wait: { manifest: number; install: number };
 }
 
 export interface OtaOptions {
@@ -86,6 +88,8 @@ export interface OtaOptions {
     publicKey: string;
     /** Where `manifest.json` and the archives are published, without a trailing slash; empty turns checks off. */
     feed: string;
+    /** The immutable bootstrap assets published with this shell. */
+    bootstrapFeed?: string;
     fetch: (url: string, init?: { signal?: AbortSignal }) => Promise<Response>;
     /**
      * The bundle version the running daemon reports, if one runs: its folder is never deleted. Rejects when a daemon runs
@@ -99,6 +103,7 @@ export interface OtaOptions {
     log?: (message: string) => void;
     readyTimeoutMs?: number;
     catchUpMs?: typeof CATCH_UP_MS;
+    backgroundInstallMs?: number;
 }
 
 export type Ota = ReturnType<typeof createOta>;
@@ -268,7 +273,15 @@ export function createOta(options: OtaOptions) {
         if (!enabled || onTrial) return Promise.resolve(null);
 
         checking ??= (async () => {
-            const version = await installNewer();
+            // The shell release can hold a newer compatible bundle than the OTA feed immediately after an upgrade.
+            // Check it in the background too, so an installed bundle still opens without waiting for the network.
+            const version = await installBest({
+                onProgress: () => undefined,
+                wait: {
+                    manifest: (options.catchUpMs ?? CATCH_UP_MS).manifest,
+                    install: options.backgroundInstallMs ?? BACKGROUND_INSTALL_MS,
+                },
+            });
 
             if (version !== null) {
                 installedVersion = version;
@@ -318,21 +331,69 @@ export function createOta(options: OtaOptions) {
         }
     }
 
+    /** Installs the newest usable first bundle from the current feed or this shell's bootstrap. */
+    async function bootstrap(onProgress: (fraction: number) => void): Promise<void> {
+        if (!publicKey || !feed || !options.bootstrapFeed)
+            throw new Error('This app has no update feed or verification key');
+
+        const waiting = { onProgress, wait: options.catchUpMs ?? CATCH_UP_MS };
+        if ((await installBest(waiting)) === null) throw new Error('No compatible bundle is available');
+    }
+
+    /** Try both sources in version order; a failed source never prevents using the other. */
+    async function installBest(waiting: Waiting): Promise<number | null> {
+        const errors: Array<{ source: string; message: string }> = [];
+
+        const candidates = await Promise.all(
+            [feed, options.bootstrapFeed]
+                .filter((source): source is string => Boolean(source))
+                .map(async source => {
+                    try {
+                        return await candidate(source, waiting);
+                    } catch (error) {
+                        errors.push({ source, message: errorText(error) });
+                        return undefined;
+                    }
+                })
+        );
+
+        const usable = candidates.filter(item => item != null).sort((a, b) => b.manifest.version - a.manifest.version);
+        for (const item of usable) {
+            try {
+                await installCandidate(item, waiting);
+                return item.manifest.version;
+            } catch (error) {
+                errors.push({ source: item.source, message: errorText(error) });
+            }
+        }
+
+        // A healthy current OTA feed is enough when only the supplementary bootstrap is unavailable.
+        if (errors.length && !(candidates[0] === null && errors.every(error => error.source !== feed))) {
+            throw new Error(errors.map(error => error.message).join('; '));
+        }
+        return null;
+    }
+
     /**
      * Installs the published bundle when it is newer and this shell can run it, and puts it on trial. Resolves to its
      * version, or null when there is nothing to install. With `waiting` a launch waits, so the requests are cut short.
      */
-    async function installNewer(waiting?: Waiting): Promise<number | null> {
-        const response = await options.fetch(`${feed}/${MANIFEST_FILE}`, {
-            signal: waiting && AbortSignal.timeout(waiting.wait.manifest),
-        });
+    async function installNewer(waiting?: Waiting, source = feed): Promise<number | null> {
+        const item = await candidate(source, waiting);
+        if (!item) return null;
+        await installCandidate(item, waiting);
+        return item.manifest.version;
+    }
+
+    async function candidate(source: string, waiting?: Waiting) {
+        const response = await fetchBody(`${source}/${MANIFEST_FILE}`, MANIFEST_LIMIT, waiting?.wait.manifest);
 
         // Nothing published yet, or the repository is still private.
-        if (response.status === 404) return null;
+        if (response.status === 404) return undefined;
 
         if (!response.ok) throw new Error(`The bundle manifest answered ${response.status}`);
 
-        const signed = new TextDecoder().decode(await readBody(response, MANIFEST_LIMIT));
+        const signed = new TextDecoder().decode(response.body);
         const manifest = openManifest(signed, publicKey);
         const state = await readState();
 
@@ -344,20 +405,24 @@ export function createOta(options: OtaOptions) {
             return null;
         }
 
-        // The app's own copy is the floor anyway; only an installed bundle is worth going back to.
+        return { source, signed, manifest };
+    }
+
+    async function installCandidate(
+        { source, signed, manifest }: { source: string; signed: string; manifest: BundleManifest },
+        waiting?: Waiting
+    ): Promise<void> {
         const previous = running.dir ? running.version : null;
 
         // The state switches in the same turn as the install, so a prune never sees the new folder without the state that keeps it.
         await exclusive(async () => {
-            await install(manifest, signed, waiting);
+            await install(manifest, signed, source, waiting);
             await changeState(state => ({ ...state, current: manifest.version, previous, unconfirmed: true }));
         });
         await prune();
-
-        return manifest.version;
     }
 
-    async function install(manifest: BundleManifest, signed: string, waiting?: Waiting): Promise<void> {
+    async function install(manifest: BundleManifest, signed: string, source: string, waiting?: Waiting): Promise<void> {
         const target = path.join(bundles, String(manifest.version));
 
         // Installed by a run that ended before it wrote `state.json`.
@@ -368,17 +433,13 @@ export function createOta(options: OtaOptions) {
         // Before the request: a launch whose download stalls before it answers still shows why it waits.
         waiting?.onProgress(0);
 
-        const response = await options.fetch(`${feed}/${name}`, {
-            signal: waiting && AbortSignal.timeout(waiting.wait.install),
-        });
-
-        if (!response.ok) throw new Error(`${name} answered ${response.status}`);
-
         let received = 0;
-        const archive = await readBody(response, size, length => {
+        const response = await fetchBody(`${source}/${name}`, size, waiting?.wait.install, length => {
             received += length;
             waiting?.onProgress(Math.min(received / size, 1));
         });
+        if (!response.ok) throw new Error(`${name} answered ${response.status}`);
+        const archive = response.body;
 
         if (archive.length !== size || sha256(archive) !== archiveHash)
             throw new Error(`${name} does not match the manifest`);
@@ -414,6 +475,36 @@ export function createOta(options: OtaOptions) {
             await renameWhenFree(staging, target);
         } finally {
             await rm(staging, { recursive: true, force: true });
+        }
+    }
+
+    /** Bound the request and its body together, even if a fetch implementation ignores cancellation. */
+    async function fetchBody(url: string, limit: number, timeout?: number, onChunk?: (length: number) => void) {
+        const controller = new AbortController();
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const download = (async () => {
+            const response = await options.fetch(url, { signal: controller.signal });
+            if (!response.ok || controller.signal.aborted) {
+                void response.body?.cancel().catch(() => undefined);
+                if (controller.signal.aborted) throw new Error(`Download timed out: ${url}`);
+                return { ok: response.ok, status: response.status, body: new Uint8Array() };
+            }
+            const body = await readBody(response, limit, controller.signal, onChunk);
+            return { ok: response.ok, status: response.status, body };
+        })();
+        if (timeout === undefined) return download;
+        try {
+            return await Promise.race([
+                download,
+                new Promise<never>((_resolve, reject) => {
+                    timer = setTimeout(() => {
+                        controller.abort();
+                        reject(new Error(`Download timed out: ${url}`));
+                    }, timeout);
+                }),
+            ]);
+        } finally {
+            clearTimeout(timer);
         }
     }
 
@@ -525,6 +616,7 @@ export function createOta(options: OtaOptions) {
         enabled,
         choose,
         catchUp,
+        bootstrap,
         watchReady,
         ready,
         daemonUp,
@@ -550,18 +642,34 @@ function oneAtATime() {
 }
 
 /** The body, refused past `limit` bytes, so a hostile host cannot exhaust memory with an endless one. */
-async function readBody(response: Response, limit: number, onChunk?: (length: number) => void): Promise<Uint8Array> {
+async function readBody(
+    response: Response,
+    limit: number,
+    signal: AbortSignal,
+    onChunk?: (length: number) => void
+): Promise<Uint8Array> {
     const chunks: Uint8Array[] = [];
     let length = 0;
-
-    for await (const chunk of response.body ?? []) {
-        length += chunk.length;
-
-        // Leaving the loop cancels the download.
-        if (length > limit) throw new Error(`${response.url || 'A download'} is larger than ${limit} bytes`);
-
-        chunks.push(chunk);
-        onChunk?.(chunk.length);
+    if (!response.body) return Buffer.concat(chunks);
+    const reader = response.body.getReader();
+    const cancel = () => void reader.cancel().catch(() => undefined);
+    signal.addEventListener('abort', cancel, { once: true });
+    try {
+        while (true) {
+            const { value: chunk, done } = await reader.read();
+            if (signal.aborted) throw new Error('Download timed out');
+            if (done) break;
+            length += chunk.length;
+            if (length > limit) {
+                cancel();
+                throw new Error(`${response.url || 'A download'} is larger than ${limit} bytes`);
+            }
+            chunks.push(chunk);
+            onChunk?.(chunk.length);
+        }
+    } finally {
+        signal.removeEventListener('abort', cancel);
+        reader.releaseLock();
     }
 
     return Buffer.concat(chunks);
