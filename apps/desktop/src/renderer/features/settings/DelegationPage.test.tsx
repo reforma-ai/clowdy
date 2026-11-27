@@ -58,36 +58,116 @@ const press = async (element: Element) =>
     });
 
 describe('delegation settings', () => {
-    it('uses one selector per role to choose a model, inherit, and return to default', async () => {
+    it('opens the list directly, persists a model and effort, then inherits', async () => {
         const trigger = container.querySelector('[aria-label^="Code selection:"]')!;
-        expect(container.querySelectorAll('[aria-label^="Code selection:"]')).toHaveLength(1);
-        expect(trigger.getAttribute('aria-label')).toBe('Code selection: Use default');
-        expect(container.querySelectorAll('button[aria-label^="Model:"]')).toHaveLength(0);
         await press(trigger);
         const dialog = document.querySelector('[role="dialog"][aria-label="Model and reasoning effort"]')!;
-        expect(dialog.textContent).toContain('Use default');
-        expect(dialog.textContent).toContain('Inherit orchestrator');
-        expect((await transport.getRootSnapshot()).delegation?.code).toBeUndefined();
-        await press(dialog.querySelector('button[aria-label="Select model"]')!);
-        await vi.waitFor(() =>
-            expect(document.querySelectorAll('[role="dialog"] [role="option"]').length).toBeGreaterThan(0)
+        const list = dialog.querySelector<HTMLElement>('[class*="listLayer"]')!;
+        expect(list.hasAttribute('inert')).toBe(false);
+        expect(dialog.querySelector('[role="slider"]')).toBeNull();
+        const first = list.querySelector<HTMLElement>('[role="option"]')!;
+        const model = first.dataset.modelId;
+        const engine = first.dataset.engine;
+        await press(first);
+        await vi.waitFor(async () =>
+            expect((await transport.getRootSnapshot()).delegation?.code).toMatchObject({ kind: 'model', model, engine })
         );
-        await press(document.querySelector('[role="dialog"] [role="option"]')!);
-        await vi.waitFor(async () => expect((await transport.getRootSnapshot()).delegation?.code?.kind).toBe('model'));
-        const inherit = [...document.querySelectorAll('[role="dialog"] button')].find(
+        expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+        const slider = dialog.querySelector<HTMLElement>('[role="slider"]')!;
+        expect(slider).not.toBeNull();
+        await act(async () => slider.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true })));
+        const effort = slider.getAttribute('aria-valuetext')!.toLowerCase();
+        await vi.waitFor(async () =>
+            expect((await transport.getRootSnapshot()).delegation?.code).toMatchObject({
+                kind: 'model',
+                model,
+                engine,
+                effort,
+            })
+        );
+        const inherit = [...dialog.querySelectorAll('button')].find(
             button => button.textContent === 'Inherit orchestrator'
         )!;
         await press(inherit);
-        await vi.waitFor(() => expect(trigger.getAttribute('aria-label')).toBe('Code selection: Inherit orchestrator'));
         await vi.waitFor(async () =>
             expect((await transport.getRootSnapshot()).delegation?.code).toEqual({ kind: 'inherit' })
         );
         await press(trigger);
-        const fallback = [...document.querySelectorAll('[role="dialog"] button')].find(
-            button => button.textContent === 'Use default'
+        expect(document.querySelector('[role="dialog"] [role="slider"]')).toBeNull();
+    });
+
+    it('saves an effort change made while the model selection is still saving', async () => {
+        const original = store.command.bind(store);
+        let release!: () => void;
+        const gate = new Promise<void>(resolve => {
+            release = resolve;
+        });
+        let first = true;
+        vi.spyOn(store, 'command').mockImplementation(async command => {
+            if (command.type === 'settings.setDelegation' && first) {
+                first = false;
+                await gate;
+            }
+            return original(command);
+        });
+        await press(container.querySelector('[aria-label^="Code selection:"]')!);
+        const dialog = document.querySelector('[role="dialog"]')!;
+        await press(dialog.querySelector('[role="option"]')!);
+        const slider = dialog.querySelector<HTMLElement>('[role="slider"]')!;
+        await act(async () => slider.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true })));
+        const effort = slider.getAttribute('aria-valuetext')!.toLowerCase();
+        await act(async () => release());
+        await vi.waitFor(async () =>
+            expect((await transport.getRootSnapshot()).delegation?.code).toMatchObject({ kind: 'model', effort })
+        );
+    });
+
+    it('keeps a newer choice when a failed save is still reloading', async () => {
+        const snapshot = await transport.getRootSnapshot();
+        let release!: () => void;
+        const gate = new Promise<void>(resolve => {
+            release = resolve;
+        });
+        const read = vi.spyOn(transport, 'getRootSnapshot').mockImplementationOnce(async () => {
+            await gate;
+            return snapshot;
+        });
+        const original = store.command.bind(store);
+        let first = true;
+        vi.spyOn(store, 'command').mockImplementation(async command => {
+            if (command.type === 'settings.setDelegation' && first) {
+                first = false;
+                return { ok: false, requestId: 'unsent', error: { code: 'unavailable', message: 'Offline' } };
+            }
+            return original(command);
+        });
+        const trigger = container.querySelector('[aria-label^="Code selection:"]')!;
+        await press(trigger);
+        await press(document.querySelector('[role="dialog"] [role="option"]')!);
+        await vi.waitFor(() => expect(read).toHaveBeenCalled());
+        const inherit = [...document.querySelectorAll('[role="dialog"] button')].find(
+            button => button.textContent === 'Inherit orchestrator'
         )!;
-        await press(fallback);
-        await vi.waitFor(async () => expect((await transport.getRootSnapshot()).delegation?.code).toBeUndefined());
+        await press(inherit);
+        await act(async () => release());
+        await vi.waitFor(async () =>
+            expect((await transport.getRootSnapshot()).delegation?.code).toEqual({ kind: 'inherit' })
+        );
+        expect(trigger.getAttribute('aria-label')).toBe('Code selection: Inherit orchestrator');
+    });
+
+    it('restores the last saved choice when saving and reloading both fail', async () => {
+        vi.spyOn(store, 'command').mockResolvedValue({
+            ok: false,
+            requestId: 'unsent',
+            error: { code: 'unavailable', message: 'Offline' },
+        });
+        vi.spyOn(transport, 'getRootSnapshot').mockRejectedValue(new Error('Offline'));
+        const trigger = container.querySelector('[aria-label^="Code selection:"]')!;
+        await press(trigger);
+        await press(document.querySelector('[role="dialog"] [role="option"]')!);
+        await vi.waitFor(() => expect(trigger.getAttribute('aria-label')).toBe('Code selection: Use default'));
+        expect(document.querySelector('[role="dialog"] [role="slider"]')).toBeNull();
     });
 
     it('shows all roles and calls out a saved provider that is unavailable', () => {

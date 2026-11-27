@@ -1,7 +1,7 @@
 import { SettingsLayout } from '@clowdy/components/SettingsLayout';
 import { toast } from '@clowdy/components/Toast';
 import { observer } from 'mobx-react-lite';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { useAgents, useRootStore } from '../../stores';
 import { ModelPicker } from '../chats/ModelPicker';
@@ -24,28 +24,54 @@ export const DelegationPage = observer(function DelegationPage() {
     const { status } = useAgents();
     const models = useModelChoice({ chat: undefined, made: undefined, run: undefined });
     const [settings, setSettings] = useState<DelegationSettings>();
-    const [saving, setSaving] = useState(false);
+    const current = useRef<DelegationSettings | undefined>(undefined);
+    const confirmed = useRef<DelegationSettings>({});
+    const pending = useRef<Promise<void>>(Promise.resolve());
 
     useEffect(() => {
         let live = true;
         void root.transport
             .getRootSnapshot()
             .then(snapshot => {
-                if (live) setSettings(snapshot.delegation ?? {});
+                if (live) {
+                    current.current = snapshot.delegation ?? {};
+                    confirmed.current = current.current;
+                    setSettings(current.current);
+                }
             })
-            .catch(error => toast.error({ message: String(error) }));
+            .catch(error => {
+                toast.error({ message: String(error) });
+            });
         return () => {
             live = false;
         };
     }, [root]);
 
-    async function save(next: DelegationSettings) {
-        setSaving(true);
-        const result = await root.command({ type: 'settings.setDelegation', settings: next });
-        if (result.ok) {
-            setSettings(next);
-        } else toast.error({ message: result.error.message });
-        setSaving(false);
+    function save(update: (previous: DelegationSettings) => DelegationSettings) {
+        if (!current.current) return;
+        const next = update(current.current);
+        current.current = next;
+        setSettings(next);
+        pending.current = pending.current
+            .then(async () => {
+                const result = await root.command({ type: 'settings.setDelegation', settings: next });
+                if (result.ok) {
+                    confirmed.current = next;
+                    return;
+                }
+                toast.error({ message: result.error.message });
+                if (current.current === next) {
+                    const snapshot = await root.transport.getRootSnapshot().catch(() => undefined);
+                    if (current.current === next) {
+                        current.current = snapshot?.delegation ?? confirmed.current;
+                        confirmed.current = current.current;
+                        setSettings(current.current);
+                    }
+                }
+            })
+            .catch(error => {
+                toast.error({ message: String(error) });
+            });
     }
 
     return (
@@ -87,27 +113,30 @@ export const DelegationPage = observer(function DelegationPage() {
                             >
                                 <ModelPicker
                                     label={`${LABELS[role]} selection`}
-                                    disabled={!settings || saving}
+                                    disabled={!settings}
                                     choice={choice}
                                     providers={models.providers}
                                     alternatives={{
                                         selected: selectedAlternative,
                                         options,
                                         onPick: id => {
-                                            if (!settings || saving) return;
-                                            const next = { ...settings };
-                                            if (id === 'default') delete next[role];
-                                            else if (id === 'inherit') next[role] = { kind: 'inherit' };
-                                            else return;
-                                            void save(next);
+                                            if (id !== 'default' && id !== 'inherit') return;
+                                            save(previous => {
+                                                const next = { ...previous };
+                                                if (id === 'default') delete next[role];
+                                                else next[role] = { kind: 'inherit' };
+                                                return next;
+                                            });
                                         },
                                     }}
                                     onPick={choice => {
-                                        if (!saving && settings && choice.model)
-                                            void save({
-                                                ...settings,
-                                                [role]: { kind: 'model', ...choice, model: choice.model },
-                                            });
+                                        if (choice.model) {
+                                            const model = choice.model;
+                                            save(previous => ({
+                                                ...previous,
+                                                [role]: { kind: 'model', ...choice, model },
+                                            }));
+                                        }
                                     }}
                                 />
                             </SettingsLayout.Row>
