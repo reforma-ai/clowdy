@@ -7,6 +7,7 @@ import {
     hasMessageActions,
     type ItemBlock,
     type StreamBlock,
+    streamBlocks,
     workedForLabel,
 } from './turns';
 
@@ -541,5 +542,46 @@ describe('groupToolRuns', () => {
             'worked(2): Worked for 3s',
             'assistant',
         ]);
+    });
+});
+
+describe('streamBlocks', () => {
+    const conversation = () => [
+        user(0),
+        thought(500),
+        tool(1000),
+        thought(1500),
+        tool(2000),
+        said(3000),
+        user(4000),
+        tool(5000),
+        tool(6000),
+        item({ kind: 'assistant', text: 'Half an ans', done: false }, 7000),
+    ];
+
+    it.each([true, false])('shows what the fold and the grouping show, turn by turn (active: %s)', active => {
+        const items = conversation();
+
+        expect(streamBlocks(items, active)).toEqual(groupToolRuns(foldFinishedWork(items, active)));
+    });
+
+    it("keeps the blocks of a turn the person wrote past while the latest one streams, and makes them again when one of the turn's items changes", () => {
+        const items = conversation();
+        const first = streamBlocks(items, true);
+        const streamed = items.map((entry, at) =>
+            at === items.length - 1
+                ? { ...entry, body: { kind: 'assistant' as const, text: 'Half an answer', done: false } }
+                : entry
+        );
+        const second = streamBlocks(streamed, true);
+        const edited = streamed.map((entry, at) =>
+            at === 5 ? { ...entry, body: { kind: 'assistant' as const, text: 'Redone.', done: true } } : entry
+        );
+        const third = streamBlocks(edited, true);
+
+        expect({
+            keptWhileStreaming: second.slice(0, 3).every((block, at) => block === first[at]),
+            remadeOnEdit: third[0] === second[0],
+        }).toEqual({ keptWhileStreaming: true, remadeOnEdit: false });
     });
 });
