@@ -1604,6 +1604,7 @@ export class FixtureTransport implements Transport {
         return {
             copies: [0, 1].map(() => ({ exists: this.#briefbackInstalled, installed: this.#briefbackInstalled })),
             fingerprint: String(this.#briefbackInstalled),
+            backups: [],
         };
     }
 
