@@ -498,7 +498,12 @@ describe('ProjectsPage project', () => {
         // One folder: nothing to remove, it is the project's only one.
         expect(container.querySelector('button[aria-label^="Remove "]')).toBeNull();
 
-        await click(named('Add folders…'));
+        await click(named('Add…'));
+        await click(
+            [...document.body.querySelectorAll<HTMLButtonElement>('button')].find(
+                item => item.textContent?.trim() === 'Choose folder on computer'
+            )!
+        );
         await flush();
 
         expect(confirm).not.toHaveBeenCalled();
@@ -529,9 +534,8 @@ describe('ProjectsPage project', () => {
             )!;
 
         await open(FIXTURE_EMPTY_PROJECT_ID, { cloneGit: cloneGit as Transport['cloneGit'] });
-        expect(named('Add folders…')).not.toBeUndefined();
-
-        await click(named('Clone repository…'));
+        await click(named('Add…'));
+        await click(inDialog('Clone Git repository'));
         await flush();
         type(
             document.body.querySelector<HTMLInputElement>('input[aria-label="Repository address"]')!,
@@ -559,7 +563,12 @@ describe('ProjectsPage project', () => {
 
         (window as { desktop?: unknown }).desktop = { chooseDirectories: async () => [] };
         await open(FIXTURE_EMPTY_PROJECT_ID, { command });
-        await click(named('Add folders…'));
+        await click(named('Add…'));
+        await click(
+            [...document.body.querySelectorAll<HTMLButtonElement>('button')].find(
+                item => item.textContent?.trim() === 'Choose folder on computer'
+            )!
+        );
         await flush();
 
         expect(command).not.toHaveBeenCalled();
@@ -745,7 +754,7 @@ describe('ProjectsPage project', () => {
         await flush();
 
         expect(folderPaths(FIXTURE_EMPTY_PROJECT_ID)).toEqual(['/Users/dev/clowdy']);
-        expect(document.activeElement?.textContent).toBe('Add folders…');
+        expect(document.activeElement?.textContent?.trim()).toBe('Add…');
     });
 
     it("shows the daemon's refusal of a new main folder in the dialog, and of another change as a toast", async () => {
@@ -811,7 +820,12 @@ describe('ProjectsPage project', () => {
             '/Users/dev/car-rental-api',
         ]);
 
-        await click(named('Add folders…'));
+        await click(named('Add…'));
+        await click(
+            [...document.body.querySelectorAll<HTMLButtonElement>('button')].find(
+                item => item.textContent?.trim() === 'Choose folder on computer'
+            )!
+        );
         await flush();
 
         expect(folderPaths(FIXTURE_PROJECT_ID)).toEqual([

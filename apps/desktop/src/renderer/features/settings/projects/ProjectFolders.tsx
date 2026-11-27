@@ -97,6 +97,7 @@ export function ProjectFolders({ project, info, infoFailed }: ProjectFoldersProp
                 canDrop={working ? keepsMain : undefined}
                 onAdd={paths => void addFolders(root, project, paths)}
                 transport={root.transport}
+                useAddDialog
             />
 
             {working && (

@@ -1372,7 +1372,12 @@ describe('the heading', () => {
 
         try {
             await press(buttonNamed('Project menu'));
-            await press(menuItem('Add folder'));
+            await press(menuItem('Add…'));
+            await press(
+                [...document.body.querySelectorAll<HTMLButtonElement>('button')].find(
+                    item => item.textContent?.trim() === 'Choose folder on computer'
+                )!
+            );
             await act(async () => void (await new Promise(resolve => setTimeout(resolve, 0))));
 
             expect(choose).toHaveBeenCalledOnce();
@@ -1385,15 +1390,33 @@ describe('the heading', () => {
         }
     });
 
+    it('opens the clone form from the project menu without keeping the add dialog open', async () => {
+        const create = Modal.create.bind(Modal);
+        vi.spyOn(Modal, 'create').mockImplementation(options => create({ ...options, animate: false }));
+        try {
+            await press(buttonNamed('Project menu'));
+            await press(menuItem('Add…'));
+            const clone = [...document.body.querySelectorAll<HTMLButtonElement>('button')].find(
+                node => node.textContent?.trim() === 'Clone Git repository'
+            )!;
+            await press(clone);
+            await vi.waitFor(() =>
+                expect(document.body.querySelector('input[aria-label="Repository address"]')).not.toBeNull()
+            );
+            expect(document.body.querySelector('[aria-label="Add to project"]')).toBeNull();
+        } finally {
+            for (const modal of [...Modal.opened].reverse()) await act(async () => modal.close(false));
+            vi.restoreAllMocks();
+        }
+    });
+
     it('does not offer adding folders to the personal space', async () => {
         await draw(() => store.selectProject(FIXTURE_PERSONAL_PROJECT_ID));
         await draw();
         await press(buttonNamed('Project menu'));
 
         expect(
-            [...document.body.querySelectorAll('[role^="menuitem"]')].some(row =>
-                row.textContent?.includes('Add folder')
-            )
+            [...document.body.querySelectorAll('[role^="menuitem"]')].some(row => row.textContent?.includes('Add…'))
         ).toBe(false);
         expect(menuItem('Project settings')).toBeTruthy();
     });
