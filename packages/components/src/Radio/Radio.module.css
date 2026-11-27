@@ -24,6 +24,8 @@
 
         --clowdy-radio-gap: var(--spacing-8);
 
+        /* Anchor React Aria’s absolutely positioned hidden input to the visible control. */
+        position: relative;
         display: inline-flex;
         align-items: center;
         gap: var(--clowdy-radio-gap);

@@ -173,6 +173,8 @@ It opens a hidden Electron window (own temp profile, no single-instance lock, no
 
 A dev server for it (the one place a Vite server is still used; the app itself does not run one): `CLOWDY_RENDERER_PORT=5300 CLOWDY_VITE_CACHE_DIR=<dir> node ../../node_modules/vite/bin/vite.js --config vite.config.ts` from this folder; `CLOWDY_VITE_CACHE_DIR` gives each concurrent Vite its own dependency cache. Then, for example, `--url 'http://127.0.0.1:5300/?fixtures=static'`. In dev the page exposes `window.__clowdy.root` (the `RootStore`) for `--eval`. To check against a real daemon, start `apps/daemon` on a temp `CLOWDY_DATA_DIR` with `CLOWDY_ENGINE=fake`, a fixed `CLOWDY_PORT` and `CLOWDY_TOKEN`, and `CLOWDY_CORS_ORIGINS=http://127.0.0.1:5300` (the dev server's origin, which the daemon refuses otherwise), and use `?daemon=http://127.0.0.1:<port>&token=<token>`.
 
+Worktree cleanup focus regression: with the fixture dev server running, run `bun scripts/check-worktree-scroll.ts 'http://127.0.0.1:5300/?fixtures=static&worktrees'` from `apps/desktop`. The check adds synthetic rows, scrolls to the bottom and focuses/toggles the last checkbox twice. It asserts the footer stays in place and the actual scrollport keeps its offset. A hidden input with the wrong containing block can otherwise scroll the outer `Scrollable` wrapper and blank the whole dialog.
+
 ## Security invariants
 
 - The renderer is untrusted: context isolation, process sandbox, no Node, no webviews. Every permission is denied except clipboard writes from the app's own top-level page.
