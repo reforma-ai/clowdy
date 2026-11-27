@@ -2281,6 +2281,30 @@ describe('worktree cards', () => {
         ).toBe(mainKey());
     });
 
+    it('keeps the main worktree available with no active chats regardless of the unused filter', async () => {
+        await restart();
+        await draw(() => {
+            for (const [id, chat] of project().chats) {
+                if (!chat.workspace && (!chat.folderId || chat.folderId === 'fld_car_rental'))
+                    project().chats.set(id, { ...chat, archivedAt: Date.now() });
+            }
+            ui().setGroupByWorktree(true);
+        });
+        await draw();
+        expect(cardRows()).toContain(workspaceKey());
+        expect(cardRows()).toContain(mainKey());
+        await draw(() => chatListPreferences.setShowUnusedWorktrees(true));
+        expect(cardRows()).toContain(mainKey());
+        await draw(() => chatListPreferences.setShowUnusedWorktrees(false));
+        expect(cardRows()).toContain(mainKey());
+        await press(rowOf(mainKey()).querySelector<HTMLElement>('button[aria-label^="New chat in "]')!);
+        await draw();
+        expect([ui().draft, ui().draftFolderId, ui().draftWorkspace]).toEqual([true, null, null]);
+        expect(
+            rowOf(`@draft:${ui().draftId}`).closest('[data-worktree-card]')?.getAttribute('data-worktree-card')
+        ).toBe(mainKey());
+    });
+
     it('keeps ordinary chats flat when only thread worktrees are hidden and groups them when unused ones are shown', async () => {
         await restart();
         const workspace = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
