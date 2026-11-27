@@ -1,7 +1,7 @@
 import { PROTOCOL_HEADER, PROTOCOL_VERSION, ROUTES, SSE_EVENT } from '@clowdy/protocol';
 
 import { HttpFileSystem } from './httpFileSystem';
-import { SseParser } from './sse';
+import { readSse } from './sse';
 import { TerminalSocket } from './terminalStream';
 import {
     type CommandInput,
@@ -93,6 +93,8 @@ export interface HttpTransportOptions {
 
 export const RECONNECT_MIN_MS = 500;
 export const RECONNECT_MAX_MS = 10_000;
+/** Twice the daemon's heartbeat (15 s): a feed silent for this long is taken as hung and connected again. */
+export const FEED_IDLE_MS = 30_000;
 const COMMAND_ATTEMPTS = 3;
 const COMMAND_RETRY_MS = 500;
 
@@ -288,26 +290,16 @@ export class HttpTransport implements Transport {
 
         if (!response.ok) throw await refusal(response, route);
 
-        const reader = response.body?.getReader();
-        const parser = new SseParser();
-        const decoder = new TextDecoder();
+        if (response.body) {
+            for await (const frame of readSse(response.body)) {
+                const event = JSON.parse(frame.data) as GitCloneEvent;
 
-        if (reader) {
-            try {
-                for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
-                    for (const frame of parser.push(decoder.decode(chunk.value, { stream: true }))) {
-                        const event = JSON.parse(frame.data) as GitCloneEvent;
-
-                        if (event.type === 'progress') {
-                            const { type: _, ...progress } = event;
-                            onProgress?.(progress);
-                        }
-                        if (event.type === 'result') return event.path;
-                        if (event.type === 'error') throw new TransportError(event.message, event.status, event.hint);
-                    }
+                if (event.type === 'progress') {
+                    const { type: _, ...progress } = event;
+                    onProgress?.(progress);
                 }
-            } finally {
-                await reader.cancel().catch(() => undefined);
+                if (event.type === 'result') return event.path;
+                if (event.type === 'error') throw new TransportError(event.message, event.status, event.hint);
             }
         }
 
@@ -329,26 +321,16 @@ export class HttpTransport implements Transport {
 
         if (!response.ok) throw await refusal(response, route);
 
-        const reader = response.body?.getReader();
-        const parser = new SseParser();
-        const decoder = new TextDecoder();
+        if (response.body) {
+            for await (const frame of readSse(response.body)) {
+                const event = JSON.parse(frame.data) as GitSyncEvent;
 
-        if (reader) {
-            try {
-                for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
-                    for (const frame of parser.push(decoder.decode(chunk.value, { stream: true }))) {
-                        const event = JSON.parse(frame.data) as GitSyncEvent;
-
-                        if (event.type === 'phase') {
-                            const { type: _, ...progress } = event;
-                            onProgress?.(progress);
-                        }
-                        if (event.type === 'result') return event.result;
-                        if (event.type === 'error') throw new TransportError(event.message, event.status, event.hint);
-                    }
+                if (event.type === 'phase') {
+                    const { type: _, ...progress } = event;
+                    onProgress?.(progress);
                 }
-            } finally {
-                await reader.cancel().catch(() => undefined);
+                if (event.type === 'result') return event.result;
+                if (event.type === 'error') throw new TransportError(event.message, event.status, event.hint);
             }
         }
 
@@ -715,32 +697,27 @@ export class HttpTransport implements Transport {
                     signal,
                 });
 
-                if (response.status === 410) return onStatus('resync');
-                if (!response.ok || !response.body)
+                if (!response.ok || !response.body) {
+                    void response.body?.cancel().catch(() => undefined);
+
+                    if (response.status === 410) return onStatus('resync');
+
                     throw new TransportError(
                         `The daemon answered ${response.status} for the event feed`,
                         response.status
                     );
+                }
 
                 onStatus('connected');
                 backoff = RECONNECT_MIN_MS;
 
-                const reader = response.body.getReader();
-                const decoder = new TextDecoder();
-                const parser = new SseParser();
+                for await (const frame of readSse(response.body, FEED_IDLE_MS)) {
+                    if (frame.event !== SSE_EVENT) continue;
 
-                for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
-                    for (const frame of parser.push(decoder.decode(chunk.value, { stream: true }))) {
-                        if (frame.event !== SSE_EVENT) continue;
-
-                        const event = JSON.parse(frame.data) as ClowdyEvent;
-
-                        cursor = event.cursor;
-                        onEvent(event);
-                    }
+                    cursor = deliver(frame.data, onEvent) ?? cursor;
                 }
             } catch {
-                // Dropped or refused: fall through to the retry below.
+                // Dropped, stalled or refused: fall through to the retry below.
             }
 
             if (signal.aborted) return;
@@ -750,4 +727,29 @@ export class HttpTransport implements Transport {
             backoff = Math.min(backoff * 2, RECONNECT_MAX_MS);
         }
     }
+}
+
+/**
+ * Hands one event of the feed to the app and answers its cursor, the place to resume after it. A handler that throws is the app's bug,
+ * not the connection's: it is logged and the feed goes on, so the events after it are not lost to a reconnect. A frame that is not
+ * JSON is logged and skipped.
+ */
+function deliver(data: string, onEvent: (event: ClowdyEvent) => void): number | undefined {
+    let event: ClowdyEvent;
+
+    try {
+        event = JSON.parse(data) as ClowdyEvent;
+    } catch (error) {
+        console.error('Skipped an event the daemon sent that is not JSON', error);
+
+        return undefined;
+    }
+
+    try {
+        onEvent(event);
+    } catch (error) {
+        console.error(`Couldn't apply event ${event.cursor} (${event.data.type})`, error);
+    }
+
+    return event.cursor;
 }
