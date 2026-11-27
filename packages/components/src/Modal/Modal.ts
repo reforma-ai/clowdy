@@ -1646,7 +1646,8 @@ class Modal<Opts extends ModalOptions = ModalOptions> {
     #containTab(e: KeyboardEvent) {
         const windowEl = this.windowEl;
 
-        if (!windowEl || !this.isModal) {
+        // An editor in the modal took the Tab for itself (CodeMirror indents, the rich input accepts a completion): focus stays.
+        if (!windowEl || !this.isModal || e.defaultPrevented) {
             return;
         }
 

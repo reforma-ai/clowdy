@@ -84,6 +84,16 @@ describe('Button disabledReason', () => {
         ]).toEqual([0, 'Merge', true]);
     });
 
+    it('keeps the stand-in out of the tab order when the button is', () => {
+        render(
+            <Button isDisabled disabledReason="Commit the changes first" excludeFromTabOrder>
+                Merge
+            </Button>
+        );
+
+        expect((container.querySelector('[aria-disabled="true"]') as HTMLElement).tabIndex).toBe(-1);
+    });
+
     it('renders the button alone while it is enabled', () => {
         render(<Button disabledReason="Commit the changes first">Merge</Button>);
 
@@ -97,7 +107,7 @@ describe('RowControls', () => {
 
         render(
             <div onClick={() => reached.push('row')}>
-                <RowControls>
+                <RowControls onClick={() => reached.push('controls')}>
                     <button type="button">Archive</button>
                 </RowControls>
             </div>
@@ -105,6 +115,6 @@ describe('RowControls', () => {
 
         act(() => container.querySelector('button')!.click());
 
-        expect(reached).toEqual([]);
+        expect(reached).toEqual(['controls']);
     });
 });

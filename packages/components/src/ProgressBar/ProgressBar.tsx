@@ -29,8 +29,8 @@ function Fill({ percentage }: { percentage?: number }) {
 }
 
 /**
- * A 6px bar of how far a task has come (a clone, a download): `value` of `maxValue` (100 by default), `aria-label` or `label` for its name. Without
- * a value (`isIndeterminate`) the fill sweeps.
+ * A 6px bar of how far a task has come (a clone, a download): `value` of `maxValue` (100 by default), `aria-label` or `aria-labelledby` for its
+ * name. Without a value (`isIndeterminate`) the fill sweeps.
  */
 export function ProgressBar({ tone = 'primary', className, ...props }: ProgressBarProps) {
     return (
