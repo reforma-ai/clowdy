@@ -2732,15 +2732,15 @@
                 },
                 "16740:129174": {
                     "file": "robot2.svg",
-                    "fingerprint": "fce5e0b9f944ece698a4d14c8a36c73ff4ef3d853d7ebdeccae4538de70868ca",
+                    "fingerprint": "a91f8a9a94175b00029bc5ab0a5ed78de639f304607ce73c35688ff32babcb5e",
                     "name": "robot2",
-                    "sourceHash": "ef58d8c83424b73de158dca38a8d574fdc972c4199ee84b6fa912760f107831b"
+                    "sourceHash": "2df3e66ff5d999d6ba7a0420aa574072a6791b44f025b22b3cdc0273f5962fcd"
                 },
                 "16740:129188": {
                     "file": "robot-done.svg",
-                    "fingerprint": "365bcf90fb9890cb8d52d457d4d429f8507a9d183afabeb82f2f4fad803a4843",
+                    "fingerprint": "c1752c95fae122d98c4b01dc4eed99f78e4c3abbf24306b647097e63aa7bb295",
                     "name": "robot-done",
-                    "sourceHash": "e00252c041960a9e60f8eb6091d1b84ca5f6cc61c74adfe2ab560a35cea5ef2b"
+                    "sourceHash": "61239aed860dbf116754469f3bff89f20392579a95f0aad6f8bf8cda2e91416d"
                 },
                 "15811:3427": {
                     "file": "tokens.svg",
