@@ -6,7 +6,7 @@ import { getChat } from '../db/chats';
 import { findQuestion, listItems, listPendingQuestionAnswers, nextSeq } from '../db/items';
 import { getRun, getRunWork, listActiveRuns, listRunsWithProcess, setRunWork } from '../db/runs';
 import { getWorkspace } from '../db/workspaces';
-import { git } from '../domain/git';
+import { gitLine } from '../domain/git';
 import { appendItem, markRewindPoint, updateItem } from '../domain/items';
 import { workingFolder } from '../domain/places';
 import { isBeingRemoved } from '../domain/workspaceRemoval';
@@ -141,39 +141,35 @@ export function isFolder(path: string): boolean {
 /**
  * The git directory the worktrees of a repository share: the `.git` of its main checkout, or wherever a repository that keeps its git directory apart has it.
  * A worktree has only a pointer to it, and commits, branches and objects are written there, so an agent whose writes are confined to its working directory and
- * its additional folders (Codex's sandbox, say) cannot commit in a worktree unless it is handed this directory too. Nothing when there is none to find.
+ * its additional folders (Codex's sandbox, say) cannot commit in a worktree unless it is handed this directory too. Nothing when there is none to find, or git
+ * does not answer in time (`gitLine`'s 5 s).
  */
-function commonGitDir(folder: string): string | undefined {
-    try {
-        const read = git(folder, ['rev-parse', '--git-common-dir']);
-        const dir = read.ok ? resolve(folder, read.stdout) : undefined;
+async function commonGitDir(folder: string): Promise<string | undefined> {
+    const read = await gitLine(folder, ['rev-parse', '--git-common-dir']);
+    const dir = read === undefined ? undefined : resolve(folder, read);
 
-        return dir && isFolder(dir) ? dir : undefined;
-    } catch {
-        return undefined;
-    }
+    return dir && isFolder(dir) ? dir : undefined;
 }
 
 /**
  * The project's folders a turn hands the agent besides the one it works in, in the project's order. A folder that is gone is left out rather than
  * risk an agent that refuses to start on a path that does not exist; `ProjectInfo` reports it missing to the app. A turn that works in its chat's worktree
  * leaves out the folder the worktree is a checkout of too: that main checkout is the person's, and an agent that is handed it wanders back into it. It is
- * handed the repository's git directory instead (`commonGitDir`), which is what committing in a worktree needs and holds none of the person's files.
- * `terminalsDir` is the project's terminal logs (`<dataDir>/terminals/<projectId>`), added when that directory is already there.
+ * handed the repository's git directory instead (`gitDir`, read by `worktreeGitDir`), which is what committing in a worktree needs and holds none of the
+ * person's files. `terminalsDir` is the project's terminal logs (`<dataDir>/terminals/<projectId>`), added when that directory is already there.
  */
 function additionalFolders(
     project: Project,
     cwd: string,
     workspace: ChatWorkspace | undefined,
+    gitDir: string | undefined,
     terminalsDir?: string
 ): string[] {
     const left = workspace?.path === cwd ? workspace.folderId : undefined;
     const folders = project.folders.flatMap(folder =>
         folder.path !== cwd && folder.id !== left && isFolder(folder.path) ? [folder.path] : []
     );
-    const checkout = left === undefined ? undefined : project.folders.find(folder => folder.id === left);
-    const gitDir = checkout && isFolder(checkout.path) ? commonGitDir(checkout.path) : undefined;
-    const granted = gitDir ? [...folders, gitDir] : folders;
+    const granted = left !== undefined && gitDir ? [...folders, gitDir] : folders;
 
     return terminalsDir && isFolder(terminalsDir) ? [...granted, terminalsDir] : granted;
 }
@@ -624,9 +620,15 @@ export class RunDriver {
      * What a session of a chat's orchestrator is opened with, a turn's or a fork's: the folder it works in (`workingFolder`: the run's own, else the worktree
      * of its chat, else the folder of its chat, else the project's main one), the project's other folders (not the main checkout of a worktree it works in),
      * the system prompt (`chat` says what the run's chat adds to it, the worktree too) and the tools of the run. `ownChat` is the run's chat, which names the
-     * folder. Throws an `EngineFailure` when the folder is gone.
+     * folder, and `gitDir` is what `worktreeGitDir` read for it. Throws an `EngineFailure` when the folder is gone.
      */
-    private surroundings(run: Run, work: RunWork, ownChat: Chat | undefined, chat: PromptChat | undefined) {
+    private surroundings(
+        run: Run,
+        work: RunWork,
+        ownChat: Chat | undefined,
+        chat: PromptChat | undefined,
+        gitDir: string | undefined
+    ) {
         const { runs, config } = this.deps;
         const project = runs.projectOf(run);
         const mode = runs.modeOf(run);
@@ -642,7 +644,7 @@ export class RunDriver {
 
         return {
             cwd,
-            additionalDirectories: additionalFolders(project, cwd, ownChat?.workspace, terminalsDir),
+            additionalDirectories: additionalFolders(project, cwd, ownChat?.workspace, gitDir, terminalsDir),
             systemPrompt: [
                 systemPrompt(
                     mode,
@@ -658,6 +660,22 @@ export class RunDriver {
                 .join('\n\n'),
             tools: this.deps.tools(run, mode),
         };
+    }
+
+    /**
+     * The repository's git directory (`commonGitDir`) when the run works in its chat's worktree, read from the checkout the worktree was made from: what
+     * `surroundings` hands the agent besides its folders. It waits for git, so a turn reads it before it counts its session.
+     */
+    private async worktreeGitDir(run: Run): Promise<string | undefined> {
+        const { store, runs } = this.deps;
+        const project = runs.projectOf(run);
+        const ownChat = run.chatId ? getChat(store.db, run.chatId) : undefined;
+        const workspace = ownChat?.workspace;
+        const cwd = workingFolder(project, ownChat, getRunWork(store.db, run.id).cwd);
+        const checkout =
+            workspace?.path === cwd ? project.folders.find(folder => folder.id === workspace.folderId) : undefined;
+
+        return checkout && isFolder(checkout.path) ? commonGitDir(checkout.path) : undefined;
     }
 
     /**
@@ -680,9 +698,10 @@ export class RunDriver {
             throw new EngineFailure(`The ${run.engine} engine cannot fork a conversation`);
         }
 
+        const gitDir = await this.worktreeGitDir(run);
         const ownChat = run.chatId ? getChat(store.db, run.chatId) : undefined;
         const { sessionId } = await engine.fork({
-            ...this.surroundings(run, getRunWork(store.db, runId), ownChat, {}),
+            ...this.surroundings(run, getRunWork(store.db, runId), ownChat, {}, gitDir),
             sessionId: run.sessionId,
             ref,
             signal: this.stopping.signal,
@@ -712,8 +731,11 @@ export class RunDriver {
             throw missingEngine(named);
         }
 
-        // Before anything that counts a session: the step waits for git, and no session is open yet.
+        // Before anything that counts a session: the steps wait for git, and no session is open yet.
         await this.prepareWorkspace(runId, signal);
+
+        const gitDir = await this.worktreeGitDir(runs.require(runId));
+
         this.measureStart(runId, live);
 
         const deadline = Date.now() + 2 * config.timings.killGraceMs;
@@ -739,7 +761,7 @@ export class RunDriver {
 
         const work = getRunWork(store.db, runId);
         const ownChat = run.chatId ? getChat(store.db, run.chatId) : undefined;
-        const surroundings = this.surroundings(run, work, ownChat, promptChat(store, ownChat));
+        const surroundings = this.surroundings(run, work, ownChat, promptChat(store, ownChat), gitDir);
         const composed = this.compose(work, run.engine);
         const pendingAnswers = listPendingQuestionAnswers(store.db, runId).flatMap(item =>
             item.body.kind === 'question' && item.body.answer !== undefined ? [item.body] : []
