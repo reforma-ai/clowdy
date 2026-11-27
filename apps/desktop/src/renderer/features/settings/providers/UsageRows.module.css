@@ -10,7 +10,7 @@
 
 /* The last good reading, shown while the newest could not be read. */
 .rows[data-stale] {
-    opacity: 0.6;
+    opacity: var(--opacity-inactive);
 }
 
 .row {
@@ -22,29 +22,6 @@
 .label {
     flex: 0 1 auto;
     min-width: 0;
-}
-
-.track {
-    height: var(--spacing-6);
-    border-radius: var(--radius-full);
-    background-color: var(--color-secondary-muted);
-    overflow: hidden;
-}
-
-.fill {
-    min-width: var(--spacing-6);
-    height: 100%;
-    border-radius: inherit;
-    background-color: var(--color-primary);
-    transition: width 300ms ease-out;
-}
-
-.fill[data-tone='warning'] {
-    background-color: var(--color-warning);
-}
-
-.fill[data-tone='danger'] {
-    background-color: var(--color-danger);
 }
 
 /* The label and how much is used at the left, when it resets at the right. */
@@ -69,20 +46,10 @@
     animation: spin 0.9s linear infinite;
 }
 
-@keyframes spin {
-    to {
-        transform: rotate(360deg);
-    }
-}
-
 @media (prefers-reduced-motion: reduce) {
-    .fill {
-        transition: none;
-    }
-
     /* Nothing turns, so the icon is faded for as long as the read lasts. */
     .spin {
         animation: none;
-        opacity: 0.5;
+        opacity: var(--opacity-inactive);
     }
 }

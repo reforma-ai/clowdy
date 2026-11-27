@@ -566,10 +566,10 @@ describe('the usage', () => {
         );
 
         const tones = [...card('Claude Code').querySelectorAll('[role="progressbar"]')].map(bar =>
-            bar.firstElementChild!.getAttribute('data-tone')
+            bar.getAttribute('data-tone')
         );
 
-        expect(tones).toEqual([null, 'warning', 'warning', 'danger']);
+        expect(tones).toEqual(['primary', 'warning', 'warning', 'danger']);
     });
 
     it('reads it again from the refresh button', async () => {

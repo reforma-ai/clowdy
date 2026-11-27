@@ -1,4 +1,5 @@
 import { Button } from '@clowdy/components/Button';
+import { ProgressBar } from '@clowdy/components/ProgressBar';
 import { Text } from '@clowdy/components/Text';
 import { Refresh } from '@clowdy/icons/14';
 import { cn } from '@clowdy/lib';
@@ -46,21 +47,13 @@ function UsageRow({ window, now }: { window: AgentUsageWindow; now: number }) {
                     </Text>
                 )}
             </div>
-            <div
-                className={styles.track}
-                role="progressbar"
+            {/* A progressbar, as before: the header's popover and its tests read these bars by that role. */}
+            <ProgressBar
                 aria-label={`${window.label} used`}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={percent}
-                aria-valuetext={`${percent}%`}
-            >
-                <div
-                    className={styles.fill}
-                    data-tone={tone === 'normal' ? undefined : tone}
-                    style={{ width: `${percent}%` }}
-                />
-            </div>
+                value={percent}
+                valueLabel={`${percent}%`}
+                tone={tone === 'normal' ? 'primary' : tone}
+            />
         </li>
     );
 }
