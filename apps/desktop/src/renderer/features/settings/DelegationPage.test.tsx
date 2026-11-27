@@ -35,7 +35,7 @@ beforeEach(async () => {
         )
     );
     await vi.waitFor(() => expect(store.agentsStatus).toBe('ready'));
-    await vi.waitFor(() => expect(container.querySelector('[aria-label="Research selection"]')).not.toBeNull());
+    await vi.waitFor(() => expect(container.querySelector('[aria-label^="Research selection:"]')).not.toBeNull());
 });
 
 afterEach(() => {
@@ -58,28 +58,42 @@ const press = async (element: Element) =>
     });
 
 describe('delegation settings', () => {
-    it('saves a role only when a model is selected', async () => {
-        const trigger = container.querySelector('[aria-label="Code selection"]')!;
+    it('uses one selector per role to choose a model, inherit, and return to default', async () => {
+        const trigger = container.querySelector('[aria-label^="Code selection:"]')!;
+        expect(container.querySelectorAll('[aria-label^="Code selection:"]')).toHaveLength(1);
+        expect(trigger.getAttribute('aria-label')).toBe('Code selection: Use default');
+        expect(container.querySelectorAll('button[aria-label^="Model:"]')).toHaveLength(0);
         await press(trigger);
-        const choose = [...document.querySelectorAll('[role="option"]')].find(
-            option => option.textContent === 'Choose model'
-        )!;
-        await press(choose);
+        const dialog = document.querySelector('[role="dialog"][aria-label="Model and reasoning effort"]')!;
+        expect(dialog.textContent).toContain('Use default');
+        expect(dialog.textContent).toContain('Inherit orchestrator');
         expect((await transport.getRootSnapshot()).delegation?.code).toBeUndefined();
-        const picker = [...container.querySelectorAll('button[aria-label^="Model:"]')].at(-1)!;
-        await press(picker);
-        await press(document.querySelector('button[aria-label="Select model"]')!);
+        await press(dialog.querySelector('button[aria-label="Select model"]')!);
         await vi.waitFor(() =>
             expect(document.querySelectorAll('[role="dialog"] [role="option"]').length).toBeGreaterThan(0)
         );
         await press(document.querySelector('[role="dialog"] [role="option"]')!);
         await vi.waitFor(async () => expect((await transport.getRootSnapshot()).delegation?.code?.kind).toBe('model'));
+        const inherit = [...document.querySelectorAll('[role="dialog"] button')].find(
+            button => button.textContent === 'Inherit orchestrator'
+        )!;
+        await press(inherit);
+        await vi.waitFor(() => expect(trigger.getAttribute('aria-label')).toBe('Code selection: Inherit orchestrator'));
+        await vi.waitFor(async () =>
+            expect((await transport.getRootSnapshot()).delegation?.code).toEqual({ kind: 'inherit' })
+        );
+        await press(trigger);
+        const fallback = [...document.querySelectorAll('[role="dialog"] button')].find(
+            button => button.textContent === 'Use default'
+        )!;
+        await press(fallback);
+        await vi.waitFor(async () => expect((await transport.getRootSnapshot()).delegation?.code).toBeUndefined());
     });
 
     it('shows all roles and calls out a saved provider that is unavailable', () => {
         expect(
             ['Default', 'Research', 'Code', 'Review'].map(
-                role => !!container.querySelector(`[aria-label="${role} selection"]`)
+                role => !!container.querySelector(`[aria-label^="${role} selection:"]`)
             )
         ).toEqual([true, true, true, true]);
         expect(container.textContent).toContain('The selected provider is unavailable or switched off');

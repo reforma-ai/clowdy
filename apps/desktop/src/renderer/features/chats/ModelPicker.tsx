@@ -56,6 +56,14 @@ export interface ModelPickerProps {
     running?: boolean;
     /** The person picked a model (with the level it starts on) or moved the slider (the same model and provider, another level). */
     onPick: (choice: ModelChoice) => void;
+    /** Non-model choices offered in the same picker, such as a role inheriting its default. */
+    alternatives?: {
+        selected?: string;
+        options: readonly { id: string; label: string }[];
+        onPick: (id: string) => void;
+    };
+    label?: string;
+    disabled?: boolean;
 }
 
 /** What the picker knows of the choice it holds, from the lists of the providers. */
@@ -124,10 +132,22 @@ function noteOf(provider: PickerProvider): { busy: true } | { busy: false; text:
     return answer.models.length === 0 ? { busy: false, text: `${name} lists no models.` } : undefined;
 }
 
-function Trigger({ choice, providers }: { choice: ModelChoice; providers: readonly PickerProvider[] }) {
+function Trigger({
+    choice,
+    providers,
+    alternative,
+    label,
+    disabled,
+}: {
+    choice: ModelChoice;
+    providers: readonly PickerProvider[];
+    alternative?: string;
+    label?: string;
+    disabled?: boolean;
+}) {
     const isOpen = use(OverlayTriggerStateContext)!.isOpen;
     const held = holdOf(choice, providers);
-    const label = held.level ? `${held.title}, ${levelLabel(held.level)}` : held.title;
+    const modelLabel = held.level ? `${held.title}, ${levelLabel(held.level)}` : held.title;
 
     return (
         <Button
@@ -137,14 +157,17 @@ function Trigger({ choice, providers }: { choice: ModelChoice; providers: readon
             className={styles.trigger}
             contentClassName={styles.triggerContent}
             data-open={isOpen || undefined}
-            aria-label={`Model: ${label}`}
+            aria-label={label ? `${label}: ${alternative ?? modelLabel}` : `Model: ${alternative ?? modelLabel}`}
+            isDisabled={disabled}
         >
-            <ProviderIcon agentId={choice.engine} size={16} aria-hidden="true" />
+            {!alternative && <ProviderIcon agentId={choice.engine} size={16} aria-hidden="true" />}
             <span className={styles.modelLabel}>
-                <Text truncate>{held.title}</Text>
-                <Show when={held.level}>{level => <span className={styles.level}>{levelLabel(level)}</span>}</Show>
+                <Text truncate>{alternative ?? held.title}</Text>
+                {!alternative && (
+                    <Show when={held.level}>{level => <span className={styles.level}>{levelLabel(level)}</span>}</Show>
+                )}
             </span>
-            <Show when={held.loading}>
+            <Show when={!alternative && held.loading}>
                 <Spinner size="xs" />
             </Show>
             <ChevronDown aria-hidden="true" />
@@ -193,6 +216,7 @@ interface FaceProps {
     buttonRef: RefObject<HTMLButtonElement | HTMLAnchorElement | null>;
     onOpenList: () => void;
     onLevel: (level: string) => void;
+    choosingModel?: boolean;
 }
 
 /** What the face says under the model when it has no level to show: the agent's own default, the model's description, or that the model has gone. */
@@ -208,7 +232,7 @@ function faceNote(held: Held): string | undefined {
 }
 
 /** The first pane: the model as a big button that opens the list, and under it what there is to say of the model's reasoning effort, if anything. */
-function Face({ choice, held, running, buttonRef, onOpenList, onLevel }: FaceProps) {
+function Face({ choice, held, running, buttonRef, onOpenList, onLevel, choosingModel }: FaceProps) {
     const note = faceNote(held);
 
     return (
@@ -224,14 +248,16 @@ function Face({ choice, held, running, buttonRef, onOpenList, onLevel }: FacePro
             >
                 <ProviderIcon agentId={choice.engine} size={16} aria-hidden="true" />
                 <span className={styles.modelLabel}>
-                    <span className={styles.modelTitle}>{held.defaulted ? 'Default model' : held.title}</span>
+                    <span className={styles.modelTitle}>
+                        {choosingModel ? 'Choose model' : held.defaulted ? 'Default model' : held.title}
+                    </span>
                     <Show when={held.level}>{level => <span className={styles.level}>{levelLabel(level)}</span>}</Show>
                 </span>
                 <ChevronDown aria-hidden="true" />
             </Button>
 
             {/* Nothing to put here, no block: it would only add its padding to the face. */}
-            <Show when={held.level !== undefined || Boolean(note) || running}>
+            <Show when={!choosingModel && (held.level !== undefined || Boolean(note) || running)}>
                 <div className={styles.reasoning}>
                     {/* The level is there for a model with levels: a slider to move along them, or its only one as text. */}
                     <Show when={held.level}>
@@ -502,10 +528,15 @@ function ModelList({ choice, held, providers, active, onBack, onPickModel }: Lis
             </div>
 
             <Scrollable className={styles.modelScroll} onKeyDown={onRowsKeyDown}>
+                {!shown && (
+                    <div className={styles.note}>
+                        <Text className={styles.noteText}>No available provider</Text>
+                    </div>
+                )}
                 <Show when={shown && rows.length > 0}>
                     {/* One list per provider: the rows of another provider would otherwise be matched to the key the old list had focused, and Tab would land on its last row. */}
                     <ListBox
-                        key={shown!.id}
+                        key={shown?.id}
                         className={styles.modelList}
                         aria-label="Model"
                         size="sm"
@@ -599,10 +630,12 @@ interface PanelProps {
     providers: readonly PickerProvider[];
     running: boolean;
     onPick: (choice: ModelChoice) => void;
+    alternatives?: ModelPickerProps['alternatives'];
 }
 
 /** The two panes on their stage. It exists only while the popover is open, so every opening starts on the face. */
-function ModelPanel({ choice, providers, running, onPick }: PanelProps) {
+function ModelPanel({ choice, providers, running, onPick, alternatives }: PanelProps) {
+    const overlay = use(OverlayTriggerStateContext)!;
     const [picking, setPicking] = useState(false);
     const [height, setHeight] = useState<number | null>(null);
     const [animate, setAnimate] = useState(false);
@@ -722,7 +755,26 @@ function ModelPanel({ choice, providers, running, onPick }: PanelProps) {
                 data-hidden={picking || undefined}
                 inert={picking || undefined}
             >
+                {alternatives && (
+                    <div className={styles.alternatives}>
+                        {alternatives.options.map(option => (
+                            <Button
+                                key={option.id}
+                                size="sm"
+                                variant="inline"
+                                aria-pressed={option.id === alternatives.selected}
+                                onPress={() => {
+                                    alternatives.onPick(option.id);
+                                    overlay.close();
+                                }}
+                            >
+                                {option.label}
+                            </Button>
+                        ))}
+                    </div>
+                )}
                 <Face
+                    choosingModel={alternatives?.selected !== undefined}
                     choice={choice}
                     held={held}
                     running={running}
@@ -756,14 +808,34 @@ function ModelPanel({ choice, providers, running, onPick }: PanelProps) {
  * the model as a big button over the reasoning slider, and the list of models in its place when that button is pressed. Picking a
  * row, or moving the slider, calls `onPick`; the pill shows what `choice` says, so the caller decides what a pick does.
  */
-export function ModelPicker({ choice, providers, running = false, onPick }: ModelPickerProps) {
+export function ModelPicker({
+    choice,
+    providers,
+    running = false,
+    onPick,
+    alternatives,
+    label,
+    disabled,
+}: ModelPickerProps) {
     if (!choice) return null;
 
     return (
         <PopoverTrigger>
-            <Trigger choice={choice} providers={providers} />
+            <Trigger
+                choice={choice}
+                providers={providers}
+                alternative={alternatives?.options.find(option => option.id === alternatives.selected)?.label}
+                label={label}
+                disabled={disabled}
+            />
             <FrozenPopover>
-                <ModelPanel choice={choice} providers={providers} running={running} onPick={onPick} />
+                <ModelPanel
+                    choice={choice}
+                    providers={providers}
+                    running={running}
+                    onPick={onPick}
+                    alternatives={alternatives}
+                />
             </FrozenPopover>
         </PopoverTrigger>
     );
