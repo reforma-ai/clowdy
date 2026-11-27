@@ -4,6 +4,13 @@
  * Only the query for reduced motion is answered; any other goes to the window's own `matchMedia`.
  */
 if (typeof window !== 'undefined') {
+    // happy-dom's Response lacks the standard bytes() method used by Shiki to load its compressed WebAssembly.
+    if (typeof Response.prototype.bytes !== 'function') {
+        Response.prototype.bytes = async function bytes() {
+            return new Uint8Array(await this.arrayBuffer());
+        };
+    }
+
     const original = typeof window.matchMedia === 'function' ? window.matchMedia.bind(window) : undefined;
 
     window.matchMedia = (query: string): MediaQueryList => {
