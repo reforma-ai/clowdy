@@ -2,7 +2,12 @@ import { EventEmitter } from 'node:events';
 import { describe, expect, it, vi } from 'vitest';
 
 import { IPC_CHANNELS, type NativeScrollEvent } from '../shared/bridge';
-import { attachNativeScroll, type NativeScrollAddon, nativeScrollAvailable } from './nativeScroll';
+import {
+    attachNativeScroll,
+    type NativeScrollAddon,
+    nativeScrollAvailable,
+    nativeScrollSnapshot,
+} from './nativeScroll';
 
 import type { BrowserWindow } from 'electron';
 
@@ -39,7 +44,15 @@ describe('native scroll bridge', () => {
         const event = { phase: 1, momentumPhase: 0, deltaX: 7, deltaY: 0, x: 42, y: 31, timestamp: 500, precise: true };
 
         callbacks.get(11)?.(event);
+        expect(nativeScrollSnapshot(11)).toEqual({
+            sequence: 1,
+            gesture: 1,
+            active: true,
+            origin: { x: 42, y: 31 },
+            last: { ...event, kind: 'scroll', sequence: 1 },
+        });
         first.emit('blur');
+        expect(nativeScrollSnapshot(11)?.active).toBe(false);
         callbacks.get(12)?.({ ...event, phase: 8, momentumPhase: 1 });
         expect(first.webContents.send.mock.calls).toEqual([
             [IPC_CHANNELS.nativeScroll, { ...event, kind: 'scroll', sequence: 1 }],

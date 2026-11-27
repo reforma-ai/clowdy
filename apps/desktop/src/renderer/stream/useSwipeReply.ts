@@ -1,6 +1,7 @@
 import { normalizeWheelDelta } from '@clowdy/lib';
 import { type RefObject, useEffect, useEffectEvent, useRef } from 'react';
 
+import { nativeWheel } from '../gestures/nativeWheel';
 import {
     dragStep,
     IDLE,
@@ -44,8 +45,7 @@ function scrollerBelow(target: EventTarget | null, message: HTMLElement, pull: n
 /**
  * Swipe a message to reply: a long sideways scroll of the trackpad to the left over the message (wheel events that go mostly sideways), or a sideways drag of a
  * finger or a pen to the left, pulls the message along with resistance and shows a Reply mark at the side it left, which takes its full look once the pull is
- * far enough. Reply is for the end of the swipe, never for the middle of it: the pointer is let go, or the wheel goes quiet (a wheel has no end event, and the
- * inertia a trackpad keeps sending after the fingers left counts as part of the swipe), and the message is held past the threshold at that moment. A pull taken
+ * far enough. Reply is for the end of the swipe, never for the middle of it: the pointer is let go, or the native phase reports release, or an unphased wheel goes quiet, and the message is held past the threshold at that moment. A pull taken
  * back below it replies to nothing. The message then settles back. A mouse drag is left alone, since it selects text, and so is a swipe to the right, everything
  * that goes mostly up or down, and whatever a code block or table inside the message can still scroll sideways. The decisions are in `swipeReply.ts`; this puts
  * them on the page: native listeners on the returned element (React's wheel listener is passive and cannot cancel the event), the pull as the element's own
@@ -114,16 +114,20 @@ export function useSwipeReply<T extends HTMLElement>({ enabled, onReply }: Swipe
             if (next.phase === 'pulling' || shown !== 0) draw(next, pointerY);
         };
 
+        const lifecycle = nativeWheel(message, end);
+
         const onWheel = (event: WheelEvent) => {
             // A pinch is a wheel with Ctrl held, and Shift turns a mouse wheel into a sideways scroll: neither is a swipe.
-            if (event.ctrlKey || event.shiftKey) return;
+            if (event.ctrlKey || event.shiftKey || (!event.deltaX && !event.deltaY)) return;
 
             // When the event happened, not when it is handled: a page that was busy for a while handles events that came a few ms apart late, and that is no pause
             // of the fingers (it would end the swipe, and reply, while they still move).
             const at = event.timeStamp;
+            const mode = lifecycle.wheel(event);
+            if (mode === 'ignore') return;
 
             // The wheel went quiet before this event and its timer has not run yet (a page that is busy takes input first): that swipe ends here, with its Reply.
-            if (state.phase !== 'idle' && at - state.at > SWIPE.idleMs) end(true);
+            if (mode === 'fallback' && state.phase !== 'idle' && at - state.at > SWIPE.idleMs) end(true);
 
             const { dx, dy } = normalizeWheelDelta({
                 deltaX: event.deltaX,
@@ -131,7 +135,7 @@ export function useSwipeReply<T extends HTMLElement>({ enabled, onReply }: Swipe
                 deltaMode: event.deltaMode,
             });
             // The wheel reports where the content would go; the message goes where the fingers do.
-            const result = wheelStep(state, {
+            const result = (mode === 'phased' ? dragStep : wheelStep)(state, {
                 dx: -dx,
                 dy: -dy,
                 at,
@@ -145,10 +149,11 @@ export function useSwipeReply<T extends HTMLElement>({ enabled, onReply }: Swipe
                 event.stopPropagation();
             }
 
-            // A wheel has no end event: the swipe is over once it goes quiet.
+            // Unphased wheels have no release event: finish after they go quiet.
             clearTimeout(idle);
 
-            if (result.state.phase === 'pulling') idle = setTimeout(() => end(true), SWIPE.idleMs);
+            if (mode === 'fallback' && result.state.phase === 'pulling')
+                idle = setTimeout(() => end(true), SWIPE.idleMs);
         };
 
         const onPointerDown = (event: PointerEvent) => {
@@ -156,6 +161,7 @@ export function useSwipeReply<T extends HTMLElement>({ enabled, onReply }: Swipe
             if (event.pointerType === 'mouse' || !event.isPrimary || drag) return;
 
             // A wheel swipe still in its quiet time ends here, without a Reply: its timer would otherwise run in the middle of this drag and reply for it.
+            lifecycle.cancel();
             if (state.phase !== 'idle') end(false);
 
             drag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
@@ -193,6 +199,22 @@ export function useSwipeReply<T extends HTMLElement>({ enabled, onReply }: Swipe
 
         // Vertical panning stays the browser's; the sideways drags come to us.
         message.style.touchAction = 'pan-y';
+        const blur = () => {
+            lifecycle.cancel();
+            end(false);
+        };
+        lifecycle.onOutsideWheel(event => {
+            if (state.phase !== 'pulling') return;
+            if (
+                event.target instanceof Element &&
+                event.target.closest('[role="dialog"], [role="alertdialog"], [role="menu"], [data-modal-overlay]')
+            ) {
+                lifecycle.cancel();
+                return;
+            }
+            onWheel(event);
+        });
+        window.addEventListener('blur', blur);
         message.addEventListener('wheel', onWheel, { passive: false });
         message.addEventListener('pointerdown', onPointerDown);
         message.addEventListener('pointermove', onPointerMove);
@@ -201,6 +223,8 @@ export function useSwipeReply<T extends HTMLElement>({ enabled, onReply }: Swipe
 
         return () => {
             clearTimeout(idle);
+            lifecycle.dispose();
+            window.removeEventListener('blur', blur);
             message.removeEventListener('wheel', onWheel);
             message.removeEventListener('pointerdown', onPointerDown);
             message.removeEventListener('pointermove', onPointerMove);

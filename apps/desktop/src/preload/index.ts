@@ -17,6 +17,7 @@ const desktop: DesktopBridge = {
     material: process.argv.includes(WINDOW_MATERIAL_ARGUMENT),
     nativeScroll: {
         available: ipcRenderer.sendSync(IPC_CHANNELS.nativeScrollAvailable) === true,
+        snapshot: () => ipcRenderer.sendSync(IPC_CHANNELS.nativeScrollSnapshot),
         subscribe: listener => {
             const handler = (_event: unknown, record: NativeScrollRecord) => listener(record);
 

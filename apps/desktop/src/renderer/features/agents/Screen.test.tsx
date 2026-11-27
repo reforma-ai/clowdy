@@ -3591,6 +3591,69 @@ describe('worktree cards', () => {
         expect(store.selectedProjectId).toBe(FIXTURE_PERSONAL_PROJECT_ID);
     });
 
+    it('allows space swipes while the side panel is expanded', async () => {
+        await store.prepareProject(FIXTURE_PERSONAL_PROJECT_ID)!.load();
+        await draw(() => ui().setSidePanelSize('wide'));
+        const sidebar = container.querySelector<HTMLElement>('[data-project-sidebar]')!;
+        await act(async () => {
+            sidebar.dispatchEvent(new WheelEvent('wheel', { deltaX: -120, bubbles: true, cancelable: true }));
+            await new Promise(resolve => setTimeout(resolve, 450));
+        });
+        expect(store.selectedProjectId).toBe(FIXTURE_PERSONAL_PROJECT_ID);
+    });
+
+    it('follows a claimed native space swipe when the pointer moves outside the sidebar', async () => {
+        await store.prepareProject(FIXTURE_PERSONAL_PROJECT_ID)!.load();
+        let active = true;
+        let sequence = 1;
+        const listeners = new Set<(event: import('../../../shared/bridge').NativeScrollRecord) => void>();
+        const record = {
+            kind: 'scroll' as const,
+            sequence: 1,
+            phase: 1,
+            momentumPhase: 0,
+            x: 0,
+            y: 0,
+            deltaX: -20,
+            deltaY: 0,
+            timestamp: 1,
+            precise: true,
+        };
+        vi.stubGlobal('desktop', {
+            nativeScroll: {
+                available: true,
+                snapshot: () => ({ active, sequence, gesture: 1, origin: null, last: record }),
+                subscribe: (listener: (event: import('../../../shared/bridge').NativeScrollRecord) => void) => {
+                    listeners.add(listener);
+                    return () => listeners.delete(listener);
+                },
+            },
+        });
+        const outside = document.createElement('div');
+        document.body.append(outside);
+        try {
+            act(() => reactRoot.unmount());
+            reactRoot = createRoot(container);
+            await draw();
+            const sidebar = container.querySelector<HTMLElement>('[data-project-sidebar]')!;
+            await act(async () => {
+                for (let i = 0; i < 5; i++)
+                    sidebar.dispatchEvent(new WheelEvent('wheel', { deltaX: -20, bubbles: true, cancelable: true }));
+                const reversal = new WheelEvent('wheel', { deltaX: 80, bubbles: true, cancelable: true });
+                outside.dispatchEvent(reversal);
+                expect(reversal.defaultPrevented).toBe(true);
+                active = false;
+                sequence++;
+                for (const listener of listeners) listener({ ...record, sequence, phase: 8 });
+                await new Promise(resolve => setTimeout(resolve, 300));
+            });
+            expect(store.selectedProjectId).toBe(FIXTURE_PROJECT_ID);
+        } finally {
+            outside.remove();
+            vi.unstubAllGlobals();
+        }
+    });
+
     it('lets a swipe reach a project whose snapshot failed', async () => {
         const neighbor = store.prepareProject(FIXTURE_PERSONAL_PROJECT_ID)!;
         await neighbor.load();
