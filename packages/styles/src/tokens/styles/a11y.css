@@ -1,0 +1,20 @@
+@layer rulesets {
+    /* The one keyboard focus ring: 4px of Terracotta-muted, no offset. Use it under the state selector the element has (`:focus-visible`, `[data-focus-visible]`). */
+    --focus-ring {
+        outline: var(--spacing-4) solid var(--color-focus-ring);
+        outline-offset: 0;
+    }
+
+    /* Hidden on screen, still read by a screen reader. */
+    --visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        margin: -1px;
+        padding: 0;
+        overflow: hidden;
+        clip-path: inset(50%);
+        border: 0;
+        white-space: nowrap;
+    }
+}
