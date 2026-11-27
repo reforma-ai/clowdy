@@ -42,20 +42,27 @@ describe('UserBubble', () => {
     });
 
     it('shows a mentioned file as a chip, and does not read its name as emphasis', () => {
-        const out = bubble('Check @pkg/__init__.py and @src/__tests__/a.ts');
+        const page = document.createElement('div');
 
-        expect(out).toContain('title="pkg/__init__.py"');
-        expect(out).toContain('title="src/__tests__/a.ts"');
-        expect(out).not.toContain('data-streamdown="strong"');
-        expect(out).not.toContain('data-streamdown="em"');
+        page.innerHTML = bubble('Check @pkg/__init__.py and @src/__tests__/a.ts');
+        const chips = [...page.querySelectorAll('button')].map(button => button.getAttribute('aria-label'));
+
+        expect([chips, page.querySelectorAll('strong, em').length]).toEqual([
+            ['Open pkg/__init__.py', 'Open src/__tests__/a.ts'],
+            0,
+        ]);
     });
 
     it('shows a task of the project as a chip, and any other key as text', () => {
         const out = bubble('Do CAR-24 then CAR-99');
+        const buttons = [...out.matchAll(/<button\b[^>]*>([\s\S]*?)<\/button>/g)].map(([, inner]) =>
+            inner!.replace(/<[^>]+>/g, '')
+        );
 
-        expect(out).toContain('title="Rebuild the form"');
+        // The task's title is its chip's tooltip, drawn on hover, so the static page names only the key.
+        expect(buttons).toContainEqual(expect.stringContaining('CAR-24'));
         expect(out).toContain('CAR-99');
-        expect(out).not.toContain('>CAR-99</button>');
+        expect(buttons).not.toContainEqual(expect.stringContaining('CAR-99'));
     });
 
     it('shows a skill the message asks for as a chip, for either spelling, and any other word as text', () => {

@@ -6,30 +6,17 @@ import { Show } from '@clowdy/components/Show';
 import { ArrowDown } from '@clowdy/icons/14';
 import { Fragment, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 
-import { ApprovalCard } from './ApprovalCard';
-import { AssistantMessage } from './AssistantMessage';
-import { CompactionLine } from './CompactionLine';
 import { COMPACT_TOOL } from './compaction';
-import { EditMessage } from './EditMessage';
-import { ErrorLine } from './ErrorLine';
 import { ForkDivider, type ForkOrigin } from './ForkDivider';
-import { NoteLine } from './NoteLine';
-import { QuestionCard } from './QuestionCard';
-import { ReasoningLine } from './ReasoningLine';
 import { SelectionReply } from './SelectionReply';
 import { NO_LINKS, type StreamLinks, StreamLinksContext } from './StreamLinks';
+import { StreamRow, type StreamRowContext, WorkedRow } from './StreamRow';
 import styles from './StreamView.module.css';
-import { SubagentCard } from './SubagentCard';
 import { captureScrollPosition, LATEST_THRESHOLD, restoreScrollPosition, type ScrollMemory } from './scrollPosition';
-import { isSubagentTool } from './subagents';
-import { ThreadMessageCard, ThreadNoticeCards } from './ThreadCards';
-import { ToolCard } from './ToolCard';
 import { ToolGroup } from './ToolGroup';
 import { TurnRail } from './TurnRail';
 import { turnMarks } from './turnMarks';
-import { forkPointId, groupToolRuns, hasMessageActions, type ItemBlock, type StreamBlock, streamBlocks } from './turns';
-import { UserBubble } from './UserBubble';
-import { Worked } from './Worked';
+import { forkPointId, hasMessageActions, type StreamBlock, streamBlocks } from './turns';
 import { WorkingLine } from './WorkingLine';
 
 import type { ApprovalDecision, StreamItem } from '@clowdy/protocol';
@@ -218,45 +205,19 @@ export function StreamView({
             ?.focus();
     }, [editedId]);
 
-    /** The row a block gets: none unless the caller asked for rows and the block is a message that has one; the last of them always shows. */
-    const actionsOf = (block: StreamBlock): MessageActionsConfig | undefined => {
-        if (!messageActions || !hasMessageActions(block)) return undefined;
-
-        const {
-            onFork,
-            forkingId,
-            onHandoff,
-            ownAgent,
-            onEdit,
-            editBusy,
-            onReply,
-            onQuote: _onQuote,
-            ...shared
-        } = messageActions;
-        const { id, canFork, canEdit, body } = block.item;
-        const actions: MessageActionsConfig = { ...shared, show: id === lastWithActions ? 'always' : 'hover' };
-
-        // The reply says who wrote the message: the person, or the agent whose answer it is.
-        if (onReply) actions.onReply = text => onReply({ role: body.kind === 'user' ? 'user' : 'assistant', text });
-
-        if (onFork && canFork && block.answer) {
-            actions.onFork = () => onFork(id);
-
-            if (onHandoff) actions.onHandoff = agentId => onHandoff(id, agentId);
-
-            if (forkingId !== undefined) actions.forkState = forkingId === id ? 'pending' : 'blocked';
-        } else if (onHandoff && ownAgent && block.answer) {
-            // The agent cannot cut its session at this answer, so Fork does what a hand-off does: a new-chat page on the same agent with the conversation attached. It asks nothing
-            // of the daemon, so it waits for no fork that is being made.
-            actions.onFork = () => onHandoff(id, ownAgent);
-            actions.onHandoff = agentId => onHandoff(id, agentId);
-        }
-
-        // One message is edited at a time: while its frame is open the others offer no Edit. None while the agent works either: a button that cannot be pressed is only noise.
-        if (onEdit && canEdit && body.kind === 'user' && !editing && !editBusy) actions.onEdit = () => onEdit(id);
-
-        return actions;
-    };
+    // Kept while the page's handlers and state stay, so only the row whose item changed draws again on a streamed chunk.
+    const rowContext = useMemo(
+        (): StreamRowContext => ({
+            messageActions,
+            editing,
+            onAnswer,
+            onDecide,
+            dockedQuestionId,
+            errorAction,
+            active,
+        }),
+        [messageActions, editing, onAnswer, onDecide, dockedQuestionId, errorAction, active]
+    );
 
     const divider = forkedFrom && <ForkDivider title={forkedFrom.title} onOpen={forkedFrom.onOpen} />;
 
@@ -264,84 +225,6 @@ export function StreamView({
     const endsHistory = (block: StreamBlock) =>
         forkPoint !== undefined &&
         (block.kind === 'item' ? block.item.id === forkPoint : block.items.some(item => item.id === forkPoint));
-
-    const renderItem = (item: StreamItem, actions?: MessageActionsConfig): ReactNode => {
-        const { body } = item;
-
-        switch (body.kind) {
-            case 'user':
-                // A message another thread wrote, or threads that stopped, is a card: the person did not write it.
-                if (body.from?.kind === 'thread')
-                    return (
-                        <ThreadMessageCard
-                            turn={item.id}
-                            chatId={body.from.chatId}
-                            title={body.from.title}
-                            text={body.text}
-                        />
-                    );
-
-                if (body.from?.kind === 'threadNotice')
-                    return <ThreadNoticeCards turn={item.id} threads={body.from.threads} />;
-
-                if (editing?.itemId === item.id)
-                    return (
-                        <EditMessage turn={item.id} onCancel={editing.onCancel}>
-                            {editing.editor}
-                        </EditMessage>
-                    );
-
-                return (
-                    <UserBubble
-                        turn={item.id}
-                        text={body.text}
-                        attachments={body.attachments}
-                        at={item.at}
-                        actions={actions}
-                    />
-                );
-            case 'assistant':
-                return (
-                    <AssistantMessage
-                        itemId={item.id}
-                        text={body.text}
-                        streaming={!body.done}
-                        at={item.at}
-                        actions={actions}
-                    />
-                );
-            case 'reasoning':
-                return <ReasoningLine body={body} />;
-            case 'tool':
-                // A call that started a sub-agent is that agent's card, a compaction is a quiet line of its own; every other call is a tool line.
-                if (body.name === COMPACT_TOOL) return <CompactionLine call={body} active={active} />;
-
-                return isSubagentTool(body.name) ? (
-                    <SubagentCard call={body} active={active} />
-                ) : (
-                    <ToolCard call={body} />
-                );
-            case 'note':
-                return <NoteLine text={body.text} at={item.at} />;
-            case 'question':
-                return (
-                    <QuestionCard
-                        question={body}
-                        onAnswer={onAnswer && (answer => onAnswer(body.questionId, answer))}
-                        docked={body.questionId === dockedQuestionId}
-                    />
-                );
-            case 'approval':
-                return (
-                    <ApprovalCard
-                        approval={body}
-                        onDecide={onDecide && (decision => onDecide(body.approvalId, decision))}
-                    />
-                );
-            case 'error':
-                return <ErrorLine text={body.text} action={errorAction?.(item)} />;
-        }
-    };
 
     return (
         <StreamLinksContext value={links}>
@@ -363,17 +246,7 @@ export function StreamView({
                                 case 'worked':
                                     return (
                                         <Fragment key={block.key}>
-                                            <Worked label={block.label}>
-                                                {groupToolRuns(
-                                                    block.items.map((item): ItemBlock => ({ kind: 'item', item }))
-                                                ).map(part =>
-                                                    part.kind === 'tools' ? (
-                                                        <ToolGroup key={part.key} items={part.items} />
-                                                    ) : (
-                                                        <Fragment key={part.item.id}>{renderItem(part.item)}</Fragment>
-                                                    )
-                                                )}
-                                            </Worked>
+                                            <WorkedRow block={block} context={rowContext} />
                                             {endsHistory(block) && divider}
                                         </Fragment>
                                     );
@@ -387,7 +260,18 @@ export function StreamView({
                                 case 'item':
                                     return (
                                         <Fragment key={block.item.id}>
-                                            {renderItem(block.item, actionsOf(block))}
+                                            <StreamRow
+                                                item={block.item}
+                                                answer={block.answer}
+                                                show={
+                                                    messageActions && hasMessageActions(block)
+                                                        ? block.item.id === lastWithActions
+                                                            ? 'always'
+                                                            : 'hover'
+                                                        : undefined
+                                                }
+                                                context={rowContext}
+                                            />
                                             {endsHistory(block) && divider}
                                             {decorate?.(block.item)}
                                         </Fragment>

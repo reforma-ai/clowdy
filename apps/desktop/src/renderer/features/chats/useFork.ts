@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { forkChat } from './forkChat';
@@ -27,19 +27,22 @@ export function useFork(chat: Chat) {
         };
     }, []);
 
-    const fork = async (itemId: string) => {
-        if (busy.current) return;
+    const fork = useCallback(
+        async (itemId: string) => {
+            if (busy.current) return;
 
-        busy.current = true;
-        setForking(itemId);
+            busy.current = true;
+            setForking(itemId);
 
-        try {
-            await forkChat({ root, project, ui, chatId: chat.id, itemId, stillOpen: () => shown.current });
-        } finally {
-            busy.current = false;
-            setForking(undefined);
-        }
-    };
+            try {
+                await forkChat({ root, project, ui, chatId: chat.id, itemId, stillOpen: () => shown.current });
+            } finally {
+                busy.current = false;
+                setForking(undefined);
+            }
+        },
+        [root, project, ui, chat.id]
+    );
 
     return { fork, forking };
 }
