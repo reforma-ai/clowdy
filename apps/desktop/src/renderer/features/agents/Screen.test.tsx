@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
     createFixtureData,
+    FIXTURE_API_FOLDER,
     FIXTURE_EMPTY_PROJECT_ID,
     FIXTURE_PERSONAL_PROJECT_ID,
     FIXTURE_PROJECT_ID,
@@ -28,6 +29,7 @@ import { dropDraft, newChatDraftKey, saveDraft } from '../chats/composerDrafts';
 import { setFiles } from '../chats/composerFiles';
 import { refreshFolderGit } from '../openWith/useFolderGit';
 import { terminalsStoreOf } from '../terminal/useTerminalsStore';
+import { openTidyWorktrees } from '../worktrees/TidyWorktreesDialog';
 import { chatListPreferences } from './chatListPreferences';
 import { openNewChat } from './openNewChat';
 import { Screen } from './Screen';
@@ -37,6 +39,8 @@ import { chatWorktreeKey, worktreeKey } from './worktreeCards';
 import type { Editor } from '@tiptap/core';
 import type { ReactNode } from 'react';
 import type { KeyValueStorage } from '../../stores/storage';
+
+vi.mock('../worktrees/TidyWorktreesDialog', () => ({ openTidyWorktrees: vi.fn() }));
 
 // Confirmations are only counted here; the other dialogs (removing a worktree) open for real.
 vi.mock('@clowdy/components/modals', async importOriginal => ({
@@ -169,6 +173,30 @@ afterEach(() => {
     chatListPreferences.setShowUnusedWorktrees(false);
     chatListPreferences.setShowFinishedThreads(true);
     chatListPreferences.setExpandRunningAgents(true);
+});
+
+describe('tidy worktrees from the chat list', () => {
+    it('opens cleanup for the only folder', async () => {
+        await press(buttonNamed('Tidy up worktrees'));
+        expect(openTidyWorktrees).toHaveBeenCalledWith({
+            root: store,
+            projectId: FIXTURE_PROJECT_ID,
+            folderId: 'fld_car_rental',
+        });
+    });
+
+    it('lets a project with multiple folders choose which to clean', async () => {
+        vi.mocked(openTidyWorktrees).mockClear();
+        await draw(() => project().project.folders.push(FIXTURE_API_FOLDER));
+        await press(buttonNamed('Tidy up worktrees'));
+        expect(openTidyWorktrees).not.toHaveBeenCalled();
+        await press(menuItem('car-rental-api'));
+        expect(openTidyWorktrees).toHaveBeenCalledWith({
+            root: store,
+            projectId: FIXTURE_PROJECT_ID,
+            folderId: FIXTURE_API_FOLDER.id,
+        });
+    });
 });
 
 const drag = async (from: string, to: string, before = false) => {
