@@ -12,10 +12,8 @@
         ".": {
             "types": "./src/index.ts",
             "import": "./src/index.ts",
-            "style": "./src/index.css",
             "default": "./src/index.ts"
         },
-        "./css": "./src/index.css",
         "./*": {
             "types": "./src/*/index.ts",
             "import": "./src/*/index.ts",
