@@ -112,7 +112,7 @@ export interface NewChat extends ChatChoice {
      * with it whichever folder the project makes main later.
      */
     workspace?: ChatWorktreeChoice;
-    /** What was read of the repository for `workspace` before the transaction (`readRepository`), so none of it is read inside; read synchronously when absent. */
+    /** What was read of the folder's repository for `workspace` before the transaction (`readRepository`), so no git runs inside it; a `workspace` needs it. */
     repository?: RepositoryFacts;
     /** The worktree of another chat, taken as it is (the same row): a thread's, a fork's. */
     workspaceId?: string;
@@ -134,8 +134,8 @@ export function chatFolder(project: Project, folderId: string | undefined): Proj
 }
 
 /**
- * A new chat. A chat that is given a worktree is checked against the repository (`input.repository`, else a few synchronous reads of git), and nothing is made
- * on the disk: the worktree is made by its first turn.
+ * A new chat. A chat that is given a worktree is checked against what was read of the repository (`input.repository`), and nothing is made on the disk: the
+ * worktree is made by its first turn.
  */
 export function createChat(store: Store, input: NewChat, workspaces?: Pick<Config, 'workspacesDir'>): Chat {
     return store.tx(() => {
@@ -151,20 +151,22 @@ export function createChat(store: Store, input: NewChat, workspaces?: Pick<Confi
             throw invalid('A chat is given a new worktree or the worktree of another chat, not both');
         }
 
-        if (input.workspace && !workspaces) {
-            throw new Error('createChat needs the workspaces folder to make a worktree');
-        }
-
         const id = input.id ?? newId('cht');
         let workspace: ChatWorkspace | undefined;
 
-        if (input.workspace && workspaces) {
+        if (input.workspace) {
+            if (!workspaces || !input.repository) {
+                throw new Error(
+                    'createChat needs the workspaces folder and what was read of the repository to make a worktree'
+                );
+            }
+
             workspace = createWorkspace(store, workspaces, {
                 project,
                 chatId: id,
                 folderId: input.folderId,
                 choice: input.workspace,
-                ...(input.repository && { repository: input.repository }),
+                repository: input.repository,
             });
         } else if (input.workspaceId) {
             workspace = inheritWorkspace(store, project, input.workspaceId, input.folderId);

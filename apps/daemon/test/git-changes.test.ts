@@ -1723,12 +1723,16 @@ describe('over HTTP', () => {
         const { project: other } = h.ok('project.add', { name: 'Other', folders: [stranger] });
         const folderId = project.folders[0].id as string;
         const workspaceId = (
-            h.ok('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: tree } }).chat
-                .workspace as { id: string }
+            (await h.okAsync('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: tree } }))
+                .chat.workspace as { id: string }
         ).id;
         const otherId = (
-            h.ok('chat.create', { projectId: other.id, workspace: { mode: 'existing', path: strangerTree } }).chat
-                .workspace as { id: string }
+            (
+                await h.okAsync('chat.create', {
+                    projectId: other.id,
+                    workspace: { mode: 'existing', path: strangerTree },
+                })
+            ).chat.workspace as { id: string }
         ).id;
         const base = `/v1/projects/${project.id}/git`;
         const at = (query: string) => `?folderId=${folderId}&workspaceId=${workspaceId}${query}`;

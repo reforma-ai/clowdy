@@ -26,7 +26,7 @@ import {
 } from '../db/workspaces';
 import { conflict, errorMessage, invalid, notFound } from '../errors';
 import { isBelow } from '../fs/paths';
-import { baseOf, parseBranches, parseWorktrees, pickBase, pickDefaultBranch, workingTreeRoot } from '../git/state';
+import { baseOf, parseWorktrees, workingTreeRoot } from '../git/state';
 import { newId } from '../ids';
 import { inheritedEnv } from '../process/env';
 import { git, gitLine, gitOutput, gitRead } from './git';
@@ -293,9 +293,9 @@ export interface Head {
 }
 
 /**
- * What a new worktree is checked against in the repository of a folder, read before the transaction that writes its row, so that no git runs inside it
- * (`readRepository`; a thread's spawn reads it so). A read that fails reads as nothing: not a root, no HEAD, no branch, which the checks refuse. A git that
- * does not answer while the base is read is `unavailable` instead (`baseOf`).
+ * What a chat's worktree is checked against in the repository of a folder, read before the transaction that writes its row, so that no git runs inside it
+ * (`readRepository`: `chat.create` and a thread's spawn read it so). A read that fails reads as nothing: not a root, no HEAD, no branch, no worktree, which the
+ * checks refuse. A git that does not answer while the base is read is `unavailable` instead (`baseOf`).
  */
 export interface RepositoryFacts {
     /** The folder that was read. */
@@ -307,9 +307,12 @@ export interface RepositoryFacts {
     refs: ReadonlySet<string>;
     /** The base of a worktree whose choice names none, as `baseOf` says it. */
     base?: string;
+    /** The worktrees `git worktree list` names: an existing one a chat picks has to be one of them. */
+    worktrees: readonly ListedWorktree[];
 }
 
 const REFS_FORMAT = ['for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes'];
+const WORKTREES_LIST = ['worktree', 'list', '--porcelain'];
 
 /** The refs `REFS_FORMAT` lists. */
 const parseRefs = (output: string): Set<string> => new Set(output.split('\n').filter(ref => ref !== ''));
@@ -335,11 +338,12 @@ async function readHead(path: string): Promise<Head | undefined> {
 
 /** Reads `RepositoryFacts` of the folder with the async git. */
 export async function readRepository(folder: ProjectFolder): Promise<RepositoryFacts> {
-    const [top, head, refs, base] = await Promise.all([
+    const [top, head, refs, base, worktrees] = await Promise.all([
         gitLine(folder.path, ['rev-parse', '--show-toplevel']),
         readHead(folder.path),
         gitOutput(folder.path, REFS_FORMAT),
         baseOf(folder),
+        gitOutput(folder.path, WORKTREES_LIST),
     ]);
 
     return {
@@ -348,6 +352,7 @@ export async function readRepository(folder: ProjectFolder): Promise<RepositoryF
         ...(head && { head }),
         refs: parseRefs(refs ?? ''),
         ...(base !== undefined && { base }),
+        worktrees: parseWorktrees(worktrees ?? ''),
     };
 }
 
@@ -363,8 +368,7 @@ export async function readWorktreeHead(path: string): Promise<Head | undefined> 
 }
 
 /*
- * `chat.create` is still a synchronous command, so it reads the facts with the sync `git` (a few local reads, no network) inside its transaction, and
- * `workspace.open` reads what it checks the same way. The turn that makes the worktree reads with the async ones below.
+ * `workspace.open` is still a synchronous command, so it reads what it checks with the sync `git` (a few local reads, no network) inside its transaction.
  */
 
 /** Whether the folder is the root of a working tree, read synchronously. */
@@ -374,49 +378,11 @@ function isRepositoryRoot(folder: string): boolean {
     return top.ok && top.stdout !== '' && samePlace(top.stdout, folder);
 }
 
-/** `readHead`, read synchronously. */
-function headOf(folder: string): Head | undefined {
-    const commit = git(folder, ['rev-parse', 'HEAD']);
+/** The worktrees `git worktree list` of the folder names, read synchronously. */
+function worktreesOf(folder: string): ListedWorktree[] {
+    const listed = git(folder, WORKTREES_LIST);
 
-    if (!commit.ok) {
-        return undefined;
-    }
-
-    const branch = git(folder, ['branch', '--show-current']);
-
-    if (branch.ok && branch.stdout) {
-        return { branch: branch.stdout, commit: commit.stdout };
-    }
-
-    const short = git(folder, ['rev-parse', '--short', 'HEAD']);
-
-    return short.ok ? { branch: short.stdout, detached: true, commit: commit.stdout } : undefined;
-}
-
-/** `readRepository`, read synchronously: the base by the same rule as `baseOf` (`pickBase`), the default read only when it is needed. */
-function readRepositorySync(folder: ProjectFolder): RepositoryFacts {
-    const listed = git(folder.path, REFS_FORMAT);
-    const output = listed.ok ? listed.stdout : '';
-    const refs = parseRefs(output);
-    const head = headOf(folder.path);
-    const branches = parseBranches(output);
-    const base = pickBase(folder.settings?.baseBranch, branches, () => {
-        const remoteHead = git(folder.path, ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD']);
-
-        return pickDefaultBranch(
-            remoteHead.ok && remoteHead.stdout ? remoteHead.stdout : undefined,
-            branches,
-            head && { branch: head.branch, ...(head.detached && { detached: true as const }) }
-        );
-    });
-
-    return {
-        path: folder.path,
-        root: isRepositoryRoot(folder.path),
-        ...(head && { head }),
-        refs,
-        ...(base !== undefined && { base }),
-    };
+    return parseWorktrees(listed.ok ? listed.stdout : '');
 }
 
 /** The refs a base may be, in the order they are tried: a local branch, then a remote's (`origin/main`). Never the bare name: a tag called `main` would make it ambiguous. */
@@ -477,8 +443,8 @@ export interface WorkspaceRequest {
     /** The folder the chat works in; the project's main folder when absent. */
     folderId?: string;
     choice: ChatWorktreeChoice;
-    /** What was read of the folder's repository before the transaction (`readRepository`); read synchronously when absent. */
-    repository?: RepositoryFacts;
+    /** What was read of the folder's repository before the transaction (`readRepository`). */
+    repository: RepositoryFacts;
 }
 
 /** Checks out and applies the folder's setup before returning a new standalone worktree. */
@@ -619,20 +585,12 @@ export function createWorkspace(
     config: Pick<Config, 'workspacesDir'>,
     request: WorkspaceRequest
 ): ChatWorkspace {
-    const { project, chatId, choice } = request;
-    const folder = repositoryFolder(project, request.folderId, request.repository);
+    const { project, chatId, choice, repository } = request;
+    const folder = repositoryFolder(project, request.folderId, repository);
 
     return choice.mode === 'new'
-        ? createNewWorkspace(
-              store,
-              config,
-              project,
-              folder,
-              request.repository ?? readRepositorySync(folder),
-              chatId,
-              choice
-          )
-        : openExistingWorkspace(store, project, folder, choice.path);
+        ? createNewWorkspace(store, config, project, folder, repository, chatId, choice)
+        : openExistingWorkspace(store, project, folder, choice.path, repository.worktrees);
 }
 
 /**
@@ -997,14 +955,20 @@ function branchInTheWay(refs: RepositoryFacts['refs'], branch: string): string |
         .find(name => refs.has(`refs/heads/${name}`));
 }
 
-function openExistingWorkspace(store: Store, project: Project, folder: ProjectFolder, path: string): ChatWorkspace {
+/** `worktrees` is what `git worktree list` of the folder said before the transaction (`RepositoryFacts`); without it the list is read synchronously. */
+function openExistingWorkspace(
+    store: Store,
+    project: Project,
+    folder: ProjectFolder,
+    path: string,
+    worktrees?: readonly ListedWorktree[]
+): ChatWorkspace {
     if (!isAbsolute(path)) {
         throw invalid('The path of a worktree must be absolute');
     }
 
     assertWorkspaceAvailable(store, path);
-    const listed = git(folder.path, ['worktree', 'list', '--porcelain']);
-    const entry = parseWorktrees(listed.ok ? listed.stdout : '').find(
+    const entry = (worktrees ?? worktreesOf(folder.path)).find(
         candidate => !candidate.bare && samePlace(candidate.path, path)
     );
 

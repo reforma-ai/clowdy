@@ -1876,8 +1876,8 @@ withStandIn('GET /v1/projects/:id/git/pull-request', () => {
         const { project } = h.ok('project.add', { folders: [path] });
         const folderId = project.folders[0].id as string;
         const workspaceId = (
-            h.ok('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: tree } }).chat
-                .workspace as { id: string }
+            (await h.okAsync('chat.create', { projectId: project.id, workspace: { mode: 'existing', path: tree } }))
+                .chat.workspace as { id: string }
         ).id;
         const base = `/v1/projects/${project.id}/git/pull-request`;
 

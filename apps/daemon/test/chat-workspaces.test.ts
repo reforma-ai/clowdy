@@ -137,10 +137,18 @@ async function setup(options: { origin?: boolean; canFork?: boolean; script?: Sc
             settings: settings.setup ? { ...settings, setup: { files: [], ...settings.setup } } : settings,
         });
     const create = (workspace?: unknown, extra: Record<string, unknown> = {}) =>
-        h.send('chat.create', { projectId: project.id, ...(workspace !== undefined && { workspace }), ...extra });
-    const make = (workspace?: unknown, extra: Record<string, unknown> = {}) =>
+        h.sendAsync('chat.create', {
+            projectId: project.id,
+            ...(workspace !== undefined && { workspace }),
+            ...extra,
+        });
+    const make = async (workspace?: unknown, extra: Record<string, unknown> = {}) =>
         (
-            h.ok('chat.create', { projectId: project.id, ...(workspace !== undefined && { workspace }), ...extra }) as {
+            (await h.okAsync('chat.create', {
+                projectId: project.id,
+                ...(workspace !== undefined && { workspace }),
+                ...extra,
+            })) as {
                 chat: Chat;
             }
         ).chat;
@@ -187,7 +195,7 @@ async function setup(options: { origin?: boolean; canFork?: boolean; script?: Sc
 describe('chat.create with a workspace', () => {
     test("records a new worktree under the workspaces folder on a branch of the chat's own, pins the chat to its folder, and makes nothing on the disk", async () => {
         const { h, project, folder, chatOf, make } = await setup();
-        const chat = make({ mode: 'new' });
+        const chat = await make({ mode: 'new' });
         const id8 = chat.id.slice(-8);
         const path = join(h.config.workspacesDir, 'shop', id8, 'shop-web');
 
@@ -217,8 +225,8 @@ describe('chat.create with a workspace', () => {
 
     test('puts the branch under the prefix the choice names, a prefix with slashes included, and the first turn makes the worktree on it', async () => {
         const { h, make, send } = await setup();
-        const plain = make({ mode: 'new', branchPrefix: 'max' });
-        const nested = make({ mode: 'new', branchPrefix: ' team/max ' });
+        const plain = await make({ mode: 'new', branchPrefix: 'max' });
+        const nested = await make({ mode: 'new', branchPrefix: ' team/max ' });
 
         expect(plain.workspace).toMatchObject({ branch: `max/${plain.id.slice(-8)}`, managed: true, ready: false });
         expect(nested.workspace?.branch).toBe(`team/max/${nested.id.slice(-8)}`);
@@ -241,7 +249,7 @@ describe('chat.create with a workspace', () => {
             { mode: 'new', branchPrefix: '  ' },
             { mode: 'new', branchPrefix: 'clowdy' },
         ]) {
-            const chat = make(choice);
+            const chat = await make(choice);
 
             expect(chat.workspace?.branch).toBe(`clowdy/${chat.id.slice(-8)}`);
         }
@@ -261,7 +269,7 @@ describe('chat.create with a workspace', () => {
         ];
 
         for (const [branchPrefix, message] of refused) {
-            expect(create({ mode: 'new', branchPrefix })).toMatchObject({
+            expect(await create({ mode: 'new', branchPrefix })).toMatchObject({
                 ok: false,
                 error: { code: 'invalid', message },
             });
@@ -291,7 +299,7 @@ describe('chat.create with a workspace', () => {
             'a=b',
             'x'.repeat(64),
         ]) {
-            const chat = make({ mode: 'new', branchPrefix });
+            const chat = await make({ mode: 'new', branchPrefix });
 
             expect(
                 () => git(repo, 'check-ref-format', '--branch', chat.workspace!.branch!),
@@ -306,21 +314,21 @@ describe('chat.create with a workspace', () => {
         git(repo, 'branch', 'max');
         git(repo, 'branch', 'team/lead');
 
-        expect(create({ mode: 'new', branchPrefix: 'max' })).toMatchObject({
+        expect(await create({ mode: 'new', branchPrefix: 'max' })).toMatchObject({
             ok: false,
             error: {
                 code: 'invalid',
                 message: 'This repository has a branch called max, so the branch prefix cannot be max',
             },
         });
-        expect(create({ mode: 'new', branchPrefix: 'max/inner' })).toMatchObject({
+        expect(await create({ mode: 'new', branchPrefix: 'max/inner' })).toMatchObject({
             ok: false,
             error: {
                 code: 'invalid',
                 message: 'This repository has a branch called max, so the branch prefix cannot be max/inner',
             },
         });
-        expect(create({ mode: 'new', branchPrefix: 'team/lead' })).toMatchObject({
+        expect(await create({ mode: 'new', branchPrefix: 'team/lead' })).toMatchObject({
             ok: false,
             error: {
                 code: 'invalid',
@@ -328,11 +336,11 @@ describe('chat.create with a workspace', () => {
             },
         });
         // A folder of branches is no branch: `team/other` and `team` itself are fine.
-        expect(make({ mode: 'new', branchPrefix: 'team/other' }).workspace?.branch).toStartWith('team/other/');
-        expect(make({ mode: 'new', branchPrefix: 'team' }).workspace?.branch).toStartWith('team/');
+        expect((await make({ mode: 'new', branchPrefix: 'team/other' })).workspace?.branch).toStartWith('team/other/');
+        expect((await make({ mode: 'new', branchPrefix: 'team' })).workspace?.branch).toStartWith('team/');
         // The default prefix is no exception.
         git(repo, 'branch', 'clowdy');
-        expect(create({ mode: 'new' })).toMatchObject({
+        expect(await create({ mode: 'new' })).toMatchObject({
             ok: false,
             error: {
                 code: 'invalid',
@@ -343,12 +351,14 @@ describe('chat.create with a workspace', () => {
 
     test("puts the branch under the name the choice gives, in the folder of the chat's id8, and refuses a name git or Windows would not like or one that is taken", async () => {
         const { h, repo, create, make, send } = await setup();
-        const named = make({ mode: 'new', branchName: 'fix-login' });
+        const named = await make({ mode: 'new', branchName: 'fix-login' });
 
         expect(named.workspace).toMatchObject({ branch: 'clowdy/fix-login', managed: true, ready: false });
         // The folder is the chat's own, as ever, whatever the branch is called.
         expect(named.workspace?.path).toBe(join(h.config.workspacesDir, 'shop', named.id.slice(-8), 'shop-web'));
-        expect(make({ mode: 'new', branchPrefix: 'max', branchName: 'a.b_c-1' }).workspace?.branch).toBe('max/a.b_c-1');
+        expect((await make({ mode: 'new', branchPrefix: 'max', branchName: 'a.b_c-1' })).workspace?.branch).toBe(
+            'max/a.b_c-1'
+        );
 
         await send(named, 'Start');
         expect(git(named.workspace!.path, 'branch', '--show-current')).toBe('clowdy/fix-login');
@@ -363,28 +373,28 @@ describe('chat.create with a workspace', () => {
             ['con', 'device'],
             ['x'.repeat(49), 'longer than 48'],
         ] as const) {
-            expect(create({ mode: 'new', branchName })).toMatchObject({
+            expect(await create({ mode: 'new', branchName })).toMatchObject({
                 ok: false,
                 error: { code: 'invalid', message: expect.stringContaining(message) },
             });
         }
 
         // The repository has it; another chat that is not made yet is to have it; the repository has branches below it, or a branch above it.
-        expect(create({ mode: 'new', branchName: 'fix-login' })).toMatchObject({
+        expect(await create({ mode: 'new', branchName: 'fix-login' })).toMatchObject({
             ok: false,
             error: { code: 'invalid', message: expect.stringContaining('The branch name clowdy/fix-login is taken') },
         });
-        make({ mode: 'new', branchName: 'later' });
-        expect(create({ mode: 'new', branchName: 'later' })).toMatchObject({
+        await make({ mode: 'new', branchName: 'later' });
+        expect(await create({ mode: 'new', branchName: 'later' })).toMatchObject({
             ok: false,
             error: { code: 'invalid', message: expect.stringContaining('is taken') },
         });
         git(repo, 'branch', 'clowdy/deep/er');
-        expect(create({ mode: 'new', branchName: 'deep' })).toMatchObject({
+        expect(await create({ mode: 'new', branchName: 'deep' })).toMatchObject({
             ok: false,
             error: { code: 'invalid', message: expect.stringContaining('is taken') },
         });
-        expect(create({ mode: 'new', branchName: 'later/inner' })).toMatchObject({ ok: false });
+        expect(await create({ mode: 'new', branchName: 'later/inner' })).toMatchObject({ ok: false });
     });
 
     test('takes the name of the branch of a new worktree only, over HTTP', async () => {
@@ -421,9 +431,9 @@ describe('chat.create with a workspace', () => {
 
     test('takes the default branch of the repository as the base, or the one asked for, and keeps it on the row', async () => {
         const { h, make } = await setup({ origin: true });
-        const byDefault = make({ mode: 'new' });
-        const asked = make({ mode: 'new', base: 'origin/dev' });
-        const local = make({ mode: 'new', base: 'main' });
+        const byDefault = await make({ mode: 'new' });
+        const asked = await make({ mode: 'new', base: 'origin/dev' });
+        const local = await make({ mode: 'new', base: 'main' });
 
         expect(getWorkspace(h.store.db, byDefault.workspace!.id)?.base).toBe('origin/main');
         expect(getWorkspace(h.store.db, asked.workspace!.id)?.base).toBe('origin/dev');
@@ -442,7 +452,7 @@ describe('chat.create with a workspace', () => {
 
         configure({ baseBranch: 'develop' });
 
-        const local = make({ mode: 'new' });
+        const local = await make({ mode: 'new' });
 
         expect(getWorkspace(h.store.db, local.workspace!.id)?.base).toBe('develop');
         await send(local, 'Start on develop');
@@ -450,37 +460,37 @@ describe('chat.create with a workspace', () => {
         expect(readFileSync(join(local.workspace!.path, 'develop.txt'), 'utf8')).toBe('only on develop\n');
 
         configure({ baseBranch: 'origin/dev' });
-        expect(getWorkspace(h.store.db, make({ mode: 'new' }).workspace!.id)?.base).toBe('origin/dev');
+        expect(getWorkspace(h.store.db, (await make({ mode: 'new' })).workspace!.id)?.base).toBe('origin/dev');
 
         // The person's choice in the draft is the base, whatever the folder's setting says.
-        expect(getWorkspace(h.store.db, make({ mode: 'new', base: 'main' }).workspace!.id)?.base).toBe('main');
-        expect(getWorkspace(h.store.db, make({ mode: 'new', base: 'origin/main' }).workspace!.id)?.base).toBe(
+        expect(getWorkspace(h.store.db, (await make({ mode: 'new', base: 'main' })).workspace!.id)?.base).toBe('main');
+        expect(getWorkspace(h.store.db, (await make({ mode: 'new', base: 'origin/main' })).workspace!.id)?.base).toBe(
             'origin/main'
         );
     });
 
     test('skips a base branch the repository does not have, a tag, a deleted branch and a revision included, and takes the default one', async () => {
         const { h, repo, make, configure } = await setup({ origin: true });
-        const baseOfNext = () => getWorkspace(h.store.db, make({ mode: 'new' }).workspace!.id)?.base;
+        const baseOfNext = async () => getWorkspace(h.store.db, (await make({ mode: 'new' })).workspace!.id)?.base;
 
         git(repo, 'tag', 'v1');
         git(repo, 'branch', 'later');
 
         for (const baseBranch of ['nowhere', 'v1', 'refs/heads/main', 'main~1', 'origin/missing', 'dev']) {
             configure({ baseBranch });
-            expect(baseOfNext(), baseBranch).toBe('origin/main');
+            expect(await baseOfNext(), baseBranch).toBe('origin/main');
         }
 
         // A branch that was there and is deleted, and a setting that is cleared.
         configure({ baseBranch: 'later' });
-        expect(baseOfNext()).toBe('later');
+        expect(await baseOfNext()).toBe('later');
         git(repo, 'branch', '-D', 'later');
-        expect(baseOfNext()).toBe('origin/main');
+        expect(await baseOfNext()).toBe('origin/main');
         configure({ baseBranch: null });
-        expect(baseOfNext()).toBe('origin/main');
+        expect(await baseOfNext()).toBe('origin/main');
     });
 
-    test('takes the base by the rule the git endpoint uses: the synchronous read of chat.create and baseOf agree', async () => {
+    test('takes the base by the rule the git endpoint uses: chat.create and baseOf agree', async () => {
         const { h, repo, project, folder, make, configure } = await setup({ origin: true });
 
         git(repo, 'tag', 'v1');
@@ -491,7 +501,7 @@ describe('chat.create with a workspace', () => {
 
             const current = getProject(h.store.db, project.id)!.folders.find(candidate => candidate.id === folder.id)!;
 
-            expect(getWorkspace(h.store.db, make({ mode: 'new' }).workspace!.id)?.base, baseBranch).toBe(
+            expect(getWorkspace(h.store.db, (await make({ mode: 'new' })).workspace!.id)?.base, baseBranch).toBe(
                 await baseOf(current)
             );
         }
@@ -515,14 +525,14 @@ describe('chat.create with a workspace', () => {
             'origin/main~0',
             'main^{commit}',
         ]) {
-            expect(create({ mode: 'new', base })).toMatchObject({
+            expect(await create({ mode: 'new', base })).toMatchObject({
                 ok: false,
                 error: { code: 'invalid', message: `${base} is not a branch of this repository` },
             });
         }
 
         // Not even the commit of a branch, spelled as a hash: only the short hash of a detached HEAD is a base.
-        expect(create({ mode: 'new', base: git(repo, 'rev-parse', '--short', 'main') })).toMatchObject({
+        expect(await create({ mode: 'new', base: git(repo, 'rev-parse', '--short', 'main') })).toMatchObject({
             ok: false,
             error: { code: 'invalid' },
         });
@@ -541,9 +551,9 @@ describe('chat.create with a workspace', () => {
 
         const head = git(repo, 'rev-parse', '--short', 'HEAD');
 
-        expect(getWorkspace(h.store.db, make({ mode: 'new', base: head }).workspace!.id)?.base).toBe(head);
+        expect(getWorkspace(h.store.db, (await make({ mode: 'new', base: head })).workspace!.id)?.base).toBe(head);
         // A commit that is not the one checked out is not a branch either.
-        expect(create({ mode: 'new', base: first })).toMatchObject({ ok: false, error: { code: 'invalid' } });
+        expect(await create({ mode: 'new', base: first })).toMatchObject({ ok: false, error: { code: 'invalid' } });
     });
 
     test('refuses a folder that is not the root of a repository, and a repository with no commit, creating nothing', async () => {
@@ -567,18 +577,41 @@ describe('chat.create with a workspace', () => {
         const message = 'A worktree needs the root of a git repository, and this folder is not one';
 
         // A worktree is made of the whole repository: a folder below its root has none of its own.
-        expect(create({ mode: 'new' }, { folderId: folders[1].id })).toMatchObject({
+        expect(await create({ mode: 'new' }, { folderId: folders[1].id })).toMatchObject({
             ok: false,
             error: { code: 'invalid', message },
         });
-        expect(create({ mode: 'new' }, { folderId: folders[2].id })).toMatchObject({
+        expect(await create({ mode: 'new' }, { folderId: folders[2].id })).toMatchObject({
             ok: false,
             error: { code: 'invalid', message },
         });
-        expect(create({ mode: 'new' }, { folderId: folders[3].id })).toMatchObject({
+        expect(await create({ mode: 'new' }, { folderId: folders[3].id })).toMatchObject({
             ok: false,
             error: { code: 'invalid', message: 'The repository has no commit to start a worktree from' },
         });
+        expect(h.store.db.query('SELECT COUNT(*) AS n FROM workspaces').get()).toEqual({ n: 0 });
+        expect(h.store.db.query('SELECT COUNT(*) AS n FROM chats').get()).toEqual({ n: 0 });
+    });
+
+    test('refuses a folder that is gone from the disk as missing, not as a git that did not answer, creating nothing', async () => {
+        const { h, project, root, create } = await setup();
+        const gone = makeRepo(root, 'gone');
+        const folders = (
+            h.ok('project.update', {
+                projectId: project.id,
+                folders: [{ id: project.folders[0].id }, { path: gone }],
+            }) as { project: Project }
+        ).project.folders;
+
+        rmSync(gone, { recursive: true });
+
+        for (const workspace of [{ mode: 'new' }, { mode: 'existing', path: join(root, 'gone-tree') }]) {
+            expect(await create(workspace, { folderId: folders[1].id })).toMatchObject({
+                ok: false,
+                error: { code: 'invalid', message: `The folder ${folders[1].path} is missing` },
+            });
+        }
+
         expect(h.store.db.query('SELECT COUNT(*) AS n FROM workspaces').get()).toEqual({ n: 0 });
         expect(h.store.db.query('SELECT COUNT(*) AS n FROM chats').get()).toEqual({ n: 0 });
     });
@@ -596,24 +629,24 @@ describe('chat.create with a workspace', () => {
 
         git(api, 'worktree', 'add', '-q', '-b', 'tree', other);
 
-        const chat = make({ mode: 'new' }, { folderId: folders[1].id });
+        const chat = await make({ mode: 'new' }, { folderId: folders[1].id });
 
         expect(chat.folderId).toBe(folders[1].id);
         expect(chat.workspace).toMatchObject({
             folderId: folders[1].id,
             path: join(h.config.workspacesDir, 'shop', chat.id.slice(-8), 'shop-api'),
         });
-        expect(make({ mode: 'existing', path: other }, { folderId: folders[1].id }).workspace).toMatchObject({
+        expect((await make({ mode: 'existing', path: other }, { folderId: folders[1].id })).workspace).toMatchObject({
             folderId: folders[1].id,
             path: realpathSync(other),
             managed: false,
             ready: true,
         });
-        expect(create({ mode: 'existing', path: other })).toMatchObject({
+        expect(await create({ mode: 'existing', path: other })).toMatchObject({
             ok: false,
             error: { code: 'invalid', message: `${other} is not a worktree of this repository` },
         });
-        expect(create({ mode: 'existing', path: repo }, { folderId: folders[1].id })).toMatchObject({
+        expect(await create({ mode: 'existing', path: repo }, { folderId: folders[1].id })).toMatchObject({
             ok: false,
             error: { code: 'invalid' },
         });
@@ -625,8 +658,8 @@ describe('chat.create with a workspace', () => {
 
         git(repo, 'worktree', 'add', '-q', '-b', 'feature', tree);
 
-        const first = make({ mode: 'existing', path: tree });
-        const second = make({ mode: 'existing', path: join(tree, '..', 'feature-tree') });
+        const first = await make({ mode: 'existing', path: tree });
+        const second = await make({ mode: 'existing', path: join(tree, '..', 'feature-tree') });
 
         expect(first.workspace).toEqual({
             id: expect.stringMatching(/^wks_/),
@@ -642,6 +675,34 @@ describe('chat.create with a workspace', () => {
         expect(needsPreparing(first.workspace!)).toBe(false);
     });
 
+    test('answers a repeat of the request with the first answer, while git is read and after, and makes one chat and one worktree row', async () => {
+        const { h, root, repo, project, create } = await setup();
+        const tree = join(root, 'feature-tree');
+
+        git(repo, 'worktree', 'add', '-q', '-b', 'feature', tree);
+
+        const chats = () =>
+            (h.store.db.query('SELECT COUNT(*) AS n FROM chats WHERE project_id = ?').get(project.id) as { n: number })
+                .n;
+        const before = chats();
+
+        for (const workspace of [{ mode: 'new' }, { mode: 'existing', path: tree }]) {
+            const requestId = `replay-${workspace.mode}`;
+            const [first, racing] = await Promise.all([
+                create(workspace, { requestId }),
+                create(workspace, { requestId }),
+            ]);
+            const later = await create(workspace, { requestId });
+
+            expect(first).toMatchObject({ ok: true, requestId });
+            expect(racing).toEqual(first);
+            expect(later).toEqual(first);
+        }
+
+        expect(chats()).toBe(before + 2);
+        expect(listWorkspacesOfProject(h.store.db, project.id)).toHaveLength(2);
+    });
+
     test('refuses a path that git does not list as a worktree of the folder, the folder itself, a relative path and a worktree that is gone', async () => {
         const { h, repo, root, create } = await setup();
         const stray = join(root, 'stray');
@@ -651,23 +712,23 @@ describe('chat.create with a workspace', () => {
         git(repo, 'worktree', 'add', '-q', '-b', 'gone', gone);
         rmSync(gone, { recursive: true });
 
-        expect(create({ mode: 'existing', path: stray })).toMatchObject({
+        expect(await create({ mode: 'existing', path: stray })).toMatchObject({
             ok: false,
             error: { code: 'invalid', message: `${stray} is not a worktree of this repository` },
         });
-        expect(create({ mode: 'existing', path: join(repo, '.git') })).toMatchObject({
+        expect(await create({ mode: 'existing', path: join(repo, '.git') })).toMatchObject({
             ok: false,
             error: { code: 'invalid' },
         });
-        expect(create({ mode: 'existing', path: repo })).toMatchObject({
+        expect(await create({ mode: 'existing', path: repo })).toMatchObject({
             ok: false,
             error: { code: 'invalid', message: 'That is the folder itself, not a worktree of it' },
         });
-        expect(create({ mode: 'existing', path: 'feature-tree' })).toMatchObject({
+        expect(await create({ mode: 'existing', path: 'feature-tree' })).toMatchObject({
             ok: false,
             error: { code: 'invalid', message: 'The path of a worktree must be absolute' },
         });
-        expect(create({ mode: 'existing', path: gone })).toMatchObject({
+        expect(await create({ mode: 'existing', path: gone })).toMatchObject({
             ok: false,
             error: { code: 'invalid', message: `The worktree ${gone} is gone from the disk` },
         });
@@ -751,7 +812,7 @@ describe('workspace.open', () => {
         const { workspace } = h.ok('workspace.open', { projectId: project.id, path: tree }) as {
             workspace: NonNullable<Chat['workspace']>;
         };
-        const chat = make({ mode: 'existing', path: tree });
+        const chat = await make({ mode: 'existing', path: tree });
 
         expect(chat.workspace).toEqual(workspace);
         expect(chatsOfWorkspace(h.store.db, workspace.id)).toEqual([chat.id]);
@@ -762,7 +823,7 @@ describe('workspace.open', () => {
                 .workspace
         ).toEqual(workspace);
         // A worktree Clowdy made for a chat is the chat's own row, whoever asks, once its first turn has made it; before that git does not list it.
-        const own = make({ mode: 'new' });
+        const own = await make({ mode: 'new' });
 
         expect(open(h, project.id, own.workspace!.path)).toMatchObject({ ok: false, error: { code: 'invalid' } });
 
@@ -877,11 +938,11 @@ describe('workspace.open', () => {
         const youngRow = rowOf(young);
         const usedRow = rowOf(used);
 
-        make({ mode: 'existing', path: used });
+        await make({ mode: 'existing', path: used });
 
         // A chat that was put away still works in its worktree: it keeps the row too.
         const shelvedRow = rowOf(shelved);
-        const shelvedChat = make({ mode: 'existing', path: shelved });
+        const shelvedChat = await make({ mode: 'existing', path: shelved });
 
         h.ok('chat.setArchived', { chatId: shelvedChat.id, archived: true });
         age(shelvedRow.id, old);
@@ -954,7 +1015,7 @@ describe('workspace.open', () => {
 describe('Prepare workspace', () => {
     test("makes the worktree at the chat's first turn from the default branch, and the agent starts in it", async () => {
         const { h, engine, repo, store, chatOf, make, send, stepOf } = await setup();
-        const chat = make({ mode: 'new' });
+        const chat = await make({ mode: 'new' });
         const { path, branch } = chat.workspace!;
         const cursor = h.store.headCursor();
 
@@ -1017,7 +1078,7 @@ describe('Prepare workspace', () => {
         git(seed, 'push', '-q', 'origin', 'main');
 
         const behind = git(repo, 'rev-parse', 'origin/main');
-        const chat = make({ mode: 'new' });
+        const chat = await make({ mode: 'new' });
 
         await send(chat, 'Start');
 
@@ -1033,7 +1094,7 @@ describe('Prepare workspace', () => {
         ).not.toBe(0);
         expect(engine.turns[0].cwd).toBe(chat.workspace!.path);
 
-        const dev = make({ mode: 'new', base: 'origin/dev' });
+        const dev = await make({ mode: 'new', base: 'origin/dev' });
 
         await send(dev, 'Start on dev');
         expect(git(dev.workspace!.path, 'rev-parse', 'HEAD')).toBe(git(repo, 'rev-parse', 'origin/dev'));
@@ -1041,7 +1102,7 @@ describe('Prepare workspace', () => {
 
     test('says in the log that it used the last fetched ref when the fetch fails, and goes on', async () => {
         const { remote, root, repo, make, send, stepOf } = await setup({ origin: true });
-        const chat = make({ mode: 'new' });
+        const chat = await make({ mode: 'new' });
         const known = git(repo, 'rev-parse', 'origin/main');
 
         git(repo, 'remote', 'set-url', 'origin', join(root, 'not-there.git'));
@@ -1059,7 +1120,7 @@ describe('Prepare workspace', () => {
 
     test('fails the turn with the reason when there is no ref to fall back on, makes nothing, and the next message tries again', async () => {
         const { remote, engine, root, repo, chatOf, make, send, stepOf, items } = await setup({ origin: true });
-        const chat = make({ mode: 'new', base: 'origin/dev' });
+        const chat = await make({ mode: 'new', base: 'origin/dev' });
         const origin = remote!.origin;
 
         git(repo, 'update-ref', '-d', 'refs/remotes/origin/dev');
@@ -1094,7 +1155,7 @@ describe('Prepare workspace', () => {
         writeFileSync(join(tree, 'README.md'), '# Changed, not committed\n');
 
         const before = stateOf(tree);
-        const chat = make({ mode: 'existing', path: tree });
+        const chat = await make({ mode: 'existing', path: tree });
 
         await send(chat, 'Carry on');
 
@@ -1106,7 +1167,7 @@ describe('Prepare workspace', () => {
 
     test('leaves a worktree with uncommitted and committed work exactly as it is on later turns, and for another chat that works in it', async () => {
         const { engine, repo, make, send, stepOf, sentOf } = await setup();
-        const chat = make({ mode: 'new' });
+        const chat = await make({ mode: 'new' });
         const { path, branch } = chat.workspace!;
 
         await send(chat, 'Start');
@@ -1129,7 +1190,7 @@ describe('Prepare workspace', () => {
         expect(stepOf(chat)).toHaveLength(1);
 
         // Another chat on the same worktree, picked from the list of existing ones.
-        const second = make({ mode: 'existing', path });
+        const second = await make({ mode: 'existing', path });
 
         expect(second.workspace).toMatchObject({ path, managed: true, ready: true, branch });
         await send(second, 'Join in');
@@ -1143,7 +1204,7 @@ describe('Prepare workspace', () => {
 
     test('leaves a worktree that is there but was never marked ready as it is, and marks it ready', async () => {
         const { store, repo, make, send, stepOf, chatOf } = await setup();
-        const chat = make({ mode: 'new' });
+        const chat = await make({ mode: 'new' });
 
         await send(chat, 'Make it');
         writeFileSync(join(chat.workspace!.path, 'draft.txt'), 'work\n');
@@ -1167,7 +1228,7 @@ describe('Prepare workspace', () => {
 
     test('refuses a path that is there and is no worktree of the repository, leaving it as it is, and makes the worktree once the way is clear', async () => {
         const { engine, repo, root, make, send, stepOf, chatOf } = await setup();
-        const chat = make({ mode: 'new' });
+        const chat = await make({ mode: 'new' });
         const { path, branch } = chat.workspace!;
 
         // Somebody's folder with a file in it, and then another repository's worktree, where the chat's worktree should go.
@@ -1207,7 +1268,7 @@ describe('Prepare workspace', () => {
 
     test('refuses a branch another worktree has checked out, taking nothing over, and uses the branch as it is when the way is clear', async () => {
         const { engine, repo, root, make, send, stepOf } = await setup();
-        const chat = make({ mode: 'new' });
+        const chat = await make({ mode: 'new' });
         const { path, branch } = chat.workspace!;
         const elsewhere = join(root, 'by-hand');
 
@@ -1238,7 +1299,7 @@ describe('Prepare workspace', () => {
 
     test('makes a worktree of its own again when it is gone from the disk, from the branch with its work, and forgets the stale record', async () => {
         const { engine, repo, make, send, stepOf, chatOf } = await setup();
-        const chat = make({ mode: 'new' });
+        const chat = await make({ mode: 'new' });
         const { path, branch } = chat.workspace!;
 
         await send(chat, 'Start');
@@ -1277,7 +1338,7 @@ describe('Prepare workspace', () => {
         writeFileSync(join(repo, '.env'), 'TOKEN=1\n');
         configure({ setup: { files: ['.env'], command: 'test -f .env' } });
 
-        const chat = make({ mode: 'new' });
+        const chat = await make({ mode: 'new' });
         const { path } = chat.workspace!;
 
         await send(chat, 'Start');
@@ -1307,7 +1368,7 @@ describe('Prepare workspace', () => {
 
         git(repo, 'worktree', 'add', '-q', '-b', 'feature', tree);
 
-        const chat = make({ mode: 'existing', path: tree });
+        const chat = await make({ mode: 'existing', path: tree });
         const path = chat.workspace!.path;
 
         rmSync(tree, { recursive: true });
@@ -1323,7 +1384,7 @@ describe('Prepare workspace', () => {
 
     test('refuses a worktree git still has locked as being made, which a crash leaves, and leaves it as it is', async () => {
         const { engine, repo, store, make, send, stepOf, chatOf } = await setup();
-        const chat = make({ mode: 'new' });
+        const chat = await make({ mode: 'new' });
         const { path } = chat.workspace!;
 
         await send(chat, 'Start');
@@ -1347,7 +1408,7 @@ describe('Prepare workspace', () => {
 
     test("does not force the record of a missing worktree that is locked: the turn fails with git's reason and nothing is made", async () => {
         const { repo, make, send, chatOf } = await setup();
-        const chat = make({ mode: 'new' });
+        const chat = await make({ mode: 'new' });
         const { path, branch } = chat.workspace!;
 
         await send(chat, 'Start');
@@ -1365,7 +1426,7 @@ describe('Prepare workspace', () => {
 
     test('is made once when two chats come to one worktree together, and the second finds it ready', async () => {
         const { h, repo, project, store, make } = await setup();
-        const chat = make({ mode: 'new' });
+        const chat = await make({ mode: 'new' });
         const { path } = chat.workspace!;
         const { runs } = h.daemon.services;
         // Two runs of the chat that were never launched: only their streams are written to.
@@ -1403,7 +1464,7 @@ describe('Prepare workspace', () => {
 
     test('is ended by a stop that came first: nothing is written and nothing is made', async () => {
         const { h, project, store, make } = await setup();
-        const chat = make({ mode: 'new' });
+        const chat = await make({ mode: 'new' });
         const run = h.daemon.services.runs.createRun({
             project,
             role: 'orchestrator',
@@ -1428,7 +1489,7 @@ describe('Prepare workspace', () => {
         'is ended by a stop in the middle of a fetch that hangs: git and what it started are killed, and the step ends as stopped',
         async () => {
             const { h, project, repo, remote, store, make } = await setup({ origin: true });
-            const chat = make({ mode: 'new' });
+            const chat = await make({ mode: 'new' });
             const run = h.daemon.services.runs.createRun({
                 project,
                 role: 'orchestrator',
@@ -1509,7 +1570,7 @@ describe('the setup of a new worktree', () => {
 
         configure({ setup: { files: ['.env*', 'apps/web/.env', 'missing.txt', 'nowhere/.env', 'nowhere/*.env'] } });
 
-        const chat = make({ mode: 'new' });
+        const chat = await make({ mode: 'new' });
         const { path } = chat.workspace!;
 
         await send(chat, 'Start');
@@ -1565,7 +1626,7 @@ describe('the setup of a new worktree', () => {
 
         configure({ setup: { files: ['config.json', 'start.sh', '.env', '.*'] } });
 
-        const chat = make({ mode: 'new' });
+        const chat = await make({ mode: 'new' });
         const { path } = chat.workspace!;
 
         await send(chat, 'Start');
@@ -1769,7 +1830,7 @@ describe('the setup of a new worktree', () => {
                 },
             });
 
-            const chat = make({ mode: 'new' });
+            const chat = await make({ mode: 'new' });
             const { path, branch } = chat.workspace!;
 
             // The daemon's own variables of the same names must not stand in for the three, and its settings are not handed on.
@@ -1816,7 +1877,7 @@ describe('the setup of a new worktree', () => {
         'keeps the start of a line that is very long, so the log that is written again and again stays small',
         async () => {
             const { make, send, stepOf, configure } = await setup();
-            const chat = make({ mode: 'new' });
+            const chat = await make({ mode: 'new' });
 
             configure({ setup: { command: 'head -c 5000 /dev/zero | tr "\\0" x; echo\necho after' } });
             await send(chat, 'Start');
@@ -1843,7 +1904,7 @@ describe('the setup of a new worktree', () => {
                 },
             });
 
-            const chat = make({ mode: 'new' });
+            const chat = await make({ mode: 'new' });
             const { path } = chat.workspace!;
             const failed = await send(chat, 'Start', 'failed');
 
@@ -1887,7 +1948,7 @@ describe('the setup of a new worktree', () => {
                 timings: { ...SHORT_TIMINGS, setupMs: 1000 },
             });
             const survived = join(repo, 'survived');
-            const chat = make({ mode: 'new' });
+            const chat = await make({ mode: 'new' });
             const { path } = chat.workspace!;
 
             // A child in the background, which would leave its mark after the command was stopped if the stop reached the command only.
@@ -1919,7 +1980,7 @@ describe('the setup of a new worktree', () => {
         async () => {
             const { h, engine, repo, make, stepOf, chatOf, runOf, configure } = await setup();
             const survived = join(repo, 'survived');
-            const chat = make({ mode: 'new' });
+            const chat = await make({ mode: 'new' });
 
             configure({ setup: { command: `(sleep 2; touch '${survived}') &\necho started\nsleep 30` } });
             h.ok('chat.send', { chatId: chat.id, text: 'Start' });
@@ -1953,7 +2014,7 @@ describe('the setup of a new worktree', () => {
 
     test.skipIf(!posix)('is stopped by a Stop that comes while the command runs, whatever it started', async () => {
         const { h, project, store, repo, make, configure } = await setup();
-        const chat = make({ mode: 'new' });
+        const chat = await make({ mode: 'new' });
         const { path } = chat.workspace!;
         const run = h.daemon.services.runs.createRun({
             project,
@@ -1998,7 +2059,7 @@ describe('the setup of a new worktree', () => {
 
     test.skipIf(!posix)('does not wait for a process that a command leaves behind holding its output', async () => {
         const { make, send, stepOf, configure } = await setup();
-        const chat = make({ mode: 'new' });
+        const chat = await make({ mode: 'new' });
 
         configure({ setup: { command: 'echo bye\nsleep 8 &' } });
 
@@ -2014,7 +2075,7 @@ describe('the setup of a new worktree', () => {
         async () => {
             const { repo, root, make, send, stepOf, configure } = await setup();
             const runs = join(root, 'runs.log');
-            const plain = make({ mode: 'new' });
+            const plain = await make({ mode: 'new' });
 
             configure({ baseBranch: 'main' });
             await send(plain, 'No setup');
@@ -2023,7 +2084,7 @@ describe('the setup of a new worktree', () => {
             writeFileSync(join(repo, '.env'), 'TOKEN=1\n');
             configure({ setup: { files: ['.env'], command: `echo run >> '${runs}'` } });
 
-            const chat = make({ mode: 'new' });
+            const chat = await make({ mode: 'new' });
 
             await send(chat, 'Set up');
             await send(chat, 'Again');
@@ -2048,7 +2109,7 @@ describe('the setup of a new worktree', () => {
         writeFileSync(join(repo, '.env'), 'TOKEN=1\n');
         configure({ setup: { files: ['.env'], command: `touch '${ran}'` } });
 
-        const chat = make({ mode: 'existing', path: tree });
+        const chat = await make({ mode: 'existing', path: tree });
 
         await send(chat, 'Carry on');
 
@@ -2062,7 +2123,7 @@ describe('the setup of a new worktree', () => {
 
         writeFileSync(join(repo, '.env'), 'TOKEN=1\n');
 
-        const chat = make({ mode: 'new' });
+        const chat = await make({ mode: 'new' });
 
         configure({ setup: { files: ['.env'] } });
         await send(chat, 'Start');
@@ -2114,8 +2175,8 @@ describe('what a turn works in', () => {
                 folders: [{ id: project.folders[0].id }, { path: notes }],
             }) as { project: Project }
         ).project.folders;
-        const chat = make({ mode: 'new' });
-        const plain = make();
+        const chat = await make({ mode: 'new' });
+        const plain = await make();
         const { path, branch } = chat.workspace!;
 
         await send(chat, 'Fix the page');
@@ -2152,7 +2213,7 @@ describe('what a turn works in', () => {
                 folders: [{ id: project.folders[0].id }, { path: api }],
             }) as { project: Project }
         ).project.folders;
-        const chat = make({ mode: 'new' }, { folderId: folders[1].id });
+        const chat = await make({ mode: 'new' }, { folderId: folders[1].id });
 
         await send(chat, 'Fix the endpoint');
 
@@ -2169,7 +2230,7 @@ describe('what a turn works in', () => {
     test("is the run's own cwd before the worktree, and a thread of a chat in a worktree works in the same one, the same row", async () => {
         const gate = latch();
         const { h, engine, repo, store, make, stepOf, chatOf, runOf } = await setup({ script: holding(gate) });
-        const chat = make({ mode: 'new' });
+        const chat = await make({ mode: 'new' });
         const { path } = chat.workspace!;
 
         h.ok('chat.send', { chatId: chat.id, text: 'Hold the line' });
@@ -2210,7 +2271,7 @@ describe('what a turn works in', () => {
 
     test("of a fork is the source's worktree, the same row, and its session is opened there", async () => {
         const { h, engine, repo, make, send, stepOf, chatOf } = await setup({ canFork: true });
-        const chat = make({ mode: 'new' });
+        const chat = await make({ mode: 'new' });
         const { path } = chat.workspace!;
 
         await send(chat, 'Start');
@@ -2243,8 +2304,8 @@ describe('what a turn works in', () => {
                 folders: [{ id: project.folders[0].id }, { path: api }],
             }) as { project: Project }
         ).project.folders;
-        const chat = make({ mode: 'new' }, { folderId: folders[1].id });
-        const inMain = make({ mode: 'new' });
+        const chat = await make({ mode: 'new' }, { folderId: folders[1].id });
+        const inMain = await make({ mode: 'new' });
 
         await send(chat, 'In the api');
         await send(inMain, 'In the web');
@@ -2271,8 +2332,8 @@ describe('what a turn works in', () => {
     test('the rows of a project go with it', async () => {
         const { h, project, store, make } = await setup();
 
-        make({ mode: 'new' });
-        make({ mode: 'new' });
+        await make({ mode: 'new' });
+        await make({ mode: 'new' });
         expect(listWorkspacesOfProject(store.db, project.id)).toHaveLength(2);
 
         h.ok('project.delete', { projectId: project.id });

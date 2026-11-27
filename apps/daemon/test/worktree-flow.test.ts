@@ -60,7 +60,9 @@ test('a chat in a new worktree, from its creation to its deletion with the workt
         settings: { setup: { files: ['.env'], command: 'echo done > setup-done.txt' } },
     });
 
-    const { chat } = h.ok('chat.create', { projectId: project.id, workspace: { mode: 'new' } }) as { chat: Chat };
+    const { chat } = (await h.okAsync('chat.create', { projectId: project.id, workspace: { mode: 'new' } })) as {
+        chat: Chat;
+    };
     const workspace = chat.workspace!;
 
     expect(workspace).toMatchObject({ folderId: folder.id, managed: true, ready: false });
