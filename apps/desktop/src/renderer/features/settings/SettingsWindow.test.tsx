@@ -72,6 +72,7 @@ describe('Settings', () => {
             'Shortcuts',
             'Projects',
             'Providers',
+            'Delegation',
             'Skills',
             'About',
         ]);
