@@ -2,7 +2,7 @@ import { Button } from '@clowdy/components/Button';
 import { GridListItem, listBoxItemDataShow } from '@clowdy/components/List';
 import { Popover, PopoverTrigger, useContextMenu } from '@clowdy/components/Popover';
 import { toast } from '@clowdy/components/Toast';
-import { ChevronDown, ChevronRight, More, NewChat, Split, Version } from '@clowdy/icons/14';
+import { ChevronDown, ChevronRight, More, Plus, Split, Version } from '@clowdy/icons/14';
 import { mainFolder } from '@clowdy/protocol';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -96,6 +96,7 @@ export function WorktreeCardHeader({
         .filter(Boolean)
         .join(', ');
     const tooltip = card.pending ? 'Worktree not prepared yet' : card.missing ? 'Worktree no longer exists' : undefined;
+    const icon = card.main ? <Version /> : <Split />;
     const stop = (event: SyntheticEvent) => event.stopPropagation();
     return (
         <GridListItem
@@ -105,7 +106,7 @@ export function WorktreeCardHeader({
                 card.roots.length > 0 || hasDraft ? (
                     <span className={styles.foldIcon}>
                         <span className={styles.restIcon} data-show={listBoxItemDataShow.itemRest}>
-                            <Split />
+                            {icon}
                         </span>
                         <span
                             className={styles.fold}
@@ -130,7 +131,7 @@ export function WorktreeCardHeader({
                         </span>
                     </span>
                 ) : (
-                    <Split />
+                    icon
                 )
             }
             className={styles.worktreeHeader}
@@ -171,7 +172,7 @@ export function WorktreeCardHeader({
                             preventFocusOnPress
                             onPress={newChat}
                         >
-                            <NewChat />
+                            <Plus />
                         </Button>
                         <PopoverTrigger
                             isOpen={menuOpen}

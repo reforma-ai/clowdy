@@ -29,3 +29,8 @@
 .command path {
     stroke: currentColor;
 }
+
+/* The agent icon of a chat with an agent working inside: green like a running command's icon, in the dot's place. */
+.agents {
+    color: var(--color-success);
+}

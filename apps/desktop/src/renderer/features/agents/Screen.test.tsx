@@ -709,11 +709,9 @@ describe('grouped by folder', () => {
             await restart({ transport: new FixtureTransport({ data: withFixtureWorkspace(twoFolders()) }) });
             expect(name(MAIN)?.textContent).toBe('car-rental');
             await draw(() => ui().openChat(FIXTURE_WORKSPACE_CHAT_ID));
-            const workspace = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
-
             await press(name(MAIN)!);
             await press(menuItem('New chat'));
-            expect(ui().draftWorkspace).toEqual({ mode: 'existing', path: workspace.path });
+            expect(ui().draftWorkspace).toBeNull();
             await draw(() => ui().openChat(FIXTURE_WORKSPACE_CHAT_ID));
 
             await press(name(API.id)!);
@@ -1572,11 +1570,12 @@ describe('the archive', () => {
         expect(container.querySelector('[data-testid="chat"]')?.getAttribute('data-chat-id')).toBe('c-5');
     });
 
-    it('shows a green status in place of the archive shortcut while the chat works', () => {
+    it('shows a green status in place of the archive shortcut while the chat works, its agent icon when agents work inside it', () => {
         const busyActions = rowOf('c-1').querySelector('[slot="endAffix"]');
 
         expect(busyActions?.querySelector('button[aria-label="Archive"]')).toBeNull();
-        expect(busyActions?.querySelector('[aria-label="Working"] [data-tone="success"]')).not.toBeNull();
+        expect(busyActions?.querySelector('[aria-label="3 agents work inside"]')).not.toBeNull();
+        expect(busyActions?.querySelector('[aria-label="Working"]')).toBeNull();
         expect(rowOf('c-4').querySelector('button[aria-label="Archive"]')?.hasAttribute('disabled')).toBe(false);
     });
 
@@ -1626,6 +1625,11 @@ describe('the archive', () => {
 
 describe('chat completion dots', () => {
     const dotOf = (key: string) => rowOf(key).querySelector('[role="img"]')?.getAttribute('aria-label');
+    // The sub-agents that work for c-1 in the fixture end with it: a chat with an agent working inside keeps its agent icon, over a completion.
+    const endAgentsOfC1 = () => {
+        for (const id of ['r-na-02', 'r-na-03', 'r-na-05'])
+            project().runs.set(id, { ...project().runs.get(id)!, status: 'succeeded', finishedAt: Date.now() });
+    };
 
     it('starts without dots for past successes and clears a new completion when its row is opened', async () => {
         const focus = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
@@ -1633,7 +1637,10 @@ describe('chat completion dots', () => {
         try {
             expect(dotOf('c-2')).toBeUndefined();
             const run = project().runs.get('r-orch-1')!;
-            await draw(() => project().runs.set(run.id, { ...run, status: 'succeeded', finishedAt: Date.now() + 1 }));
+            await draw(() => {
+                endAgentsOfC1();
+                project().runs.set(run.id, { ...run, status: 'succeeded', finishedAt: Date.now() + 1 });
+            });
             expect(dotOf('c-1')).toBe('Done');
             await press(rowOf('c-1'));
             await draw();
@@ -1655,7 +1662,10 @@ describe('chat completion dots', () => {
         try {
             const run = project().runs.get('r-orch-1')!;
             await draw(() => ui().openChat('c-1'));
-            await draw(() => project().runs.set(run.id, { ...run, status: 'succeeded', finishedAt: Date.now() + 1 }));
+            await draw(() => {
+                endAgentsOfC1();
+                project().runs.set(run.id, { ...run, status: 'succeeded', finishedAt: Date.now() + 1 });
+            });
             expect(dotOf('c-1')).toBe('Done');
             focus.mockReturnValue(true);
             await draw(() => window.dispatchEvent(new Event('focus')));
@@ -1674,7 +1684,10 @@ describe('chat completion dots', () => {
                 ui().openChat('c-1');
                 store.ui.openSettings();
             });
-            await draw(() => project().runs.set(run.id, { ...run, status: 'succeeded', finishedAt: Date.now() + 1 }));
+            await draw(() => {
+                endAgentsOfC1();
+                project().runs.set(run.id, { ...run, status: 'succeeded', finishedAt: Date.now() + 1 });
+            });
             expect(dotOf('c-1')).toBe('Done');
             await draw(() => store.ui.closeSettings());
             await draw();
@@ -1830,10 +1843,10 @@ describe('threads', () => {
         expect(ui().expandedChats).not.toContain('c-6');
     });
 
-    it('marks a chat at rest whose threads work with the working dot, and each thread with its own state', async () => {
+    it('marks a chat at rest whose threads work with the agent icon, and each thread with its own state', async () => {
         await draw(() => ui().toggleChatExpanded('c-6'));
 
-        expect(dotOf('c-6')).toBe('Threads working');
+        expect(dotOf('c-6')).toBe('2 agents work inside');
         expect(dotOf('c-6a')).toBe('Working');
         expect(dotOf('c-6c')).toBe('Failed');
         expect(dotOf('c-6b')).toBeUndefined();
@@ -1869,13 +1882,13 @@ describe('threads', () => {
             'c-2',
         ]);
 
-        // Decided: the thread goes back behind the fold, and the chat's dot to its threads working.
+        // Decided: the thread goes back behind the fold, and the chat's dot gives way to the agent icon.
         await act(async () => foldOf('c-6')!.click());
         await draw(() =>
             project().runs.set('r-orch-6e', { ...project().runs.get('r-orch-6e')!, awaitingUser: undefined })
         );
         expect(rowKeys()).not.toContain('c-6e');
-        expect(dotOf('c-6')).toBe('Threads working');
+        expect(dotOf('c-6')).toBe('2 agents work inside');
     });
 
     it('offers no Archive on a chat whose threads work, and offers it on a finished thread', async () => {
@@ -1884,7 +1897,7 @@ describe('threads', () => {
         const busyActions = rowOf('c-6').querySelector('[slot="endAffix"]');
 
         expect(busyActions?.querySelector('button[aria-label="Archive"]')).toBeNull();
-        expect(busyActions?.querySelector('[aria-label="Threads working"] [data-tone="success"]')).not.toBeNull();
+        expect(busyActions?.querySelector('[aria-label="2 agents work inside"]')).not.toBeNull();
         expect(rowOf('c-6b').querySelector('button[aria-label="Archive"]')?.hasAttribute('disabled')).toBe(false);
 
         await press(rowOf('c-6').querySelector<HTMLElement>('button[aria-label="Chat actions"]')!);
@@ -2493,6 +2506,20 @@ describe('worktree cards', () => {
         await draw();
         expect(rowKeys()).not.toContain('@new-chat');
         expect(isSelected(`@draft:${ui().draftId}`)).toBe(true);
+    });
+
+    it('opens the folder checkout after starting a worktree draft', async () => {
+        await restart();
+        await draw(() => ui().setGroupByWorktree(true));
+        await press(rowOf(workspaceKey()).querySelector<HTMLElement>('button[aria-label^="New chat in "]')!);
+        const worktreeDraft = ui().draftId!;
+        await press(buttonNamed('New chat in car-rental'));
+        await draw();
+
+        expect(ui().draftWorkspace).toBeNull();
+        expect(ui().draftId).not.toBe(worktreeDraft);
+        expect(isSelected(`@draft:${ui().draftId}`)).toBe(true);
+        expect(rowKeys()).toContain(`@draft:${worktreeDraft}`);
     });
 
     it('keeps two worktree drafts and their text when switching and moving one into the other', async () => {

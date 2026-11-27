@@ -1,5 +1,5 @@
 import { SettingsLayout, type SettingsNavItem } from '@clowdy/components/SettingsLayout';
-import { Book, Folder, Info, Message, Page, PaintBucket, Robot, Version } from '@clowdy/icons/14';
+import { Book, Folder, Info, Message, Page, PaintBucket, Robot2, Version } from '@clowdy/icons/14';
 import { Keyboard } from '@clowdy/icons/16';
 import { observer } from 'mobx-react-lite';
 
@@ -47,7 +47,7 @@ const PAGES: readonly PageView[] = [
         render: () => <ShortcutsPage />,
     },
     { id: 'projects', label: 'Projects', group: 'Workspace', icon: <Folder />, render: () => <ProjectsPage /> },
-    { id: 'providers', label: 'Providers', group: 'Agents', icon: <Robot />, render: () => <ProvidersPage /> },
+    { id: 'providers', label: 'Providers', group: 'Agents', icon: <Robot2 />, render: () => <ProvidersPage /> },
     { id: 'skills', label: 'Skills', group: 'Agents', icon: <Book />, render: () => <SkillsSection /> },
     { id: 'about', label: 'About', group: 'Clowdy', icon: <Info />, render: () => <AboutPage /> },
 ];

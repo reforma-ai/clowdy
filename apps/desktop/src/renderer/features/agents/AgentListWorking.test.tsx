@@ -126,58 +126,83 @@ afterEach(() => {
     chatListPreferences.setExpandRunningAgents(true);
 });
 
-/** The count at the end of a chat's row: what works inside it (its sub-agents and its threads, and theirs), with the dot beside it. */
-describe('the count of agents inside a chat', () => {
-    const countOf = (key: string) => rowOf(key).querySelector('[title$="inside"]')?.textContent ?? null;
+/** The agent icon at the end of a chat's row: some agent works inside it (its sub-agents and its threads, and theirs), and it takes the place of the dot. */
+describe('the agent icon of a chat with agents inside', () => {
+    const marks = (key: string) =>
+        [...rowOf(key).querySelectorAll('[role="img"]')].map(mark => mark.getAttribute('aria-label'));
+    const insideOf = (key: string) => marks(key).find(label => label?.endsWith('inside')) ?? null;
 
-    it('counts the sub-agents and the threads that work, and not the ones that are over', () => {
+    it('says how many agents work inside by its label: the sub-agents and the threads that work, and not the ones that are over', () => {
         // c-1: r-na-03, r-na-02 and r-na-05 (below r-na-02) work, r-na-01 and r-na-04 are over.
-        expect(countOf('c-1')).toBe('3 agents');
+        expect(insideOf('c-1')).toBe('3 agents work inside');
         // c-6: its threads c-6a (works) and c-6e (rests for background work); c-6b, c-6c and c-6a1 are over, and so is its sub-agent r-na-07.
-        expect(countOf('c-6')).toBe('2 agents');
-        expect(countOf('c-4')).toBeNull();
+        expect(insideOf('c-6')).toBe('2 agents work inside');
+        expect(insideOf('c-4')).toBeNull();
     });
 
     it('is on the row folded or not, with Expand active threads on or off', async () => {
         await draw(() => chatListPreferences.setExpandRunningAgents(false));
 
         expect(shown('c-6a', 'c-6e', 'r-na-03')).toEqual([]);
-        expect(countOf('c-1')).toBe('3 agents');
-        expect(countOf('c-6')).toBe('2 agents');
+        expect(insideOf('c-1')).toBe('3 agents work inside');
+        expect(insideOf('c-6')).toBe('2 agents work inside');
 
         await draw(() => {
             ui().toggleChatExpanded('c-1');
             ui().toggleChatExpanded('c-6');
         });
 
-        expect(countOf('c-1')).toBe('3 agents');
-        expect(countOf('c-6')).toBe('2 agents');
+        expect(insideOf('c-1')).toBe('3 agents work inside');
+        expect(insideOf('c-6')).toBe('2 agents work inside');
     });
 
-    it('is on a chat that works itself, and on one at rest', async () => {
+    it('is the only mark of a chat that works itself, in the place of its working dot, and of one at rest', async () => {
         const orchestrator = project().runs.get('r-orch-1')!;
 
         expect(orchestrator.status).toBe('running');
-        expect(countOf('c-1')).toBe('3 agents');
+        expect(marks('c-1')).toEqual(['3 agents work inside']);
+        expect(marks('c-6')).toEqual(['2 agents work inside']);
 
         await draw(() => project().runs.set(orchestrator.id, { ...orchestrator, status: 'succeeded', finishedAt: 1 }));
 
-        expect(countOf('c-1')).toBe('3 agents');
+        expect(marks('c-1')).toEqual(['3 agents work inside']);
     });
 
-    it('says one agent in the singular, and drops away when the last one ends', async () => {
+    it('is the only mark of a chat that rests for its background work, in the place of the command’s icon', async () => {
+        const orchestrator = project().runs.get('r-orch-1')!;
+
+        await draw(() => project().runs.set(orchestrator.id, { ...orchestrator, status: 'waiting_background' }));
+
+        expect(marks('c-1')).toEqual(['3 agents work inside']);
+        expect(rowOf('c-1').querySelector('[aria-label="Waiting for background work"]')).toBeNull();
+    });
+
+    it('gives way to what the chat needs from the person: its failure, and a thread that asks', async () => {
+        const orchestrator = project().runs.get('r-orch-1')!;
+
+        await draw(() => project().runs.set(orchestrator.id, { ...orchestrator, status: 'failed', finishedAt: 1 }));
+
+        expect(marks('c-1')).toEqual(['Failed']);
+
+        const thread = project().runs.get('r-orch-6e')!;
+
+        await draw(() => project().runs.set(thread.id, { ...thread, awaitingUser: true }));
+
+        expect(marks('c-6')).toEqual(['A thread is waiting for you']);
+    });
+
+    it('says one agent in the singular, and goes when the last one ends', async () => {
         const thread = project().runs.get('r-orch-6e')!;
 
         await draw(() => project().runs.set(thread.id, { ...thread, status: 'succeeded', finishedAt: 1 }));
 
-        expect(countOf('c-6')).toBe('1 agent');
-        expect(rowOf('c-6').querySelector('[title="1 agent works inside"]')).not.toBeNull();
+        expect(insideOf('c-6')).toBe('1 agent works inside');
 
         const last = project().runs.get('r-orch-6a')!;
 
         await draw(() => project().runs.set(last.id, { ...last, status: 'succeeded', finishedAt: 1 }));
 
-        expect(countOf('c-6')).toBeNull();
+        expect(marks('c-6')).toEqual([]);
     });
 });
 
@@ -280,8 +305,7 @@ describe('finished sub-agents', () => {
         // There is no group row, and no fold but the chat's.
         expect(rowKeys().some(candidate => candidate?.startsWith('@finished'))).toBe(false);
         expect(rowOf('r-na-01').textContent).toBe('Map the booking flow');
-        // The chat's row says its title and the count of what works inside it, and nothing else.
-        expect(rowOf('c-1').textContent).toBe('Simplify booking3 agents');
+        expect(rowOf('c-1').textContent).toBe('Simplify booking');
     });
 
     it('stand among the threads of their chat by the time each was made, a thread’s own below the thread', async () => {
@@ -633,14 +657,14 @@ describe('a sub-agent’s row', () => {
         });
     });
 
-    it('stays out of the guards and the dot of its chat: a chat at rest with a sub-agent that works can be put away', async () => {
+    it('stays out of the guards of its chat, and shows in its mark: a chat at rest with a sub-agent that works can be put away', async () => {
         const orchestrator = project().runs.get('r-orch-1')!;
 
         await draw(() => project().runs.set(orchestrator.id, { ...orchestrator, status: 'succeeded', finishedAt: 1 }));
 
         expect(project().runs.get('r-na-03')?.status).toBe('running');
         expect(buttonIn('c-1', 'Archive')).not.toBeNull();
-        expect(rowOf('c-1').querySelector('[aria-label="Threads working"]')).toBeNull();
+        expect(rowOf('c-1').querySelector('[aria-label="3 agents work inside"]')).not.toBeNull();
     });
 
     it('keeps the row of a finished sub-agent opened from elsewhere, and unfolds nothing for it', async () => {

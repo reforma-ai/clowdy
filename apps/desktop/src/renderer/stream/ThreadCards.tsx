@@ -1,10 +1,10 @@
 import { Button } from '@clowdy/components/Button';
 import { Shimmer } from '@clowdy/components/Shimmer';
 import { Text } from '@clowdy/components/Text';
+import { Robot2 } from '@clowdy/icons/14';
 import { ProgressLoader } from '@clowdy/icons/assets';
 import { Children, type ReactNode, use, useId } from 'react';
 
-import { AgentMark } from '../features/agents/AgentMark';
 import { Clamp } from './Clamp';
 import { Markdown } from './Markdown';
 import { OutcomeMark } from './OutcomeMark';
@@ -180,16 +180,13 @@ export interface ThreadMessageCardProps {
 
 /**
  * A message another chat of the thread tree wrote (`clowdy thread tell`, or the first message of a thread or of a sub-agent from its parent): an agent wrote it, not the
- * person, so it is a card in the family of the agent cards and not a bubble, marked with the agent of the chat that wrote it (Claude's mark for a Claude chat, as in the
- * list). The sender's name opens it; the words are Markdown as an agent's are, clamped when long.
+ * person, so it is a card in the family of the agent cards and not a bubble, marked with the agent icon, as a sub-agent is in the list. The sender's name opens it; the words are Markdown as an agent's are, clamped when long.
  */
 export function ThreadMessageCard({ chatId, title, text, turn }: ThreadMessageCardProps) {
-    const { engineOfChat } = use(StreamLinksContext);
-
     return (
         <CardFrame
             slot="thread-message"
-            icon={<AgentMark engine={engineOfChat?.(chatId)} />}
+            icon={<Robot2 />}
             title={
                 <>
                     Message from <ChatName chatId={chatId} title={title} />
