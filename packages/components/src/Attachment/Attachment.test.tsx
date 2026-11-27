@@ -49,7 +49,7 @@ afterEach(() => {
 });
 
 describe('Attachment', () => {
-    it('shows the name and size on the card, whether it is alone or among others', () => {
+    it('shows file details but only the preview for an image', () => {
         render(
             <Attachments>
                 <Attachment data={report} />
@@ -59,7 +59,9 @@ describe('Attachment', () => {
 
         expect(container.textContent).toContain('report.pdf');
         expect(container.textContent).toContain('3.0 MB');
-        expect(container.textContent).toContain(photo.filename ?? '');
+        expect(container.textContent).not.toContain(photo.filename ?? '');
+        expect(container.textContent).not.toContain('2 KB');
+        expect(container.querySelector('[aria-label="photo.png"]')).not.toBeNull();
     });
 
     it('prefers the title over the filename', () => {
@@ -105,6 +107,41 @@ describe('Attachment', () => {
 
         expect(container.querySelector('img')?.getAttribute('src')).not.toBe('blob:http://localhost/preview-1');
         expect(container.querySelector('img')?.getAttribute('alt')).toBe('');
+        expect(container.textContent).toContain('photo.png');
+        expect(container.textContent).toContain('2 KB');
+    });
+
+    it('keeps image preview and removal independent, including retry after an upload failure', () => {
+        const open = vi.fn();
+        const remove = vi.fn();
+        const retry = vi.fn();
+
+        render(<Attachment data={photo} onPress={open} onRemove={remove} />);
+        press(button('Remove photo.png'));
+        expect(remove).toHaveBeenCalledOnce();
+        expect(open).not.toHaveBeenCalled();
+        press(button('photo.png'));
+        expect(open).toHaveBeenCalledOnce();
+
+        render(<Attachment data={photo} error onPress={open} onRemove={remove} onRetry={retry} />);
+        expect(button('photo.png')).toBeNull();
+        press(button('Retry photo.png'));
+        expect(retry).toHaveBeenCalledOnce();
+        expect(button('Remove photo.png')).not.toBeNull();
+    });
+
+    it('restores the image preview when a failed source is replaced', () => {
+        const open = vi.fn();
+
+        render(<Attachment data={photo} onPress={open} />);
+        act(() => container.querySelector('img')!.dispatchEvent(new Event('error')));
+        expect(button('photo.png')).toBeNull();
+        expect(container.textContent).toContain('photo.png');
+
+        render(<Attachment data={{ ...photo, preview: 'blob:http://localhost/recovered' }} onPress={open} />);
+        expect(container.textContent).not.toContain('photo.png');
+        press(button('photo.png'));
+        expect(open).toHaveBeenCalledOnce();
     });
 
     it('removes through the remove button', () => {
