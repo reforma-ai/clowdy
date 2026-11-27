@@ -8,14 +8,12 @@ const releaseRepo = process.env.CLOWDY_RELEASE_REPO;
 const [owner, repo] = releaseRepo?.split('/') ?? [];
 
 /**
- * What the daemon needs outside the ASAR, where Bun can read and run it (`scripts/build.ts`): the daemon and the system
- * skills of the app's own bundle, and the runtime for the arch being packaged: Bun and the ripgrep beside it. The app
- * copies both out of the install folder before it starts the daemon (`src/main/bundle.ts`). Named per platform here:
+ * The native runtime the daemon needs outside the ASAR: Bun and the ripgrep beside it. The app copies it out of the
+ * install folder before it starts the daemon (`src/main/bundle.ts`). Named per platform here:
  * `${platform}` would expand to the build host's.
  */
 function daemonResources(platform: 'darwin' | 'win32'): FileSet[] {
     return [
-        { from: 'bundle', to: 'bundle' },
         // electron-builder expands `${arch}`, not TypeScript.
         { from: `runtime/${platform}-\${arch}`, to: 'bun', filter: ['**/*', '!scroll.node'] },
     ];
@@ -36,7 +34,7 @@ export default {
     // Everything is bundled, so the app has no dependencies to install, rebuild, or pack.
     npmRebuild: false,
     asar: true,
-    files: ['package.json', 'bundle.json', 'dist/**', 'renderer/**', '!node_modules/**'],
+    files: ['package.json', 'dist/**', '!node_modules/**'],
 
     // electron-builder expands these macros, not TypeScript.
     artifactName: '${productName}-${version}-${arch}.${ext}',

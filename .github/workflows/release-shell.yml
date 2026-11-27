@@ -29,6 +29,7 @@ jobs:
         runs-on: ubuntu-latest
         outputs:
             decision: ${{ steps.decide.outputs.decision }}
+            ota_key: ${{ steps.key.outputs.key }}
         steps:
             # History for the version before the push.
             - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
@@ -38,6 +39,11 @@ jobs:
               with:
                   bun-version-file: package.json
             - run: bun install --frozen-lockfile
+            - id: key
+              run: |
+                  printf 'key<<CLOWDY_KEY_END\n%s\nCLOWDY_KEY_END\n' "$CLOWDY_OTA_PUBLIC_KEY" >> "$GITHUB_OUTPUT"
+              env:
+                  CLOWDY_OTA_PUBLIC_KEY: ${{ vars.CLOWDY_OTA_PUBLIC_KEY }}
             # build, skip (version unchanged, or out already), or fail (not above the newest release).
             - id: decide
               run: bun apps/desktop/scripts/release-shell.ts decide
@@ -102,7 +108,7 @@ jobs:
               env:
                   CLOWDY_RELEASE_REPO: ${{ github.repository }}
                   CLOWDY_SIGNED: ${{ steps.signing.outputs.signed }}
-                  CLOWDY_OTA_PUBLIC_KEY: ${{ vars.CLOWDY_OTA_PUBLIC_KEY }}
+                  CLOWDY_OTA_PUBLIC_KEY: ${{ needs.decide.outputs.ota_key }}
             # notarytool reads the App Store Connect key from a file.
             - name: Write the App Store Connect key
               if: steps.signing.outputs.signed == 'true'
@@ -120,10 +126,19 @@ jobs:
                       exit 0
                   fi
                   bun run release:mac -c.mac.notarize=true
+                  pids=()
                   for dmg in release/*.dmg; do
-                      xcrun notarytool submit "$dmg" --key "$APPLE_API_KEY" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER" --wait
-                      xcrun stapler staple "$dmg"
+                      (
+                          xcrun notarytool submit "$dmg" --key "$APPLE_API_KEY" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER" --wait &&
+                              xcrun stapler staple "$dmg"
+                      ) &
+                      pids+=("$!")
                   done
+                  failed=0
+                  for pid in "${pids[@]}"; do
+                      if ! wait "$pid"; then failed=1; fi
+                  done
+                  if [ "$failed" -ne 0 ]; then exit 1; fi
               env:
                   CLOWDY_RELEASE_REPO: ${{ github.repository }}
                   SIGNED: ${{ steps.signing.outputs.signed }}
@@ -178,8 +193,23 @@ jobs:
                       apps/desktop/release/*.blockmap
                       apps/desktop/release/latest-mac.yml
 
-    # CI tests on Linux only, so a release runs the desktop tests on Windows. They have a job of their own beside the packaging, not a step before it:
-    # the release takes as long as the longer of the two, and `publish` still waits for both.
+    # Test the shell and release scripts on both platforms alongside packaging. Renderer tests are not part of this release.
+    macos-test:
+        needs: decide
+        if: needs.decide.outputs.decision == 'build'
+        runs-on: macos-latest
+        steps:
+            - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+            - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+              with:
+                  node-version: ${{ env.NODE_VERSION }}
+            - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+              with:
+                  bun-version-file: package.json
+            - run: bun install --frozen-lockfile
+            - name: Test the desktop shell
+              run: bunx turbo run test --filter=@clowdy/desktop -- src/main src/shared scripts
+
     windows-test:
         needs: decide
         if: needs.decide.outputs.decision == 'build'
@@ -195,8 +225,8 @@ jobs:
                   bun-version-file: package.json
             - run: bun install --frozen-lockfile
             # Through turbo, which builds the workspace packages the tests import.
-            - name: Test the desktop app
-              run: bunx turbo run test --filter=@clowdy/desktop
+            - name: Test the desktop shell
+              run: bunx turbo run test --filter=@clowdy/desktop -- src/main src/shared scripts
 
     # Unsigned for now, so no secret.
     windows:
@@ -219,7 +249,7 @@ jobs:
               working-directory: apps/desktop
               env:
                   CLOWDY_RELEASE_REPO: ${{ github.repository }}
-                  CLOWDY_OTA_PUBLIC_KEY: ${{ vars.CLOWDY_OTA_PUBLIC_KEY }}
+                  CLOWDY_OTA_PUBLIC_KEY: ${{ needs.decide.outputs.ota_key }}
             # One web installer for both architectures, their packages, and latest.yml.
             - name: Package
               run: bun run release:win
@@ -236,24 +266,43 @@ jobs:
                       apps/desktop/release/nsis-web/*.exe
                       apps/desktop/release/nsis-web/*.7z
 
-    # Runs only after every build job and the Windows tests succeeded: a skipped or failed one skips it.
+    # Runs only after every build and shell test job succeeded: a skipped or failed one skips it.
     publish:
-        needs: [macos, windows, windows-test]
+        needs: [decide, macos, macos-test, windows, windows-test]
         runs-on: ubuntu-latest
+        environment: desktop-release
         permissions:
             contents: write
         steps:
             - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+              with:
+                  fetch-depth: 0
+            - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+              with:
+                  node-version: ${{ env.NODE_VERSION }}
             - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
               with:
                   bun-version-file: package.json
             - run: bun install --frozen-lockfile
+            - name: Install archive verifier
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y p7zip-full
             # Every build job's artifact, in one folder.
             - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
               with:
                   pattern: shell-*
                   merge-multiple: true
                   path: apps/desktop/release
+            # The build toolchain never receives the signing key.
+            - name: Build bootstrap
+              run: bun apps/desktop/scripts/publish-ota.ts --prepare-bootstrap apps/desktop/release
+            - name: Sign and verify bootstrap
+              run: bun apps/desktop/scripts/publish-ota.ts --sign-bootstrap apps/desktop/release
+              env:
+                  CLOWDY_OTA_SIGNING_KEY: ${{ secrets.CLOWDY_OTA_SIGNING_KEY }}
+                  CLOWDY_OTA_PUBLIC_KEY: ${{ needs.decide.outputs.ota_key }}
             - run: bun apps/desktop/scripts/release-shell.ts publish
               env:
                   GH_TOKEN: ${{ github.token }}
+                  CLOWDY_OTA_PUBLIC_KEY: ${{ needs.decide.outputs.ota_key }}
