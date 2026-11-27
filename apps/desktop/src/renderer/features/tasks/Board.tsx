@@ -1,3 +1,4 @@
+import { PanelEmptyRow } from '@clowdy/components/Panel';
 import { type DragEvent, useState } from 'react';
 
 import { ArchiveDropTarget } from './ArchiveDropTarget';
@@ -119,7 +120,7 @@ export function Board({
                                     onDragEnd={endDrag}
                                 />
                             ))}
-                            {tasks.length === 0 && <div className={styles.empty}>No tasks</div>}
+                            {tasks.length === 0 && <PanelEmptyRow>No tasks</PanelEmptyRow>}
                         </div>
                     </section>
                 ))}

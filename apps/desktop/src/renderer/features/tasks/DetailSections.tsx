@@ -36,7 +36,23 @@ export function Section({ title, count, aside, children }: SectionProps) {
 }
 
 /** The line a section says when it has nothing to list. */
-export const None = ({ children }: { children: ReactNode }) => <span className={styles.none}>{children}</span>;
+export const None = ({ children }: { children: ReactNode }) => (
+    <Text variant="sm" color="secondary">
+        {children}
+    </Text>
+);
+
+/** What a section says when its read failed, with a button that reads it again. `alert` for a failure that comes after the section showed its contents. */
+export function InlineRetry({ message, onRetry, role }: { message: string; onRetry: () => void; role?: 'alert' }) {
+    return (
+        <div className={styles.failed} role={role}>
+            <None>{message}</None>
+            <Button size="xs" variant="bordered" onPress={onRetry}>
+                Retry
+            </Button>
+        </div>
+    );
+}
 
 /** The agents on the task, each with its status. A press selects the run in Agents. */
 export function Executors({ taskRuns, onOpen }: { taskRuns: readonly Run[]; onOpen: (runId: string) => void }) {
@@ -140,14 +156,7 @@ export function Results({
     return (
         <Section title="Results" count={rows.length}>
             {state.status === 'loading' && <Spinner size="sm" aria-label="Loading results" />}
-            {state.status === 'failed' && (
-                <div className={styles.failed}>
-                    <None>Results did not load</None>
-                    <Button size="xs" variant="bordered" onPress={retry}>
-                        Retry
-                    </Button>
-                </div>
-            )}
+            {state.status === 'failed' && <InlineRetry message="Results did not load" onRetry={retry} />}
             {state.status === 'ready' && rows.length === 0 && (
                 <None>Nothing yet. Changes and checks show up here.</None>
             )}

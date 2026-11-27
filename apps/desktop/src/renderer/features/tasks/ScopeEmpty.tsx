@@ -1,8 +1,6 @@
 import { Button } from '@clowdy/components/Button';
-import { Text } from '@clowdy/components/Text';
+import { PanelEmptyState } from '@clowdy/components/Panel';
 import { Plus } from '@clowdy/icons/14';
-
-import styles from './ScopeEmpty.module.css';
 
 export interface ScopeEmptyProps {
     /** The screen is inside a task, and not at the project's roots. */
@@ -29,41 +27,45 @@ export function ScopeEmpty({
 }: ScopeEmptyProps) {
     if (isHidden) {
         return (
-            <div className={styles.message}>
-                <Text variant="heading-4">No tasks match</Text>
-                <Text color="secondary">Try a different search or clear the filters</Text>
-                {isFiltering && (
-                    <Button variant="bordered" size="sm" onPress={onClearFilters}>
-                        Clear filters
-                    </Button>
-                )}
-            </div>
+            <PanelEmptyState
+                title="No tasks match"
+                description="Try a different search or clear the filters"
+                action={
+                    isFiltering && (
+                        <Button variant="bordered" size="sm" onPress={onClearFilters}>
+                            Clear filters
+                        </Button>
+                    )
+                }
+            />
         );
     }
 
     if (!isScope) {
         return (
-            <div className={styles.message}>
-                <Text variant="heading-4">No tasks yet</Text>
-                <Text color="secondary">Create one, or ask the orchestrator in a chat to plan the work</Text>
-            </div>
+            <PanelEmptyState
+                title="No tasks yet"
+                description="Create one, or ask the orchestrator in a chat to plan the work"
+            />
         );
     }
 
     return (
-        <div className={styles.message}>
-            <Text variant="heading-4">No sub-tasks yet</Text>
-            <Text color="secondary">
-                {canHaveChildren
+        <PanelEmptyState
+            title="No sub-tasks yet"
+            description={
+                canHaveChildren
                     ? 'Split this task into smaller ones'
-                    : 'This task is at the last level, so it cannot hold tasks'}
-            </Text>
-            {canHaveChildren && (
-                <Button variant="bordered" size="sm" onPress={onCreateSubtask}>
-                    <Plus />
-                    New sub-task
-                </Button>
-            )}
-        </div>
+                    : 'This task is at the last level, so it cannot hold tasks'
+            }
+            action={
+                canHaveChildren && (
+                    <Button variant="bordered" size="sm" onPress={onCreateSubtask}>
+                        <Plus />
+                        New sub-task
+                    </Button>
+                )
+            }
+        />
     );
 }

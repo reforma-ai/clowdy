@@ -4,19 +4,6 @@
     gap: var(--spacing-xl);
 }
 
-.loading {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-md);
-}
-
-.failed {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--spacing-md);
-}
-
 /* An agent's name is a link to its run: the author line's weight, with the underline only on hover. */
 .agent {
     max-width: 100%;

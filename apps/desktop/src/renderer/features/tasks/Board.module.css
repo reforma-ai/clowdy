@@ -55,11 +55,3 @@
     border-color: var(--color-primary-muted-border);
     background-color: var(--color-primary-muted-light);
 }
-
-.empty {
-    @ruleset typography-text-sm;
-
-    padding: var(--spacing-lg) var(--spacing-md);
-    color: var(--color-secondary-muted-text);
-    text-align: center;
-}
