@@ -7,7 +7,7 @@ Plan: `plan.md` (Checkpoint paragraph). Research: `research/index.md`. Parent ta
 | Branch | Worktree | Holds | Merge order |
 | --- | --- | --- | --- |
 | `clowdy/refactor-frontend` | `/Users/bionic/Clowdy/workspaces/clowdy/0DCP3E70/clowdy-frontend` | design system, renderer data layer, chats, tasks, settings UI; from `origin/next` `54d3a6b4` | first |
-| `clowdy/full-app-refactor` | `/Users/bionic/Clowdy/workspaces/clowdy/0DCP3E70/clowdy` | the frontend branch plus daemon core and edges | second |
+| `clowdy/full-app-refactor` | `/Users/bionic/Clowdy/workspaces/clowdy/0DCP3E70/clowdy` | the frontend branch plus daemon core and edges, and `CLO-241` (`chat.create` with a workspace reads git before its transaction; 690/690 in the 19 test files it touched) | second |
 
 Stage branches (`clowdy/refactor-ds`, `-renderer-data`, `-daemon-core`, `-daemon-edges`, `-ui-chats`, `-ui-tasks`, `-ui-settings`) are fully merged or cherry-picked; their worktrees can be removed. The UI stage branches were cut from the full branch, so the frontend branch carries their commits as cherry-picks.
 
@@ -27,4 +27,4 @@ Stage branches (`clowdy/refactor-ds`, `-renderer-data`, `-daemon-core`, `-daemon
 
 ## Left
 
-`CLO-239` tasks UI, `CLO-244` chats UI, `CLO-245` settings and Changes UI, `CLO-242` design system, `CLO-240` disabled user skills still load (safety), `CLO-241` sync git in `chat.create`, `CLO-243` daemon follow-ups, `CLO-230` shared packages, `CLO-231` Electron shell (separate branch). Stage 10 (one daemon-renderer contract) and Stage 11 (unused-code lint, compact guides) not started. Owner decisions: GITFLOW integration branch, `--no-verify` on the first empty commit, event log retention.
+`CLO-239` tasks UI, `CLO-244` chats UI, `CLO-245` settings and Changes UI, `CLO-242` design system, `CLO-240` disabled user skills still load (safety), `CLO-243` daemon follow-ups, `CLO-230` shared packages, `CLO-231` Electron shell (separate branch). Stage 10 (one daemon-renderer contract) and Stage 11 (unused-code lint, compact guides) not started. Owner decisions: GITFLOW integration branch, `--no-verify` on the first empty commit, event log retention.
