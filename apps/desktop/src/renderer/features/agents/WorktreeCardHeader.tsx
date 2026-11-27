@@ -1,8 +1,7 @@
-import { Button } from '@clowdy/components/Button';
-import { GridListItem, listBoxItemDataShow } from '@clowdy/components/List';
+import { GridListItem, RowActionButton, RowControls } from '@clowdy/components/List';
 import { Popover, PopoverTrigger, useContextMenu } from '@clowdy/components/Popover';
 import { toast } from '@clowdy/components/Toast';
-import { ChevronDown, ChevronRight, More, NewChat, Split, Version } from '@clowdy/icons/14';
+import { More, NewChat, Split, Version } from '@clowdy/icons/14';
 import { mainFolder } from '@clowdy/protocol';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -13,6 +12,7 @@ import { gitFactsOf } from '../changes/gitFacts';
 import { OpenWithMenu, useFolderGit } from '../openWith';
 import { worktreeMenuExtras } from '../worktrees/worktreeMenuExtras';
 import styles from './AgentList.module.css';
+import { RowFold } from './RowFold';
 import { samePath, worktreeLabel } from './workspaceChoice';
 
 import type { ChatWorkspace } from '@clowdy/protocol';
@@ -99,39 +99,19 @@ export function WorktreeCardHeader({
         .join(', ');
     const tooltip = card.pending ? 'Worktree not prepared yet' : card.missing ? 'Worktree no longer exists' : undefined;
     const icon = card.main ? <Version /> : <Split />;
-    const stop = (event: SyntheticEvent) => event.stopPropagation();
     return (
         <GridListItem
             id={card.key}
             text={title}
             icon={
                 card.roots.length > 0 || hasDraft ? (
-                    <span className={styles.foldIcon}>
-                        <span className={styles.restIcon} data-show={listBoxItemDataShow.itemRest}>
-                            {icon}
-                        </span>
-                        <span
-                            className={styles.fold}
-                            data-show={listBoxItemDataShow.itemHover}
-                            onClick={stop}
-                            onPointerDown={stop}
-                            onKeyDown={stop}
-                        >
-                            <Button
-                                variant="filling"
-                                color="secondary"
-                                size="xs"
-                                iconOnly
-                                tabIndex={-1}
-                                aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${title}`}
-                                aria-expanded={!collapsed}
-                                preventFocusOnPress
-                                onPress={onToggle}
-                            >
-                                {collapsed ? <ChevronRight /> : <ChevronDown />}
-                            </Button>
-                        </span>
-                    </span>
+                    <RowFold
+                        label={`${collapsed ? 'Expand' : 'Collapse'} ${title}`}
+                        isExpanded={!collapsed}
+                        icon={icon}
+                        onToggle={onToggle}
+                        revealOnFocus
+                    />
                 ) : (
                     icon
                 )
@@ -149,7 +129,7 @@ export function WorktreeCardHeader({
                 contextMenu.areaProps.onContextMenu(event);
             }}
             endAffix={
-                <span className={styles.worktreeActions} onClick={stop} onPointerDown={stop} onKeyDown={stop}>
+                <RowControls className={styles.worktreeActions}>
                     {collapsed && activity && (
                         <span
                             className={styles.worktreeStatus}
@@ -164,19 +144,12 @@ export function WorktreeCardHeader({
                     )}
                     {pullRequestStatus}
                     <span className={styles.worktreeActionButtons}>
-                        <Button
-                            variant="filling"
-                            color="secondary"
-                            size="xs"
-                            iconOnly
-                            aria-label={`New chat in ${title}`}
-                            tooltip={`New chat in ${title}`}
+                        <RowActionButton
+                            icon={<NewChat />}
+                            label={`New chat in ${title}`}
                             isDisabled={card.missing || card.pending || card.workspace?.ready === false}
-                            preventFocusOnPress
                             onPress={newChat}
-                        >
-                            <NewChat />
-                        </Button>
+                        />
                         <PopoverTrigger
                             isOpen={menuOpen}
                             onOpenChange={open => {
@@ -188,16 +161,7 @@ export function WorktreeCardHeader({
                                 } else closePicker();
                             }}
                         >
-                            <Button
-                                variant="filling"
-                                color="secondary"
-                                size="xs"
-                                iconOnly
-                                aria-label={`Worktree actions: ${title}`}
-                                preventFocusOnPress
-                            >
-                                <More />
-                            </Button>
+                            <RowActionButton icon={<More />} label={`Worktree actions: ${title}`} tooltip={null} />
                             <Popover
                                 placement="bottom end"
                                 spacing="xs"
@@ -222,7 +186,7 @@ export function WorktreeCardHeader({
                             </Popover>
                         </PopoverTrigger>
                     </span>
-                </span>
+                </RowControls>
             }
         >
             <span className={styles.worktreeTitle}>
