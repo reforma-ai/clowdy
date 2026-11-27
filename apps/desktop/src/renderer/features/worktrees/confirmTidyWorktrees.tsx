@@ -8,15 +8,8 @@ import { useState } from 'react';
 
 import { worktreeLabel } from '../agents/workspaceChoice';
 import { refreshFolderGit } from '../openWith';
-import {
-    affectedChats,
-    archiveConsequence,
-    chatPreviewChanged,
-    linkedChatIds,
-    readRemoval,
-    removeWorktree,
-} from './worktreeActions';
-import { deleteBranchByDefault, removalPlan, STRANDED_WARNING } from './worktreeView';
+import { affectedChats, chatPreviewChanged, linkedChatIds, readRemoval, removeWorktree } from './worktreeActions';
+import { deleteBranchByDefault, removalPlan } from './worktreeView';
 
 import type { FolderId, Project, ProjectId, ProjectSnapshot, WorktreeInfo } from '@clowdy/protocol';
 import type { RootStore } from '../../stores';
@@ -60,58 +53,32 @@ function TidyConfirmation({
 }) {
     const [deleteBranches, setDeleteBranches] = useState(true);
     const [pending, setPending] = useState(false);
+    const label = `Remove ${previews.length} ${previews.length === 1 ? 'worktree' : 'worktrees'}`;
+    const warnings = [
+        previews.some(({ row }) => !row.missing && (row.changes > 0 || row.submodules)) &&
+            'Uncommitted changes will be lost',
+        previews.some(({ row }) => removalPlan(row).stranded) && 'Detached commits may be lost',
+        previews.some(({ safe, chats }) => !safe && chats.affected.some(chat => chat.archivedAt === undefined)) &&
+            'Linked chats and their threads will be archived',
+        previews.some(({ chats }) => chats.blocker) && 'Worktrees with running chats will be skipped',
+    ].filter(Boolean);
     return (
         <ConfirmModalContent
-            title="Remove selected worktrees?"
+            title={`${label}?`}
             message={
                 <Box gap="md">
-                    <Text>
-                        Selected worktrees will be removed. Review linked chats and threads, including those in other
-                        worktrees.
-                    </Text>
-                    {previews.map(({ folderId, row, chats, safe }) => {
-                        const plan = removalPlan(row);
-                        const details = [
-                            ...plan.notes,
-                            ...(plan.stranded ? [STRANDED_WARNING] : []),
-                            ...(chats.ids.size
-                                ? [
-                                      safe
-                                          ? 'Linked chats and threads stay as they are'
-                                          : archiveConsequence(chats.affected),
-                                  ]
-                                : []),
-                            ...(chats.outside
-                                ? [`${chats.outside} ${chats.outside === 1 ? 'thread' : 'threads'} in other worktrees`]
-                                : []),
-                            ...(deleteBranchByDefault(row) ? [`Merged branch ${row.branch} can also be deleted`] : []),
-                            ...(chats.blocker ? [chats.blocker] : []),
-                        ];
-                        return (
-                            <Box key={keyOf(folderId, row.path)} gap="xs">
-                                <Text weight="medium" wrap="anywhere">
-                                    {worktreeLabel(row)} — {row.path}
-                                </Text>
-                                {chats.affected.map(chat => (
-                                    <Text key={chat.id} color="secondary" variant="sm" wrap="anywhere">
-                                        {chat.title} —{' '}
-                                        {chat.archivedAt === undefined ? 'Not archived' : 'Already archived'}
-                                    </Text>
-                                ))}
-                                {details.map(detail => (
-                                    <Text key={detail} color="secondary" variant="sm">
-                                        {detail}
-                                    </Text>
-                                ))}
-                            </Box>
-                        );
-                    })}
+                    {warnings.length > 0 && (
+                        <Text color="secondary">
+                            {warnings.join('. ')}
+                            {warnings.length > 1 ? '.' : ''}
+                        </Text>
+                    )}
                     <Checkbox size="sm" isDisabled={pending} isSelected={deleteBranches} onChange={setDeleteBranches}>
                         Also delete merged branches
                     </Checkbox>
                 </Box>
             }
-            confirmLabel={`Remove ${previews.length} ${previews.length === 1 ? 'worktree' : 'worktrees'}`}
+            confirmLabel={label}
             destructive
             initialFocus="cancel"
             onConfirm={async () => {

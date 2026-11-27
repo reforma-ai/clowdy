@@ -1015,7 +1015,7 @@ describe('Remove in Manage worktrees', () => {
         await click(unmerged);
         await click(textButton(confirmation(), 'Remove 2 worktrees…')!);
         await settle();
-        expect(confirmation().textContent).toContain('1 uncommitted change will be lost');
+        expect(confirmation().textContent).toContain('Uncommitted changes will be lost');
         await confirm('Remove 2 worktrees');
         expect(removals()).toEqual([
             expect.objectContaining({ path: CLEAN_UNMERGED }),
@@ -1053,7 +1053,7 @@ describe('Remove in Manage worktrees', () => {
         await click(linked);
         await click(textButton(confirmation(), 'Remove 1 worktree…')!);
         await settle();
-        expect(confirmation().textContent).toContain('1 thread in other worktrees');
+        expect(confirmation().textContent).toContain('Linked chats and their threads will be archived');
         await confirm('Remove 1 worktree');
         expect(removals()).toEqual([
             expect.objectContaining({
@@ -1139,7 +1139,7 @@ describe('Remove in Manage worktrees', () => {
         );
         await click(textButton(confirmation(), 'Remove 1 worktree…')!);
         await settle();
-        expect(confirmation().textContent).toContain('still working');
+        expect(confirmation().textContent).toContain('Worktrees with running chats will be skipped');
         await confirm('Remove 1 worktree');
         expect(removals()).toEqual([]);
         expect(confirmation().textContent).toContain(CLEAN_MERGED);
@@ -1197,7 +1197,7 @@ describe('Remove in Manage worktrees', () => {
         expect(confirmation().textContent).toContain(ONE_CHANGE);
     });
 
-    it('explains that already archived chats stay archived during safe cleanup', async () => {
+    it('keeps already archived chats archived with a compact cleanup confirmation', async () => {
         const data = dataWithKinds();
         const archived = data.chats.find(chat => chat.id === 'c-10')!;
         archived.workspace = {
@@ -1217,9 +1217,10 @@ describe('Remove in Manage worktrees', () => {
         ).toBe(true);
         await click(textButton(confirmation(), 'Remove 1 worktree…')!);
         await settle();
-        expect(confirmation().textContent).toContain(archived.title);
-        expect(confirmation().textContent).toContain('Already archived');
-        expect(confirmation().textContent).toContain('Linked chats and threads stay as they are');
+        expect(confirmation().textContent).toContain('Remove 1 worktree?');
+        expect(confirmation().textContent).toContain('Also delete merged branches');
+        expect(confirmation().textContent).not.toContain(archived.title);
+        expect(confirmation().textContent).not.toContain(CLEAN_MERGED);
         await confirm('Remove 1 worktree');
         const snapshot = await store.transport.getProjectSnapshot(FIXTURE_PROJECT_ID);
         expect(snapshot.chats.find(chat => chat.id === archived.id)?.archivedAt).toBe(archived.archivedAt);
