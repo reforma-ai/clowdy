@@ -149,7 +149,7 @@ describe('a message from another thread', () => {
         expect(linkNamed(cards('thread-message')[0], 'Show less')?.getAttribute('aria-expanded')).toBe('true');
     });
 
-    it("puts the toggle across the foot of a card, as a bar the card's whole width presses, centred in a message and in a report", async () => {
+    it("puts the toggle across the foot of a card, centred, so the card's whole width presses it, in a message and in a report", async () => {
         layout = { scrollHeight: 900, clientHeight: 300 };
         await draw([message, notice]);
 
