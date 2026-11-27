@@ -298,7 +298,9 @@
     pointer-events: none;
 }
 
-.worktreeCard:is(:hover, :focus-within, :has(.worktreeHeader[data-open])) .worktreeStatus {
+.worktreeCard:is(:hover, :focus-within, :has(.worktreeHeader[data-open]))
+    .worktreeHeader
+    :is(.worktreeStatus, .pullRequests) {
     display: none;
 }
 
