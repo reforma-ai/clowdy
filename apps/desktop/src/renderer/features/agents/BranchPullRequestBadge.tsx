@@ -1,3 +1,4 @@
+import { Tooltip } from '@clowdy/components/Tooltip';
 import { Merge, WorktreeFolder } from '@clowdy/icons/14';
 
 import { type BranchPullRequestKey, useBranchPullRequests } from '../changes/branchPullRequests';
@@ -23,15 +24,16 @@ export function BranchPullRequestBadge({
     if (!visible) return null;
     if (pullRequests.length === 0)
         return crossWorktree ? (
-            <span
-                className={className}
-                data-hover-only={hoverOnly || undefined}
-                role="img"
-                aria-label="Thread works in a different worktree"
-                title="Thread works in a different worktree"
-            >
-                <WorktreeFolder aria-hidden="true" />
-            </span>
+            <Tooltip content="Thread works in a different worktree">
+                <span
+                    className={className}
+                    data-hover-only={hoverOnly || undefined}
+                    role="img"
+                    aria-label="Thread works in a different worktree"
+                >
+                    <WorktreeFolder aria-hidden="true" />
+                </span>
+            </Tooltip>
         ) : null;
 
     const state = pullRequests.some(pr => pr.state === 'open')
@@ -48,16 +50,17 @@ export function BranchPullRequestBadge({
     const label = `${crossWorktree ? 'Thread works in a different worktree; ' : ''}${pullRequests.length} pull request${pullRequests.length === 1 ? '' : 's'}: ${detail}${fact?.stale ? ' (last known)' : ''}`;
 
     return (
-        <span
-            className={className}
-            data-hover-only={hoverOnly || undefined}
-            data-pr-state={state}
-            data-stale={fact?.stale || undefined}
-            role="img"
-            aria-label={label}
-            title={label}
-        >
-            <Merge size={12} aria-hidden="true" />
-        </span>
+        <Tooltip content={label}>
+            <span
+                className={className}
+                data-hover-only={hoverOnly || undefined}
+                data-pr-state={state}
+                data-stale={fact?.stale || undefined}
+                role="img"
+                aria-label={label}
+            >
+                <Merge size={12} aria-hidden="true" />
+            </span>
+        </Tooltip>
     );
 }
