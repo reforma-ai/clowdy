@@ -240,7 +240,7 @@ describe('which user skills are on', () => {
         expect(settings.setEnabled('a', true)).toBe(true);
     });
 
-    test('a damaged file leaves every skill on and warns, and the next change repairs it', () => {
+    test('a damaged file leaves every skill on and warns, and the next change repairs it and keeps the damaged one beside it', () => {
         const dir = tempDir();
         const settings = new SkillSettings(dir);
 
@@ -257,6 +257,7 @@ describe('which user skills are on', () => {
         settings.setEnabled('a', false);
 
         expect(settings.read()).toEqual({ disabled: new Set(['a']), systemDisabled: new Set() });
+        expect(readFileSync(join(dir, 'skills.json.damaged'), 'utf8')).toBe('[]');
     });
 });
 

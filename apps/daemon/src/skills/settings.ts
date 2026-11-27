@@ -33,7 +33,7 @@ export class SkillSettings {
         }
     }
 
-    /** Returns whether the setting changed. */
+    /** Returns whether the setting changed. A damaged file is kept as `skills.json.damaged` before it is replaced. */
     setEnabled(name: string, enabled: boolean, system = false): boolean {
         const settings = this.read();
         const disabled = system ? settings.systemDisabled : settings.disabled;
@@ -46,6 +46,11 @@ export class SkillSettings {
             disabled.delete(name);
         } else {
             disabled.add(name);
+        }
+
+        // A file that could not be read is kept beside the new one: it holds the person's earlier switches, which the new file does not.
+        if (settings.warning) {
+            renameSync(this.file, `${this.file}.damaged`);
         }
 
         const temp = `${this.file}.tmp`;
