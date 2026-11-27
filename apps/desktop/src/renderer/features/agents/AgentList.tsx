@@ -656,6 +656,13 @@ export function AgentList({
                     >
                         <WorktreeCardHeader
                             card={entry.card}
+                            pullRequestStatus={
+                                <BranchPullRequestBadge
+                                    branchKey={cardBranchKey(projectInfo, entry.card, histories)}
+                                    visible
+                                    crossWorktree={false}
+                                />
+                            }
                             collapsed={entry.isCollapsed}
                             activity={cardActivity(entry.card)}
                             hasDraft={draftItems.some(draft => draftCardKey(draft) === entry.card.key)}
@@ -664,7 +671,7 @@ export function AgentList({
                             onDragStart={event => order.startCard(event, entry.card.key)}
                         />
                         {entry.drafts.map(renderDraft)}
-                        {entry.rows.map(renderAgentRow)}
+                        {entry.rows.map(row => renderAgentRow(row, entry.card))}
                     </GridListSection>
                 );
             case 'empty':
@@ -683,10 +690,10 @@ export function AgentList({
         }
     };
 
-    const renderAgentRow = (row: AgentRow) => {
+    const renderAgentRow = (row: AgentRow, card?: WorktreeCard) => {
         switch (row.kind) {
             case 'chat':
-                return renderRow(row);
+                return renderRow(row, card);
             case 'subagent':
                 return renderSubagent(row);
         }
@@ -707,7 +714,7 @@ export function AgentList({
         />
     );
 
-    const renderRow = (row: ChatRow) => {
+    const renderRow = (row: ChatRow, card?: WorktreeCard) => {
         const { chat } = row;
         const run = runOf(chat);
         const busy = actions.busy(chat);
@@ -786,12 +793,19 @@ export function AgentList({
                             }
                             isOpen={menuOpenId === chat.id}
                             onOpenChange={open => setMenuOpenId(open ? chat.id : null)}
-                            branchKey={chatBranchKey(
-                                projectInfo,
-                                groupFolderOf(project.chats, folders, chat.id),
-                                chat,
-                                histories
-                            )}
+                            branchKey={
+                                card &&
+                                (chat.workspace
+                                    ? chatWorktreeKey(chat, cards) === card.key
+                                    : card.main && groupFolderOf(project.chats, folders, chat.id) === card.folder.id)
+                                    ? undefined
+                                    : chatBranchKey(
+                                          projectInfo,
+                                          chat.workspace?.folderId ?? groupFolderOf(project.chats, folders, chat.id),
+                                          chat,
+                                          histories
+                                      )
+                            }
                         />
                     )
                 }
@@ -1083,6 +1097,30 @@ function chatBranchKey(
           ? undefined
           : folder.branch;
 
+    return branch ? { projectId: info.projectId, folderId: folder.folderId, branch } : undefined;
+}
+
+/** Read the checkout itself, including cards with no chats, and never use a pending checkout's recorded branch. */
+function cardBranchKey(
+    info: ProjectInfo | undefined,
+    card: WorktreeCard,
+    histories: BranchPullRequests
+): BranchPullRequestKey | undefined {
+    const folder = info?.folders.find(folder => folder.folderId === card.folder.id);
+    if (!info || !folder?.exists || !folder.remoteUrl || card.pending) return undefined;
+    const branch = card.main
+        ? folder.detached
+            ? undefined
+            : folder.branch
+        : card.workspace
+          ? histories.workspaceHistoryBranch(
+                info.projectId,
+                card.workspace,
+                workspaceHead(card.workspace, info.workspaces)
+            )
+          : card.missing
+            ? undefined
+            : card.branch;
     return branch ? { projectId: info.projectId, folderId: folder.folderId, branch } : undefined;
 }
 
