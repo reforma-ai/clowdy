@@ -179,6 +179,11 @@ export function useChatListOrder(
         const slots = [...saved, ...cards.map(card => card.key).filter(key => !known.has(key))];
         let index = 0;
         const moved = slots.map(key => (inGroup.has(key) ? siblings[index++] : key));
+        ui.markWorktreesMoved(
+            cards
+                .filter(card => card.key === id || card.key === targetId)
+                .flatMap(card => [card.key, ...(card.orderAliases ?? [])])
+        );
         ui.setWorktreeOrder([
             ...new Set(moved.flatMap(key => [key, ...(cards.find(card => card.key === key)?.orderAliases ?? [])])),
         ]);

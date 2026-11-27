@@ -84,7 +84,8 @@ interface DraftJournal {
         chat?: Chat,
         firstMessage?: FirstMessage,
         attachments?: readonly Attachment[],
-        reply?: ReplyMessage
+        reply?: ReplyMessage,
+        workspaceOrderPath?: string
     ) => boolean;
     setAttachments?: (attachments: readonly Attachment[]) => void;
     clearRefused?: () => boolean;
@@ -477,7 +478,7 @@ export function Composer({
                     throw new Error('Could not save the pending message');
                 const create = () => perform(root, command);
                 const created = await (start.around ? start.around(create) : create());
-                const fresh = (created.ok ? created.data : {}) as { chat?: Chat };
+                const fresh = (created.ok ? created.data : {}) as { chat?: Chat; workspaceOrderPath?: string };
 
                 if (!fresh.chat) {
                     if (journal && created.requestId !== 'unsent' && journal.clearRefused?.() === false)
@@ -487,7 +488,11 @@ export function Composer({
                     return;
                 }
 
-                if (journal && !journal.set(undefined, fresh.chat)) throw new Error('Could not save the new chat');
+                if (
+                    journal &&
+                    !journal.set(undefined, fresh.chat, undefined, undefined, undefined, fresh.workspaceOrderPath)
+                )
+                    throw new Error('Could not save the new chat');
                 setMade({ chat: fresh.chat, where, key });
                 chatId = fresh.chat.id;
             }

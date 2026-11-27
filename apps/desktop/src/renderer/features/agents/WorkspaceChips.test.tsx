@@ -12,7 +12,7 @@ import {
 } from '../../daemon/fixtureData';
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { TransportError } from '../../daemon/transport';
-import { RootStore, RootStoreProvider } from '../../stores';
+import { RootStore, RootStoreProvider, UiStore } from '../../stores';
 import { currentPlace } from '../sidePanel/currentPlace';
 import { openManageWorktrees } from '../worktrees';
 import { DraftChat } from './DraftChat';
@@ -105,15 +105,17 @@ async function start({
     data = createFixtureData(),
     project = FIXTURE_PROJECT_ID,
     transport = new FixtureTransport({ data }),
+    storage = memoryStorage(),
 }: {
     data?: FixtureData;
     project?: string;
     transport?: FixtureTransport;
+    storage?: KeyValueStorage;
 } = {}) {
     act(() => root.unmount());
     store.dispose();
     root = createRoot(container);
-    store = new RootStore(transport, { storage: memoryStorage() });
+    store = new RootStore(transport, { storage });
     await store.load();
     store.selectProject(project);
     await draw(() => ui(project).openDraft());
@@ -1036,6 +1038,35 @@ describe('a folder that offers no worktree', () => {
 });
 
 describe('the first message', () => {
+    it('retains the canonical position after deletion and restart while another layout is selected', async () => {
+        const storage = memoryStorage();
+        const transport = new FixtureTransport();
+        const original = transport.command.bind(transport);
+        vi.spyOn(transport, 'command').mockImplementation(async command => {
+            if (command.type === 'chat.send') return refused;
+            const result = await original(command);
+            if (command.type === 'chat.create' && result.ok)
+                return { ...result, data: { ...(result.data as object), workspaceOrderPath: '/canonical/new-tree' } };
+            return result;
+        });
+        await start({ transport, storage });
+        ui().setChatListLayout('folder');
+        ui().setWorktreeOrder(['older']);
+        const before = new Set(store.selectedProject!.chats.keys());
+        await chooseMode('New worktree');
+        await send('Work here');
+        const chat = made(before)[0]!;
+        const canonical = worktreeKey(chat.workspace!.folderId, '/canonical/new-tree');
+        expect((await store.command({ type: 'chat.delete', chatId: chat.id })).ok).toBe(true);
+        expect(store.selectedProject!.chats.has(chat.id)).toBe(false);
+        const restored = new UiStore(storage).forProject(FIXTURE_PROJECT_ID);
+        expect(restored.worktreeOrder).toEqual([
+            canonical,
+            worktreeKey(chat.workspace!.folderId, chat.workspace!.path),
+            'older',
+        ]);
+        expect(restored.groupByWorktree).toBe(false);
+    });
     it('selects and uses a newly created worktree while the draft still has an older Git listing', async () => {
         const transport = new FixtureTransport();
         const command = vi.spyOn(transport, 'command');
@@ -1103,6 +1134,7 @@ describe('the first message', () => {
     });
 
     it('keeps a manual order made before a delayed creation response arrives', async () => {
+        const storage = memoryStorage();
         const transport = new FixtureTransport();
         const original = transport.command.bind(transport);
         let release!: () => void;
@@ -1112,10 +1144,14 @@ describe('the first message', () => {
         const before = new Set<string>();
         vi.spyOn(transport, 'command').mockImplementation(async command => {
             const result = await original(command);
-            if (command.type === 'chat.create') await gate;
+            if (command.type === 'chat.create') {
+                await gate;
+                if (result.ok)
+                    return { ...result, data: { ...(result.data as object), workspaceOrderPath: '/canonical/tree' } };
+            }
             return result;
         });
-        await start({ transport });
+        await start({ transport, storage });
         for (const id of store.selectedProject!.chats.keys()) before.add(id);
         await chooseMode('New worktree');
         await act(async () => {
@@ -1126,12 +1162,58 @@ describe('the first message', () => {
         const workspace = made(before)[0]!.workspace!;
         const pending = worktreeKey(workspace.folderId, workspace.path);
         const canonical = worktreeKey(workspace.folderId, '/canonical/tree');
-        await draw(() => ui().setWorktreeOrder(['older', canonical, pending]));
+        await draw(() => {
+            ui().setWorktreeOrder(['older', pending]);
+            ui().markWorktreesMoved([pending]);
+        });
         await act(async () => {
             release();
         });
         await settle();
-        expect(ui().worktreeOrder).toEqual(['older', canonical, pending]);
+        expect(new UiStore(storage).forProject(FIXTURE_PROJECT_ID).worktreeOrder).toEqual([
+            'older',
+            pending,
+            canonical,
+        ]);
+    });
+
+    it('orders concurrent creations by their creation when responses arrive in reverse', async () => {
+        const transport = new FixtureTransport();
+        const original = transport.command.bind(transport);
+        let release!: () => void;
+        const gate = new Promise<void>(resolve => {
+            release = resolve;
+        });
+        let first = true;
+        vi.spyOn(transport, 'command').mockImplementation(async command => {
+            const result = await original(command);
+            if (command.type === 'chat.create' && first) {
+                first = false;
+                await gate;
+            }
+            return result;
+        });
+        await start({ transport });
+        const before = new Set(store.selectedProject!.chats.keys());
+        await chooseMode('New worktree');
+        await act(async () => {
+            editor().commands.insertContent('First worktree');
+            field()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+        });
+        await vi.waitFor(() => expect(made(before)).toHaveLength(1));
+        await draw(() => ui().openDraft([], null, { mode: 'new', base: 'dev' }));
+        await settle();
+        await send('Second worktree');
+        const [older, newer] = made(before);
+        expect(newer).toBeDefined();
+        await act(async () => {
+            release();
+        });
+        await settle();
+        expect(ui().worktreeOrder).toEqual([
+            worktreeKey(newer!.workspace!.folderId, newer!.workspace!.path),
+            worktreeKey(older!.workspace!.folderId, older!.workspace!.path),
+        ]);
     });
 
     it('makes a chat in the existing worktree that was picked, sharing the worktree with the chats that have it', async () => {

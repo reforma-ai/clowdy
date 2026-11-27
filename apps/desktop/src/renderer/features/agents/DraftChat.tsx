@@ -72,10 +72,21 @@ export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
             chat?: import('@clowdy/protocol').Chat,
             firstMessage?: import('../../stores/NewChatDrafts').NewChatDraft['firstMessage'],
             attachments?: readonly import('@clowdy/protocol').Attachment[],
-            reply?: import('../../stream/MessageActions').ReplyMessage
+            reply?: import('../../stream/MessageActions').ReplyMessage,
+            workspaceOrderPath?: string
         ) => {
             const previous = ui.newChatDrafts.get(id);
-            const saved = ui.newChatDrafts.updateOperation(
+            if (
+                chat?.workspace &&
+                !previous?.createdChat &&
+                previous?.operation?.type === 'chat.create' &&
+                previous.operation.workspace?.mode === 'new'
+            ) {
+                const key = worktreeKey(chat.workspace.folderId, chat.workspace.path);
+                const canonical = worktreeKey(chat.workspace.folderId, workspaceOrderPath ?? chat.workspace.path);
+                ui.placeNewWorktree(chat.workspace.folderId, [canonical, key], chat.createdAt, chat.id);
+            }
+            return ui.newChatDrafts.updateOperation(
                 id,
                 operation as import('../../stores/NewChatDrafts').NewChatDraft['operation'],
                 chat,
@@ -83,17 +94,6 @@ export function DraftChat({ missing }: { missing: ReadonlySet<FolderId> }) {
                 attachments,
                 reply
             );
-            if (
-                saved &&
-                chat?.workspace &&
-                !previous?.createdChat &&
-                previous?.operation?.type === 'chat.create' &&
-                previous.operation.workspace?.mode === 'new'
-            ) {
-                const key = worktreeKey(chat.workspace.folderId, chat.workspace.path);
-                if (!ui.worktreeOrder.includes(key)) ui.setWorktreeOrder([key, ...ui.worktreeOrder]);
-            }
-            return saved;
         },
         setAttachments: (attachments: readonly import('@clowdy/protocol').Attachment[]) =>
             ui.newChatDrafts.updateAttachments(id, attachments),
