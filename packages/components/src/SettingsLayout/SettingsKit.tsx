@@ -2,10 +2,12 @@ import { cn } from '@clowdy/lib';
 import { type ElementType, type HTMLAttributes, type ReactNode, useId } from 'react';
 import {
     CheckboxContext,
+    NumberFieldContext,
     Provider,
     RadioGroupContext,
     SelectContext,
     SwitchContext,
+    TextAreaContext,
     TextFieldContext,
     ToggleButtonGroupContext,
 } from 'react-aria-components';
@@ -77,7 +79,10 @@ function Block({ as: Tag = 'div', className, ...props }: SettingsBlockProps) {
 export interface SettingsRowProps extends Omit<HTMLAttributes<HTMLElement>, 'title'> {
     title: ReactNode;
     description?: ReactNode;
-    /** The control, at the end of the row. A switch, checkbox, field, select, radio or toggle group in it is labelled by the title and described by the description. */
+    /**
+     * The control, at the end of the row. A switch, checkbox, text or number field, textarea, select, radio or toggle group in it is labelled by the
+     * title and described by the description.
+     */
     children?: ReactNode;
     /** The control goes under the text and takes the row's width. */
     stacked?: boolean;
@@ -134,6 +139,8 @@ function Row({
                         [SwitchContext, labelled],
                         [CheckboxContext, labelled],
                         [TextFieldContext, labelled],
+                        [NumberFieldContext, labelled],
+                        [TextAreaContext, labelled],
                         [SelectContext, labelled],
                         [RadioGroupContext, labelled],
                         [ToggleButtonGroupContext, labelled],

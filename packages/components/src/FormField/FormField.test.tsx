@@ -65,4 +65,18 @@ describe('SettingsLayout.Row', () => {
             'Keep the Mac awake while agents work',
         ]);
     });
+
+    it('names a textarea by the title', () => {
+        act(() =>
+            root.render(
+                <SettingsLayout.Row title="Environment" stacked>
+                    <Textarea />
+                </SettingsLayout.Row>
+            )
+        );
+
+        const textarea = container.querySelector('textarea')!;
+
+        expect(document.getElementById(textarea.getAttribute('aria-labelledby')!)?.textContent).toBe('Environment');
+    });
 });

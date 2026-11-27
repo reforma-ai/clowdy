@@ -85,6 +85,17 @@ describe('a form dialog', () => {
         expect(document.activeElement).toBe(button('Create'));
     });
 
+    it('leaves the focus on a control that takes Tab for itself', async () => {
+        await open();
+        // An editor that indents on Tab handles the key before it reaches the modal.
+        button('Create').addEventListener('keydown', event => event.preventDefault());
+        button('Create').focus();
+
+        await press('Tab');
+
+        expect(document.activeElement).toBe(button('Create'));
+    });
+
     it('stays open on Escape while it is not dismissable', async () => {
         const modal = await open();
         modal.setDismissable(false);

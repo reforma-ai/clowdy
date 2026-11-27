@@ -183,7 +183,7 @@ export function Button(props: ButtonProps) {
                 <span
                     className={styles.unavailable}
                     role="button"
-                    tabIndex={0}
+                    tabIndex={tabIndex === -1 || buttonStateProps.excludeFromTabOrder ? -1 : 0}
                     aria-disabled="true"
                     aria-label={restProps['aria-label'] ?? (typeof children === 'string' ? children : undefined)}
                     data-full-width={fullWidth || undefined}

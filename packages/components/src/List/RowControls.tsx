@@ -4,16 +4,8 @@ import { Button, type ButtonProps } from '../Button';
 
 import type { HTMLAttributes, ReactNode, SyntheticEvent } from 'react';
 
-const stop = (event: SyntheticEvent) => event.stopPropagation();
-
 /** The events a row's own controls must not pass up: React Aria rows take the clicks, keys and menus of their React children as their own. */
-const ownEvents = {
-    onClick: stop,
-    onDoubleClick: stop,
-    onPointerDown: stop,
-    onKeyDown: stop,
-    onContextMenu: stop,
-};
+const OWN_EVENTS = ['onClick', 'onDoubleClick', 'onPointerDown', 'onKeyDown', 'onContextMenu'] as const;
 
 /**
  * A span around the buttons inside a list or grid row (`GridListItem`, `ListBoxItem`, a table cell): a press, a double click, a key or a right click
@@ -24,6 +16,18 @@ export function RowControls({
     children,
     ...props
 }: HTMLAttributes<HTMLSpanElement> & { children: ReactNode }) {
+    const ownEvents: HTMLAttributes<HTMLSpanElement> = {};
+
+    // A handler the caller passes still runs; only the event's way up to the row is cut.
+    for (const name of OWN_EVENTS) {
+        const handler = props[name] as ((event: SyntheticEvent) => void) | undefined;
+
+        ownEvents[name] = (event: SyntheticEvent) => {
+            handler?.(event);
+            event.stopPropagation();
+        };
+    }
+
     return (
         <span {...props} {...ownEvents} className={cn('inline-flex items-center', className)}>
             {children}
