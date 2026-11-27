@@ -4,6 +4,7 @@ import { Checkbox } from '@clowdy/components/Checkbox';
 import { openConfirmModal } from '@clowdy/components/modals';
 import { Text } from '@clowdy/components/Text';
 import { toast } from '@clowdy/components/Toast';
+import { ArrowLeft } from '@clowdy/icons/14';
 import { errorMessage } from '@clowdy/lib';
 import { useEffect, useState } from 'react';
 
@@ -50,7 +51,7 @@ export function TidyWorktreesMode({
     reload,
 }: {
     projectId: ProjectId;
-    onCancel: () => void;
+    onCancel: (restoreFocus?: boolean) => void;
     reload: () => Promise<void>;
 }) {
     const root = useRootStore();
@@ -316,14 +317,21 @@ export function TidyWorktreesMode({
                     Also delete merged branches
                 </Checkbox>
             )}
-            <Box direction="row" gap="sm">
-                <Button variant="bordered" onPress={onCancel}>
-                    Cancel
+            <div className={styles.footer}>
+                <Button
+                    variant="bordered"
+                    iconOnly
+                    autoFocus
+                    aria-label="Back to worktrees"
+                    tooltip="Back"
+                    onPress={() => onCancel(true)}
+                >
+                    <ArrowLeft />
                 </Button>
-                <Button color="danger" isDisabled={!selected.size} onPress={remove}>
+                <Button color="danger" fullWidth isDisabled={!selected.size} onPress={remove}>
                     Remove {selected.size} {selected.size === 1 ? 'worktree' : 'worktrees'}…
                 </Button>
-            </Box>
+            </div>
         </div>
     );
 }

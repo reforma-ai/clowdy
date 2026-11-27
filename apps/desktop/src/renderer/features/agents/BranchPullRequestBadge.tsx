@@ -7,11 +7,14 @@ export function BranchPullRequestBadge({
     branchKey,
     visible,
     crossWorktree,
+    hoverOnly = false,
     className,
 }: {
     branchKey?: BranchPullRequestKey;
     visible: boolean;
     crossWorktree: boolean;
+    /** Show alongside row actions when another status takes its idle position. */
+    hoverOnly?: boolean;
     /** The room the row gives it, and the colours of its states (`data-pr-state`, `data-stale`). */
     className?: string;
 }) {
@@ -20,7 +23,13 @@ export function BranchPullRequestBadge({
     if (!visible) return null;
     if (pullRequests.length === 0)
         return crossWorktree ? (
-            <span className={className} role="img" aria-label="Different worktree" title="Different worktree">
+            <span
+                className={className}
+                data-hover-only={hoverOnly || undefined}
+                role="img"
+                aria-label="Thread works in a different worktree"
+                title="Thread works in a different worktree"
+            >
                 <Split aria-hidden="true" />
             </span>
         ) : null;
@@ -36,11 +45,12 @@ export function BranchPullRequestBadge({
             return count ? [`${count} ${state}`] : [];
         })
         .join(', ');
-    const label = `${pullRequests.length} pull request${pullRequests.length === 1 ? '' : 's'}: ${detail}${fact?.stale ? ' (last known)' : ''}`;
+    const label = `${crossWorktree ? 'Thread works in a different worktree; ' : ''}${pullRequests.length} pull request${pullRequests.length === 1 ? '' : 's'}: ${detail}${fact?.stale ? ' (last known)' : ''}`;
 
     return (
         <span
             className={className}
+            data-hover-only={hoverOnly || undefined}
             data-pr-state={state}
             data-stale={fact?.stale || undefined}
             role="img"

@@ -3171,7 +3171,7 @@ describe('worktree cards', () => {
         ).toBe(cards[1]);
     });
 
-    it('keeps cross-worktree threads below their root and only shows the place indicator without another status', async () => {
+    it('keeps cross-worktree indicators available beside actions when another status occupies the idle position', async () => {
         await restart();
         const workspace = project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
         await draw(() => {
@@ -3184,14 +3184,19 @@ describe('worktree cards', () => {
         expect(
             ['c-6', 'c-6a', 'c-6b', 'c-6c'].map(id => [
                 rowOf(id).closest('[data-worktree-card]')?.getAttribute('data-worktree-card'),
-                rowOf(id).querySelector('[aria-label="Different worktree"]') !== null,
+                rowOf(id)
+                    .querySelector('[aria-label="Thread works in a different worktree"]')
+                    ?.getAttribute('data-hover-only') ?? null,
             ])
         ).toEqual([
-            [workspaceKey(), false],
-            [workspaceKey(), false],
-            [workspaceKey(), true],
-            [workspaceKey(), false],
+            [workspaceKey(), null],
+            [workspaceKey(), 'true'],
+            [workspaceKey(), null],
+            [workspaceKey(), 'true'],
         ]);
+        expect(
+            rowOf('c-6b').querySelector('[aria-label="Thread works in a different worktree"]')?.getAttribute('title')
+        ).toBe('Thread works in a different worktree');
     });
 
     it('shows a thread’s pull request from its own folder inside its ancestor’s worktree card', async () => {
@@ -3231,6 +3236,9 @@ describe('worktree cards', () => {
         await vi.waitFor(() =>
             expect(rowOf('c-6b').querySelector('[data-pr-state]')?.getAttribute('data-pr-state')).toBe('open')
         );
+        const badge = rowOf('c-6b').querySelector('[data-pr-state]')!;
+        expect(badge.getAttribute('title')).toBe('Thread works in a different worktree; 1 pull request: 1 open');
+        expect(badge.getAttribute('aria-label')).toBe(badge.getAttribute('title'));
         expect(rowOf('c-6b').closest('[data-worktree-card]')?.getAttribute('data-worktree-card')).toBe(workspaceKey());
     });
 
@@ -3244,7 +3252,7 @@ describe('worktree cards', () => {
             ui().openChat('c-6a1');
         });
         await draw();
-        expect(rowOf('c-6a1').querySelector('[aria-label="Different worktree"]')).toBeNull();
+        expect(rowOf('c-6a1').querySelector('[aria-label="Thread works in a different worktree"]')).toBeNull();
         expect(rowOf(workspaceKey()).querySelector('[aria-label="Chats working"]')).toBeNull();
         await arrow(workspaceKey(), 'ArrowLeft');
         await draw();
@@ -3257,7 +3265,7 @@ describe('worktree cards', () => {
             const { workspace: _, ...chat } = project().chats.get('c-6a1')!;
             project().chats.set(chat.id, chat);
         });
-        expect(rowOf('c-6a1').querySelector('[aria-label="Different worktree"]')).not.toBeNull();
+        expect(rowOf('c-6a1').querySelector('[aria-label="Thread works in a different worktree"]')).not.toBeNull();
     });
 
     it('shows a waiting indicator on a collapsed worktree and hides it when expanded', async () => {

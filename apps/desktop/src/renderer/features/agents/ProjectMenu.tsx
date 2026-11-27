@@ -147,7 +147,7 @@ export function ProjectMenu() {
                                         stacked
                                         description={
                                             <span className={styles.description}>
-                                                Shows worktrees without a main chat in the list
+                                                Shows worktrees without chats in the list
                                             </span>
                                         }
                                         shouldCloseOnSelect={false}

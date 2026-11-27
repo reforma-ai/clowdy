@@ -73,6 +73,7 @@
 
 .pullRequests {
     color: var(--color-secondary-muted-text);
+    pointer-events: auto;
 }
 
 .pullRequests[data-pr-state='open'] > svg {
@@ -125,7 +126,13 @@
 }
 
 :is(.chatRow, .archivable):is(:hover, :focus-visible, :has(.rowAction:focus), [data-hovered], [data-open])
-    :is(.archiveStatus, .pullRequests) {
+    .archiveStatus {
+    display: none;
+}
+
+/* A row's activity dot keeps the idle position; the place or PR is available beside the actions. */
+.chatRow:not(:is(:hover, :focus-visible, :has(.rowAction:focus), [data-hovered], [data-open]))
+    .pullRequests[data-hover-only] {
     display: none;
 }
 
@@ -251,7 +258,7 @@
     pointer-events: none;
 }
 
-.worktreeHeader:is(:hover, :focus-within, [data-open]) :is(.worktreeStatus, .pullRequests) {
+.worktreeHeader:is(:hover, :focus-within, [data-open]) .worktreeStatus {
     display: none;
 }
 
