@@ -12,7 +12,7 @@ import styles from './ProjectMenu.module.css';
 const layouts = [
     { id: 'simple', label: 'Simple list' },
     { id: 'folder', label: 'By folder' },
-    { id: 'worktree', label: 'By folder and worktree' },
+    { id: 'worktree', label: 'By worktree' },
 ] as const;
 
 /** Project actions and the display options for its chat list. */

@@ -1,4 +1,4 @@
-import { GridListItem, RowActionButton, RowControls } from '@clowdy/components/List';
+import { RowActionButton, RowControls } from '@clowdy/components/List';
 import { Popover, PopoverTrigger, useContextMenu } from '@clowdy/components/Popover';
 import { toast } from '@clowdy/components/Toast';
 import { More, NewChat, Split, Version } from '@clowdy/icons/14';
@@ -12,11 +12,12 @@ import { gitFactsOf } from '../changes/gitFacts';
 import { OpenWithMenu, useFolderGit } from '../openWith';
 import { worktreeMenuExtras } from '../worktrees/worktreeMenuExtras';
 import styles from './AgentList.module.css';
-import { RowFold } from './RowFold';
+import { GroupFolderName } from './GroupFolderName';
+import { GroupHeader } from './GroupHeader';
 import { samePath, worktreeLabel } from './workspaceChoice';
 
 import type { ChatWorkspace } from '@clowdy/protocol';
-import type { DragEvent, ReactNode } from 'react';
+import type { DragEvent, MouseEvent, ReactNode } from 'react';
 import type { ThreadsActivity } from './agentTree';
 import type { WorktreeCard } from './worktreeCards';
 
@@ -27,19 +28,15 @@ export function WorktreeCardHeader({
     pullRequestStatus,
     collapsed,
     activity,
-    showFolder,
     onToggle,
     onDragStart,
-    hasDraft = false,
 }: {
     card: WorktreeCard;
     pullRequestStatus?: ReactNode;
     collapsed: boolean;
     activity?: ThreadsActivity;
-    showFolder: boolean;
     onToggle: () => void;
     onDragStart: (event: DragEvent<HTMLElement>) => void;
-    hasDraft?: boolean;
 }) {
     const project = useProjectState();
     const ui = useProjectUi();
@@ -94,42 +91,57 @@ export function WorktreeCardHeader({
             card.folder.id === mainFolder(project.project).id ? null : card.folder.id,
             card.main ? null : { mode: 'existing', path: card.path }
         );
-    const title = [showFolder ? card.folderName : undefined, card.main ? 'Main worktree' : worktreeLabel(card)]
-        .filter(Boolean)
-        .join(', ');
+    const title = card.main ? card.folderName : `${card.folderName}/${worktreeLabel(card)}`;
     const tooltip = card.pending ? 'Worktree not prepared yet' : card.missing ? 'Worktree no longer exists' : undefined;
-    const icon = card.main ? <Version /> : <Split />;
+    const openContextMenu = (event: MouseEvent) => {
+        event.stopPropagation();
+        openingPicker.current = false;
+        previewGeneration++;
+        closePicker();
+        contextMenu.areaProps.onContextMenu(event);
+    };
     return (
-        <GridListItem
+        <GroupHeader
             id={card.key}
             text={title}
-            icon={
-                card.roots.length > 0 || hasDraft ? (
-                    <RowFold
-                        label={`${collapsed ? 'Expand' : 'Collapse'} ${title}`}
-                        isExpanded={!collapsed}
-                        icon={icon}
-                        onToggle={onToggle}
-                        revealOnFocus
-                    />
+            collapsed={collapsed}
+            onToggle={onToggle}
+            name={
+                card.main ? (
+                    <GroupFolderName name={title} folder={card.folder} missing={card.missing} onNewChat={newChat} />
                 ) : (
-                    icon
+                    <span
+                        className={styles.worktreeTitle}
+                        draggable
+                        onDragStart={onDragStart}
+                        onContextMenu={openContextMenu}
+                        title={tooltip}
+                    >
+                        <Split aria-hidden="true" />
+                        <span className={styles.title}>{title}</span>
+                    </span>
                 )
             }
             className={styles.worktreeHeader}
-            plateless
             data-missing={card.missing || undefined}
             data-pending={card.pending || undefined}
             data-open={menuOpen || contextMenu.isOpen || undefined}
-            onContextMenu={event => {
-                event.stopPropagation();
-                openingPicker.current = false;
-                previewGeneration++;
-                closePicker();
-                contextMenu.areaProps.onContextMenu(event);
-            }}
+            onContextMenu={openContextMenu}
             endAffix={
                 <RowControls className={styles.worktreeActions}>
+                    {contextMenu.isOpen && (
+                        <Popover {...contextMenu.popoverProps} placement="bottom start" spacing="xs">
+                            <WorktreeCardMenu
+                                card={card}
+                                onClose={contextMenu.close}
+                                onNewChat={newChat}
+                                onSwitch={() => {
+                                    setMenuOpen(true);
+                                    void switchBranch(true);
+                                }}
+                            />
+                        </Popover>
+                    )}
                     {collapsed && activity && (
                         <span
                             className={styles.worktreeStatus}
@@ -188,26 +200,7 @@ export function WorktreeCardHeader({
                     </span>
                 </RowControls>
             }
-        >
-            <span className={styles.worktreeTitle}>
-                <span className={styles.title} draggable onDragStart={onDragStart} title={tooltip}>
-                    {title}
-                </span>
-                {contextMenu.isOpen && (
-                    <Popover {...contextMenu.popoverProps} placement="bottom start" spacing="xs">
-                        <WorktreeCardMenu
-                            card={card}
-                            onClose={contextMenu.close}
-                            onNewChat={newChat}
-                            onSwitch={() => {
-                                setMenuOpen(true);
-                                void switchBranch(true);
-                            }}
-                        />
-                    </Popover>
-                )}
-            </span>
-        </GridListItem>
+        />
     );
 }
 

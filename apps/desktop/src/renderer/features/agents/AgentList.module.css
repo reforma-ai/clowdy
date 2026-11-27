@@ -217,16 +217,7 @@
 
 .worktreeCard {
     position: relative;
-    background: var(--color-secondary-muted-light);
-    border-radius: calc(var(--radius-lg) * var(--squircle-radius-factor));
-    corner-shape: superellipse(var(--squircle-value));
-    padding: var(--spacing-4);
-    margin-block: var(--spacing-2);
     gap: 0;
-}
-
-.worktreeCard + .worktreeCard {
-    margin-block-start: var(--spacing-2);
 }
 
 .worktreeHeader {
@@ -255,7 +246,7 @@
 }
 
 /* Keep tooltip anchors measurable while the actions are hidden. */
-.worktreeCard:not(:is(:hover, :focus-within, :has(.worktreeHeader[data-open]))) .worktreeActionButtons {
+.worktreeHeader:not(:is(:hover, :focus-within, [data-open])) .worktreeActionButtons {
     position: absolute;
     inset-inline-end: 0;
     top: 50%;
@@ -264,9 +255,7 @@
     pointer-events: none;
 }
 
-.worktreeCard:is(:hover, :focus-within, :has(.worktreeHeader[data-open]))
-    .worktreeHeader
-    :is(.worktreeStatus, .pullRequests) {
+.worktreeHeader:is(:hover, :focus-within, [data-open]) :is(.worktreeStatus, .pullRequests) {
     display: none;
 }
 
@@ -280,6 +269,7 @@
 }
 
 .worktreeTitle {
+    padding-inline-start: calc(var(--spacing-8) + 1px);
     display: flex;
     align-items: center;
     gap: var(--spacing-2);
