@@ -18,7 +18,7 @@ import { openManageWorktrees } from '../worktrees';
 import { DraftChat } from './DraftChat';
 import { worktreeKey } from './worktreeCards';
 
-import type { Chat, CommandResult, CreatedWorktree, FolderGit } from '@clowdy/protocol';
+import type { Chat, CommandResult, CreatedWorktree, FolderGit, FolderWorktrees } from '@clowdy/protocol';
 import type { Editor } from '@tiptap/core';
 import type { KeyValueStorage } from '../../stores/storage';
 
@@ -48,13 +48,14 @@ let container: HTMLDivElement;
 let root: Root;
 let store: RootStore;
 let missingFolders = new Set<string>();
+let sidebarWorktrees: readonly FolderWorktrees[] | undefined;
 
 const ui = (projectId = FIXTURE_PROJECT_ID) => store.ui.forProject(projectId);
 // The test build has no MobX observer plugin, so the page is drawn again by hand after a change, as the observer does in the app.
 const render = () =>
     root.render(
         <RootStoreProvider value={store}>
-            <DraftChat missing={missingFolders} />
+            <DraftChat missing={missingFolders} sidebarWorktrees={sidebarWorktrees} />
         </RootStoreProvider>
     );
 const settle = () =>
@@ -173,6 +174,7 @@ const made = (before: ReadonlySet<string>): Chat[] =>
 
 beforeEach(async () => {
     missingFolders = new Set();
+    sidebarWorktrees = undefined;
     container = document.createElement('div');
     document.body.append(container);
     root = createRoot(container);
@@ -664,6 +666,114 @@ describe('Existing worktrees', () => {
                 'worktree-agent-a1Worktree',
                 'worktree-agent-a2Worktree',
             ]);
+        });
+
+        it('follows sidebar order among visible worktrees before hidden ones', async () => {
+            const data = withFixtureWorkspace(createFixtureData());
+            const existing = data.chats.find(chat => chat.workspace)!;
+            data.chats.push({
+                ...structuredClone(existing),
+                id: 'c-second-worktree',
+                workspace: { ...existing.workspace!, id: 'w-second', path: '/Users/dev/trees/stale-one' },
+            });
+            await start({ data, transport: withThree(data) });
+            await draw(() =>
+                ui().setWorktreeOrder([
+                    worktreeKey('fld_car_rental', '/Users/dev/trees/stale-two'),
+                    worktreeKey('fld_car_rental', WORKTREE),
+                    worktreeKey('fld_car_rental', '/Users/dev/trees/stale-one'),
+                ])
+            );
+            await openWorktrees();
+
+            expect(worktreeRows().map(row => row.textContent)).toEqual([
+                'clowdy/ab12cd34Worktree used in 1 chat',
+                'worktree-agent-a1Worktree used in 1 chat',
+                'worktree-agent-a2Worktree',
+            ]);
+        });
+
+        it('uses the sidebar canonical path and saved alias to order visible worktrees', async () => {
+            const data = withFixtureWorkspace(createFixtureData());
+            const existing = data.chats.find(chat => chat.workspace)!;
+            const alias = '/Users/dev/trees/pending-two';
+            const second = structuredClone(existing);
+            second.id = 'c-alias';
+            second.workspace = { ...second.workspace!, id: 'w-alias', path: alias };
+            data.chats.push(second);
+            sidebarWorktrees = [
+                {
+                    folderId: 'fld_car_rental',
+                    name: 'car-rental',
+                    isRepository: true,
+                    worktrees: [
+                        {
+                            path: '/Users/dev/trees/stale-two',
+                            branch: 'worktree-agent-a2',
+                            head: 'd1',
+                            main: false,
+                            missing: false,
+                            changes: 0,
+                            submodules: false,
+                            managed: true,
+                            workspaceId: 'w-alias',
+                            chats: [],
+                        },
+                    ],
+                },
+            ];
+            await start({ data, transport: withThree(data) });
+            await draw(() =>
+                ui().setWorktreeOrder([worktreeKey('fld_car_rental', alias), worktreeKey('fld_car_rental', WORKTREE)])
+            );
+            await openWorktrees();
+
+            expect(worktreeRows().map(row => row.textContent?.split('Worktree')[0])).toEqual([
+                'worktree-agent-a2',
+                'clowdy/ab12cd34',
+                'worktree-agent-a1',
+            ]);
+        });
+
+        it('keeps hidden worktrees in saved order after visible ones', async () => {
+            const data = withFixtureWorkspace(createFixtureData());
+            await start({ data, transport: withThree(data) });
+            await draw(() =>
+                ui().setWorktreeOrder([
+                    worktreeKey('fld_car_rental', '/Users/dev/trees/stale-two'),
+                    worktreeKey('fld_car_rental', '/Users/dev/trees/stale-one'),
+                ])
+            );
+            await openWorktrees();
+
+            expect(worktreeRows().map(row => row.textContent?.split('Worktree')[0])).toEqual([
+                'clowdy/ab12cd34',
+                'worktree-agent-a2',
+                'worktree-agent-a1',
+            ]);
+        });
+
+        it('treats every worktree as hidden when sidebar grouping is off', async () => {
+            const data = withFixtureWorkspace(createFixtureData());
+            await start({ data, transport: withThree(data) });
+            await draw(() => ui().setChatListLayout('folder'));
+            await openWorktrees();
+
+            expect(worktreeRows().map(row => row.textContent?.split('Worktree')[0])).toEqual([
+                'worktree-agent-a1',
+                'clowdy/ab12cd34',
+                'worktree-agent-a2',
+            ]);
+        });
+
+        it('treats a draft in an existing worktree as visible', async () => {
+            const data = createFixtureData();
+            await start({ data, transport: withThree(data) });
+            await draw(() => ui().openDraft([], null, { mode: 'existing', path: '/Users/dev/trees/stale-two' }));
+            await settle();
+            await openWorktrees();
+
+            expect(worktreeRows()[0].textContent).toContain('worktree-agent-a2');
         });
 
         it('have no heading when none are in use', async () => {

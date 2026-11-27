@@ -3083,8 +3083,10 @@ describe('worktree cards', () => {
         await act(async () => window.dispatchEvent(new Event('focus')));
         expect(read).not.toHaveBeenCalled();
         await draw(() => ui().setGroupByWorktree(true));
-        expect(read).toHaveBeenCalledWith(FIXTURE_PROJECT_ID);
+        expect(read).toHaveBeenCalledExactlyOnceWith(FIXTURE_PROJECT_ID);
         read.mockClear();
+        await draw(() => ui().openDraft());
+        expect(read).not.toHaveBeenCalled();
         await act(async () => window.dispatchEvent(new Event('focus')));
         expect(read).toHaveBeenCalledWith(FIXTURE_PROJECT_ID);
         read.mockClear();
