@@ -1,7 +1,7 @@
 import { Button } from '@clowdy/components/Button';
+import { Chip } from '@clowdy/components/Chip';
 import { openConfirmModal } from '@clowdy/components/modals';
 import { SettingsLayout } from '@clowdy/components/SettingsLayout';
-import { Badge } from '@clowdy/components/Tag';
 import { Text } from '@clowdy/components/Text';
 import { useCallback, useEffect, useState } from 'react';
 
@@ -121,9 +121,9 @@ export function RecommendedSkill({ onInstalled, revision }: { onInstalled: () =>
                     <div className={styles.body}>
                         <div className={styles.heading}>
                             <Text weight="medium">Briefback</Text>
-                            <Badge size="xs" color="secondary" textValue={label} data-testid="briefback-status">
+                            <Chip size="xs" data-testid="briefback-status">
                                 {label}
-                            </Badge>
+                            </Chip>
                         </div>
                         <Text variant="sm" color="secondary">
                             A workflow for researching, planning, building and reviewing software
