@@ -21,9 +21,10 @@ export class TtlCache<V> {
 
     /** The value kept for `key`, else what `load` finds, loaded once for everyone who asks meanwhile. */
     get(key: string, load: () => Promise<Loaded<V>>): Promise<V> {
-        const kept = this.peek(key);
+        const kept = this.#fresh(key);
 
-        if (kept !== undefined) return Promise.resolve(kept);
+        // The entry, not its value: a value that is `undefined` (no `gh` found) is kept as any other.
+        if (kept) return Promise.resolve(kept.value);
 
         let pending = this.#pending.get(key);
 
@@ -43,15 +44,7 @@ export class TtlCache<V> {
 
     /** The value kept for `key`, if it is still good. */
     peek(key: string): V | undefined {
-        const kept = this.#kept.get(key);
-
-        if (kept === undefined) return undefined;
-
-        if (kept.until > this.#now()) return kept.value;
-
-        this.#kept.delete(key);
-
-        return undefined;
+        return this.#fresh(key)?.value;
     }
 
     set(key: string, value: V, keepMs: number): void {
@@ -64,5 +57,18 @@ export class TtlCache<V> {
 
     delete(key: string): void {
         this.#kept.delete(key);
+    }
+
+    /** The entry kept for `key` while it is good; one that has run out is dropped. */
+    #fresh(key: string): { value: V; until: number } | undefined {
+        const kept = this.#kept.get(key);
+
+        if (kept === undefined) return undefined;
+
+        if (kept.until > this.#now()) return kept;
+
+        this.#kept.delete(key);
+
+        return undefined;
     }
 }
