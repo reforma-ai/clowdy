@@ -46,7 +46,7 @@ function references(content: string): string[] {
     return [...content.matchAll(/\]\((references\/[a-zA-Z0-9._/-]+)\)/g)].map(match => match[1]!);
 }
 
-/** Captures the entire tree without following links, including invalid or partial copies. */
+/** Captures each entry and, for a linked skill directory, its resolved contents without following nested links. */
 export function briefbackStatus(roots: readonly string[]): BriefbackStatus {
     const hash = createHash('sha256');
     const copies = roots.map(root => {
@@ -60,11 +60,30 @@ export function briefbackStatus(roots: readonly string[]): BriefbackStatus {
                 for (const name of readdirSync(path).sort()) walk(join(path, name), `${relative}/${name}`);
             }
         }
-        if (entry) walk(target, '');
-        else hash.update('missing\0');
+        let directory = entry?.isDirectory() ? target : undefined;
+        if (entry) {
+            walk(target, '');
+            if (entry.isSymbolicLink()) {
+                try {
+                    const resolved = realpathSync(target);
+                    hash.update(`resolved:${resolved}\0`);
+                    const resolvedEntry = lstatSync(resolved);
+                    if (resolvedEntry.isDirectory()) {
+                        directory = resolved;
+                        walk(resolved, 'linked');
+                    } else {
+                        hash.update('not-directory\0');
+                    }
+                } catch (error) {
+                    if (!['ENOENT', 'ENOTDIR', 'ELOOP'].includes((error as NodeJS.ErrnoException).code ?? ''))
+                        throw error;
+                    hash.update('unresolved\0');
+                }
+            }
+        } else hash.update('missing\0');
         let installed = false;
-        if (entry?.isDirectory()) {
-            const file = join(target, 'SKILL.md');
+        if (directory) {
+            const file = join(directory, 'SKILL.md');
             const skillFile = maybeStat(file);
             if (skillFile?.isFile()) {
                 const content = readFileSync(file, 'utf8');
@@ -73,7 +92,7 @@ export function briefbackStatus(roots: readonly string[]): BriefbackStatus {
                     references(content).every(reference => {
                         const parts = reference.split('/');
                         if (parts.some(part => part === '..' || part === '.')) return false;
-                        let path = target;
+                        let path = directory;
                         return parts.every((part, index) => {
                             path = join(path, part);
                             const stat = maybeStat(path);

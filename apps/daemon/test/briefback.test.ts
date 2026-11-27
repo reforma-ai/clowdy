@@ -1,5 +1,15 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+    lstatSync,
+    mkdirSync,
+    mkdtempSync,
+    readFileSync,
+    readlinkSync,
+    rmSync,
+    symlinkSync,
+    unlinkSync,
+    writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -291,5 +301,120 @@ describe('Briefback update check', () => {
         } finally {
             globalThis.fetch = original;
         }
+    });
+});
+
+describe('symlinked Briefback installations', () => {
+    test('recognizes linked directories while leaving their update status unknown', async () => {
+        const { roots, source } = setup();
+        for (const root of roots) {
+            mkdirSync(root, { recursive: true });
+            symlinkSync(source, join(root, 'briefback'), 'dir');
+        }
+        const status = briefbackStatus(roots);
+        expect(status.copies).toEqual([
+            { exists: true, installed: true },
+            { exists: true, installed: true },
+        ]);
+        expect(await checkBriefbackUpdate(roots, status.fingerprint)).toBe('unknown');
+    });
+
+    test('detects changes to a linked skill after confirmation', async () => {
+        const { roots, source } = setup();
+        mkdirSync(roots[0]!, { recursive: true });
+        symlinkSync(source, join(roots[0]!, 'briefback'), 'dir');
+        const status = briefbackStatus(roots);
+        writeFileSync(join(source, 'references', 'review.md'), 'Changed');
+        expect(briefbackStatus(roots).fingerprint).not.toBe(status.fingerprint);
+        await expect(installBriefback(roots, status.fingerprint, { source })).rejects.toMatchObject({
+            code: 'conflict',
+        });
+        expect(readFileSync(join(source, 'references', 'review.md'), 'utf8')).toBe('Changed');
+    });
+
+    test('detects a broken link becoming valid before installation', async () => {
+        const { roots, source } = setup();
+        const target = join(roots[0]!, 'missing');
+        mkdirSync(roots[0]!, { recursive: true });
+        symlinkSync(target, join(roots[0]!, 'briefback'), 'dir');
+        const status = briefbackStatus(roots);
+        expect(status.copies[0]).toEqual({ exists: true, installed: false });
+        mkdirSync(target);
+        writeFileSync(join(target, 'SKILL.md'), '---\nname: briefback\ndescription: A workflow\n---\n');
+        expect(briefbackStatus(roots).copies[0]).toEqual({ exists: true, installed: true });
+        await expect(installBriefback(roots, status.fingerprint, { source })).rejects.toMatchObject({
+            code: 'conflict',
+        });
+        expect(readFileSync(join(target, 'SKILL.md'), 'utf8')).toContain('A workflow');
+    });
+
+    test('replaces only the confirmed link and preserves its target', async () => {
+        const { roots, source } = setup();
+        const external = join(source, 'references', 'review.md');
+        mkdirSync(roots[0]!, { recursive: true });
+        symlinkSync(source, join(roots[0]!, 'briefback'), 'dir');
+        const status = briefbackStatus(roots);
+        await installBriefback(roots, status.fingerprint, { source });
+        expect(briefbackStatus(roots).copies).toEqual([
+            { exists: true, installed: true },
+            { exists: true, installed: true },
+        ]);
+        expect(lstatSync(join(roots[0]!, 'briefback')).isSymbolicLink()).toBe(false);
+        expect(readFileSync(external, 'utf8')).toBe('Review');
+        expect(readFileSync(join(source, 'SKILL.md'), 'utf8')).toContain('A workflow');
+    });
+    test('restores a relative link after a later destination changes', async () => {
+        const { roots, source } = setup();
+        mkdirSync(roots[0]!, { recursive: true });
+        symlinkSync('../../source', join(roots[0]!, 'briefback'), 'dir');
+        const status = briefbackStatus(roots);
+        await expect(
+            installBriefback(roots, status.fingerprint, {
+                source,
+                onCopyInstalled(index) {
+                    if (index === 0) mkdirSync(join(roots[1]!, 'briefback'));
+                },
+            })
+        ).rejects.toMatchObject({ code: 'conflict' });
+        expect(readlinkSync(join(roots[0]!, 'briefback'))).toBe('../../source');
+        expect(readFileSync(join(roots[0]!, 'briefback', 'references', 'review.md'), 'utf8')).toBe('Review');
+        expect(readFileSync(join(source, 'references', 'review.md'), 'utf8')).toBe('Review');
+    });
+
+    test('does not replace a link retargeted after confirmation', async () => {
+        const { roots, source } = setup();
+        mkdirSync(roots[0]!, { recursive: true });
+        const link = join(roots[0]!, 'briefback');
+        symlinkSync(source, link, 'dir');
+        const status = briefbackStatus(roots);
+        unlinkSync(link);
+        symlinkSync('../elsewhere', link, 'dir');
+        await expect(installBriefback(roots, status.fingerprint, { source })).rejects.toMatchObject({
+            code: 'conflict',
+        });
+        expect(readlinkSync(link)).toBe('../elsewhere');
+        expect(readFileSync(join(source, 'references', 'review.md'), 'utf8')).toBe('Review');
+    });
+
+    test('can replace a broken link without touching its absent target', async () => {
+        const { roots, source } = setup();
+        mkdirSync(roots[0]!, { recursive: true });
+        const link = join(roots[0]!, 'briefback');
+        symlinkSync('../missing', link, 'dir');
+        const status = briefbackStatus(roots);
+        await installBriefback(roots, status.fingerprint, { source });
+        expect(lstatSync(link).isDirectory()).toBe(true);
+        expect(briefbackStatus(roots).copies).toEqual([
+            { exists: true, installed: true },
+            { exists: true, installed: true },
+        ]);
+        expect(() => lstatSync(join(roots[0]!, '..', 'missing'))).toThrow();
+    });
+
+    test('reports a cyclic link as present but not installed', () => {
+        const { roots } = setup();
+        mkdirSync(roots[0]!, { recursive: true });
+        symlinkSync('briefback', join(roots[0]!, 'briefback'), 'dir');
+        expect(briefbackStatus(roots).copies[0]).toEqual({ exists: true, installed: false });
     });
 });
