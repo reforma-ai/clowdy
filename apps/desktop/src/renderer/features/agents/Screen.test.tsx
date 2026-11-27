@@ -2821,6 +2821,36 @@ describe('worktree cards', () => {
         expect([ui().sidePanelOpen, ui().sidePanelPlace]).toEqual([false, null]);
     });
 
+    it('shows archived chat counts alongside active chats in the same worktree', async () => {
+        await restart(withFixtureWorktrees(createFixtureData()));
+        await draw(() => ui().setGroupByWorktree(true));
+        const key = workspaceKey();
+        await vi.waitFor(() => expect(rowOf(key)).toBeTruthy());
+        const card = rowOf(key).closest<HTMLElement>('[data-worktree-card]')!;
+        expect(card.textContent).toContain('1 archived chat');
+        expect(card.textContent).toContain('Weekend surcharge in a worktree');
+    });
+
+    it('shows archived chat counts for a worktree with no active chats', async () => {
+        const data = withFixtureWorktrees(createFixtureData());
+        data.chats.find(chat => chat.id === FIXTURE_WORKSPACE_CHAT_ID)!.archivedAt = Date.now();
+        await restart(data);
+        await draw(() => {
+            ui().setGroupByWorktree(true);
+            chatListPreferences.setShowUnusedWorktrees(true);
+        });
+        await vi.waitFor(() =>
+            expect(
+                rowOf(worktreeKey('fld_car_rental', '/Users/dev/Clowdy/workspaces/car-rental/ab12cd34/car-rental'))
+            ).toBeTruthy()
+        );
+        const card = rowOf(
+            worktreeKey('fld_car_rental', '/Users/dev/Clowdy/workspaces/car-rental/ab12cd34/car-rental')
+        ).closest<HTMLElement>('[data-worktree-card]')!;
+        expect(card.textContent).toContain('2 archived chats');
+        expect(card.textContent).not.toContain('No chats');
+    });
+
     it('starts a draft in a worktree with no chats from its own menu', async () => {
         await restart();
         await draw(() => ui().setGroupByWorktree(true));

@@ -12,9 +12,16 @@ import { useEffect, useId, useState } from 'react';
 import { PathText } from '../../shared/PathText';
 import { worktreeLabel } from '../agents/workspaceChoice';
 import { worktreeKey } from '../agents/worktreeCards';
-import { affectedChats, readRemoval, refreshWorktreeTarget, removeWorktree } from './worktreeActions';
+import {
+    affectedChats,
+    archiveConsequence,
+    readRemoval,
+    refreshWorktreeTarget,
+    removeWorktree,
+} from './worktreeActions';
 import { branchWarning, deleteBranchByDefault, reconcileChoice, removalPlan, STRANDED_WARNING } from './worktreeView';
 
+import type { Chat } from '@clowdy/protocol';
 import type { ReactNode } from 'react';
 import type { RemovalRead, WorktreeTarget } from './worktreeActions';
 import type { RemovalPlan, RemoveChoice } from './worktreeView';
@@ -55,6 +62,7 @@ interface RemoveMessageProps {
     choice: RemoveChoice;
     onChoice: (choice: RemoveChoice) => void;
     count: number;
+    affected: readonly Chat[];
     outside: number;
     locked: boolean;
     checking: boolean;
@@ -74,6 +82,7 @@ function RemoveMessage({
     choice,
     onChoice,
     count,
+    affected,
     outside,
     locked,
     checking,
@@ -86,7 +95,6 @@ function RemoveMessage({
     const warning = deleteBranch && plan.branch ? branchWarning(plan.branch) : undefined;
     const warningId = useId();
     const subject = `${count} linked ${count === 1 ? 'chat' : 'chats'}`;
-    const result = disposition === 'delete' ? 'permanently deleted' : 'archived';
 
     return (
         <Box gap="xl">
@@ -113,11 +121,25 @@ function RemoveMessage({
                         }
                     </For>
                     {count > 0 && (
-                        <Text variant="md" color="secondary">
-                            {partialChats ? `At least ${subject}` : subject} will be {result}
-                            {outside > 0 &&
-                                `, including ${outside} ${outside === 1 ? 'thread' : 'threads'} in other worktrees`}
-                        </Text>
+                        <>
+                            <Text variant="md" color="secondary">
+                                {partialChats ? `At least ${subject}` : subject}
+                                {outside > 0 &&
+                                    `, including ${outside} ${outside === 1 ? 'thread' : 'threads'} in other worktrees`}
+                            </Text>
+                            {disposition === 'delete' ? (
+                                <Text color="warning">All linked chats will be permanently deleted</Text>
+                            ) : (
+                                <Text variant="sm" color="secondary">
+                                    {archiveConsequence(affected)}
+                                </Text>
+                            )}
+                            {affected.map(chat => (
+                                <Text key={chat.id} variant="sm" color="secondary" wrap="anywhere">
+                                    {chat.title} — {chat.archivedAt === undefined ? 'Not archived' : 'Already archived'}
+                                </Text>
+                            ))}
+                        </>
                     )}
                 </Box>
             )}
@@ -243,6 +265,7 @@ function ReadRemoval({ target }: { target: WorktreeTarget }) {
                     choice={choice}
                     onChoice={setChoice}
                     count={chats?.ids.size ?? 0}
+                    affected={chats?.affected ?? []}
                     outside={chats?.outside ?? 0}
                     locked={phase !== 'choosing'}
                     checking={!read && !readFailure}

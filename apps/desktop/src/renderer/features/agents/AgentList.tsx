@@ -597,6 +597,14 @@ export function AgentList({
         );
     };
 
+    const archivedCounts = new Map<string, number>();
+    for (const chat of project.chats.values()) {
+        if (chat.archivedAt === undefined) continue;
+        const folder = folderById(folders, chat.folderId);
+        const key = chat.workspace ? chatWorktreeKey(chat, cards) : worktreeKey(folder.id, folder.path);
+        if (key) archivedCounts.set(key, (archivedCounts.get(key) ?? 0) + 1);
+    }
+
     const renderEntry = (entry: ListEntry) => {
         switch (entry.kind) {
             case 'draft':
@@ -605,7 +613,11 @@ export function AgentList({
                 return renderAgentRow(entry.row);
             case 'group':
                 return renderGroup(entry.group, entry.isCollapsed);
-            case 'worktree':
+            case 'worktree': {
+                const archivedCount = archivedCounts.get(entry.card.key) ?? 0;
+                const emptyLabel = archivedCount
+                    ? `${archivedCount} archived ${archivedCount === 1 ? 'chat' : 'chats'}`
+                    : 'No chats';
                 return (
                     <GridListSection
                         key={entry.card.key}
@@ -647,21 +659,23 @@ export function AgentList({
                             </GridListItem>
                         ))}
                         {!entry.isCollapsed &&
-                            entry.rows.length === 0 &&
-                            entry.drafts.length === 0 &&
-                            entry.linkedThreads.length === 0 && (
+                            (archivedCount > 0 ||
+                                (entry.rows.length === 0 &&
+                                    entry.drafts.length === 0 &&
+                                    entry.linkedThreads.length === 0)) && (
                                 <GridListItem
                                     id={`${EMPTY_PREFIX}${entry.card.key}`}
-                                    text="No chats"
-                                    icon={<Message />}
+                                    text={emptyLabel}
+                                    icon={archivedCount ? <Archive /> : <Message />}
                                     className={styles.empty}
                                     isDisabled
                                 >
-                                    <span className={styles.title}>No chats</span>
+                                    <span className={styles.title}>{emptyLabel}</span>
                                 </GridListItem>
                             )}
                     </GridListSection>
                 );
+            }
             case 'empty':
                 return (
                     <GridListItem

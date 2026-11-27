@@ -12,7 +12,14 @@ import { worktreeLabel } from '../agents/workspaceChoice';
 import { refreshFolderGit } from '../openWith';
 import styles from './ManageWorktrees.module.css';
 import { WorktreeRowSummary } from './WorktreeRow';
-import { affectedChats, affectedSummary, linkedChatIds, readRemoval, removeWorktree } from './worktreeActions';
+import {
+    affectedChats,
+    archiveConsequence,
+    chatPreviewChanged,
+    linkedChatIds,
+    readRemoval,
+    removeWorktree,
+} from './worktreeActions';
 import { deleteBranchByDefault, removalPlan, repositoryGroups, STRANDED_WARNING } from './worktreeView';
 
 import type { FolderId, FolderWorktrees, ProjectId, ProjectSnapshot, WorktreeInfo } from '@clowdy/protocol';
@@ -109,16 +116,25 @@ export function TidyWorktreesMode({
                 message: (
                     <Box gap="md">
                         <Text>
-                            Selected worktrees will be removed. Linked chats and their threads will be archived,
-                            including threads in other worktrees.
+                            Selected worktrees will be removed. Review linked chats and threads, including those in
+                            other worktrees.
                         </Text>
-                        {previews.map(({ folderId, row, chats }) => {
+                        {previews.map(({ folderId, row, chats, safe }) => {
                             const plan = removalPlan(row);
                             const details = [
                                 ...plan.notes,
                                 ...(plan.stranded ? [STRANDED_WARNING] : []),
                                 ...(chats.ids.size
-                                    ? [`${affectedSummary(chats.ids.size, chats.outside)} will be archived`]
+                                    ? [
+                                          safe
+                                              ? 'Linked chats and threads stay as they are'
+                                              : archiveConsequence(chats.affected),
+                                      ]
+                                    : []),
+                                ...(chats.outside
+                                    ? [
+                                          `${chats.outside} ${chats.outside === 1 ? 'thread' : 'threads'} in other worktrees`,
+                                      ]
                                     : []),
                                 ...(deleteBranches && deleteBranchByDefault(row)
                                     ? [`Merged branch ${row.branch} will be deleted`]
@@ -130,6 +146,12 @@ export function TidyWorktreesMode({
                                     <Text weight="medium" wrap="anywhere">
                                         {worktreeLabel(row)} — {row.path}
                                     </Text>
+                                    {chats.affected.map(chat => (
+                                        <Text key={chat.id} color="secondary" variant="sm" wrap="anywhere">
+                                            {chat.title} —{' '}
+                                            {chat.archivedAt === undefined ? 'Not archived' : 'Already archived'}
+                                        </Text>
+                                    ))}
                                     {details.map(detail => (
                                         <Text key={detail} color="secondary" variant="sm">
                                             {detail}
@@ -146,11 +168,22 @@ export function TidyWorktreesMode({
                 onConfirm: async () => {
                     let removed = 0;
                     const errors: string[] = [];
+                    // An earlier selected worktree may archive a chat also linked to a later one.
+                    const archivedByThisAction = new Set<string>();
                     for (const { folderId, row, safe, chats } of previews) {
                         try {
                             const target = { root, projectId, folderId, path: row.path };
                             const read = await readRemoval(target, { worktree: row, chats });
-                            if (read.drift.branch || read.drift.chats)
+                            const expectedChats = chats.affected.map(chat =>
+                                archivedByThisAction.has(chat.id) && chat.archivedAt === undefined
+                                    ? { ...chat, archivedAt: 1 }
+                                    : chat
+                            );
+                            if (
+                                read.drift.branch ||
+                                read.drift.chats ||
+                                chatPreviewChanged(expectedChats, read.chats.affected)
+                            )
                                 throw new Error('The worktree or linked chats changed. Try again');
                             if (safe) {
                                 const result = await root.command({
@@ -168,6 +201,7 @@ export function TidyWorktreesMode({
                                     disposition: 'archive',
                                 });
                             }
+                            if (!safe) for (const chat of read.chats.affected) archivedByThisAction.add(chat.id);
                             removed++;
                         } catch (error) {
                             errors.push(
