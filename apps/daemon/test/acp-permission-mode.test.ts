@@ -57,6 +57,46 @@ async function sent(
     return changes;
 }
 
+describe('strict model selection', () => {
+    test('refuses an acknowledged model change when the agent reports a different selection', async () => {
+        await expect(
+            applyChoices({
+                agent: 'Test agent',
+                options: options(),
+                model: 'smart',
+                strictModel: true,
+                set: async () => options(),
+            })
+        ).rejects.toThrow('smart');
+    });
+
+    test('refuses a configured model the agent does not offer', async () => {
+        await expect(
+            applyChoices({
+                agent: 'Test agent',
+                options: options(),
+                model: 'retired',
+                strictModel: true,
+                set: async () => undefined,
+            })
+        ).rejects.toThrow('retired');
+    });
+});
+
+describe.each(PROTOCOLS)('strict model through ACP %s', protocol => {
+    test('reports an unavailable configured model as an error', async () => {
+        const candidate = rig({ protocol });
+        try {
+            const { session } = candidate.start('choice', { model: 'retired', strictModel: true });
+            const events = await collect(session);
+            await session.close();
+            expect(events.at(-1)).toMatchObject({ type: 'error', message: expect.stringContaining('retired') });
+        } finally {
+            candidate.stop();
+        }
+    });
+});
+
 describe('the permission mode of a preset', () => {
     test("is set on the agent's mode option, after the model and the reasoning level", async () => {
         const changes = await sent(options(), { model: 'smart', effort: 'max', mode: 'auto' });

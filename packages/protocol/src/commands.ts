@@ -28,6 +28,20 @@ const chatWorkspaceChoice = z.union([
     z.object({ mode: z.literal('main'), branch: z.string().max(1000) }).strict(),
 ]);
 const effort = z.string().min(1).max(64);
+export const delegationChoiceSchema = z.union([
+    z.object({ kind: z.literal('inherit') }).strict(),
+    z.object({ kind: z.literal('model'), engine, model, effort: effort.optional() }).strict(),
+]);
+export const delegationSettingsSchema = z
+    .object({
+        default: delegationChoiceSchema.optional(),
+        research: delegationChoiceSchema.optional(),
+        code: delegationChoiceSchema.optional(),
+        review: delegationChoiceSchema.optional(),
+    })
+    .strict();
+export type DelegationSettings = z.infer<typeof delegationSettingsSchema>;
+
 const actor = z.object({ kind: z.literal('user') });
 const queuedMode = z.enum(['steer', 'queue']);
 
@@ -430,6 +444,12 @@ export const commandSchema = z.discriminatedUnion('type', [
     z.object({ ...base, type: z.literal('agent.remove'), id: z.string().min(1) }),
     /** Looks for the agents' programs again, for after the user installed one, and reads accounts and usage anew. */
     z.object({ ...base, type: z.literal('agents.refresh') }),
+    z.object({
+        ...base,
+        type: z.literal('agents.setSharedSetting'),
+        id: z.enum(['subagents', 'promptSuggestions']),
+        enabled: z.boolean(),
+    }),
     /** Chooses the one provider that writes commit messages. `null` turns generation off. */
     z.object({
         ...base,
@@ -437,6 +457,7 @@ export const commandSchema = z.discriminatedUnion('type', [
         provider: z.enum(COMMIT_MESSAGE_PROVIDERS).nullable(),
     }),
 
+    z.object({ ...base, type: z.literal('settings.setDelegation'), settings: delegationSettingsSchema }),
     z.object({ ...base, type: z.literal('settings.setBranchPrefix'), prefix: z.string().max(500) }),
 
     /* Skills */

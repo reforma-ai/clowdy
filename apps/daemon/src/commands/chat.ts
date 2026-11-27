@@ -1,5 +1,6 @@
 import { projectChatMode } from '@clowdy/protocol';
 
+import { setRunWork } from '../db/runs';
 import {
     chatFolder,
     createChat,
@@ -83,11 +84,15 @@ export const chatHandlers: Pick<Handlers, ChatCommand> = {
             runs.resolveEngine(requireProject(store, requireChat(store, command.chatId).projectId), command.engine);
         }
 
+        const before = requireChat(store, command.chatId);
         const chat = setChatModel(store, command.chatId, command);
 
         // The orchestrator's next turn reads its own row.
         if (chat.orchestratorRunId) {
             runs.setChoice(chat.orchestratorRunId, { model: chat.model, effort: chat.effort });
+            if (chat.model !== before.model || chat.engine !== before.engine) {
+                setRunWork(store.db, chat.orchestratorRunId, { strictModel: null });
+            }
         }
 
         return { chat };

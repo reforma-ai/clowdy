@@ -188,6 +188,63 @@ const fromChat = (chat: Chat): MessageSource => ({ kind: 'thread', chatId: chat.
 const told = (sender: Chat, text: string) => `[Message from thread "${sender.title}" (${sender.id})]\n\n${text}`;
 
 describe('thread_spawn', () => {
+    test('uses role and default settings and explicit inheritance', async () => {
+        const { h, root, spawn } = await setup();
+        const parent = await root('Delegation parent', latch(), { model: 'big', effort: 'high' });
+        h.ok('settings.setDelegation', {
+            settings: {
+                default: { kind: 'model', engine: 'claude', model: 'sonnet', effort: 'low' },
+                research: { kind: 'model', engine: 'claude', model: 'opus', effort: 'high' },
+                review: { kind: 'inherit' },
+            },
+        });
+        const research = await spawn(parent.run, 'Research task', held(latch()), { role: 'research' });
+        const code = await spawn(parent.run, 'Code task', held(latch()), { role: 'code' });
+        const review = await spawn(parent.run, 'Review task', held(latch()), { role: 'review' });
+        expect(research.run()).toMatchObject({ engine: 'claude', model: 'opus', effort: 'high' });
+        expect(code.run()).toMatchObject({ engine: 'claude', model: 'sonnet', effort: 'low' });
+        expect(review.run()).toMatchObject({ engine: 'fake', model: 'big', effort: 'high' });
+    });
+
+    test('explicit engine and model override an unavailable role choice', async () => {
+        const { h, root, spawn } = await setup();
+        const parent = await root('Override parent', latch(), { model: 'big', effort: 'high' });
+        h.ok('settings.setDelegation', {
+            settings: { research: { kind: 'model', engine: 'fake', model: 'gone', effort: 'low' } },
+        });
+        const thread = await spawn(parent.run, 'Override task', held(latch()), {
+            role: 'research',
+            engine: 'claude',
+            model: 'opus',
+            effort: 'high',
+        });
+        expect(thread.run()).toMatchObject({ engine: 'claude', model: 'opus', effort: 'high' });
+    });
+
+    test('persists strict configured model selection until the model changes', async () => {
+        const { h, engine, root, spawn } = await setup();
+        const parent = await root('Persist parent', latch());
+        h.ok('settings.setDelegation', { settings: { default: { kind: 'model', engine: 'claude', model: 'sonnet' } } });
+        const thread = await spawn(parent.run, 'Persist task');
+        const runId = thread.run().id;
+        expect(getRunWork(h.store.db, runId).strictModel).toBe(true);
+        await h.stop();
+        const second = await restartHarness(h, { engines: scriptEngines(engine) });
+        harnesses.push(second);
+        expect(getRunWork(second.store.db, runId).strictModel).toBe(true);
+        second.ok('chat.setModel', { chatId: thread.threadId, effort: 'high' });
+        expect(getRunWork(second.store.db, runId).strictModel).toBe(true);
+        second.ok('chat.setModel', { chatId: thread.threadId, model: 'opus' });
+        expect(getRunWork(second.store.db, runId).strictModel).toBeUndefined();
+    });
+
+    test('does not replace an unavailable configured provider', async () => {
+        const { h, root, exec } = await setup();
+        const parent = await root('Unavailable parent', latch());
+        h.ok('settings.setDelegation', { settings: { default: { kind: 'model', engine: 'missing', model: 'x' } } });
+        await expect(exec(parent.run, 'thread_spawn', { prompt: 'Work' })).rejects.toThrow();
+    });
+
     test("makes a chat below the caller's whose first message comes from the caller, and starts it on the caller's agent, model, level and mode", async () => {
         const { h, chatOf, runOf, bodies, exec, turnOf, root, spawn } = await setup();
         const parent = await root('Plan the release', latch(), { model: 'big', effort: 'high', mode: 'semi' });

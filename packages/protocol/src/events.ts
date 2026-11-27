@@ -1,3 +1,4 @@
+import type { DelegationSettings } from './commands';
 import type {
     Artifact,
     Chat,
@@ -84,6 +85,7 @@ export interface ProjectSnapshot {
 }
 
 export interface RootSnapshot {
+    delegation?: DelegationSettings;
     branchPrefix?: string;
     cursor: number;
     projects: Project[];

@@ -272,6 +272,7 @@ const named = <T>(change: T | null | undefined, kept: T | undefined): T | undefi
 export class FixtureTransport implements Transport {
     readonly #data: FixtureData;
     #systemSkillsEnabled = true;
+    #delegation: NonNullable<RootSnapshot['delegation']> = {};
     readonly #timeline: boolean;
     readonly #startedAt = Date.now();
     readonly #log: ClowdyEvent[] = [];
@@ -347,7 +348,12 @@ export class FixtureTransport implements Transport {
     }
 
     async getRootSnapshot(): Promise<RootSnapshot> {
-        return structuredClone({ cursor: this.#cursor, projects: this.#listed(), home: '/Users/dev' });
+        return structuredClone({
+            cursor: this.#cursor,
+            projects: this.#listed(),
+            home: '/Users/dev',
+            delegation: this.#delegation,
+        });
     }
 
     async getProjectsInfo(projectId?: ProjectId): Promise<ProjectInfo[]> {
@@ -2522,8 +2528,19 @@ export class FixtureTransport implements Transport {
                 return fail('unavailable', 'The demo data cannot add or remove agents');
             case 'agent.update':
                 return this.#updateAgent(command);
+            case 'settings.setDelegation':
+                this.#delegation = structuredClone(command.settings);
+                return ok({ settings: command.settings });
             case 'settings.setBranchPrefix':
                 return ok({ prefix: branchPrefixOf(command.prefix) });
+            case 'agents.setSharedSetting': {
+                for (const agent of data.agents) {
+                    const setting = agent.settings?.find(candidate => candidate.id === command.id);
+                    if (setting) setting.value = command.enabled;
+                }
+                data.projects.forEach(project => this.#emit(project.id, { type: 'agents.changed' }));
+                return ok({ id: command.id, enabled: command.enabled });
+            }
             case 'agents.setCommitMessageProvider': {
                 for (const agent of data.agents) {
                     const setting = agent.settings?.find(candidate => candidate.id === COMMIT_MESSAGE_SETTING_ID);

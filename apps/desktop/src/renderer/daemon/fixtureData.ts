@@ -497,6 +497,13 @@ function fixtureAgents(now: number): AgentInfo[] {
                     default: true,
                 },
                 {
+                    id: 'workflows',
+                    label: 'Enable workflow tool',
+                    description: 'Let Claude Code run its Workflow tool',
+                    value: true,
+                    default: true,
+                },
+                {
                     id: 'longContext',
                     label: '1M context window',
                     description: 'Use the 1M-token context window on the models that have one',
@@ -548,6 +555,13 @@ function fixtureAgents(now: number): AgentInfo[] {
                     label: 'Suggest next messages',
                     description:
                         'Let the agent predict your next message when supported. Applies to new sessions and may use an additional model request.',
+                    value: true,
+                    default: true,
+                },
+                {
+                    id: 'subagents',
+                    label: 'Enable sub-agents',
+                    description: 'Let Codex start sub-agents inside a run',
                     value: true,
                     default: true,
                 },

@@ -2,7 +2,7 @@
 import { observer } from 'mobx-react-lite';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { FixtureTransport } from '../../daemon/fixtureTransport';
 import { RootStore, RootStoreProvider } from '../../stores';
@@ -74,6 +74,21 @@ afterEach(() => {
 });
 
 describe('ChatPage', () => {
+    it('changes next-message suggestions globally', async () => {
+        await vi.waitFor(() => expect(store.agentsStatus).toBe('ready'));
+        const input = container.querySelector<HTMLInputElement>('input[aria-label="Suggest next messages"]')!;
+        expect(input.checked).toBe(true);
+        await act(async () => input.click());
+        await vi.waitFor(() =>
+            expect(
+                store.agents.every(
+                    agent => agent.settings?.find(setting => setting.id === 'promptSuggestions')?.value !== true
+                )
+            ).toBe(true)
+        );
+        expect(input.checked).toBe(false);
+    });
+
     it('leaves the worktree prefix to Source Control', () => {
         expect(container.querySelector('input[aria-label="Branch prefix"]')).toBeNull();
     });

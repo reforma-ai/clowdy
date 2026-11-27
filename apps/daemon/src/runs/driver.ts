@@ -793,6 +793,7 @@ export class RunDriver {
                     ),
             }),
             model: run.model,
+            strictModel: work.strictModel,
             effort: run.effort,
             title: sessionTitle(store, run, this.deps.namesChats(run.engine), prompt),
             approve: (request, approvalSignal) => runs.askApproval(runId, request, approvalSignal),

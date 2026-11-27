@@ -71,6 +71,7 @@ export type Resolution = { ok: true; agent: ResolvedAgent } | { ok: false; messa
 interface Stored {
     agents: CustomAgent[];
     overrides: Record<string, AgentOverride>;
+    shared?: Partial<Record<'subagents' | 'promptSuggestions', boolean>>;
 }
 
 export interface AgentRegistryOptions {
@@ -149,7 +150,25 @@ export class AgentRegistry {
             ? settingsFor(this.spec(id)).find(candidate => candidate.id === settingId)
             : undefined;
 
-        return setting && settingValue(setting, this.stored.overrides[id] ?? {});
+        return setting && settingValue(setting, this.effectiveOverride(id));
+    }
+
+    /** Apply a shared choice without discarding the provider-specific values it replaced. */
+    private effectiveOverride(id: string): AgentOverride {
+        const override = this.stored.overrides[id] ?? {};
+        const supported = settingsFor(this.spec(id));
+        const settings = { ...override.settings };
+        for (const key of ['subagents', 'promptSuggestions'] as const) {
+            const value = this.stored.shared?.[key];
+            if (value !== undefined && supported.some(setting => setting.id === key)) settings[key] = value;
+        }
+        return { ...override, settings };
+    }
+
+    setSharedSetting(id: 'subagents' | 'promptSuggestions', value: boolean): void {
+        this.change(() => {
+            this.stored.shared = { ...this.stored.shared, [id]: value };
+        });
     }
 
     /** The message that makes the agent compact its conversation, or `undefined` for an agent with no such command. */
@@ -438,7 +457,7 @@ export class AgentRegistry {
 
     /** `isolate`: for a run, the agent's own folder is made and named in its environment. A listing and a read pass `false` and touch no disk. */
     private async build(entry: Entry, isolate: boolean): Promise<Resolution> {
-        const override = this.stored.overrides[entry.id] ?? {};
+        const override = this.effectiveOverride(entry.id);
 
         if (!this.isEnabled(entry.id)) {
             return { ok: false, message: `${entry.name} is switched off in Clowdy` };
@@ -547,7 +566,7 @@ export class AgentRegistry {
     }
 
     private async describe(entry: Entry): Promise<AgentInfo> {
-        const override = this.stored.overrides[entry.id] ?? {};
+        const override = this.effectiveOverride(entry.id);
         const resolution = await this.build(entry, false);
         const program = await this.program(entry);
         const spec = entry.custom ? undefined : entry.spec;
@@ -697,7 +716,15 @@ function parseStored(data: unknown, specs: readonly AgentSpec[]): Stored {
         }
     }
 
-    return { agents: [...agents.values()], overrides };
+    const shared = isRecord(record.shared)
+        ? {
+              ...(typeof record.shared.subagents === 'boolean' && { subagents: record.shared.subagents }),
+              ...(typeof record.shared.promptSuggestions === 'boolean' && {
+                  promptSuggestions: record.shared.promptSuggestions,
+              }),
+          }
+        : undefined;
+    return { agents: [...agents.values()], overrides, ...(shared && { shared }) };
 }
 
 const settingValue = (setting: AgentSettingSpec, override: AgentOverride): boolean =>

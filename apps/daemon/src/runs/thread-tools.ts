@@ -41,8 +41,12 @@ export function threadTools({ threads }: ToolDeps, run: Run): ToolDefinition[] {
     return [
         defineTool(
             'thread_spawn',
-            `Starts a thread: a new chat below yours with an agent of its own, which works on the prompt while you go on with yours. Use it for a separate piece of work that can run alongside (an investigation, a task, a check); do small things yourself. The thread does not see your conversation, so the prompt must carry everything it needs: the goal, what it may change, decisions already made, how to check the result, and what to report. It runs on your agent, model and mode unless you name others, and works where you do (in your worktree, when you have one) unless you give it a folder of its own with cwd or a worktree of its own with worktree. Returns at once with its threadId, title and state. ${NOTICES} So do not poll it or check on it in a loop: go on with other work, or end your turn. ${STATES}`,
+            `Starts a thread: a new chat below yours with an agent of its own, which works on the prompt while you go on with yours. Use it for a separate piece of work that can run alongside (an investigation, a task, a check); do small things yourself. The thread does not see your conversation, so the prompt must carry everything it needs: the goal, what it may change, decisions already made, how to check the result, and what to report. The role selects the configured agent, model and effort; explicit arguments override the settings. It uses your mode unless you name another, and works where you do (in your worktree, when you have one) unless you give it a folder of its own with cwd or a worktree of its own with worktree. Returns at once with its threadId, title and state. ${NOTICES} So do not poll it or check on it in a loop: go on with other work, or end your turn. ${STATES}`,
             z.object({
+                role: z
+                    .enum(['research', 'code', 'review'])
+                    .optional()
+                    .describe('The role of this work; omit for Default'),
                 prompt: z.string().min(1).describe('The assignment, complete: the thread knows nothing else'),
                 title: z
                     .string()
@@ -52,12 +56,14 @@ export function threadTools({ threads }: ToolDeps, run: Run): ToolDefinition[] {
                     .string()
                     .optional()
                     .describe(
-                        'The id of an installed agent (claude, codex, cursor, ...); default yours. Leave unset unless the person asked or you have a reason'
+                        'The id of an installed agent (claude, codex, cursor, ...); overrides the role setting. Leave unset unless the person asked or you have a strong reason'
                     ),
                 model: z
                     .string()
                     .optional()
-                    .describe("The model, in the agent's own spelling; default yours when the agent is yours"),
+                    .describe(
+                        "The model in the agent's own spelling; override only at the person's request or for a strong reason"
+                    ),
                 effort: z.string().optional().describe("The reasoning level, in the agent's own spelling"),
                 mode: z
                     .enum(['autopilot', 'semi'])
