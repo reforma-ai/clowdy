@@ -63,6 +63,8 @@ export const SHELL_PATHS = [
     'apps/desktop/src/preload',
     'apps/desktop/src/shared',
     'apps/desktop/build',
+    'apps/desktop/native',
+    'apps/desktop/scripts/native-scroll.ts',
     'apps/desktop/electron-builder.ts',
     'apps/desktop/package.json',
     'apps/desktop/scripts/build.ts',
@@ -135,6 +137,9 @@ export async function shellChangedSince(tag: string, root = repoRoot): Promise<b
     const fileAt = async (ref: string, file: string) => (await git(['show', `${ref}:${file}`], root)).stdout;
     const bunAt = async (ref: string) =>
         (JSON.parse((await fileAt(ref, 'package.json')) || '{}') as { packageManager?: string }).packageManager;
+    // Other lockfile entries affect the OTA bundle, not the shell. Only the headers used to compile the addon matter here.
+    const nativeHeadersAt = async (ref: string) =>
+        /^ {4}"node-api-headers": .+$/m.exec(await fileAt(ref, 'bun.lock'))?.[0];
     const protocolAt = async (ref: string) => {
         const declared = /^export const PROTOCOL_VERSION\b[^=]*=\s*(\d+)/m.exec(
             await fileAt(ref, PROTOCOL_SOURCE)
@@ -151,7 +156,11 @@ export async function shellChangedSince(tag: string, root = repoRoot): Promise<b
 
     if ((await git(['diff', '--quiet', tag, 'HEAD', '--', ...SHELL_PATHS], root)).code !== 0) return true;
 
-    return (await bunAt(tag)) !== (await bunAt('HEAD')) || (await protocolAt(tag)) !== (await protocolAt('HEAD'));
+    return (
+        (await bunAt(tag)) !== (await bunAt('HEAD')) ||
+        (await protocolAt(tag)) !== (await protocolAt('HEAD')) ||
+        (await nativeHeadersAt(tag)) !== (await nativeHeadersAt('HEAD'))
+    );
 }
 
 async function publishedVersion(): Promise<number | null> {

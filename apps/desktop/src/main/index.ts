@@ -59,6 +59,7 @@ import {
 } from './daemonKeeper';
 import { registerIpc } from './ipc';
 import { createAppMenu } from './menu';
+import { attachNativeScroll } from './nativeScroll';
 import { createOpenWith, systemOpenWithDeps } from './openWith';
 import { createOta, type Ota, type RunningBundle } from './ota';
 import { createProtocolHandler } from './protocol';
@@ -575,6 +576,7 @@ function openWindow(): BrowserWindow {
         )
     );
 
+    attachNativeScroll(window);
     window.once('ready-to-show', () => window.show());
     window.loadURL(`${APP_ORIGIN}/`).catch((error: unknown) => console.error('The window did not load:', error));
 

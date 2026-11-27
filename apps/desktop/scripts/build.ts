@@ -26,6 +26,7 @@ import path from 'node:path';
 import { fetchBunRuntimes, runtimeTargets } from './bun-runtime';
 import { buildRenderer, bundleInfo, layoutDaemonPart } from './bundle';
 import { buildMain } from './main-bundle';
+import { buildNativeScroll } from './native-scroll';
 
 const desktopRoot = path.resolve(import.meta.dir, '..');
 const appDir = path.join(desktopRoot, 'app');
@@ -49,6 +50,7 @@ await buildMain(path.join(appDir, 'dist'), constants);
 await layoutDaemonPart(bundleDir, info);
 await Bun.write(path.join(appDir, 'bundle.json'), `${JSON.stringify(info, null, 4)}\n`);
 await fetchBunRuntimes(targets);
+await buildNativeScroll(targets);
 
 // The packaged app's own manifest: `productName` names its `userData` folder. `name` names the Windows packages
 // (`clowdy-<version>-<arch>.nsis.7z`) and the updater's cache folder. Not the scoped `@clowdy/desktop`: electron-builder

@@ -17,7 +17,7 @@ function daemonResources(platform: 'darwin' | 'win32'): FileSet[] {
     return [
         { from: 'bundle', to: 'bundle' },
         // electron-builder expands `${arch}`, not TypeScript.
-        { from: `runtime/${platform}-\${arch}`, to: 'bun' },
+        { from: `runtime/${platform}-\${arch}`, to: 'bun', filter: ['**/*', '!scroll.node'] },
     ];
 }
 
@@ -66,7 +66,10 @@ export default {
         entitlementsInherit: 'build/entitlements.mac.inherit.plist',
         notarize: false,
         target: ['dmg', 'zip'],
-        extraResources: daemonResources('darwin'),
+        extraResources: [
+            ...daemonResources('darwin'),
+            { from: 'runtime/darwin-${arch}/scroll.node', to: 'scroll.node' },
+        ],
     },
 
     // Signed with the app's Developer ID (on a runner without one, the ad-hoc build leaves them unsigned). The release

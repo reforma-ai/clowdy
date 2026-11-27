@@ -5,6 +5,8 @@ export const WINDOW_MATERIAL_ARGUMENT = '--clowdy-window-material';
 
 export const IPC_CHANNELS = {
     setThemeSource: 'desktop:set-theme-source',
+    nativeScrollAvailable: 'desktop:native-scroll-available',
+    nativeScroll: 'desktop:native-scroll',
     chooseDirectories: 'desktop:choose-directories',
     /** Synchronous (`sendSync`): the preload needs the answer before the page's scripts run. */
     getDaemon: 'desktop:get-daemon',
@@ -123,12 +125,36 @@ export interface FindOptions {
     findNext: boolean;
 }
 
+/** AppKit phase bit flags: began 1, stationary 2, changed 4, ended 8, cancelled 16, mayBegin 32. Zero means no phase. */
+export interface NativeScrollEvent {
+    kind: 'scroll';
+    /** Increasing within one window, including cancellation records. */
+    sequence: number;
+    phase: number;
+    momentumPhase: number;
+    /** AppKit scrolling deltas with the sign reversed to match DOM wheel direction. Precise deltas are in points. */
+    deltaX: number;
+    deltaY: number;
+    /** Position in the native window view, in points from its top left. */
+    x: number;
+    y: number;
+    /** Milliseconds since system startup, not DOM event.timeStamp. */
+    timestamp: number;
+    /** False for coarse wheels, whose deltas are not pixel units. This is not a device identifier. */
+    precise: boolean;
+}
+
+/** Focus loss interrupts any outstanding gesture. */
+export type NativeScrollRecord = NativeScrollEvent | { kind: 'cancel'; sequence: number };
+
 /**
  * What the preload exposes as `window.desktop`. Keep it minimal: the renderer is untrusted and
  * business logic lives behind the daemon's contract, not behind Electron IPC.
  */
 export interface DesktopBridge {
     platform: 'darwin' | 'win32' | 'linux';
+    /** Optional for compatibility with older shells. Availability does not guarantee this device reports phases. */
+    nativeScroll?: { available: boolean; subscribe: (listener: (record: NativeScrollRecord) => void) => () => void };
     /** True when the window draws vibrancy or Mica behind transparent page pixels. */
     material: boolean;
     /** Makes the window's native material follow the chosen appearance. */

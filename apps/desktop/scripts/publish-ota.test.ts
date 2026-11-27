@@ -114,6 +114,8 @@ describe('shellChangedSince', () => {
             'packages/protocol/src/api.ts': 'export const PROTOCOL_VERSION = 1;\n',
             'apps/desktop/src/main/index.ts': 'main',
             'apps/desktop/src/renderer/main.tsx': 'renderer',
+            'bun.lock':
+                '    "node-api-headers": ["node-api-headers@1.9.0", "hash-a"],\n    "renderer": ["renderer@1"],\n',
         });
         git('tag', 'v0.2.0');
     });
@@ -127,6 +129,8 @@ describe('shellChangedSince', () => {
     test('ignores what only a bundle carries, protocol and root manifest included', async () => {
         commit({
             'apps/desktop/src/renderer/main.tsx': 'renderer 2',
+            'bun.lock':
+                '    "node-api-headers": ["node-api-headers@1.9.0", "hash-a"],\n    "renderer": ["renderer@2"],\n',
             'packages/protocol/src/api.ts': 'export const PROTOCOL_VERSION = 1;\nexport const ROUTES = {};\n',
             'package.json': JSON.stringify({ packageManager: 'bun@1.3.0', scripts: { dev: 'dev' } }),
         });
@@ -135,6 +139,7 @@ describe('shellChangedSince', () => {
     });
 
     test.each([
+        ['the native headers', { 'bun.lock': '    "node-api-headers": ["node-api-headers@1.9.0", "hash-b"],\n' }],
         ['the main process', { 'apps/desktop/src/main/index.ts': 'main 2' }],
         ['the daemon data folder', { 'packages/protocol/src/paths.ts': 'paths' }],
         ['the Bun it ships', { 'package.json': JSON.stringify({ packageManager: 'bun@1.3.1' }) }],
