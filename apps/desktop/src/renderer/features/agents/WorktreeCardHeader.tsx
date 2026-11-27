@@ -136,7 +136,7 @@ export function WorktreeCardHeader({
             data-open={menuOpen || contextMenu.isOpen || undefined}
             onContextMenu={openContextMenu}
             endAffix={
-                <RowControls className={styles.worktreeActions}>
+                <RowControls className={styles.worktreeActions} onContextMenu={openContextMenu}>
                     {contextMenu.isOpen && (
                         <Popover {...contextMenu.popoverProps} placement="bottom start" spacing="xs">
                             <WorktreeCardMenu

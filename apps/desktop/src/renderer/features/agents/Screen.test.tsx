@@ -2464,6 +2464,19 @@ describe('worktree cards', () => {
         expect(menuItem('Switch branch')).toBeDefined();
     });
 
+    it.each(['folder', 'worktree'] as const)('opens %s group actions on right-clicking its title', async layout => {
+        await restart();
+        await draw(() => ui().setChatListLayout(layout));
+        const key = layout === 'folder' ? MAIN_GROUP : workspaceKey();
+        const title = rowOf(key).querySelector<HTMLElement>('button[aria-expanded]')!;
+        await act(async () => {
+            title.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 }));
+        });
+        expect(menuItem('New chat')).toBeDefined();
+        expect(menuItem('Switch branch')).toBeDefined();
+        expect(title.getAttribute('aria-expanded')).toBe('true');
+    });
+
     it('opens chat actions rather than worktree actions on a chat inside the card', async () => {
         await restart();
         await draw(() => ui().setGroupByWorktree(true));
