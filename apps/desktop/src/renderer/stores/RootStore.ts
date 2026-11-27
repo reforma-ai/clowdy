@@ -143,23 +143,13 @@ export class RootStore {
             const prefixRevision = branchPrefix.revision;
             const snapshot = await this.transport.getRootSnapshot();
 
-            await branchPrefix.connect(
-                snapshot.branchPrefix,
-                async prefix => {
-                    try {
-                        return (await this.transport.command({ type: 'settings.setBranchPrefix', prefix })).ok;
-                    } catch {
-                        return false;
-                    }
-                },
-                prefixRevision
-            );
             homeFolder.set(snapshot.home);
             runInAction(() => {
                 this.projects = sortProjects(snapshot.projects);
                 this.phase = 'ready';
                 this.loadError = '';
             });
+            this.#connectBranchPrefix(snapshot.branchPrefix, prefixRevision);
             this.#follow(snapshot.cursor);
             void this.refreshAgents();
 
@@ -387,6 +377,23 @@ export class RootStore {
         });
     }
 
+    /** Reconciles the branch prefix with the daemon's in the background: the window does not wait for the command. */
+    #connectBranchPrefix(prefix: string | undefined, revision: number): void {
+        void branchPrefix.connect(
+            prefix,
+            async next => {
+                try {
+                    return (await this.transport.command({ type: 'settings.setBranchPrefix', prefix: next })).ok
+                        ? 'ok'
+                        : 'refused';
+                } catch {
+                    return 'unreachable';
+                }
+            },
+            revision
+        );
+    }
+
     #follow(cursor: number): void {
         this.#unsubscribe?.();
         this.#unsubscribe = this.transport.subscribe(
@@ -404,17 +411,7 @@ export class RootStore {
             const prefixRevision = branchPrefix.revision;
             const snapshot = await this.transport.getRootSnapshot();
 
-            await branchPrefix.connect(
-                snapshot.branchPrefix,
-                async prefix => {
-                    try {
-                        return (await this.transport.command({ type: 'settings.setBranchPrefix', prefix })).ok;
-                    } catch {
-                        return false;
-                    }
-                },
-                prefixRevision
-            );
+            this.#connectBranchPrefix(snapshot.branchPrefix, prefixRevision);
             homeFolder.set(snapshot.home);
             // A project removed while the feed was away has no snapshot to load.
             runInAction(() => {
