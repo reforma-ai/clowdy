@@ -31,7 +31,7 @@ Where: work in <cwd>. Documents: <relevant paths>; coordinate shared files. Comm
 Report: end your turn with the verdict first, then the commands you ran and what they showed, then what is left.
 ```
 
-Leave the agent and the model unset unless the person asked or you have a reason (a check by another agent for a second opinion): a thread runs on yours by default.
+Name the role for the work and leave the agent and model unset unless the person asked for a specific choice or there is a strong reason. Clowdy applies the configured role or Default; when no choice is configured, the thread inherits yours.
 
 ## 3. Start, then end your turn
 
