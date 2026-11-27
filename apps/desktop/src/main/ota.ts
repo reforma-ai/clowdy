@@ -23,6 +23,8 @@ const READY_TIMEOUT_MS = 30_000;
 const CLOCK_SLACK_MS = 2000;
 /** What the first launch of a shell version waits for before its first window: the manifest, then the download. */
 const CATCH_UP_MS = { manifest: 3000, install: 60_000 };
+/** Background downloads may be slow, but must eventually release the check and try the other source. */
+const BACKGROUND_INSTALL_MS = 5 * 60_000;
 /** How many bundles whose daemon came up healthy `state.json` remembers. */
 const PROVEN_KEPT = 10;
 const STATE_FILE = 'state.json';
@@ -66,7 +68,7 @@ const NO_STATE: OtaState = { current: null, previous: null, unconfirmed: false, 
 /** A launch waiting for a bundle: its progress, 0 to 1 once the download begins, and how long it waits. */
 interface Waiting {
     onProgress: (fraction: number) => void;
-    wait: { manifest: number; install?: number };
+    wait: { manifest: number; install: number };
 }
 
 export interface OtaOptions {
@@ -101,6 +103,7 @@ export interface OtaOptions {
     log?: (message: string) => void;
     readyTimeoutMs?: number;
     catchUpMs?: typeof CATCH_UP_MS;
+    backgroundInstallMs?: number;
 }
 
 export type Ota = ReturnType<typeof createOta>;
@@ -274,7 +277,10 @@ export function createOta(options: OtaOptions) {
             // Check it in the background too, so an installed bundle still opens without waiting for the network.
             const version = await installBest({
                 onProgress: () => undefined,
-                wait: { manifest: (options.catchUpMs ?? CATCH_UP_MS).manifest },
+                wait: {
+                    manifest: (options.catchUpMs ?? CATCH_UP_MS).manifest,
+                    install: options.backgroundInstallMs ?? BACKGROUND_INSTALL_MS,
+                },
             });
 
             if (version !== null) {
@@ -380,16 +386,14 @@ export function createOta(options: OtaOptions) {
     }
 
     async function candidate(source: string, waiting?: Waiting) {
-        const response = await options.fetch(`${source}/${MANIFEST_FILE}`, {
-            signal: waiting && AbortSignal.timeout(waiting.wait.manifest),
-        });
+        const response = await fetchBody(`${source}/${MANIFEST_FILE}`, MANIFEST_LIMIT, waiting?.wait.manifest);
 
         // Nothing published yet, or the repository is still private.
         if (response.status === 404) return undefined;
 
         if (!response.ok) throw new Error(`The bundle manifest answered ${response.status}`);
 
-        const signed = new TextDecoder().decode(await readBody(response, MANIFEST_LIMIT));
+        const signed = new TextDecoder().decode(response.body);
         const manifest = openManifest(signed, publicKey);
         const state = await readState();
 
@@ -429,17 +433,13 @@ export function createOta(options: OtaOptions) {
         // Before the request: a launch whose download stalls before it answers still shows why it waits.
         waiting?.onProgress(0);
 
-        const response = await options.fetch(`${source}/${name}`, {
-            signal: waiting?.wait.install === undefined ? undefined : AbortSignal.timeout(waiting.wait.install),
-        });
-
-        if (!response.ok) throw new Error(`${name} answered ${response.status}`);
-
         let received = 0;
-        const archive = await readBody(response, size, length => {
+        const response = await fetchBody(`${source}/${name}`, size, waiting?.wait.install, length => {
             received += length;
             waiting?.onProgress(Math.min(received / size, 1));
         });
+        if (!response.ok) throw new Error(`${name} answered ${response.status}`);
+        const archive = response.body;
 
         if (archive.length !== size || sha256(archive) !== archiveHash)
             throw new Error(`${name} does not match the manifest`);
@@ -475,6 +475,36 @@ export function createOta(options: OtaOptions) {
             await renameWhenFree(staging, target);
         } finally {
             await rm(staging, { recursive: true, force: true });
+        }
+    }
+
+    /** Bound the request and its body together, even if a fetch implementation ignores cancellation. */
+    async function fetchBody(url: string, limit: number, timeout?: number, onChunk?: (length: number) => void) {
+        const controller = new AbortController();
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const download = (async () => {
+            const response = await options.fetch(url, { signal: controller.signal });
+            if (!response.ok || controller.signal.aborted) {
+                void response.body?.cancel().catch(() => undefined);
+                if (controller.signal.aborted) throw new Error(`Download timed out: ${url}`);
+                return { ok: response.ok, status: response.status, body: new Uint8Array() };
+            }
+            const body = await readBody(response, limit, controller.signal, onChunk);
+            return { ok: response.ok, status: response.status, body };
+        })();
+        if (timeout === undefined) return download;
+        try {
+            return await Promise.race([
+                download,
+                new Promise<never>((_resolve, reject) => {
+                    timer = setTimeout(() => {
+                        controller.abort();
+                        reject(new Error(`Download timed out: ${url}`));
+                    }, timeout);
+                }),
+            ]);
+        } finally {
+            clearTimeout(timer);
         }
     }
 
@@ -612,18 +642,34 @@ function oneAtATime() {
 }
 
 /** The body, refused past `limit` bytes, so a hostile host cannot exhaust memory with an endless one. */
-async function readBody(response: Response, limit: number, onChunk?: (length: number) => void): Promise<Uint8Array> {
+async function readBody(
+    response: Response,
+    limit: number,
+    signal: AbortSignal,
+    onChunk?: (length: number) => void
+): Promise<Uint8Array> {
     const chunks: Uint8Array[] = [];
     let length = 0;
-
-    for await (const chunk of response.body ?? []) {
-        length += chunk.length;
-
-        // Leaving the loop cancels the download.
-        if (length > limit) throw new Error(`${response.url || 'A download'} is larger than ${limit} bytes`);
-
-        chunks.push(chunk);
-        onChunk?.(chunk.length);
+    if (!response.body) return Buffer.concat(chunks);
+    const reader = response.body.getReader();
+    const cancel = () => void reader.cancel().catch(() => undefined);
+    signal.addEventListener('abort', cancel, { once: true });
+    try {
+        while (true) {
+            const { value: chunk, done } = await reader.read();
+            if (signal.aborted) throw new Error('Download timed out');
+            if (done) break;
+            length += chunk.length;
+            if (length > limit) {
+                cancel();
+                throw new Error(`${response.url || 'A download'} is larger than ${limit} bytes`);
+            }
+            chunks.push(chunk);
+            onChunk?.(chunk.length);
+        }
+    } finally {
+        signal.removeEventListener('abort', cancel);
+        reader.releaseLock();
     }
 
     return Buffer.concat(chunks);
