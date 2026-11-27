@@ -1,6 +1,6 @@
 import { existsSync, realpathSync } from 'node:fs';
 import { lstat } from 'node:fs/promises';
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import {
     branchNameProblem,
     branchPrefixOf,
@@ -25,8 +25,10 @@ import {
     updateWorkspace,
 } from '../db/workspaces';
 import { conflict, errorMessage, invalid, notFound } from '../errors';
+import { isBelow } from '../fs/paths';
 import { baseOf, parseBranches, parseWorktrees, pickBase, pickDefaultBranch, workingTreeRoot } from '../git/state';
 import { newId } from '../ids';
+import { inheritedEnv } from '../process/env';
 import { git, gitLine, gitOutput, gitRead } from './git';
 import { appendItem, updateItem } from './items';
 import { runLines } from './lines';
@@ -57,12 +59,6 @@ const ADD_TIMEOUT_MS = 10 * 60_000;
 
 /** A `worktree remove` of a record whose folder is gone does no checking out. */
 const FORGET_TIMEOUT_MS = 60_000;
-
-/** The reads `chat.create` makes of the repository hold up the whole daemon while they run, inside a transaction: a git that takes longer than this is `unavailable`. */
-const SYNC_READ_TIMEOUT_MS = 10_000;
-
-/** A synchronous read of git for `chat.create`, with the time it may take. */
-const readGit = (cwd: string, args: string[]) => git(cwd, args, SYNC_READ_TIMEOUT_MS);
 
 /** The longest project slug in a worktree's path: paths on Windows are short, and the ids in them stay short for the same reason. */
 const MAX_SLUG_LENGTH = 32;
@@ -123,6 +119,9 @@ export const samePlace = (a: string, b: string): boolean => pathKey(placeOf(a)) 
 const removalReservations = new WeakMap<Store, Set<{ projectId: string; path: string; chats: ReadonlySet<string> }>>();
 const pendingChatChanges = new WeakMap<Store, Set<{ chatId: string }>>();
 
+/** Whether the reserved folder `root` is the place of `path` or holds it. */
+const reserves = (root: string, path: string) => isBelow(root, placeOf(path), { allowSelf: true });
+
 /** Fork and edit wait outside their transaction. Do not remove underneath such a pending operation. */
 export function beginChatChange(store: Store, chatId: string): () => void {
     assertChatAvailable(store, chatId);
@@ -152,8 +151,8 @@ export function reserveRemoval(store: Store, projectId: string, path: string, ch
         const cwd = chat?.orchestratorRunId && getRunWork(store.db, chat.orchestratorRunId).cwd;
         if (
             chats.has(change.chatId) ||
-            (chat?.workspace && withinPath(reservation.path, chat.workspace.path)) ||
-            (cwd !== undefined && withinPath(reservation.path, cwd))
+            (chat?.workspace && reserves(reservation.path, chat.workspace.path)) ||
+            (cwd !== undefined && reserves(reservation.path, cwd))
         ) {
             throw conflict('A chat linked to this worktree is being edited or forked');
         }
@@ -164,13 +163,8 @@ export function reserveRemoval(store: Store, projectId: string, path: string, ch
     return () => reservations.delete(reservation);
 }
 
-function withinPath(root: string, path: string): boolean {
-    const way = relative(pathKey(root), pathKey(placeOf(path)));
-    return way === '' || (way !== '..' && !way.startsWith(`..${sep}`) && !isAbsolute(way));
-}
-
 export function assertWorkspaceAvailable(store: Store, path: string): void {
-    if ([...(removalReservations.get(store) ?? [])].some(reservation => withinPath(reservation.path, path))) {
+    if ([...(removalReservations.get(store) ?? [])].some(reservation => reserves(reservation.path, path))) {
         throw conflict('The worktree is being removed');
     }
 }
@@ -183,8 +177,8 @@ export function chatRemovalReserved(store: Store, chatId: string): boolean {
     return [...reservations].some(
         reservation =>
             reservation.chats.has(chatId) ||
-            (chat?.workspace !== undefined && withinPath(reservation.path, chat.workspace.path)) ||
-            (cwd !== undefined && withinPath(reservation.path, cwd))
+            (chat?.workspace !== undefined && reserves(reservation.path, chat.workspace.path)) ||
+            (cwd !== undefined && reserves(reservation.path, cwd))
     );
 }
 
@@ -375,39 +369,39 @@ export async function readWorktreeHead(path: string): Promise<Head | undefined> 
 
 /** Whether the folder is the root of a working tree, read synchronously. */
 function isRepositoryRoot(folder: string): boolean {
-    const top = readGit(folder, ['rev-parse', '--show-toplevel']);
+    const top = git(folder, ['rev-parse', '--show-toplevel']);
 
     return top.ok && top.stdout !== '' && samePlace(top.stdout, folder);
 }
 
 /** `readHead`, read synchronously. */
 function headOf(folder: string): Head | undefined {
-    const commit = readGit(folder, ['rev-parse', 'HEAD']);
+    const commit = git(folder, ['rev-parse', 'HEAD']);
 
     if (!commit.ok) {
         return undefined;
     }
 
-    const branch = readGit(folder, ['branch', '--show-current']);
+    const branch = git(folder, ['branch', '--show-current']);
 
     if (branch.ok && branch.stdout) {
         return { branch: branch.stdout, commit: commit.stdout };
     }
 
-    const short = readGit(folder, ['rev-parse', '--short', 'HEAD']);
+    const short = git(folder, ['rev-parse', '--short', 'HEAD']);
 
     return short.ok ? { branch: short.stdout, detached: true, commit: commit.stdout } : undefined;
 }
 
 /** `readRepository`, read synchronously: the base by the same rule as `baseOf` (`pickBase`), the default read only when it is needed. */
 function readRepositorySync(folder: ProjectFolder): RepositoryFacts {
-    const listed = readGit(folder.path, REFS_FORMAT);
+    const listed = git(folder.path, REFS_FORMAT);
     const output = listed.ok ? listed.stdout : '';
     const refs = parseRefs(output);
     const head = headOf(folder.path);
     const branches = parseBranches(output);
     const base = pickBase(folder.settings?.baseBranch, branches, () => {
-        const remoteHead = readGit(folder.path, ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD']);
+        const remoteHead = git(folder.path, ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD']);
 
         return pickDefaultBranch(
             remoteHead.ok && remoteHead.stdout ? remoteHead.stdout : undefined,
@@ -922,7 +916,7 @@ export function nameWorkspaceBranch(
     }
 
     const previous = workspace.branch;
-    const live = readGit(workspace.path, ['branch', '--show-current']);
+    const live = git(workspace.path, ['branch', '--show-current']);
 
     if (!live.ok || live.stdout !== previous) {
         throw invalid(
@@ -930,7 +924,7 @@ export function nameWorkspaceBranch(
         );
     }
 
-    const upstream = readGit(folder.path, ['config', '--get', `branch.${previous}.remote`]);
+    const upstream = git(folder.path, ['config', '--get', `branch.${previous}.remote`]);
 
     if (upstream.ok && upstream.stdout !== '') {
         throw invalid(
@@ -939,14 +933,14 @@ export function nameWorkspaceBranch(
     }
 
     // Pushed without `-u` there is no upstream, but a branch of that name is on the remote as last fetched, or was pushed and its remote-tracking ref is made by the push.
-    const remotes = readGit(folder.path, ['for-each-ref', '--format=%(refname:lstrip=3)', 'refs/remotes']);
+    const remotes = git(folder.path, ['for-each-ref', '--format=%(refname:lstrip=3)', 'refs/remotes']);
 
     if (remotes.ok && remotes.stdout.split('\n').includes(previous)) {
         throw invalid(`A remote has a branch called ${previous}, so a new name would leave it behind: keep it`);
     }
 
     const prefix = previous.slice(0, previous.lastIndexOf('/'));
-    const listed = readGit(folder.path, REFS_FORMAT);
+    const listed = git(folder.path, REFS_FORMAT);
     const name = freeBranchName(
         store,
         project,
@@ -964,17 +958,17 @@ export function nameWorkspaceBranch(
     }
 
     const branch = `${prefix}/${name}`;
-    const renamed = git(workspace.path, ['branch', '-m', previous, branch], SYNC_READ_TIMEOUT_MS);
+    const renamed = git(workspace.path, ['branch', '-m', previous, branch]);
 
     if (!renamed.ok) {
         // Git renames the ref first and its settings after: a `config.lock` held by another git leaves the branch renamed and the command failed. The branch is what counts.
-        const now = readGit(workspace.path, ['branch', '--show-current']);
+        const now = git(workspace.path, ['branch', '--show-current']);
 
         if (!now.ok || now.stdout !== branch) {
             throw invalid(`git could not rename the branch: ${renamed.stderr || renamed.stdout}`);
         }
 
-        readGit(folder.path, ['config', '--rename-section', `branch.${previous}`, `branch.${branch}`]);
+        git(folder.path, ['config', '--rename-section', `branch.${previous}`, `branch.${branch}`]);
     }
 
     store.tx(() => {
@@ -1009,7 +1003,7 @@ function openExistingWorkspace(store: Store, project: Project, folder: ProjectFo
     }
 
     assertWorkspaceAvailable(store, path);
-    const listed = readGit(folder.path, ['worktree', 'list', '--porcelain']);
+    const listed = git(folder.path, ['worktree', 'list', '--porcelain']);
     const entry = parseWorktrees(listed.ok ? listed.stdout : '').find(
         candidate => !candidate.bare && samePlace(candidate.path, path)
     );
@@ -1182,7 +1176,7 @@ async function runGit(cwd: string, args: string[], step: Step, timeoutMs: number
         const result = await runLines(['git', ...args], {
             cwd,
             // git does not stop to ask anything: a fetch that needs a password fails instead of waiting for it.
-            env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+            env: { ...inheritedEnv(), GIT_TERMINAL_PROMPT: '0' },
             signal: step.signal,
             timeoutMs,
             onLine(line) {
