@@ -2130,6 +2130,19 @@ describe('a chat that works in a worktree', () => {
         expect(badge(second.id)?.getAttribute('data-pr-state')).toBe('open');
         expect(badge(second.id)?.querySelector('svg')?.getAttribute('width')).toBe('12');
         expect(reads.mock.calls.filter(([, , name]) => name === branch)).toHaveLength(1);
+
+        await draw(() => ui().setGroupByWorktree(true));
+        const cardKey = chatWorktreeKey(first)!;
+        await vi.waitFor(() => expect(badge(cardKey)?.getAttribute('data-pr-state')).toBe('open'));
+        expect(badge(first.id)).toBeNull();
+        expect(badge(second.id)).toBeNull();
+        await draw(() => ui().toggleWorktreeCollapsed(cardKey));
+        expect(badge(cardKey)?.getAttribute('data-pr-state')).toBe('open');
+        expect(rowOf(first.id)).toBeNull();
+        await draw(() => ui().toggleWorktreeCollapsed(cardKey));
+        await draw(() => ui().setGroupByWorktree(false));
+        expect(badge(first.id)?.getAttribute('data-pr-state')).toBe('open');
+        expect(reads.mock.calls.filter(([, , name]) => name === branch)).toHaveLength(1);
         await act(async () => saveDraft(first.id, plainTextToDoc('Unsent')));
         expect(badge(first.id)).toBeNull();
         expect(badge(second.id)?.getAttribute('data-pr-state')).toBe('open');
@@ -2158,6 +2171,19 @@ describe('a chat that works in a worktree', () => {
         expect(badge(first.id)?.getAttribute('data-pr-state')).toBe('merged');
         expect(badge(second.id)?.getAttribute('aria-label')).toBe('1 pull request: 1 merged');
         expect(badge(second.id)?.textContent).toBe('');
+        await draw(() => ui().setGroupByWorktree(true));
+        expect(badge(cardKey)?.getAttribute('data-pr-state')).toBe('merged');
+        await act(async () =>
+            runInAction(() => {
+                fact.stale = true;
+            })
+        );
+        expect(badge(cardKey)?.getAttribute('aria-label')).toContain('last known');
+        await act(async () =>
+            runInAction(() => {
+                fact.stale = false;
+            })
+        );
 
         // The branch has commits of its own since that merge: the pull request is history, and no chat on it looks merged.
         await act(async () => {
@@ -2166,6 +2192,7 @@ describe('a chat that works in a worktree', () => {
                 pullRequests: [{ ...pr(9, 'merged'), movedPast: true as const }, pr(11, 'closed'), pr(13, 'closed')],
             });
         });
+        expect(badge(cardKey)).toBeNull();
         expect(badge(first.id)).toBeNull();
         expect(badge(second.id)).toBeNull();
 
@@ -2191,6 +2218,7 @@ describe('a chat that works in a worktree', () => {
             branch: 'feature/current',
         });
         await vi.waitFor(() => expect(switched.value?.pullRequests[0]?.state).toBe('closed'));
+        expect(badge(cardKey)).toBeNull();
         expect(badge(first.id)).toBeNull();
         expect(badge(second.id)).toBeNull();
         expect(reads.mock.calls.filter(([, , name]) => name === 'feature/current')).toHaveLength(1);
@@ -2777,6 +2805,46 @@ describe('worktree cards', () => {
             [workspaceKey(), true],
             [workspaceKey(), false],
         ]);
+    });
+
+    it('shows a thread’s pull request from its own folder inside its ancestor’s worktree card', async () => {
+        const data = withFixtureWorktrees(createFixtureData());
+        const root = data.chats.find(chat => chat.id === 'c-6')!;
+        const thread = data.chats.find(chat => chat.id === 'c-6b')!;
+        const workspace = data.chats.find(chat => chat.id === FIXTURE_WORKSPACE_CHAT_ID)!.workspace!;
+        root.workspace = workspace;
+        thread.workspace = {
+            ...workspace,
+            id: 'wks_api_thread',
+            folderId: 'fld_api',
+            path: '/Users/dev/worktrees/api-thread',
+            branch: 'feature/api-thread',
+        };
+        data.branchPullRequests = {
+            '/Users/dev/car-rental-api': {
+                'feature/api-thread': [
+                    {
+                        number: 42,
+                        state: 'open',
+                        head: 'feature/api-thread',
+                        base: 'main',
+                        title: 'API change',
+                        url: 'https://github.com/acme/car-rental-api/pull/42',
+                        updatedAt: 42,
+                    },
+                ],
+            },
+        };
+        await restart(data);
+        await draw(() => {
+            ui().setGroupByWorktree(true);
+            ui().toggleChatExpanded('c-6');
+            ui().openChat('c-6b');
+        });
+        await vi.waitFor(() =>
+            expect(rowOf('c-6b').querySelector('[data-pr-state]')?.getAttribute('data-pr-state')).toBe('open')
+        );
+        expect(rowOf('c-6b').closest('[data-worktree-card]')?.getAttribute('data-worktree-card')).toBe(workspaceKey());
     });
 
     it('marks a cross-worktree grandchild relative to its immediate parent, not to the root', async () => {

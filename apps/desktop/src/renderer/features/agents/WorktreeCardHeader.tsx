@@ -16,7 +16,7 @@ import styles from './AgentList.module.css';
 import { samePath, worktreeLabel } from './workspaceChoice';
 
 import type { ChatWorkspace } from '@clowdy/protocol';
-import type { DragEvent, SyntheticEvent } from 'react';
+import type { DragEvent, ReactNode, SyntheticEvent } from 'react';
 import type { ThreadsActivity } from './agentTree';
 import type { WorktreeCard } from './worktreeCards';
 
@@ -24,6 +24,7 @@ let previewGeneration = 0;
 
 export function WorktreeCardHeader({
     card,
+    pullRequestStatus,
     collapsed,
     activity,
     showFolder,
@@ -32,6 +33,7 @@ export function WorktreeCardHeader({
     hasDraft = false,
 }: {
     card: WorktreeCard;
+    pullRequestStatus?: ReactNode;
     collapsed: boolean;
     activity?: ThreadsActivity;
     showFolder: boolean;
@@ -160,6 +162,7 @@ export function WorktreeCardHeader({
                             />
                         </span>
                     )}
+                    {pullRequestStatus}
                     <span className={styles.worktreeActionButtons}>
                         <Button
                             variant="filling"
