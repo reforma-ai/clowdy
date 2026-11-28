@@ -3,7 +3,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup, usePanelRef } fro
 import { Show } from '@clowdy/components/Show';
 import { Vsc } from '@clowdy/icons/14';
 import { turnScope } from '@clowdy/protocol';
-import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { useRootStore } from '../../stores';
 import { ChangesList, type ChangesListHandle } from './ChangesList';
@@ -136,7 +136,8 @@ export function ChangesView({
         requestAnimationFrame(() => list.current?.scrollToFile(wanted));
     }, [model, wanted, listed]);
 
-    useEffect(() => {
+    // Before the paint, so a view built again (another space, another place) is not shown empty for a frame.
+    useLayoutEffect(() => {
         if (width > 0) setSized(true);
     }, [width]);
 
