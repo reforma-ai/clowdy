@@ -92,6 +92,7 @@ const GROUP_PREFIX = '@folder:';
 const EMPTY_PREFIX = '@empty:';
 const LINKED_THREAD_PREFIX = '@linked-thread:';
 const ARCHIVE_PREFIX = '@archive:';
+const SIMPLE_ARCHIVE_KEY = '@simple';
 const groupKey = (folderId: FolderId) => `${GROUP_PREFIX}${folderId}`;
 
 /** What a line of the list is: a chat (or a thread) or a sub-agent of one; the heading of a folder's group, or the note of a group that has no chat. */
@@ -100,6 +101,7 @@ type ListEntry =
     | { kind: 'draft'; draft: NewChatDraft }
     | { kind: 'group'; group: AgentGroup; isCollapsed: boolean }
     | { kind: 'empty'; folderId: FolderId }
+    | { kind: 'archive'; key: string; chats: (Chat & { archivedAt: number })[] }
     | {
           kind: 'worktree';
           card: WorktreeCard;
@@ -119,7 +121,9 @@ const entryKey = (entry: ListEntry) =>
             ? groupKey(entry.group.folder.id)
             : entry.kind === 'worktree'
               ? entry.card.key
-              : `${EMPTY_PREFIX}${entry.folderId}`;
+              : entry.kind === 'archive'
+                ? `${ARCHIVE_PREFIX}${entry.key}`
+                : `${EMPTY_PREFIX}${entry.folderId}`;
 
 /** A row's `⋯` button and the right-click menu are the same actions; a rename is a rename of the row it started on. */
 interface ChatActions {
@@ -319,6 +323,29 @@ export function AgentList({
             openRunId: openRun?.id,
         });
     const rowEntries = (roots: readonly Chat[]): ListEntry[] => rowsOf(roots).map(row => ({ kind: 'row', row }));
+    const archivedByFolder = new Map<string, (Chat & { archivedAt: number })[]>();
+    const allArchived: (Chat & { archivedAt: number })[] = [];
+    const archivedByCard = new Map<string, (Chat & { archivedAt: number })[]>();
+    for (const chat of project.chats.values()) {
+        if (chat.archivedAt === undefined) continue;
+        const archived = chat as Chat & { archivedAt: number };
+        allArchived.push(archived);
+        const folderId = groupFolderOf(project.chats, folders, chat.id);
+        if (folderId) {
+            const list = archivedByFolder.get(folderId) ?? [];
+            list.push(archived);
+            archivedByFolder.set(folderId, list);
+        }
+        const folder = folderById(folders, chat.folderId);
+        const key = chat.workspace ? chatWorktreeKey(chat, cards) : worktreeKey(folder.id, folder.path);
+        if (!key) continue;
+        const list = archivedByCard.get(key) ?? [];
+        list.push(archived);
+        archivedByCard.set(key, list);
+    }
+    allArchived.sort((a, b) => b.archivedAt - a.archivedAt);
+    for (const list of archivedByFolder.values()) list.sort((a, b) => b.archivedAt - a.archivedAt);
+    for (const list of archivedByCard.values()) list.sort((a, b) => b.archivedAt - a.archivedAt);
     const entries: ListEntry[] = groupedByWorktree
         ? shownCards.map(card => {
               const isCollapsed = ui.collapsedWorktrees.includes(card.key);
@@ -351,12 +378,24 @@ export function AgentList({
                               .map(draft => ({ kind: 'draft' as const, draft })),
                           ...rowEntries(group.roots),
                       ];
+                const archived = archivedByFolder.get(group.folder.id) ?? [];
                 return [
                     { kind: 'group', group, isCollapsed },
-                    ...(isCollapsed || body.length ? body : [{ kind: 'empty' as const, folderId: group.folder.id }]),
+                    ...body,
+                    ...(!isCollapsed && archived.length
+                        ? [{ kind: 'archive' as const, key: groupKey(group.folder.id), chats: archived }]
+                        : !isCollapsed && !body.length
+                          ? [{ kind: 'empty' as const, folderId: group.folder.id }]
+                          : []),
                 ];
             })
-          : [...draftItems.map(draft => ({ kind: 'draft' as const, draft })), ...rowEntries(chats)];
+          : [
+                ...draftItems.map(draft => ({ kind: 'draft' as const, draft })),
+                ...rowEntries(chats),
+                ...(allArchived.length
+                    ? [{ kind: 'archive' as const, key: SIMPLE_ARCHIVE_KEY, chats: allArchived }]
+                    : []),
+            ];
 
     const visibleRows = new Map<string, AgentRow>();
     const navigationIds = entries.flatMap(entry => {
@@ -369,6 +408,9 @@ export function AgentList({
                   ...entry.drafts.map(draft => `@draft:${draft.id}`),
                   ...rows.map(row => row.id),
                   ...entry.linkedThreads.map(chat => `${LINKED_THREAD_PREFIX}${chat.id}`),
+                  ...(!entry.isCollapsed && archivedByCard.has(entry.card.key)
+                      ? [`${ARCHIVE_PREFIX}${entry.card.key}`]
+                      : []),
               ]
             : [entryKey(entry)];
     });
@@ -606,27 +648,41 @@ export function AgentList({
         );
     };
 
-    const archivedByCard = new Map<string, (Chat & { archivedAt: number })[]>();
-    for (const chat of project.chats.values()) {
-        if (chat.archivedAt === undefined) continue;
-        const folder = folderById(folders, chat.folderId);
-        const key = chat.workspace ? chatWorktreeKey(chat, cards) : worktreeKey(folder.id, folder.path);
-        if (!key) continue;
-        const list = archivedByCard.get(key) ?? [];
-        list.push(chat as Chat & { archivedAt: number });
-        archivedByCard.set(key, list);
-    }
-    for (const list of archivedByCard.values()) list.sort((a, b) => b.archivedAt - a.archivedAt);
     useEffect(() => {
-        if (
-            archiveOpenKey &&
-            (!groupedByWorktree ||
-                !archivedByCard.has(archiveOpenKey) ||
-                !shownCards.some(card => card.key === archiveOpenKey) ||
-                ui.collapsedWorktrees.includes(archiveOpenKey))
-        )
-            setArchiveOpenKey(null);
+        setArchiveOpenKey(null);
+    }, [project.id, grouped, groupedByWorktree]);
+
+    useEffect(() => {
+        if (archiveOpenKey && !navigationIds.includes(`${ARCHIVE_PREFIX}${archiveOpenKey}`)) setArchiveOpenKey(null);
     });
+
+    const renderArchive = (key: string, archived: (Chat & { archivedAt: number })[]) => {
+        const chatCount = archived.filter(chat => !chat.parentChatId).length;
+        const threadCount = archived.length - chatCount;
+        const label = [
+            chatCount ? `${chatCount} archived ${chatCount === 1 ? 'chat' : 'chats'}` : '',
+            threadCount ? `${threadCount} archived ${threadCount === 1 ? 'thread' : 'threads'}` : '',
+        ]
+            .filter(Boolean)
+            .join(', ');
+        return (
+            <GridListItem
+                key={`${ARCHIVE_PREFIX}${key}`}
+                id={`${ARCHIVE_PREFIX}${key}`}
+                text={label}
+                icon={<Archive />}
+                className={styles.empty}
+                data-open={archiveOpenKey === key || undefined}
+            >
+                <WorktreeArchiveButton
+                    chats={archived}
+                    label={label}
+                    isOpen={archiveOpenKey === key}
+                    onOpenChange={open => setArchiveOpenKey(open ? key : null)}
+                />
+            </GridListItem>
+        );
+    };
 
     const renderEntry = (entry: ListEntry) => {
         switch (entry.kind) {
@@ -636,17 +692,10 @@ export function AgentList({
                 return renderAgentRow(entry.row);
             case 'group':
                 return renderGroup(entry.group, entry.isCollapsed);
+            case 'archive':
+                return renderArchive(entry.key, entry.chats);
             case 'worktree': {
                 const archived = archivedByCard.get(entry.card.key) ?? [];
-                const chatCount = archived.filter(chat => !chat.parentChatId).length;
-                const threadCount = archived.length - chatCount;
-                const emptyLabel =
-                    [
-                        chatCount ? `${chatCount} archived ${chatCount === 1 ? 'chat' : 'chats'}` : '',
-                        threadCount ? `${threadCount} archived ${threadCount === 1 ? 'thread' : 'threads'}` : '',
-                    ]
-                        .filter(Boolean)
-                        .join(', ') || 'No chats';
                 return (
                     <GridListSection
                         key={entry.card.key}
@@ -688,30 +737,21 @@ export function AgentList({
                             </GridListItem>
                         ))}
                         {!entry.isCollapsed &&
-                            (archived.length > 0 ||
-                                (entry.rows.length === 0 &&
-                                    entry.drafts.length === 0 &&
-                                    entry.linkedThreads.length === 0)) && (
+                            (archived.length ? (
+                                renderArchive(entry.card.key, archived)
+                            ) : entry.rows.length === 0 &&
+                              entry.drafts.length === 0 &&
+                              entry.linkedThreads.length === 0 ? (
                                 <GridListItem
-                                    id={`${archived.length ? ARCHIVE_PREFIX : EMPTY_PREFIX}${entry.card.key}`}
-                                    text={emptyLabel}
-                                    icon={archived.length ? <Archive /> : <Message />}
+                                    id={`${EMPTY_PREFIX}${entry.card.key}`}
+                                    text="No chats"
+                                    icon={<Message />}
                                     className={styles.empty}
-                                    data-open={archiveOpenKey === entry.card.key || undefined}
-                                    isDisabled={archived.length === 0}
+                                    isDisabled
                                 >
-                                    {archived.length ? (
-                                        <WorktreeArchiveButton
-                                            chats={archived}
-                                            label={emptyLabel}
-                                            isOpen={archiveOpenKey === entry.card.key}
-                                            onOpenChange={open => setArchiveOpenKey(open ? entry.card.key : null)}
-                                        />
-                                    ) : (
-                                        <span className={styles.title}>{emptyLabel}</span>
-                                    )}
+                                    <span className={styles.title}>No chats</span>
                                 </GridListItem>
-                            )}
+                            ) : null)}
                     </GridListSection>
                 );
             }

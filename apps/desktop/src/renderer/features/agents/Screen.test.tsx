@@ -2926,6 +2926,107 @@ describe('worktree cards', () => {
         expect([ui().sidePanelOpen, ui().sidePanelPlace]).toEqual([false, null]);
     });
 
+    it('groups archived threads under their parent folder and removes closed archive rows', async () => {
+        const data = withFixtureWorktrees(createFixtureData());
+        for (const chat of data.chats) chat.archivedAt = undefined;
+        const apiChat = data.chats.find(chat => chat.id === 'c-4')!;
+        apiChat.folderId = 'fld_api';
+        apiChat.archivedAt = 1;
+        const thread = data.chats.find(chat => chat.id === 'c-6a1')!;
+        thread.folderId = 'fld_api';
+        thread.archivedAt = 2;
+        await restart(data);
+        const main = '@archive:@folder:fld_car_rental';
+        const api = '@archive:@folder:fld_api';
+        expect([rowOf(main).textContent, rowOf(api).textContent]).toEqual(['1 archived thread', '1 archived chat']);
+        expect(rowKeys()).not.toContain('@empty:fld_api');
+        await press(rowOf(main).querySelector('button')!);
+        expect(document.querySelector('[aria-label="Archived chats"] [data-key="c-6a1"]')).not.toBeNull();
+        expect(document.querySelector('[aria-label="Archived chats"] [data-key="c-4"]')).toBeNull();
+        await draw(() => ui().toggleFolderCollapsed('fld_car_rental'));
+        expect(rowKeys()).not.toContain(main);
+        expect(document.querySelector('[aria-label="Archived chats"]')).toBeNull();
+        await draw(() => ui().setChatListLayout('simple'));
+        expect(rowKeys().at(-1)).toBe('@archive:@simple');
+        expect(rowOf('@archive:@simple').textContent).toBe('1 archived chat, 1 archived thread');
+        await draw(() => ui().setChatListLayout('folder'));
+        expect(rowKeys()).not.toContain(main);
+        expect(rowKeys().filter(key => key?.startsWith('@archive:'))).toEqual([api]);
+    });
+
+    it('puts an archived chat from a removed folder in the main archive and can delete it', async () => {
+        const data = withFixtureWorktrees(createFixtureData());
+        for (const chat of data.chats) chat.archivedAt = undefined;
+        const chat = data.chats.find(item => item.id === 'c-4')!;
+        chat.folderId = 'removed-folder';
+        chat.archivedAt = 1;
+        await restart(data);
+        const main = rowOf('@archive:@folder:fld_car_rental');
+        expect(rowKeys()).not.toContain('@archive:@folder:fld_api');
+        await press(main.querySelector('button')!);
+        const input = document.querySelector<HTMLInputElement>('input[aria-label="Search archived chats"]')!;
+        await draw(() => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'New chat');
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        const archived = document.querySelector<HTMLElement>('[aria-label="Archived chats"] [data-key="c-4"]')!;
+        await press(archived.querySelector<HTMLElement>('button[aria-label^="Actions of"]')!);
+        await press(menuItem('Delete'));
+        await vi.waitFor(() => expect(project().chats.has('c-4')).toBe(false));
+        await draw();
+        expect(rowKeys()).not.toContain('@archive:@folder:fld_car_rental');
+    });
+
+    it('steps to the simple archive and opens it without changing the selected chat', async () => {
+        const data = withFixtureWorktrees(createFixtureData());
+        for (const chat of data.chats) chat.archivedAt = undefined;
+        data.chats.find(chat => chat.id === 'c-4')!.archivedAt = 1;
+        await restart(data);
+        await draw(() => ui().setChatListLayout('simple'));
+        const archiveKey = '@archive:@simple';
+        const previousKey = rowKeys().at(-2)!;
+        const selected = ui().chatId;
+        const uninstall = installDispatcher(hotkeys);
+        try {
+            rowOf(previousKey).focus();
+            await act(async () => {
+                document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'j', bubbles: true }));
+            });
+            expect(document.activeElement?.getAttribute('data-key')).toBe(archiveKey);
+            await act(async () => {
+                document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+                document.activeElement!.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }));
+            });
+            expect(document.querySelector('[aria-label="Archived chats"] [data-key="c-4"]')).not.toBeNull();
+            expect(ui().chatId).toBe(selected);
+        } finally {
+            uninstall();
+        }
+    });
+
+    it('opens a simple archive with the keyboard and restores nested ancestors', async () => {
+        const data = withFixtureWorktrees(createFixtureData());
+        for (const chat of data.chats) chat.archivedAt = undefined;
+        for (const id of ['c-6', 'c-6a', 'c-6a1']) data.chats.find(chat => chat.id === id)!.archivedAt = 1;
+        await restart(data);
+        await draw(() => ui().setChatListLayout('simple'));
+        const trigger = rowOf('@archive:@simple').querySelector('button')!;
+        await act(async () => {
+            trigger.focus();
+            trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+            trigger.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }));
+        });
+        await press(document.querySelector<HTMLElement>('[aria-label="Archived chats"] [data-key="c-6a1"]')!);
+        await vi.waitFor(() => expect(ui().chatId).toBe('c-6a1'));
+        expect(['c-6', 'c-6a', 'c-6a1'].map(id => project().chats.get(id)?.archivedAt)).toEqual([
+            undefined,
+            undefined,
+            undefined,
+        ]);
+        await draw();
+        expect(rowKeys()).not.toContain('@archive:@simple');
+    });
+
     it('shows archived chat counts alongside active chats in the same worktree', async () => {
         await restart(withFixtureWorktrees(createFixtureData()));
         await draw(() => ui().setGroupByWorktree(true));
