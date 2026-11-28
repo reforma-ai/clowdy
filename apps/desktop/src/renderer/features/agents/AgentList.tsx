@@ -571,6 +571,21 @@ export function AgentList({
         else if (row?.kind === 'chat') ui.openChat(id);
     };
 
+    // Decoration follows the visible groups in their displayed order, including reordered cards.
+    const folderBoundaries = new Set<string>();
+    let previousFolderId: string | undefined;
+    for (const entry of entries) {
+        const folderId =
+            entry.kind === 'group'
+                ? entry.group.folder.id
+                : entry.kind === 'worktree'
+                  ? entry.card.folder.id
+                  : undefined;
+        if (folderId === undefined) continue;
+        if (previousFolderId !== undefined && previousFolderId !== folderId) folderBoundaries.add(entryKey(entry));
+        previousFolderId = folderId;
+    }
+
     const renderGroup = (group: AgentGroup, isCollapsed: boolean) => {
         const isMissing = missing.has(group.folder.id);
         const startChat = () => openNewChat(project, ui, group.folder.id);
@@ -579,6 +594,7 @@ export function AgentList({
             <WorktreeCardHeader
                 key={groupKey(group.folder.id)}
                 id={groupKey(group.folder.id)}
+                folderBoundary={folderBoundaries.has(groupKey(group.folder.id))}
                 card={{
                     key: groupKey(group.folder.id),
                     main: true,
@@ -714,6 +730,7 @@ export function AgentList({
                     >
                         <WorktreeCardHeader
                             card={entry.card}
+                            folderBoundary={folderBoundaries.has(entry.card.key)}
                             archivedChats={archived}
                             pullRequestStatus={
                                 <BranchPullRequestBadge

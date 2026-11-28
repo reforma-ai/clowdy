@@ -8,11 +8,12 @@ import type { ComponentProps, ReactNode } from 'react';
 
 type Props = Omit<ComponentProps<typeof GridListItem>, 'children'> & {
     name: ReactNode;
+    icon: ReactNode;
     collapsed: boolean;
     onToggle: () => void;
 };
 
-export function GroupHeader({ name, collapsed, onToggle, text, className, onContextMenu, ...props }: Props) {
+export function GroupHeader({ name, icon, collapsed, onToggle, text, className, onContextMenu, ...props }: Props) {
     return (
         <GridListItem
             {...props}
@@ -26,15 +27,17 @@ export function GroupHeader({ name, collapsed, onToggle, text, className, onCont
                     variant="filling"
                     color="inherit"
                     size="xs"
-                    truncate
                     className={styles.groupToggle}
                     aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${text}`}
                     aria-expanded={!collapsed}
                     onPress={onToggle}
                 >
-                    {name}
-                    {collapsed ? <ChevronRight aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
+                    <span className={styles.groupIcon}>{icon}</span>
+                    <span className={styles.groupChevron}>
+                        {collapsed ? <ChevronRight aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
+                    </span>
                 </Button>
+                {name}
             </RowControls>
         </GridListItem>
     );
