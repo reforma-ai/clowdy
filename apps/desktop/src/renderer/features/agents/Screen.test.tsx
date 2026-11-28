@@ -758,6 +758,7 @@ describe('grouped by folder', () => {
                 'Open in Terminal',
                 'Copy path',
                 'Open in…',
+                'Chat archive',
             ]);
             expect(item('Open in Files').getAttribute('aria-disabled')).toBe('true');
             expect(item('Open in Terminal').getAttribute('aria-disabled')).toBe('true');
@@ -2368,6 +2369,10 @@ describe('worktree cards', () => {
     const workspaceKey = () => chatWorktreeKey(project().chats.get(FIXTURE_WORKSPACE_CHAT_ID)!)!;
     const cardRows = () =>
         [...container.querySelectorAll<HTMLElement>('[data-worktree-card]')].map(row => row.dataset.worktreeCard);
+    const openGroupArchive = async (key: string) => {
+        await press(rowOf(key).querySelector<HTMLElement>('button[aria-label^="Worktree actions:"]')!);
+        await press(menuItem('Chat archive'));
+    };
     const arrow = (key: string, direction: string) =>
         act(async () => {
             rowOf(key).dispatchEvent(new KeyboardEvent('keydown', { key: direction, bubbles: true, cancelable: true }));
@@ -2926,115 +2931,67 @@ describe('worktree cards', () => {
         expect([ui().sidePanelOpen, ui().sidePanelPlace]).toEqual([false, null]);
     });
 
-    it('groups archived threads under their parent folder and removes closed archive rows', async () => {
+    it('opens scoped folder archives while hiding their rows in populated groups', async () => {
         const data = withFixtureWorktrees(createFixtureData());
         for (const chat of data.chats) chat.archivedAt = undefined;
         const apiChat = data.chats.find(chat => chat.id === 'c-4')!;
         apiChat.folderId = 'fld_api';
         apiChat.archivedAt = 1;
-        const thread = data.chats.find(chat => chat.id === 'c-6a1')!;
-        thread.folderId = 'fld_api';
-        thread.archivedAt = 2;
+        data.chats.find(chat => chat.id === 'c-6a1')!.archivedAt = 2;
         await restart(data);
-        const main = '@archive:@folder:fld_car_rental';
-        const api = '@archive:@folder:fld_api';
-        expect([rowOf(main).textContent, rowOf(api).textContent]).toEqual(['1 archived thread', '1 archived chat']);
-        expect(rowKeys()).not.toContain('@empty:fld_api');
-        await press(rowOf(main).querySelector('button')!);
+        expect(rowKeys()).not.toContain('@archive:@folder:fld_car_rental');
+        await draw(() => ui().toggleFolderCollapsed('fld_car_rental'));
+        await openGroupArchive('@folder:fld_car_rental');
         expect(document.querySelector('[aria-label="Archived chats"] [data-key="c-6a1"]')).not.toBeNull();
         expect(document.querySelector('[aria-label="Archived chats"] [data-key="c-4"]')).toBeNull();
-        await draw(() => ui().toggleFolderCollapsed('fld_car_rental'));
-        expect(rowKeys()).not.toContain(main);
-        expect(document.querySelector('[aria-label="Archived chats"]')).toBeNull();
         await draw(() => ui().setChatListLayout('simple'));
-        expect(rowKeys().at(-1)).toBe('@archive:@simple');
-        expect(rowOf('@archive:@simple').textContent).toBe('1 archived chat, 1 archived thread');
-        await draw(() => ui().setChatListLayout('folder'));
-        expect(rowKeys()).not.toContain(main);
-        expect(rowKeys().filter(key => key?.startsWith('@archive:'))).toEqual([api]);
+        expect(rowKeys()).not.toContain('@archive:@simple');
+        await press(buttonNamed('Chat archive'));
+        expect(document.querySelector('[aria-label="Archived chats"] [data-key="c-4"]')).not.toBeNull();
     });
 
-    it('puts an archived chat from a removed folder in the main archive and can delete it', async () => {
+    it('shows the archive row in an empty folder and in an empty ungrouped list', async () => {
         const data = withFixtureWorktrees(createFixtureData());
-        for (const chat of data.chats) chat.archivedAt = undefined;
-        const chat = data.chats.find(item => item.id === 'c-4')!;
-        chat.folderId = 'removed-folder';
-        chat.archivedAt = 1;
+        for (const chat of data.chats) chat.archivedAt = 1;
         await restart(data);
-        const main = rowOf('@archive:@folder:fld_car_rental');
-        expect(rowKeys()).not.toContain('@archive:@folder:fld_api');
-        await press(main.querySelector('button')!);
-        const input = document.querySelector<HTMLInputElement>('input[aria-label="Search archived chats"]')!;
         await draw(() => {
-            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'New chat');
-            input.dispatchEvent(new Event('input', { bubbles: true }));
+            for (const draft of ui().newChatDrafts.drafts) ui().newChatDrafts.remove(draft.id);
         });
-        const archived = document.querySelector<HTMLElement>('[aria-label="Archived chats"] [data-key="c-4"]')!;
-        await press(archived.querySelector<HTMLElement>('button[aria-label^="Actions of"]')!);
-        await press(menuItem('Delete'));
-        await vi.waitFor(() => expect(project().chats.has('c-4')).toBe(false));
-        await draw();
-        expect(rowKeys()).not.toContain('@archive:@folder:fld_car_rental');
-    });
-
-    it('steps to the simple archive and opens it without changing the selected chat', async () => {
-        const data = withFixtureWorktrees(createFixtureData());
-        for (const chat of data.chats) chat.archivedAt = undefined;
-        data.chats.find(chat => chat.id === 'c-4')!.archivedAt = 1;
-        await restart(data);
+        expect(rowKeys()).toContain('@archive:@folder:fld_car_rental');
+        expect(rowKeys()).not.toContain('@empty:fld_car_rental');
         await draw(() => ui().setChatListLayout('simple'));
-        const archiveKey = '@archive:@simple';
-        const previousKey = rowKeys().at(-2)!;
-        const selected = ui().chatId;
-        const uninstall = installDispatcher(hotkeys);
-        try {
-            rowOf(previousKey).focus();
-            await act(async () => {
-                document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'j', bubbles: true }));
-            });
-            expect(document.activeElement?.getAttribute('data-key')).toBe(archiveKey);
-            await act(async () => {
-                document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-                document.activeElement!.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }));
-            });
-            expect(document.querySelector('[aria-label="Archived chats"] [data-key="c-4"]')).not.toBeNull();
-            expect(ui().chatId).toBe(selected);
-        } finally {
-            uninstall();
-        }
-    });
-
-    it('opens a simple archive with the keyboard and restores nested ancestors', async () => {
-        const data = withFixtureWorktrees(createFixtureData());
-        for (const chat of data.chats) chat.archivedAt = undefined;
-        for (const id of ['c-6', 'c-6a', 'c-6a1']) data.chats.find(chat => chat.id === id)!.archivedAt = 1;
-        await restart(data);
-        await draw(() => ui().setChatListLayout('simple'));
+        expect(rowKeys()).toContain('@archive:@simple');
         const trigger = rowOf('@archive:@simple').querySelector('button')!;
         await act(async () => {
             trigger.focus();
             trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
             trigger.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }));
         });
-        await press(document.querySelector<HTMLElement>('[aria-label="Archived chats"] [data-key="c-6a1"]')!);
-        await vi.waitFor(() => expect(ui().chatId).toBe('c-6a1'));
-        expect(['c-6', 'c-6a', 'c-6a1'].map(id => project().chats.get(id)?.archivedAt)).toEqual([
-            undefined,
-            undefined,
-            undefined,
-        ]);
-        await draw();
-        expect(rowKeys()).not.toContain('@archive:@simple');
+        expect(document.querySelector('[aria-label="Archived chats"]')).not.toBeNull();
     });
 
-    it('shows archived chat counts alongside active chats in the same worktree', async () => {
+    it('hides archived chat counts alongside active chats in the same worktree', async () => {
         await restart(withFixtureWorktrees(createFixtureData()));
         await draw(() => ui().setGroupByWorktree(true));
         const key = workspaceKey();
         await vi.waitFor(() => expect(rowOf(key)).toBeTruthy());
         const card = rowOf(key).closest<HTMLElement>('[data-worktree-card]')!;
-        expect(card.textContent).toContain('1 archived chat');
+        expect(card.textContent).not.toContain('1 archived chat');
         expect(card.textContent).toContain('Weekend surcharge in a worktree');
+    });
+
+    it('keeps a removed folder chat in the main folder archive and deletes it', async () => {
+        const data = withFixtureWorktrees(createFixtureData());
+        for (const chat of data.chats) chat.archivedAt = undefined;
+        const chat = data.chats.find(item => item.id === 'c-4')!;
+        chat.folderId = 'removed-folder';
+        chat.archivedAt = 1;
+        await restart(data);
+        await openGroupArchive('@folder:fld_car_rental');
+        const archived = document.querySelector<HTMLElement>('[aria-label="Archived chats"] [data-key="c-4"]')!;
+        await press(archived.querySelector<HTMLElement>('button[aria-label^="Actions of"]')!);
+        await press(menuItem('Delete'));
+        await vi.waitFor(() => expect(project().chats.has('c-4')).toBe(false));
     });
 
     it('shows archived chat counts for a worktree with no active chats', async () => {
@@ -3068,10 +3025,8 @@ describe('worktree cards', () => {
         await restart(data);
         await draw(() => ui().setGroupByWorktree(true));
         const card = rowOf(workspaceKey()).closest<HTMLElement>('[data-worktree-card]')!;
-        expect(card.textContent).toContain('1 archived chat, 1 archived thread');
-        await press(
-            [...card.querySelectorAll('button')].find(button => button.textContent?.includes('archived thread'))!
-        );
+        expect(card.textContent).not.toContain('archived thread');
+        await openGroupArchive(workspaceKey());
         const list = document.body.querySelector<HTMLElement>('[aria-label="Archived chats"]')!;
         expect(
             [...list.querySelectorAll('[role="row"][data-key]')].map(row => row.getAttribute('data-key')).sort()
@@ -3093,11 +3048,7 @@ describe('worktree cards', () => {
         thread.workspace = data.chats.find(chat => chat.id === FIXTURE_WORKSPACE_CHAT_ID)!.workspace;
         await restart(data);
         await draw(() => ui().setGroupByWorktree(true));
-        const card = rowOf(workspaceKey()).closest<HTMLElement>('[data-worktree-card]')!;
-        const trigger = [...card.querySelectorAll('button')].find(button =>
-            button.textContent?.includes('archived thread')
-        )!;
-        await press(trigger);
+        await openGroupArchive(workspaceKey());
         const input = document.querySelector<HTMLInputElement>('input[aria-label="Search archived chats"]')!;
         await draw(() => {
             Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'PRICE ROUNDING');
@@ -3105,33 +3056,28 @@ describe('worktree cards', () => {
         });
         expect(document.querySelector('[aria-label="Archived chats"] [data-key="c-6a1"]')).not.toBeNull();
         expect(document.querySelector('[aria-label="Archived chats"] [data-key="c-10"]')).toBeNull();
-        await press(trigger);
-        await press(trigger);
+        await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+        await openGroupArchive(workspaceKey());
         expect(document.querySelector<HTMLInputElement>('input[aria-label="Search archived chats"]')!.value).toBe('');
     });
 
     it('opens the worktree archive with the keyboard', async () => {
         await restart(withFixtureWorktrees(createFixtureData()));
         await draw(() => ui().setGroupByWorktree(true));
-        const card = rowOf(workspaceKey()).closest<HTMLElement>('[data-worktree-card]')!;
-        const trigger = [...card.querySelectorAll('button')].find(button =>
-            button.textContent?.includes('archived chat')
-        )!;
+        const trigger = rowOf(workspaceKey()).querySelector<HTMLElement>('button[aria-label^="Worktree actions:"]')!;
         await act(async () => {
             trigger.focus();
             trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
             trigger.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }));
         });
+        await press(menuItem('Chat archive'));
         expect(document.body.querySelector('[aria-label="Archived chats"] [data-key="c-10"]')).not.toBeNull();
     });
 
     it('offers archive actions from the worktree list', async () => {
         await restart(withFixtureWorktrees(createFixtureData()));
         await draw(() => ui().setGroupByWorktree(true));
-        const card = rowOf(workspaceKey()).closest<HTMLElement>('[data-worktree-card]')!;
-        await press(
-            [...card.querySelectorAll('button')].find(button => button.textContent?.includes('archived chat'))!
-        );
+        await openGroupArchive(workspaceKey());
         const list = document.body.querySelector<HTMLElement>('[aria-label="Archived chats"]')!;
         await press(list.querySelector<HTMLElement>('[data-key="c-10"] button[aria-label^="Actions of"]')!);
         await press(menuItem('Unarchive'));
@@ -3149,10 +3095,7 @@ describe('worktree cards', () => {
         thread.workspace = workspace;
         await restart(data);
         await draw(() => ui().setGroupByWorktree(true));
-        const card = rowOf(workspaceKey()).closest<HTMLElement>('[data-worktree-card]')!;
-        await press(
-            [...card.querySelectorAll('button')].find(button => button.textContent?.includes('archived thread'))!
-        );
+        await openGroupArchive(workspaceKey());
         const list = document.body.querySelector<HTMLElement>('[aria-label="Archived chats"]')!;
         await press(list.querySelector<HTMLElement>('[data-key="c-6a1"] button[aria-label^="Actions of"]')!);
         await press(menuItem('Unarchive'));
@@ -3163,6 +3106,33 @@ describe('worktree cards', () => {
             undefined,
         ]);
         expect(ui().chatId).not.toBe('c-6a1');
+    });
+
+    it('offers an empty archive from an unused worktree menu', async () => {
+        await restart();
+        await draw(() => {
+            ui().setGroupByWorktree(true);
+            chatListPreferences.setShowUnusedWorktrees(true);
+        });
+        const key = cardRows().find(card => card?.includes('search-filters'))!;
+        await openGroupArchive(key);
+        expect(document.body.textContent).toContain('No archived chats');
+    });
+
+    it('hides the archive row when an otherwise empty worktree has a draft', async () => {
+        const data = withFixtureWorktrees(createFixtureData());
+        data.chats.find(chat => chat.id === FIXTURE_WORKSPACE_CHAT_ID)!.archivedAt = Date.now();
+        await restart(data);
+        await draw(() => {
+            ui().setGroupByWorktree(true);
+            chatListPreferences.setShowUnusedWorktrees(true);
+        });
+        const key = worktreeKey('fld_car_rental', '/Users/dev/Clowdy/workspaces/car-rental/ab12cd34/car-rental');
+        expect(rowKeys()).toContain(`@archive:${key}`);
+        await press(rowOf(key).querySelector<HTMLElement>('button[aria-label^="New chat in "]')!);
+        await draw();
+        expect(rowKeys()).not.toContain(`@archive:${key}`);
+        expect(rowOf(key).closest('[data-worktree-card]')!.textContent).not.toContain('No chats');
     });
 
     it('starts a draft in a worktree with no chats from its own menu', async () => {
@@ -3831,6 +3801,27 @@ describe('worktree cards', () => {
             });
             await settle();
             expect(store.selectedProjectId).toBe(FIXTURE_PERSONAL_PROJECT_ID);
+        });
+
+        it('fades in the chat after a swipe, and the list too only when the space was chosen elsewhere', async () => {
+            const faded: Element[] = [];
+            vi.spyOn(Element.prototype, 'animate').mockImplementation(function (this: Element) {
+                faded.push(this);
+                return {} as Animation;
+            });
+            const chat = () => container.querySelector('section[aria-label="Chat"]');
+            const list = () => sidebar().querySelector(':scope > div > div:not([inert])');
+
+            await act(async () => gesture(Array(7).fill(10), 100));
+            await settle();
+            // The harness renders without an observer above the screen: draw it as the shell would.
+            await draw();
+            expect(store.selectedProjectId).toBe(FIXTURE_PERSONAL_PROJECT_ID);
+            expect([faded.includes(chat()!), faded.includes(list()!)]).toEqual([true, false]);
+
+            faded.length = 0;
+            await draw(() => store.selectProject(FIXTURE_PROJECT_ID));
+            expect([faded.includes(chat()!), faded.includes(list()!)]).toEqual([true, true]);
         });
 
         it('follows only the sideways movement once the swipe went sideways', async () => {

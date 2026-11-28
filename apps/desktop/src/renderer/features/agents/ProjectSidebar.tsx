@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { attachHorizontalSwipe } from '../../gestures/horizontalSwipe';
 import { swipeDecision } from '../../gestures/swipeTracker';
+import { fadeIn } from '../../shared';
 import { Unreachable } from '../../shell/Unreachable';
 import { ProjectProvider, useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { AgentList } from './AgentList';
@@ -120,6 +121,16 @@ export function ProjectSidebar({
         place(0, false);
         setPreviewSide(0);
     }, [place]);
+
+    // A space chosen elsewhere (the title band's select, a shortcut) fades in; one swiped in is already on screen. This
+    // runs before the effect below forgets which project was this component's own.
+    const center = useRef<HTMLDivElement>(null);
+    const faded = useRef<string | undefined>(undefined);
+    useLayoutEffect(() => {
+        if (faded.current === currentId) return;
+        faded.current = currentId;
+        if (own.current !== currentId) fadeIn(center.current);
+    }, [currentId]);
 
     useEffect(() => {
         const mine = own.current === currentId;
@@ -274,7 +285,9 @@ export function ProjectSidebar({
                 }}
             >
                 {panel(previous, -1)}
-                <div className={styles.panel}>{children}</div>
+                <div ref={center} className={styles.panel}>
+                    {children}
+                </div>
                 {panel(next, 1)}
             </div>
         </div>

@@ -346,6 +346,7 @@ export function AgentList({
     allArchived.sort((a, b) => b.archivedAt - a.archivedAt);
     for (const list of archivedByFolder.values()) list.sort((a, b) => b.archivedAt - a.archivedAt);
     for (const list of archivedByCard.values()) list.sort((a, b) => b.archivedAt - a.archivedAt);
+    const simpleRows = !groupedByWorktree && !grouped ? rowEntries(chats) : [];
     const entries: ListEntry[] = groupedByWorktree
         ? shownCards.map(card => {
               const isCollapsed = ui.collapsedWorktrees.includes(card.key);
@@ -382,7 +383,7 @@ export function AgentList({
                 return [
                     { kind: 'group', group, isCollapsed },
                     ...body,
-                    ...(!isCollapsed && archived.length
+                    ...(!isCollapsed && !body.length && archived.length
                         ? [{ kind: 'archive' as const, key: groupKey(group.folder.id), chats: archived }]
                         : !isCollapsed && !body.length
                           ? [{ kind: 'empty' as const, folderId: group.folder.id }]
@@ -391,8 +392,8 @@ export function AgentList({
             })
           : [
                 ...draftItems.map(draft => ({ kind: 'draft' as const, draft })),
-                ...rowEntries(chats),
-                ...(allArchived.length
+                ...simpleRows,
+                ...(allArchived.length && !draftItems.length && !simpleRows.length
                     ? [{ kind: 'archive' as const, key: SIMPLE_ARCHIVE_KEY, chats: allArchived }]
                     : []),
             ];
@@ -408,7 +409,11 @@ export function AgentList({
                   ...entry.drafts.map(draft => `@draft:${draft.id}`),
                   ...rows.map(row => row.id),
                   ...entry.linkedThreads.map(chat => `${LINKED_THREAD_PREFIX}${chat.id}`),
-                  ...(!entry.isCollapsed && archivedByCard.has(entry.card.key)
+                  ...(!entry.isCollapsed &&
+                  !entry.rows.length &&
+                  !entry.drafts.length &&
+                  !entry.linkedThreads.length &&
+                  archivedByCard.has(entry.card.key)
                       ? [`${ARCHIVE_PREFIX}${entry.card.key}`]
                       : []),
               ]
@@ -589,6 +594,7 @@ export function AgentList({
                 collapsed={isCollapsed}
                 onToggle={() => ui.toggleFolderCollapsed(group.folder.id)}
                 onNewChat={startChat}
+                archivedChats={archivedByFolder.get(group.folder.id) ?? []}
             />
         );
     };
@@ -708,6 +714,7 @@ export function AgentList({
                     >
                         <WorktreeCardHeader
                             card={entry.card}
+                            archivedChats={archived}
                             pullRequestStatus={
                                 <BranchPullRequestBadge
                                     className={styles.pullRequests}
@@ -737,11 +744,12 @@ export function AgentList({
                             </GridListItem>
                         ))}
                         {!entry.isCollapsed &&
+                            !entry.rows.length &&
+                            !entry.drafts.length &&
+                            !entry.linkedThreads.length &&
                             (archived.length ? (
                                 renderArchive(entry.card.key, archived)
-                            ) : entry.rows.length === 0 &&
-                              entry.drafts.length === 0 &&
-                              entry.linkedThreads.length === 0 ? (
+                            ) : (
                                 <GridListItem
                                     id={`${EMPTY_PREFIX}${entry.card.key}`}
                                     text="No chats"
@@ -751,7 +759,7 @@ export function AgentList({
                                 >
                                     <span className={styles.title}>No chats</span>
                                 </GridListItem>
-                            ) : null)}
+                            ))}
                     </GridListSection>
                 );
             }

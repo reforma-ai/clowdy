@@ -1,7 +1,8 @@
 import { PanelLoadingState } from '@clowdy/components/Panel';
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useRef } from 'react';
 
-import { useProjectUi } from '../../stores';
+import { useFadeIn } from '../../shared';
+import { useProjectState, useProjectUi } from '../../stores';
 import { SIDE_PANEL_TAB_LABELS } from './commands';
 import styles from './SidePanel.module.css';
 
@@ -23,6 +24,9 @@ const ChangesTab = lazy(() => import('../changes/ChangesTab'));
  */
 export function SidePanel() {
     const { sidePanelTab: chosen, sidePanelCoversChat } = useProjectUi();
+    // Another space's tab fades in with its chat; opening the panel does not.
+    const plate = useRef<HTMLElement>(null);
+    useFadeIn(plate, useProjectState().id);
 
     return (
         <aside
@@ -31,7 +35,7 @@ export function SidePanel() {
             data-side-panel=""
             data-expanded={sidePanelCoversChat || undefined}
         >
-            <section className={styles.plate} data-tab={chosen} aria-label={SIDE_PANEL_TAB_LABELS[chosen]}>
+            <section ref={plate} className={styles.plate} data-tab={chosen} aria-label={SIDE_PANEL_TAB_LABELS[chosen]}>
                 {(chosen === 'files' || chosen === 'docs') && (
                     <Suspense fallback={<PanelLoadingState />}>
                         <FilesTab variant={chosen} />
