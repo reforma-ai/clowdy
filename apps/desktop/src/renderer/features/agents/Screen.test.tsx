@@ -3833,6 +3833,27 @@ describe('worktree cards', () => {
             expect(store.selectedProjectId).toBe(FIXTURE_PERSONAL_PROJECT_ID);
         });
 
+        it('fades in the chat after a swipe, and the list too only when the space was chosen elsewhere', async () => {
+            const faded: Element[] = [];
+            vi.spyOn(Element.prototype, 'animate').mockImplementation(function (this: Element) {
+                faded.push(this);
+                return {} as Animation;
+            });
+            const chat = () => container.querySelector('section[aria-label="Chat"]');
+            const list = () => sidebar().querySelector(':scope > div > div:not([inert])');
+
+            await act(async () => gesture(Array(7).fill(10), 100));
+            await settle();
+            // The harness renders without an observer above the screen: draw it as the shell would.
+            await draw();
+            expect(store.selectedProjectId).toBe(FIXTURE_PERSONAL_PROJECT_ID);
+            expect([faded.includes(chat()!), faded.includes(list()!)]).toEqual([true, false]);
+
+            faded.length = 0;
+            await draw(() => store.selectProject(FIXTURE_PROJECT_ID));
+            expect([faded.includes(chat()!), faded.includes(list()!)]).toEqual([true, true]);
+        });
+
         it('follows only the sideways movement once the swipe went sideways', async () => {
             // The pull drifts down at its end, as fingers on a trackpad do.
             await act(async () => {
