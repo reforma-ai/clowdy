@@ -2,13 +2,14 @@ import { useLayoutEffect, useRef } from 'react';
 
 import type { RefObject } from 'react';
 
-const FADE: KeyframeAnimationOptions = { duration: 220, easing: 'cubic-bezier(0.4, 0, 0.2, 1)' };
+// Long and soft, from half seen rather than from nothing: a short fade from transparent reads as a flicker.
+const FADE: KeyframeAnimationOptions = { duration: 360, easing: 'cubic-bezier(0.33, 1, 0.68, 1)' };
 
-/** Brings `node` up from transparent, at once for a person who prefers less motion. */
+/** Brings `node` up from faint, at once for a person who prefers less motion. */
 export function fadeIn(node: HTMLElement | null | undefined) {
     if (!node || typeof node.animate !== 'function') return;
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
-    node.animate([{ opacity: 0 }, { opacity: 1 }], FADE);
+    node.animate([{ opacity: 0.35 }, { opacity: 1 }], FADE);
 }
 
 /**
