@@ -394,7 +394,7 @@ describe('ProjectsPage project', () => {
     it('shows project-wide worktree actions', async () => {
         await open(FIXTURE_PROJECT_ID);
         expect(container.textContent).toContain('Manage worktrees');
-        expect(container.textContent).toContain('Tidy up worktrees');
+        expect(container.textContent).not.toContain('Tidy up worktrees');
     });
 
     it('renames on blur, and puts the name back on Escape', async () => {
