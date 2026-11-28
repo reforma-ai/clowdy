@@ -124,6 +124,13 @@ export function useSwipeReply<T extends HTMLElement>({ enabled, onReply }: Swipe
             // of the fingers (it would end the swipe, and reply, while they still move).
             const at = event.timeStamp;
             const mode = lifecycle.wheel(event);
+            if (mode === 'momentum') {
+                if (state.phase === 'pulling') {
+                    event.preventDefault();
+                    event.stopPropagation();
+                }
+                return;
+            }
             if (mode === 'ignore') return;
 
             // The wheel went quiet before this event and its timer has not run yet (a page that is busy takes input first): that swipe ends here, with its Reply.

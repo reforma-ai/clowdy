@@ -793,6 +793,18 @@ describe('native wheel lifecycle', () => {
         expect(onReply.mock.calls).toEqual([[TEXT]]);
     });
 
+    it('replies after release when momentum arrives before the release settles', async () => {
+        const phase = phases();
+        await draw(person());
+        phase(1);
+        swipe(13);
+        phase(8);
+        phase(0, true, 1);
+        const event = wheel(10);
+        elapse(41);
+        expect([onReply.mock.calls, event.defaultPrevented]).toEqual([[[TEXT]], true]);
+    });
+
     it('uses the quiet-time fallback for an unphased wheel even when the bridge is available', async () => {
         const phase = phases();
         await draw(person());

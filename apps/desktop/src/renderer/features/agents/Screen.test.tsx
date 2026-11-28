@@ -3602,6 +3602,69 @@ describe('worktree cards', () => {
         expect(store.selectedProjectId).toBe(FIXTURE_PERSONAL_PROJECT_ID);
     });
 
+    it.each([
+        [FIXTURE_PROJECT_ID, FIXTURE_PERSONAL_PROJECT_ID, 100],
+        [FIXTURE_PERSONAL_PROJECT_ID, FIXTURE_PROJECT_ID, -100],
+        [FIXTURE_PROJECT_ID, FIXTURE_PROJECT_ID, 20],
+        [FIXTURE_PERSONAL_PROJECT_ID, FIXTURE_PERSONAL_PROJECT_ID, -20],
+        [FIXTURE_PROJECT_ID, FIXTURE_PROJECT_ID, 94],
+        [FIXTURE_PERSONAL_PROJECT_ID, FIXTURE_PERSONAL_PROJECT_ID, -94],
+        [FIXTURE_PROJECT_ID, FIXTURE_PERSONAL_PROJECT_ID, 95],
+        [FIXTURE_PERSONAL_PROJECT_ID, FIXTURE_PROJECT_ID, -95],
+    ])('settles a released native swipe with momentum from %s to %s', async (start, destination, delta) => {
+        await store.prepareProject(FIXTURE_PERSONAL_PROJECT_ID)!.load();
+        await draw(() => store.selectProject(start));
+        let active = true;
+        let sequence = 1;
+        const listeners = new Set<(event: import('../../../shared/bridge').NativeScrollRecord) => void>();
+        let record = {
+            kind: 'scroll' as const,
+            sequence,
+            phase: 1,
+            momentumPhase: 0,
+            x: 0,
+            y: 0,
+            deltaX: -delta,
+            deltaY: 0,
+            timestamp: 1,
+            precise: true,
+        };
+        vi.stubGlobal('desktop', {
+            nativeScroll: {
+                available: true,
+                snapshot: () => ({ active, sequence, gesture: 1, origin: null, last: record }),
+                subscribe: (listener: (event: import('../../../shared/bridge').NativeScrollRecord) => void) => {
+                    listeners.add(listener);
+                    return () => listeners.delete(listener);
+                },
+            },
+        });
+        try {
+            act(() => reactRoot.unmount());
+            reactRoot = createRoot(container);
+            await draw();
+            const sidebar = container.querySelector<HTMLElement>('[data-project-sidebar]')!;
+            const momentum = new WheelEvent('wheel', {
+                deltaX: -Math.sign(delta) * 5,
+                bubbles: true,
+                cancelable: true,
+            });
+            await act(async () => {
+                sidebar.dispatchEvent(new WheelEvent('wheel', { deltaX: -delta, bubbles: true, cancelable: true }));
+                active = false;
+                record = { ...record, sequence: ++sequence, phase: 8 };
+                for (const listener of listeners) listener(record);
+                record = { ...record, sequence: ++sequence, phase: 0, momentumPhase: 1 };
+                for (const listener of listeners) listener(record);
+                sidebar.dispatchEvent(momentum);
+                await new Promise(resolve => setTimeout(resolve, 300));
+            });
+            expect([store.selectedProjectId, momentum.defaultPrevented]).toEqual([destination, true]);
+        } finally {
+            vi.unstubAllGlobals();
+        }
+    });
+
     it('follows a claimed native space swipe when the pointer moves outside the sidebar', async () => {
         await store.prepareProject(FIXTURE_PERSONAL_PROJECT_ID)!.load();
         let active = true;
