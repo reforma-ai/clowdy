@@ -1255,7 +1255,7 @@ export class FixtureTransport implements Transport {
         ) {
             return fail('conflict', 'That is another folder of the space');
         }
-        if (data.chats.some(chat => chat.projectId !== project.id && chat.workspace?.path === worktree.path)) {
+        if (worktree.blocked === 'other-space') {
             return fail('conflict', 'Another space or folder has chats in this worktree');
         }
         if (

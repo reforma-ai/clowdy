@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { nativeWheel } from '../../gestures/nativeWheel';
 import { Unreachable } from '../../shell/Unreachable';
 import { ProjectProvider, useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { AgentList } from './AgentList';
@@ -161,7 +162,33 @@ export function ProjectSidebar({
                 reduced ? 0 : 200
             );
         };
+        const lifecycle = nativeWheel(node, release => {
+            clearTimeout(timer.current);
+            if (state.mode !== 'wheel') return;
+            if (!release) state.x = 0;
+            finish();
+        });
         const wheel = (event: WheelEvent) => {
+            if (event.ctrlKey || event.shiftKey || event.defaultPrevented || (!event.deltaX && !event.deltaY)) return;
+            if (state.mode !== 'wheel') {
+                for (
+                    let child = event.target instanceof Element ? event.target : null;
+                    child && child !== node;
+                    child = child.parentElement
+                ) {
+                    const overflow = getComputedStyle(child).overflowX;
+                    if (
+                        (overflow === 'auto' || overflow === 'scroll' || overflow === 'overlay') &&
+                        child.scrollWidth > child.clientWidth + 1 &&
+                        (event.deltaX < 0
+                            ? child.scrollLeft > 1
+                            : child.scrollLeft + child.clientWidth < child.scrollWidth - 1)
+                    )
+                        return;
+                }
+            }
+            const mode = lifecycle.wheel(event);
+            if (mode === 'ignore') return;
             const scale =
                 event.deltaMode === WheelEvent.DOM_DELTA_LINE
                     ? 16
@@ -195,7 +222,7 @@ export function ProjectSidebar({
             state.x -= dx;
             move(state.x);
             clearTimeout(timer.current);
-            timer.current = setTimeout(finish, 180);
+            if (mode === 'fallback') timer.current = setTimeout(finish, 180);
         };
         const start = (event: TouchEvent) => {
             if (state.locked) return;
@@ -242,6 +269,29 @@ export function ProjectSidebar({
                 finish();
             } else state.mode = '';
         };
+        const blur = () => {
+            lifecycle.cancel();
+            clearTimeout(timer.current);
+            clearTimeout(commitTimer.current);
+            Object.assign(state, { x: 0, y: 0, locked: false, mode: '' });
+            shown.current = undefined;
+            setOffset(0);
+            setSettling(false);
+            setPreviewSide(0);
+        };
+        lifecycle.onOutsideWheel(event => {
+            if (state.mode !== 'wheel') return;
+            if (
+                event.target instanceof Element &&
+                event.target.closest('[role="dialog"], [role="alertdialog"], [role="menu"], [data-modal-overlay]')
+            ) {
+                lifecycle.cancel();
+                return;
+            }
+            wheel(event);
+            if (event.defaultPrevented) event.stopPropagation();
+        });
+        window.addEventListener('blur', blur);
         node.addEventListener('wheel', wheel, { passive: false });
         node.addEventListener('touchstart', start, { passive: true });
         node.addEventListener('touchmove', touchMove, { passive: false });
@@ -256,6 +306,7 @@ export function ProjectSidebar({
                 : new ResizeObserver(() => {
                       if (node.clientWidth === lastWidth) return;
                       lastWidth = node.clientWidth;
+                      lifecycle.cancel();
                       clearTimeout(timer.current);
                       clearTimeout(commitTimer.current);
                       clearTimeout(unlockTimer.current);
@@ -267,12 +318,14 @@ export function ProjectSidebar({
                   });
         observer?.observe(node);
         return () => {
+            window.removeEventListener('blur', blur);
             node.removeEventListener('wheel', wheel);
             node.removeEventListener('touchstart', start);
             node.removeEventListener('touchmove', touchMove);
             node.removeEventListener('touchend', end);
             node.removeEventListener('touchcancel', cancel);
             observer?.disconnect();
+            lifecycle.dispose();
             clearTimeout(timer.current);
             clearTimeout(commitTimer.current);
         };

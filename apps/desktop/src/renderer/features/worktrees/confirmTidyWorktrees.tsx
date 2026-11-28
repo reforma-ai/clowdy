@@ -9,7 +9,7 @@ import { useState } from 'react';
 import { worktreeLabel } from '../agents/workspaceChoice';
 import { refreshFolderGit } from '../openWith';
 import { affectedChats, chatPreviewChanged, readRemoval, removeWorktree } from './worktreeActions';
-import { deleteBranchByDefault, removalPlan } from './worktreeView';
+import { deleteBranchByDefault, removalPlan, removeHint } from './worktreeView';
 
 import type { FolderId, Project, ProjectId, ProjectSnapshot, WorktreeInfo } from '@clowdy/protocol';
 import type { RootStore } from '../../stores';
@@ -38,7 +38,7 @@ export function eligible(row: WorktreeInfo, folderId: FolderId, snapshot: Projec
 }
 
 export function canRemove(row: WorktreeInfo): boolean {
-    return !row.main && row.blocked !== 'main' && row.blocked !== 'locked' && row.locked === undefined;
+    return !row.main && row.locked === undefined && removeHint(row) === undefined;
 }
 
 type TidyPreview = {
@@ -47,6 +47,42 @@ type TidyPreview = {
     safe: boolean;
     chats: ReturnType<typeof affectedChats>;
 };
+
+/** The base branch must outlive its dependents' merge checks. Groups can share a Git repository,
+ * so matching names across folder groups conservatively count as a dependency too. Unrelated ready rows
+ * stay in input order. Names in different repositories may form an apparent cycle, so prefer dependencies in the same folder
+ * if the cross-folder ordering stalls. If even that forms a cycle, keep the remaining input order and let the daemon check each row. */
+function removalOrder(previews: readonly TidyPreview[], deleteBranches: boolean): readonly TidyPreview[] {
+    if (!deleteBranches) return previews;
+    const remaining = [...previews];
+    const ordered: TidyPreview[] = [];
+    const baseUses = new Map<string, number>();
+    const localUses = new Map<string, number>();
+    const countBase = ({ row, folderId }: TidyPreview, delta: number) => {
+        if (!row.base) return;
+        const localKey = keyOf(folderId, row.base);
+        baseUses.set(row.base, (baseUses.get(row.base) ?? 0) + delta);
+        localUses.set(localKey, (localUses.get(localKey) ?? 0) + delta);
+    };
+    for (const preview of previews) {
+        countBase(preview, 1);
+    }
+    while (remaining.length) {
+        let index = remaining.findIndex(
+            ({ row }) => !row.branch || !deleteBranchByDefault(row) || !baseUses.get(row.branch)
+        );
+        if (index === -1) {
+            index = remaining.findIndex(
+                ({ row, folderId }) => !row.branch || !localUses.get(keyOf(folderId, row.branch))
+            );
+        }
+        if (index === -1) return [...ordered, ...remaining];
+        const [next] = remaining.splice(index, 1);
+        countBase(next, -1);
+        ordered.push(next);
+    }
+    return ordered;
+}
 
 /** Confirm the branch choice before handing off to the background operation. */
 function TidyConfirmation({
@@ -140,11 +176,10 @@ export function confirmTidyWorktrees({
         const progress = toast.progress({ title: 'Removing worktrees', total: previews.length });
         try {
             let removed = 0;
-            let branchesKept = 0;
             const errors: string[] = [];
             // An earlier selected worktree may archive a chat also linked to a later one.
             const archivedByThisAction = new Set<string>();
-            for (const { folderId, row, safe, chats } of previews) {
+            for (const { folderId, row, safe, chats } of removalOrder(previews, deleteBranches)) {
                 try {
                     const target = { root, projectId, folderId, path: row.path };
                     const read = await readRemoval(target, { worktree: row, chats });
@@ -168,27 +203,7 @@ export function confirmTidyWorktrees({
                             }),
                             ...(deleteBranches && removalPlan(row).branch?.selected && { deleteBranch: true }),
                         });
-                        if (!result.ok) {
-                            // Dev/OTA can leave an older daemon running while its agents finish. This exact invalid
-                            // response is sent before any Git mutation; no other failure is safe to retry.
-                            if (
-                                result.error.code !== 'invalid' ||
-                                result.error.message !== 'Tidy up cannot discard changes or dispose of chats' ||
-                                !read.chats.affected.some(chat => chat.archivedAt === undefined)
-                            ) {
-                                throw new Error(result.error.message);
-                            }
-                            await removeWorktree(
-                                target,
-                                read,
-                                {
-                                    deleteBranch: false,
-                                    disposition: 'archive',
-                                },
-                                { legacyTidy: true }
-                            );
-                            if (deleteBranches && deleteBranchByDefault(row)) branchesKept++;
-                        }
+                        if (!result.ok) throw new Error(result.error.message);
                     } else {
                         await removeWorktree(target, read, {
                             deleteBranch: deleteBranches && deleteBranchByDefault(row),
@@ -204,7 +219,7 @@ export function confirmTidyWorktrees({
                 }
             }
             for (const folder of project.folders) refreshFolderGit(projectId, folder.id);
-            return { removed, branchesKept, errors };
+            return { removed, errors };
         } finally {
             progress.close();
         }
@@ -234,11 +249,11 @@ export function confirmTidyWorktrees({
             queueMicrotask(() => {
                 onStart();
                 void run(deleteBranches)
-                    .then(({ removed, branchesKept, errors }) => {
+                    .then(({ removed, errors }) => {
                         if (errors.length) {
                             toast.warning({
                                 title: 'Worktree cleanup finished',
-                                message: `${removed} removed, ${errors.length} refused or incomplete${branchesKept ? `, ${branchesKept} ${branchesKept === 1 ? 'branch' : 'branches'} kept because the daemon is out of date` : ''}`,
+                                message: `${removed} removed, ${errors.length} refused or incomplete`,
                                 timeout: 0,
                                 action: {
                                     label: 'View details',
@@ -259,12 +274,6 @@ export function confirmTidyWorktrees({
                                             onConfirm: () => {},
                                         }),
                                 },
-                            });
-                        } else if (branchesKept) {
-                            toast.warning({
-                                title: 'Worktree cleanup finished',
-                                message: `${removed} removed, ${branchesKept} ${branchesKept === 1 ? 'branch' : 'branches'} kept because the daemon is out of date`,
-                                timeout: 0,
                             });
                         } else if (removed) {
                             toast.success({

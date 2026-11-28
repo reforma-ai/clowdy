@@ -1,12 +1,16 @@
 import path from 'node:path';
 import { app, type BrowserWindow } from 'electron';
 
-import { IPC_CHANNELS, type NativeScrollEvent } from '../shared/bridge';
+import { IPC_CHANNELS, type NativeScrollEvent, type NativeScrollSnapshot } from '../shared/bridge';
 
 type NativeEvent = Omit<NativeScrollEvent, 'kind' | 'sequence'>;
 export type NativeScrollAddon = { start: (handle: Buffer, listener: (event: NativeEvent) => void) => () => void };
 
-const windows = new Set<number>();
+const windows = new Map<number, NativeScrollSnapshot>();
+
+export function nativeScrollSnapshot(webContentsId: number): NativeScrollSnapshot | null {
+    return windows.get(webContentsId) ?? null;
+}
 
 export function nativeScrollAvailable(webContentsId: number): boolean {
     return windows.has(webContentsId);
@@ -31,15 +35,27 @@ export function attachNativeScroll(
     try {
         const addon = load();
         let sequence = 0;
+        const snapshot: NativeScrollSnapshot = { sequence: 0, gesture: 0, active: false, origin: null, last: null };
         const stop = addon.start(window.getNativeWindowHandle(), event => {
-            if (!window.isDestroyed())
-                window.webContents.send(IPC_CHANNELS.nativeScroll, { ...event, kind: 'scroll', sequence: ++sequence });
+            if (window.isDestroyed()) return;
+            const record = { ...event, kind: 'scroll' as const, sequence: ++sequence };
+            if (event.phase & 1) {
+                snapshot.gesture++;
+                snapshot.active = true;
+                snapshot.origin = { x: event.x, y: event.y };
+            }
+            if (event.phase & (8 | 16)) snapshot.active = false;
+            Object.assign(snapshot, { sequence, last: record });
+            window.webContents.send(IPC_CHANNELS.nativeScroll, record);
         });
 
-        windows.add(window.webContents.id);
+        windows.set(window.webContents.id, snapshot);
         window.on('blur', () => {
-            if (!window.isDestroyed())
-                window.webContents.send(IPC_CHANNELS.nativeScroll, { kind: 'cancel', sequence: ++sequence });
+            if (!window.isDestroyed()) {
+                const record = { kind: 'cancel' as const, sequence: ++sequence };
+                Object.assign(snapshot, { sequence, active: false, last: record });
+                window.webContents.send(IPC_CHANNELS.nativeScroll, record);
+            }
         });
         const id = window.webContents.id;
         window.once('closed', () => {

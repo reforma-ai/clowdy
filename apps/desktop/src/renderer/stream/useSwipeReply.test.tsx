@@ -732,3 +732,213 @@ describe('swipe to reply', () => {
         });
     });
 });
+
+describe('native wheel lifecycle', () => {
+    function phases() {
+        let sequence = 0;
+        let active = false;
+        let last: import('../../shared/bridge').NativeScrollRecord | null = null;
+        const listeners = new Set<(event: import('../../shared/bridge').NativeScrollRecord) => void>();
+        vi.stubGlobal('desktop', {
+            nativeScroll: {
+                available: true,
+                snapshot: () => ({ sequence, gesture: 1, active, origin: null, last }),
+                subscribe: (listener: (event: import('../../shared/bridge').NativeScrollRecord) => void) => {
+                    listeners.add(listener);
+                    return () => listeners.delete(listener);
+                },
+            },
+        });
+        return (phase: number, deliver = true, momentumPhase = 0) => {
+            active = phase === 1 || phase === 4;
+            last = {
+                kind: 'scroll',
+                sequence: ++sequence,
+                phase,
+                momentumPhase,
+                x: 0,
+                y: 0,
+                deltaX: 10,
+                deltaY: 0,
+                timestamp: sequence,
+                precise: true,
+            };
+            if (deliver) for (const listener of listeners) listener(last);
+            return last;
+        };
+    }
+
+    it('holds an armed message for over two seconds and replies once on release, ignoring momentum', async () => {
+        const phase = phases();
+        await draw(person());
+        phase(1, false);
+        swipe(13);
+        elapse(2500);
+        expect([armed(), onReply.mock.calls.length]).toEqual([true, 0]);
+        phase(8);
+        elapse(41);
+        phase(0, true, 1);
+        swipe(20);
+        quiet();
+        expect(onReply.mock.calls).toEqual([[TEXT]]);
+    });
+
+    it('accepts coalesced motion before release', async () => {
+        const phase = phases();
+        await draw(person());
+        phase(1, false);
+        wheel(130);
+        phase(8);
+        elapse(41);
+        expect(onReply.mock.calls).toEqual([[TEXT]]);
+    });
+
+    it('uses the quiet-time fallback for an unphased wheel even when the bridge is available', async () => {
+        const phase = phases();
+        await draw(person());
+        phase(0);
+        swipe(13);
+        quiet();
+        expect(onReply.mock.calls).toEqual([[TEXT]]);
+    });
+
+    it('returns an early release without replying', async () => {
+        const phase = phases();
+        await draw(person());
+        phase(1);
+        swipe(3);
+        phase(8);
+        elapse(41);
+        expect([row().style.translate, onReply.mock.calls.length]).toEqual(['', 0]);
+    });
+
+    it('keeps ownership on the first message when the pointer moves', async () => {
+        const phase = phases();
+        await draw(
+            <>
+                {person(config(), 'first')}
+                {person(config(), 'second')}
+            </>
+        );
+        const messages = container.querySelectorAll<HTMLElement>('[data-message]');
+        phase(1);
+        swipe(13, 10, messages[0]);
+        swipe(13, 10, messages[1]);
+        phase(8);
+        elapse(41);
+        expect(onReply.mock.calls).toEqual([['first']]);
+    });
+
+    it('follows a claimed native swipe when the pointer moves to another message', async () => {
+        const phase = phases();
+        await draw(
+            <>
+                {person(config(), 'first')}
+                {person(config(), 'second')}
+            </>
+        );
+        const messages = container.querySelectorAll<HTMLElement>('[data-message]');
+        phase(1);
+        swipe(13, 10, messages[0]);
+        const reversal = swipe(8, -10, messages[1]);
+        phase(8);
+        elapse(41);
+        expect(reversal.every(event => event.defaultPrevented)).toBe(true);
+        expect(onReply).not.toHaveBeenCalled();
+    });
+
+    it('leaves a native vertical gesture unclaimed when the pointer moves to another message', async () => {
+        const phase = phases();
+        await draw(
+            <>
+                {person(config(), 'first')}
+                {person(config(), 'second')}
+            </>
+        );
+        const messages = container.querySelectorAll<HTMLElement>('[data-message]');
+        phase(1);
+        const first = wheel(0, 40, messages[0]);
+        const second = wheel(0, 40, messages[1]);
+        phase(8);
+        elapse(41);
+        expect([first.defaultPrevented, second.defaultPrevented, onReply.mock.calls.length]).toEqual([false, false, 0]);
+    });
+
+    it('cancels a claimed swipe when the pointer moves over a dialog', async () => {
+        const phase = phases();
+        await draw(person());
+        const dialog = document.createElement('div');
+        dialog.setAttribute('role', 'dialog');
+        document.body.append(dialog);
+        try {
+            phase(1);
+            swipe(13);
+            const event = wheel(0, 40, dialog);
+            phase(8);
+            elapse(41);
+            expect([event.defaultPrevented, row().style.translate, onReply.mock.calls.length]).toEqual([false, '', 0]);
+        } finally {
+            dialog.remove();
+        }
+    });
+
+    it('cancels an armed swipe when a dialog opens while the pointer is still', async () => {
+        const phase = phases();
+        await draw(person());
+        phase(1);
+        swipe(13);
+        const dialog = document.createElement('div');
+        dialog.setAttribute('role', 'dialog');
+        document.body.append(dialog);
+        try {
+            phase(8);
+            elapse(41);
+            expect([row().style.translate, onReply.mock.calls.length]).toEqual(['', 0]);
+        } finally {
+            dialog.remove();
+        }
+    });
+
+    it('does not reply after reversing below the threshold before release', async () => {
+        const phase = phases();
+        await draw(person());
+        phase(1);
+        swipe(13);
+        elapse(2100);
+        swipe(5, -10);
+        phase(8);
+        elapse(41);
+        expect(onReply).not.toHaveBeenCalled();
+    });
+
+    it('cancels an armed pull when native input is cancelled', async () => {
+        const phase = phases();
+        await draw(person());
+        phase(1);
+        swipe(13);
+        phase(16);
+        elapse(2500);
+        expect([row().style.translate, onReply.mock.calls.length]).toEqual(['', 0]);
+    });
+
+    it('cancels when queued DOM motion arrives after native release', async () => {
+        const phase = phases();
+        await draw(person());
+        phase(1);
+        swipe(13);
+        phase(8);
+        wheel(-60);
+        elapse(2500);
+        expect([row().style.translate, onReply.mock.calls.length]).toEqual(['', 0]);
+    });
+
+    it('ignores a DOM wheel delivered after the native gesture ended', async () => {
+        const phase = phases();
+        await draw(person());
+        phase(1, false);
+        phase(8, false);
+        swipe(20);
+        quiet();
+        expect([row().style.translate, onReply.mock.calls.length]).toEqual(['', 0]);
+    });
+});

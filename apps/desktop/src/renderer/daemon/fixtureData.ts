@@ -811,7 +811,12 @@ export function fixtureFolderGit(
 /** A worktree the fixture's git lists that nobody made through Clowdy: what differs from the defaults (clean, merged into `origin/main`, nobody works in it) is spelled out. */
 export interface FixtureWorktree
     extends Pick<WorktreeInfo, 'path' | 'head'>,
-        Partial<Pick<WorktreeInfo, 'branch' | 'missing' | 'locked' | 'changes' | 'submodules' | 'merged' | 'active'>> {}
+        Partial<
+            Pick<
+                WorktreeInfo,
+                'branch' | 'missing' | 'locked' | 'changes' | 'submodules' | 'merged' | 'active' | 'base'
+            >
+        > {}
 
 /** How many files the fixture's changed worktree has changed: `fixtureFolderGit` only says whether there are any. */
 const FIXTURE_CHANGES = 3;
@@ -819,7 +824,7 @@ const FIXTURE_CHANGES = 3;
 /**
  * What `GET /v1/projects/:id/worktrees` answers for a fixture project, from the data the other reads use: a group per folder in the project's order, a folder that is no repository
  * (no `git` entry) with no worktrees, else its own checkout first, then what `fixtureFolderGit` lists (the Clowdy-made worktree, changed and not merged) and `data.worktrees` adds
- * (found, locked, missing). The chats are the project's whose worktree is at the path, archived ones too; `blocked` is the daemon's order (the folder's own checkout, a lock, unarchived chats).
+ * (found, locked, missing). The chats are the folder's whose worktree is at the path, archived ones too; another folder's or space's chats protect the row without appearing in it.
  */
 export function fixtureProjectWorktrees(
     project: Pick<Project, 'id' | 'folders'>,
@@ -834,7 +839,6 @@ export function fixtureProjectWorktrees(
 
         if (!repository.isRepository) return { ...group, isRepository: false, worktrees: [] };
 
-        const base = repository.defaultBranch;
         const listed: FixtureWorktree[] = [
             ...repository.worktrees
                 .filter(worktree => !worktree.main)
@@ -863,10 +867,25 @@ export function fixtureProjectWorktrees(
 
         const others = listed.map((worktree): WorktreeInfo => {
             const chats = data.chats.filter(
-                chat => chat.projectId === project.id && chat.workspace?.path === worktree.path
+                chat =>
+                    chat.projectId === project.id &&
+                    chat.workspace?.folderId === folder.id &&
+                    chat.workspace.path === worktree.path
             );
             const workspace = chats[0]?.workspace;
             const locked = worktree.locked;
+            const base =
+                worktree.base && !edits?.deleted.includes(worktree.base) ? worktree.base : repository.defaultBranch;
+            // A chat in a different workspace that uses this path or a nested path protects the worktree,
+            // including archived history. Its name must not appear in this folder's worktree row.
+            const elsewhere = data.chats.some(chat => {
+                const place = chat.workspace;
+                return (
+                    place &&
+                    !chats.includes(chat) &&
+                    (place.path === worktree.path || place.path.startsWith(`${worktree.path}/`))
+                );
+            });
 
             return {
                 path: worktree.path,
@@ -885,7 +904,9 @@ export function fixtureProjectWorktrees(
                 chats: chats.map(chat => ({ id: chat.id, title: chat.title, archived: chat.archivedAt !== undefined })),
                 ...(locked !== undefined
                     ? { blocked: 'locked' as const }
-                    : chats.some(chat => chat.archivedAt === undefined) && { blocked: 'chats' as const }),
+                    : elsewhere
+                      ? { blocked: 'other-space' as const }
+                      : chats.some(chat => chat.archivedAt === undefined) && { blocked: 'chats' as const }),
             };
         });
 

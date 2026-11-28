@@ -7,6 +7,7 @@ export const IPC_CHANNELS = {
     setThemeSource: 'desktop:set-theme-source',
     nativeScrollAvailable: 'desktop:native-scroll-available',
     nativeScroll: 'desktop:native-scroll',
+    nativeScrollSnapshot: 'desktop:native-scroll-snapshot',
     chooseDirectories: 'desktop:choose-directories',
     /** Synchronous (`sendSync`): the preload needs the answer before the page's scripts run. */
     getDaemon: 'desktop:get-daemon',
@@ -147,6 +148,14 @@ export interface NativeScrollEvent {
 /** Focus loss interrupts any outstanding gesture. */
 export type NativeScrollRecord = NativeScrollEvent | { kind: 'cancel'; sequence: number };
 
+export interface NativeScrollSnapshot {
+    sequence: number;
+    gesture: number;
+    active: boolean;
+    origin: { x: number; y: number } | null;
+    last: NativeScrollRecord | null;
+}
+
 /**
  * What the preload exposes as `window.desktop`. Keep it minimal: the renderer is untrusted and
  * business logic lives behind the daemon's contract, not behind Electron IPC.
@@ -154,7 +163,11 @@ export type NativeScrollRecord = NativeScrollEvent | { kind: 'cancel'; sequence:
 export interface DesktopBridge {
     platform: 'darwin' | 'win32' | 'linux';
     /** Optional for compatibility with older shells. Availability does not guarantee this device reports phases. */
-    nativeScroll?: { available: boolean; subscribe: (listener: (record: NativeScrollRecord) => void) => () => void };
+    nativeScroll?: {
+        available: boolean;
+        subscribe: (listener: (record: NativeScrollRecord) => void) => () => void;
+        snapshot?: () => NativeScrollSnapshot | null;
+    };
     /** True when the window draws vibrancy or Mica behind transparent page pixels. */
     material: boolean;
     /** Makes the window's native material follow the chosen appearance. */

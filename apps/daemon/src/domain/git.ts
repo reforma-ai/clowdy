@@ -87,6 +87,8 @@ export interface GitOptions {
 export interface GitReadOptions extends GitOptions {
     /** The most bytes git may print before it is killed and the read is `unavailable`; `MAX_OUTPUT_BYTES` (8 MiB) when absent. */
     maxBytes?: number;
+    /** Treat warnings on standard error as an unverifiable read, even if Git reports success. */
+    rejectStderr?: boolean;
     /** Text written to git's standard input, which is then closed (`hash-object --stdin`, `cat-file --batch-check`). */
     input?: string;
     /** Variables added to the read's environment, over the ones every read sets (`GIT_INDEX_FILE`, for a tree made in an index of its own). */
@@ -121,7 +123,9 @@ export async function gitRead(cwd: string, args: string[], options: GitReadOptio
             pending.child.stdin?.end(options.input);
         }
 
-        const { stdout } = await pending;
+        const { stdout, stderr } = await pending;
+
+        if (options.rejectStderr && stderr.length > 0) return { ok: false, reason: 'unavailable' };
 
         return { ok: true, stdout };
     } catch (error) {

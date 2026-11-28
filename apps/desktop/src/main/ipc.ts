@@ -11,7 +11,7 @@ import {
     type OpenApps,
     type UpdateStatus,
 } from '../shared/bridge';
-import { nativeScrollAvailable } from './nativeScroll';
+import { nativeScrollAvailable, nativeScrollSnapshot } from './nativeScroll';
 import { isTrustedUrl } from './security';
 
 import type { IpcMain, IpcMainInvokeEvent } from 'electron';
@@ -72,6 +72,10 @@ export function registerIpc(
 ): void {
     ipcMain.on(IPC_CHANNELS.nativeScrollAvailable, event => {
         event.returnValue = isTrustedSender(event, trustedOrigin) && nativeScrollAvailable(event.sender.id);
+    });
+
+    ipcMain.on(IPC_CHANNELS.nativeScrollSnapshot, event => {
+        event.returnValue = isTrustedSender(event, trustedOrigin) ? nativeScrollSnapshot(event.sender.id) : null;
     });
 
     // The preload asks while the page loads and cannot wait for a promise, so this one is synchronous for it.

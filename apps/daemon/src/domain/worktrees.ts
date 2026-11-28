@@ -19,8 +19,10 @@ import {
     shortHash,
     workingTreeRoot,
 } from '../git/state';
+import { readWorktreeBase, resolveWorktreeBase } from '../git/worktreeBase';
 import { gitLine, gitRead } from './git';
 import { pathKey, placeOf as realPlace } from './workspaces';
+import { otherWorkspaceAt, workspacePathsWithChats } from './worktreeOwnership';
 
 import type {
     FolderWorktrees,
@@ -44,7 +46,7 @@ export interface WorktreeContext {
     /** The ref new worktrees of the folder start from (`baseOf`), for a worktree whose record keeps none; absent in a repository with no commit. */
     defaultBase?: string;
     /** The commit a base ref names as last fetched (`refs/heads/<name>`, then `refs/remotes/<name>`, no network); nothing when the repository has no such branch or git did not say. */
-    commitOfBase: (name: string) => Promise<string | undefined>;
+    commitOfBase: (name: string) => Promise<string | undefined | null>;
 }
 
 /** The worktree's own facts that the database and the folder give: whether it is the folder's checkout, the record Clowdy keeps of it, and the chats that work in it. */
@@ -56,6 +58,7 @@ export interface WorktreeOwner {
     /** Another folder of the project: a place the project works in, which a removal refuses even when it is a worktree of this folder's repository. */
     sibling?: boolean;
     active?: boolean;
+    otherSpace?: boolean;
     record?: WorkspaceRecord;
     chats?: WorktreeChat[];
 }
@@ -82,16 +85,13 @@ async function keyOf(path: string): Promise<string> {
 
 /** The commit of a base ref, read once per name: `refs/heads/<name>`, then `refs/remotes/<name>`. */
 function baseCommits(folder: string): WorktreeContext['commitOfBase'] {
-    const known = new Map<string, Promise<string | undefined>>();
+    const known = new Map<string, Promise<string | undefined | null>>();
 
     return name => {
         let commit = known.get(name);
 
         if (!commit) {
-            commit = (async () =>
-                (await commitOf(folder, `refs/heads/${name}`)) ??
-                (await commitOf(folder, `refs/remotes/${name}`)) ??
-                undefined)();
+            commit = readWorktreeBase(folder, name);
             known.set(name, commit);
         }
 
@@ -133,6 +133,7 @@ async function isInBase(folder: string, entry: ListedWorktree, base: string): Pr
 function blockOf(owner: WorktreeOwner, locked: boolean, chats: readonly WorktreeChat[]): WorktreeBlock | undefined {
     if (owner.main || owner.primary || owner.sibling) return 'main';
     if (locked) return 'locked';
+    if (owner.otherSpace) return 'other-space';
 
     return chats.some(chat => !chat.archived) ? 'chats' : undefined;
 }
@@ -150,13 +151,14 @@ export async function inspectWorktree(
 ): Promise<WorktreeInfo> {
     const place = entry.prunable || entry.bare ? undefined : await placeOf(entry.path);
     const present = place !== undefined && (await isOnDisk(join(place, '.git'))) ? place : undefined;
-    const base = owner.main ? undefined : (owner.record?.base ?? context.defaultBase);
+    const base = owner.main
+        ? undefined
+        : await resolveWorktreeBase(owner.record?.base, () => context.defaultBase, context.commitOfBase);
     const counts =
         present === undefined
             ? ([0, undefined] as const)
             : await Promise.all([changedFiles(present), hasCheckedOutSubmodules(present)]);
-    const baseCommit = base === undefined ? undefined : await context.commitOfBase(base);
-    const merged = baseCommit === undefined ? undefined : await isInBase(context.folder, entry, baseCommit);
+    const merged = base === undefined ? undefined : await isInBase(context.folder, entry, base.commit);
     const chats = owner.chats ?? [];
     const blocked = blockOf(owner, entry.locked !== undefined, chats);
 
@@ -172,7 +174,7 @@ export async function inspectWorktree(
         changes: counts[0],
         // Unknown is not "yes": the red removal that follows a "yes" forces it, and git alone refuses a tree with submodules on a plain removal.
         submodules: counts[1] === true,
-        ...(merged !== undefined && base !== undefined && { merged, base }),
+        ...(merged !== undefined && base !== undefined && { merged, base: base.name }),
         ...(owner.record && { workspaceId: owner.record.id }),
         managed: owner.record?.managed ?? false,
         ...(owner.active && { active: true }),
@@ -242,7 +244,8 @@ async function folderWorktrees(
     siblings: readonly string[],
     records: readonly WorkspaceRecord[],
     chatsOf: ReadonlyMap<string, WorktreeChat[]>,
-    activePaths: readonly string[]
+    activePaths: readonly string[],
+    usedPaths: readonly { id: string; path: string }[]
 ): Promise<FolderWorktrees> {
     const none: FolderWorktrees = { folderId: folder.id, name, isRepository: false, worktrees: [] };
     const root = (await isFolder(folder.path)) ? await workingTreeRoot(folder.path) : undefined;
@@ -315,6 +318,7 @@ async function folderWorktrees(
                         sibling,
                         // Use the already-resolved Git row key, not a synchronous realpath for every pair.
                         active: activePaths.some(cwd => isBelow(key, cwd, { allowSelf: true })),
+                        otherSpace: otherWorkspaceAt(key, record?.id, usedPaths),
                         ...(record && { record, chats: chatsOf.get(record.id) }),
                     });
                 })
@@ -338,6 +342,8 @@ export async function projectWorktrees(store: Store, project: Project): Promise<
             return cwd === undefined ? [] : [realPlace(cwd)];
         })
     );
+    const used = store.read(() => workspacePathsWithChats(store));
+    const usedPaths = await Promise.all(used.map(async use => ({ id: use.id, path: await keyOf(use.path) })));
     const names = folderNames(project.folders);
     const groups: FolderWorktrees[] = [];
 
@@ -349,7 +355,8 @@ export async function projectWorktrees(store: Store, project: Project): Promise<
                 project.folders.filter(other => other.id !== folder.id).map(other => other.path),
                 records,
                 chatsOf,
-                activePaths
+                activePaths,
+                usedPaths
             )
         );
     }
