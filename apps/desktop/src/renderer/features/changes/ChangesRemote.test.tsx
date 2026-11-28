@@ -208,6 +208,7 @@ describe('the sync button in the sidebar', () => {
         expect(items().map(candidate => candidate.textContent)).toEqual([
             'Fetch origin',
             'Pull origin',
+            'Push origin',
             updateLabel,
             ...mergeLabels,
         ]);
@@ -329,6 +330,71 @@ describe('the sync button in the sidebar', () => {
         expect(await read()).toMatchObject({ upstream: { behind: 0 } });
     });
 
+    it.each(['ahead', undefined] as const)('pushes directly for %s', async remote => {
+        await start({ gitWrites: { clean: true, remote } });
+        const push = vi.spyOn(transport, 'pushGit');
+        const sync = vi.spyOn(transport, 'syncGit');
+        const before = await read();
+        expect(before.isRepository && before.head.kind === 'branch').toBe(true);
+        if (!before.isRepository || before.head.kind !== 'branch') throw new Error('Expected a branch');
+
+        await openMenu();
+        expect(isOff('Push origin')).toBe(false);
+        await press(item('Push origin'));
+        await settle();
+
+        expect(push).toHaveBeenCalledExactlyOnceWith(FIXTURE_PROJECT_ID, place, {
+            branch: before.head.name,
+            commit: before.head.commit,
+        });
+        expect(sync).not.toHaveBeenCalled();
+        expect(await read()).toMatchObject({ upstream: { name: `origin/${branch}`, ahead: 0, behind: 0 } });
+    });
+
+    it('shows a direct push failure and keeps the primary action unchanged', async () => {
+        await start({ gitWrites: { clean: true, remote: 'ahead' } });
+        vi.spyOn(transport, 'pushGit').mockRejectedValueOnce(new TransportError('Push rejected', 409, 'Fetch first'));
+        const sync = vi.spyOn(transport, 'syncGit');
+
+        await openMenu();
+        await press(item('Push origin'));
+        await settle();
+        expect(alert()?.textContent).toContain('Push rejected');
+        expect(alert()?.textContent).toContain('Fetch first');
+        expect(syncButton().getAttribute('aria-label')).toBe('Push origin');
+        expect(sync).not.toHaveBeenCalled();
+    });
+
+    it('disables direct push while another remote operation is pending', async () => {
+        await start({ gitWrites: { clean: true, remote: 'ahead' } });
+        const pending = Promise.withResolvers<GitRemoteResult>();
+        vi.spyOn(transport, 'fetchGit').mockReturnValueOnce(pending.promise);
+        const push = vi.spyOn(transport, 'pushGit');
+
+        await openMenu();
+        await press(item('Fetch origin'));
+        await openMenu();
+        expect(isOff('Push origin')).toBe(true);
+        expect(push).not.toHaveBeenCalled();
+        pending.resolve({ state: 'done', action: 'fetch' });
+        await settle();
+    });
+
+    it('holds direct push until the status refresh succeeds', async () => {
+        await start({ gitWrites: { clean: true, remote: 'ahead' } });
+        const pending = Promise.withResolvers<Awaited<ReturnType<typeof transport.getGitStatus>>>();
+        vi.spyOn(transport, 'getGitStatus').mockReturnValueOnce(pending.promise);
+
+        await openMenu();
+        await press(item('Push origin'));
+        await settle();
+        await openMenu();
+        expect(isOff('Push origin')).toBe(true);
+        pending.reject(new Error('Status unavailable'));
+        await settle();
+        expect(isOff('Push origin')).toBe(true);
+    });
+
     it('shows conflicts as a warning while the status refresh catches up', async () => {
         await start({ gitWrites: { clean: true, remote: 'diverged' } });
         vi.spyOn(transport, 'syncGit').mockResolvedValue({
@@ -436,10 +502,12 @@ describe('the sync button in the sidebar', () => {
         expect(items().map(candidate => candidate.textContent)).toEqual([
             'Fetch origin',
             'Pull origin',
+            'Push origin',
             updateLabel,
             ...mergeLabels,
         ]);
         expect(items().map(candidate => candidate.getAttribute('aria-disabled') === 'true')).toEqual([
+            true,
             true,
             true,
             true,

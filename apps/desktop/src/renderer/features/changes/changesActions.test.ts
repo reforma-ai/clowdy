@@ -45,7 +45,9 @@ function status(fields: Partial<RepositoryStatus> = {}, upstream: Partial<GitUps
 }
 
 const menuStates = (value: GitStatus | undefined, busy = false) =>
-    remoteActions(value, busy).map(action => [action.id, action.disabled, action.count ?? null]);
+    remoteActions(value, busy)
+        .filter(action => action.id !== 'push')
+        .map(action => [action.id, action.disabled, action.count ?? null]);
 
 describe('remoteActions', () => {
     it('lists nothing for a place that is not a repository or has not been read', () => {
@@ -62,7 +64,30 @@ describe('remoteActions', () => {
             ['fetch', false, null],
             ['pull', false, 2],
         ]);
-        expect(remoteActions(status(), false).map(action => action.label)).toEqual(['Fetch origin', 'Pull origin']);
+        expect(remoteActions(status(), false).map(action => action.label)).toEqual([
+            'Fetch origin',
+            'Pull origin',
+            'Push origin',
+        ]);
+    });
+
+    it.each([
+        ['ahead', status({}, { ahead: 2 }), false],
+        ['unpublished', status({}, null), false],
+        ['gone', status({}, { gone: true }), false],
+        ['renamed', status({}, { name: 'origin/main' }), false],
+        ['even', status(), true],
+        ['behind', status({}, { behind: 1 }), true],
+        ['diverged', status({}, { ahead: 1, behind: 1 }), true],
+        ['foreign', status({}, { name: 'fork/feature', ahead: 1 }), true],
+        ['no origin', status({ origin: false }, null), true],
+        ['detached', status({ head: { kind: 'detached', commit: 'a'.repeat(40) } }, null), true],
+        ['unborn', status({ head: { kind: 'unborn', name: 'main' } }, null), true],
+        ['merge', status({ merging: { conflicts: 0 } }, null), true],
+        ['rebase', status({ rebasing: true } as Partial<RepositoryStatus>, null), true],
+    ])('offers Push safely when %s', (_name, value, disabled) => {
+        expect(remoteActions(value, false).find(action => action.id === 'push')?.disabled).toBe(disabled);
+        expect(remoteActions(value, true).find(action => action.id === 'push')?.disabled).toBe(true);
     });
 
     it('holds writes while switching, and requires a published branch for Pull', () => {
