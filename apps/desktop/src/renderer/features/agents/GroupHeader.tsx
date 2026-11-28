@@ -24,9 +24,10 @@ export function GroupHeader({ name, icon, collapsed, onToggle, text, className, 
         >
             <RowControls className={styles.groupTitle} onContextMenu={onContextMenu}>
                 <Button
-                    variant="filling"
+                    variant="transparent"
                     color="inherit"
                     size="xs"
+                    iconOnly
                     className={styles.groupToggle}
                     aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${text}`}
                     aria-expanded={!collapsed}

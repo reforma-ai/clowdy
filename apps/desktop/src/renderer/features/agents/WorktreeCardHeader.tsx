@@ -151,7 +151,7 @@ export function WorktreeCardHeader({
                 >
                     <Button
                         ref={actionsRef}
-                        variant="filling"
+                        variant="transparent"
                         color="inherit"
                         size="xs"
                         truncate

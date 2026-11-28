@@ -121,6 +121,24 @@ html[data-space-switch]::view-transition-new(space-panel) {
     animation: space-switch-in 240ms ease-out 140ms both;
 }
 
+/*
+ * The regions take the new space's size at once, and an image would stretch to fill it: the chat is wider when the new space
+ * has no panel, and the old text would grow. Each image keeps the size it was taken at instead, the chat's held at its left
+ * edge, where the list ends, and the panel's at its right edge, where the tab bar is.
+ */
+html[data-space-switch]::view-transition-old(space-chat),
+html[data-space-switch]::view-transition-new(space-chat),
+html[data-space-switch]::view-transition-old(space-panel),
+html[data-space-switch]::view-transition-new(space-panel) {
+    inline-size: auto;
+    block-size: auto;
+}
+
+html[data-space-switch]::view-transition-old(space-panel),
+html[data-space-switch]::view-transition-new(space-panel) {
+    inset-inline: auto 0;
+}
+
 /* The new space has the panel shut: its plate went with the page, so its content goes with it. */
 html[data-space-switch]::view-transition-old(space-panel):only-child {
     display: none;

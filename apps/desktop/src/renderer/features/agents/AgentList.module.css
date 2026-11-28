@@ -188,6 +188,13 @@
     align-items: center;
     min-width: 0;
     font-weight: 500;
+    border-radius: calc(var(--radius-sm) * var(--squircle-radius-factor));
+    corner-shape: superellipse(var(--squircle-value));
+}
+
+.groupTitle:is(:hover, :focus-within),
+.group[data-open] .groupTitle {
+    background-color: var(--color-secondary-muted-light);
 }
 
 .groupToggle {
@@ -216,10 +223,6 @@
     min-width: 0;
     max-width: 100%;
     font: inherit;
-}
-
-.group[data-open] .groupName {
-    background-color: var(--clowdy-button-bg--hover);
 }
 
 /* The note of a group with no chat: a chat's own row, drawn in the muted colour, and nothing to press. */
