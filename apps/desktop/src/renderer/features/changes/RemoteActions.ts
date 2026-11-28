@@ -10,7 +10,10 @@ import type { GitRemoteResult, GitSyncProgress, GitSyncResult, GitSyncTarget } f
 import type { IObservableValue } from 'mobx';
 
 /** What the actions ask of the transport. */
-export type RemoteTransport = Pick<Transport, 'fetchGit' | 'pullGit' | 'syncGit' | 'updateGit' | 'abortGit'>;
+export type RemoteTransport = Pick<
+    Transport,
+    'fetchGit' | 'pullGit' | 'pushGit' | 'syncGit' | 'updateGit' | 'abortGit'
+>;
 
 /** How long a conflict notice stays under the button. A failure stays until the person acts again. */
 export const NOTICE_MS = 6000;
@@ -28,10 +31,10 @@ type Outcome<T> = { ok: true; result: T } | { ok: false; failure: RemoteFailure 
 export type RemoteOutcome = Outcome<GitRemoteResult>;
 export type SyncOutcome = Outcome<GitSyncResult>;
 
-type DirectAction = Exclude<RemoteActionId, 'sync'>;
+type DirectAction = Exclude<RemoteActionId, 'sync' | 'push'>;
 type SyncPhase = IObservableValue<GitSyncProgress['phase'] | undefined>;
 type PendingRequest =
-    | { id: Exclude<DirectAction, 'update'>; fetching?: Promise<RemoteOutcome> }
+    | { id: Exclude<DirectAction, 'update'> | 'push'; fetching?: Promise<RemoteOutcome> }
     | { id: 'sync' | 'update'; phase: SyncPhase };
 
 interface SyncOptions {
@@ -119,6 +122,17 @@ export class RemoteActions {
         );
         if (id === 'fetch') request.fetching = outcome;
         return outcome;
+    }
+
+    /** Push only the branch and commit the menu offered, and never queue behind another write. */
+    push(target: { branch: string; commit: string }): Promise<RemoteOutcome> {
+        if (this.busy) return Promise.resolve(this.#switching('push'));
+
+        const { key } = this.facts;
+        return this.#track(
+            { id: 'push' },
+            this.#perform('push', () => this.transport.pushGit(key.projectId, placeRef(key), target), true)
+        );
     }
 
     /** An update that changed the local branch can sync exactly that result. Keep both steps under one UI pending state. */

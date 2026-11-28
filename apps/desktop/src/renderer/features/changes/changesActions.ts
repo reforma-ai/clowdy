@@ -13,11 +13,11 @@ type RepositoryStatus = Extract<GitStatus, { isRepository: true }>;
 /** The only remote the app moves commits to and from. */
 const ORIGIN = 'origin';
 
-export type RemoteActionId = 'fetch' | 'pull' | 'sync' | 'update' | 'abort';
+export type RemoteActionId = 'fetch' | 'pull' | 'push' | 'sync' | 'update' | 'abort';
 
 /** One direct remote action in the Sync menu. */
 export interface RemoteActionView {
-    id: 'fetch' | 'pull';
+    id: 'fetch' | 'pull' | 'push';
     label: string;
     /** How many commits the upstream had when it was last fetched. */
     count?: number;
@@ -64,6 +64,14 @@ export function remoteActions(status: GitStatus | undefined, switching: boolean)
     const blocked = !status.origin || switching;
     const tracking = trackingOf(status);
     const behind = tracking.kind === 'published' ? tracking.upstream.behind : 0;
+    const ahead = tracking.kind === 'published' ? tracking.upstream.ahead : 0;
+    const canPush =
+        !blocked &&
+        status.head.kind === 'branch' &&
+        !status.merging &&
+        !status.rebasing &&
+        tracking.kind !== 'foreign' &&
+        (tracking.kind !== 'published' || (ahead > 0 && behind === 0));
 
     return [
         { id: 'fetch', label: 'Fetch origin', disabled: blocked },
@@ -78,6 +86,7 @@ export function remoteActions(status: GitStatus | undefined, switching: boolean)
                 !!status.merging ||
                 !!status.rebasing,
         },
+        { id: 'push', label: 'Push origin', ...(ahead > 0 && { count: ahead }), disabled: !canPush },
     ];
 }
 
@@ -263,6 +272,7 @@ export const SYNC_WORDS: Record<GitSyncProgress['phase'], string> = {
 export const RUNNING_WORDS: Record<RemoteActionId, string> = {
     fetch: 'Fetching origin',
     pull: 'Pulling origin',
+    push: 'Pushing origin',
     sync: 'Syncing…',
     update: 'Updating',
     abort: 'Aborting merge',

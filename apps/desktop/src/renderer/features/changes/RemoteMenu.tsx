@@ -17,9 +17,10 @@ import { useRemoteActions } from './useRemoteActions';
 import type { ReactNode } from 'react';
 import type { PlaceFacts } from './gitFacts';
 
-const ICONS: Record<'fetch' | 'pull', ReactNode> = {
+const ICONS: Record<'fetch' | 'pull' | 'push', ReactNode> = {
     fetch: <Refresh />,
     pull: <ArrowDown />,
+    push: <ArrowUp />,
 };
 
 /** How many commits each way, as the arrows GitHub Desktop draws beside its button: up for what the branch has, down for what origin has. */
@@ -135,6 +136,9 @@ export function RemoteMenu({ facts, checkoutBranch }: { facts: PlaceFacts; check
                     ...(key === 'merge-into-checkout' && { checkoutBranch: destination }),
                 });
             }
+        } else if (key === 'push') {
+            if (!facts.status.loading && !facts.status.stale && status?.isRepository && status.head.kind === 'branch')
+                void remote.push({ branch: status.head.name, commit: status.head.commit });
         } else if (key === 'fetch' || key === 'pull' || key === 'update') {
             void remote.run(key);
         }
@@ -180,7 +184,12 @@ export function RemoteMenu({ facts, checkoutBranch }: { facts: PlaceFacts; check
                                         </Text>
                                     ) : undefined
                                 }
-                                isDisabled={action.disabled || remote.isPending(action.id)}
+                                isDisabled={
+                                    action.disabled ||
+                                    (action.id === 'push'
+                                        ? remote.busy || facts.status.loading || facts.status.stale
+                                        : remote.isPending(action.id))
+                                }
                             />
                         ))}
                         <MenuSeparator />
