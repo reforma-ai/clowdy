@@ -169,16 +169,15 @@
 
 /*
  * The heading of a folder's group is a label, not an item: no plate under it (`plateless`), the name in the medium weight, and the chevron button after
- * it, which is what folds the group, with the group's new-chat button at the row's end. It has no icon, so the name starts where the icons of the chats
- * below it do, and a gap above it sets the group apart from the one before. A missing folder's name is the warning's colour.
+ * it, which is what folds the group, with the group's new-chat button at the row's end. A gap above it sets the group apart from the one before.
+ * A missing folder's name is the warning's colour.
  */
 /*
- * The row starts the room of the name's plate (the padding and the border of an `xs` button, the size of the chevron's after it) earlier than a
- * chat's row does, so the plate fits in the row's label, which clips what leaves it, and the name's text stands where a chat's icon does.
+ * Align the name button's plate with the chat plates; its text then sits to the left of the chat icons.
  */
 .group {
     margin-block-start: var(--spacing-md);
-    padding-inline-start: calc(var(--clowdy-listbox-item-padding-inline) - var(--spacing-8) - 1px);
+    padding-inline-start: 0;
     cursor: default;
 }
 
