@@ -164,37 +164,62 @@
     padding-inline-end: calc((var(--clowdy-listbox-item-height) - var(--spacing-24)) / 2);
 }
 
-/*
- * The heading of a folder's group is a label, not an item: no plate under it (`plateless`), the name in the medium weight, and the chevron button after
- * it, which is what folds the group, with the group's new-chat button at the row's end. A gap above it sets the group apart from the one before.
- * A missing folder's name is the warning's colour.
- */
-/*
- * Align the name button's plate with the chat plates; its text then sits to the left of the chat icons.
- */
 .group {
     margin-block-start: var(--spacing-md);
     padding-inline-start: 0;
     cursor: default;
 }
 
+.group[data-folder-boundary]::after {
+    content: '';
+    position: absolute;
+    inset-inline: var(--spacing-8);
+    top: calc(-1 * var(--spacing-4));
+    border-top: 1px solid var(--color-surface-border);
+    pointer-events: none;
+}
+
 .group[data-missing] {
     color: var(--color-warning-text);
 }
 
-/* A box of its own line and not an inline one: the name inside shrinks to the room the row has, and an inline box would be as wide as the whole name. */
 .groupTitle {
     display: flex;
     align-items: center;
-    gap: var(--spacing-1);
     min-width: 0;
     font-weight: 500;
 }
 
 .groupToggle {
+    flex: none;
+    font: inherit;
+}
+
+.groupIcon,
+.groupChevron {
+    display: grid;
+    place-items: center;
+    width: 14px;
+    height: 14px;
+}
+
+.groupChevron,
+.group:is(:hover, :focus-within) .groupIcon {
+    display: none;
+}
+
+.group:is(:hover, :focus-within) .groupChevron {
+    display: grid;
+}
+
+.groupName {
     min-width: 0;
     max-width: 100%;
     font: inherit;
+}
+
+.group[data-open] .groupName {
+    background-color: var(--clowdy-button-bg--hover);
 }
 
 /* The note of a group with no chat: a chat's own row, drawn in the muted colour, and nothing to press. */

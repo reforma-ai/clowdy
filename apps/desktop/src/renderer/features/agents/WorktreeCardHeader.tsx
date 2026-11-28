@@ -1,7 +1,8 @@
+import { Button } from '@clowdy/components/Button';
 import { RowActionButton, RowControls } from '@clowdy/components/List';
 import { Popover, PopoverTrigger, useContextMenu } from '@clowdy/components/Popover';
 import { toast } from '@clowdy/components/Toast';
-import { Archive, More, NewChat, Version, WorktreeFolder } from '@clowdy/icons/14';
+import { Archive, Folder, NewChat, Version, WorktreeFolder } from '@clowdy/icons/14';
 import { mainFolder } from '@clowdy/protocol';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -36,6 +37,7 @@ export function WorktreeCardHeader({
     id,
     onNewChat,
     archivedChats,
+    folderBoundary,
 }: {
     card: WorktreeCard;
     pullRequestStatus?: ReactNode;
@@ -46,6 +48,7 @@ export function WorktreeCardHeader({
     id?: string;
     onNewChat?: () => void;
     archivedChats: (Chat & { archivedAt: number })[];
+    folderBoundary?: boolean;
 }) {
     const project = useProjectState();
     const ui = useProjectUi();
@@ -120,7 +123,6 @@ export function WorktreeCardHeader({
           : worktreeLabel(card);
     const title = branch ? `${card.folderName}, ${branch}` : card.folderName;
     const status = card.pending ? 'Worktree not prepared yet' : card.missing ? 'Worktree no longer exists' : undefined;
-    const tooltip = status ? `${title} — ${status}` : title;
     const openContextMenu = (event: MouseEvent) => {
         event.stopPropagation();
         openingPicker.current = false;
@@ -134,23 +136,69 @@ export function WorktreeCardHeader({
             text={title}
             collapsed={collapsed}
             onToggle={onToggle}
+            icon={card.main ? <Folder aria-hidden="true" /> : <WorktreeFolder aria-hidden="true" />}
             name={
-                <span
-                    className={styles.worktreeTitle}
-                    draggable={!!onDragStart && !card.main}
-                    onDragStart={card.main ? undefined : onDragStart}
-                    title={tooltip}
+                <PopoverTrigger
+                    isOpen={menuOpen}
+                    onOpenChange={open => {
+                        if (open) {
+                            previewGeneration++;
+                            setMenuOpen(true);
+                        } else if (openingPicker.current) {
+                            openingPicker.current = false;
+                        } else closePicker();
+                    }}
                 >
-                    {!card.main && <WorktreeFolder aria-hidden="true" />}
-                    <span className={`${styles.title} ${styles.worktreeFolder}`}>{card.folderName}</span>
-                    {branch && (
-                        <>
-                            <span className={styles.worktreeDivider} aria-hidden="true" />
-                            <span className={`${styles.title} ${styles.worktreeBranch}`}>{branch}</span>
-                        </>
-                    )}
-                </span>
+                    <Button
+                        ref={actionsRef}
+                        variant="filling"
+                        color="inherit"
+                        size="xs"
+                        truncate
+                        className={styles.groupName}
+                        aria-label={`Worktree actions: ${title}${status ? ` — ${status}` : ''}`}
+                    >
+                        <span
+                            className={styles.worktreeTitle}
+                            draggable={!!onDragStart && !card.main}
+                            onDragStart={card.main ? undefined : onDragStart}
+                        >
+                            <span className={`${styles.title} ${styles.worktreeFolder}`}>{card.folderName}</span>
+                            {branch && (
+                                <>
+                                    <span className={styles.worktreeDivider} aria-hidden="true" />
+                                    <span className={`${styles.title} ${styles.worktreeBranch}`}>{branch}</span>
+                                </>
+                            )}
+                        </span>
+                    </Button>
+                    <Popover
+                        placement="bottom end"
+                        spacing="xs"
+                        width={switchWorkspace !== undefined ? 288 : undefined}
+                        shouldCloseOnInteractOutside={element => !element.closest('[data-branch-context-menu]')}
+                    >
+                        {switchWorkspace !== undefined ? (
+                            <WorktreeBranchPicker
+                                projectId={project.id}
+                                folderId={card.folder.id}
+                                workspace={switchWorkspace ?? undefined}
+                                label={title}
+                                onClose={closePicker}
+                                beginPreview={beginPreview}
+                            />
+                        ) : (
+                            <WorktreeCardMenu
+                                card={card}
+                                onNewChat={newChat}
+                                onArchive={openArchive}
+                                onSwitch={() => void switchBranch()}
+                            />
+                        )}
+                    </Popover>
+                </PopoverTrigger>
             }
+            data-folder-boundary={folderBoundary || undefined}
             data-collapsed={collapsed || undefined}
             className={styles.worktreeHeader}
             data-missing={card.missing || undefined}
@@ -174,48 +222,6 @@ export function WorktreeCardHeader({
                         </Popover>
                     )}
                     <span className={styles.worktreeActionButtons}>
-                        <PopoverTrigger
-                            isOpen={menuOpen}
-                            onOpenChange={open => {
-                                if (open) {
-                                    previewGeneration++;
-                                    setMenuOpen(true);
-                                } else if (openingPicker.current) {
-                                    openingPicker.current = false;
-                                } else closePicker();
-                            }}
-                        >
-                            <RowActionButton
-                                ref={actionsRef}
-                                icon={<More />}
-                                label={`Worktree actions: ${title}`}
-                                tooltip={null}
-                            />
-                            <Popover
-                                placement="bottom end"
-                                spacing="xs"
-                                width={switchWorkspace !== undefined ? 288 : undefined}
-                                shouldCloseOnInteractOutside={element => !element.closest('[data-branch-context-menu]')}
-                            >
-                                {switchWorkspace !== undefined ? (
-                                    <WorktreeBranchPicker
-                                        projectId={project.id}
-                                        folderId={card.folder.id}
-                                        workspace={switchWorkspace ?? undefined}
-                                        label={title}
-                                        onClose={closePicker}
-                                        beginPreview={beginPreview}
-                                    />
-                                ) : (
-                                    <WorktreeCardMenu
-                                        card={card}
-                                        onNewChat={newChat}
-                                        onArchive={openArchive}
-                                        onSwitch={() => void switchBranch()}
-                                    />
-                                )}
-                            </Popover>
-                        </PopoverTrigger>
                         <Popover
                             triggerRef={actionsRef}
                             isOpen={archiveOpen}

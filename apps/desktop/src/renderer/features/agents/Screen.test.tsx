@@ -136,6 +136,11 @@ const menuItem = (name: string) => {
     return (rows.find(row => row.textContent?.trim() === name) ?? rows.find(row => row.textContent?.includes(name)))!;
 };
 
+const openGlobalArchive = async () => {
+    await press(buttonNamed('Space menu'));
+    await press(menuItem('Chat archive'));
+};
+
 /** Opens a submenu the way a keyboard user does, so both the menu and its controls are available. */
 const openProjectSubmenu = async (name: 'Layout' | 'Display') => {
     await press(buttonNamed('Space menu'));
@@ -1317,16 +1322,31 @@ describe('grouped by folder', () => {
 });
 
 describe('the heading', () => {
-    it('has the history, as a button, to the left of the project menu', () => {
-        // The rows have an Archive of their own, as a quick action: the heading's buttons are the ones outside the list.
-        const buttons = [
-            ...container.querySelectorAll<HTMLElement>(
-                'button[aria-label="Chat archive"], button[aria-label="Space menu"]'
-            ),
-        ].filter(button => !button.closest('[role="grid"]'));
+    it('offers archive and worktree management in the space menu', async () => {
+        expect(container.querySelector('button[aria-label="Chat archive"]')).toBeNull();
+        expect(container.querySelector('button[aria-label="Manage worktrees"]')).toBeNull();
+        await press(buttonNamed('Space menu'));
+        expect(menuItem('Chat archive')).toBeTruthy();
+        expect(menuItem('Manage worktrees')).toBeTruthy();
+    });
 
-        expect(buttons.map(button => button.getAttribute('aria-label'))).toEqual(['Chat archive', 'Space menu']);
-        expect(buttons[0].parentElement).toBe(buttons[1].parentElement);
+    it('opens the global archive from the keyboard and returns focus on Escape', async () => {
+        const trigger = buttonNamed('Space menu');
+        await press(trigger);
+        await act(async () => {
+            const item = menuItem('Chat archive');
+            item.focus();
+            item.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+            item.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }));
+        });
+        const search = document.querySelector<HTMLInputElement>('input[aria-label="Search archived chats"]')!;
+        await act(async () => {
+            search.focus();
+            search.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            await new Promise(resolve => requestAnimationFrame(resolve));
+        });
+        expect(document.querySelector('input[aria-label="Search archived chats"]')).toBeNull();
+        expect(document.activeElement).toBe(trigger);
     });
 
     it('opens settings for the selected project', async () => {
@@ -1448,14 +1468,14 @@ describe('the archive', () => {
         expect(rowKeys()).toEqual(expect.not.arrayContaining(['c-2', 'c-4']));
         expect(rowKeys().filter(key => key?.startsWith('c-'))).toEqual(['c-5', 'c-3', 'c-6', 'c-1']);
 
-        await press(buttonNamed('Chat archive'));
+        await openGlobalArchive();
 
         expect(titles()).toEqual([expect.stringMatching(/^New chat/), expect.stringMatching(/^First version/)]);
         expect(titles()[0]).toMatch(/now$/);
     });
 
     it('opens under the heading and is wider than the column, so a title and its time have room', async () => {
-        await press(buttonNamed('Chat archive'));
+        await openGlobalArchive();
 
         const popover = document.body.querySelector<HTMLElement>('[data-modal-clickout-layer]')!;
 
@@ -1465,7 +1485,7 @@ describe('the archive', () => {
     it('filters history by title and shows no matches', async () => {
         await archive('c-2', true);
         await archive('c-4', true);
-        await press(buttonNamed('Chat archive'));
+        await openGlobalArchive();
         const input = document.querySelector<HTMLInputElement>('input[aria-label="Search archived chats"]')!;
         await draw(() => {
             Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'FIRST VERSION');
@@ -1484,7 +1504,7 @@ describe('the archive', () => {
     it('groups the chats by the day they were put away', async () => {
         await archive('c-2', true);
         await archive('c-4', true);
-        await press(buttonNamed('Chat archive'));
+        await openGlobalArchive();
 
         // Both were put away just now.
         const groups = [...document.body.querySelectorAll<HTMLElement>('[role="rowgroup"]')].filter(
@@ -1499,7 +1519,7 @@ describe('the archive', () => {
 
     it('draws the time in the room of the `⋯`, which takes its place when the row is hovered', async () => {
         await archive('c-4', true);
-        await press(buttonNamed('Chat archive'));
+        await openGlobalArchive();
 
         const end = archiveRow('New chat').querySelector<HTMLElement>('button[aria-label^="Actions of"]')!
             .parentElement!;
@@ -1512,7 +1532,7 @@ describe('the archive', () => {
     it('shows the mark of the provider each chat runs on, as the list does, and the speech bubble for a chat that never started', async () => {
         await archive('c-2', true);
         await archive('c-4', true);
-        await press(buttonNamed('Chat archive'));
+        await openGlobalArchive();
 
         expect(archiveRow('First version').querySelector('[data-provider]')?.getAttribute('data-provider')).toBe(
             project().runs.get('r-orch-2')?.engine
@@ -1522,7 +1542,7 @@ describe('the archive', () => {
     });
 
     it('says so when there is nothing in it', async () => {
-        await press(buttonNamed('Chat archive'));
+        await openGlobalArchive();
 
         expect(titles()).toEqual([]);
         expect(document.body.textContent).toContain('No archived chats');
@@ -1530,7 +1550,7 @@ describe('the archive', () => {
 
     it('brings a chat back into the list and opens it when it is picked', async () => {
         await archive('c-4', true);
-        await press(buttonNamed('Chat archive'));
+        await openGlobalArchive();
         await press(archiveRow('New chat'));
         await vi.waitFor(() => expect(project().chats.get('c-4')?.archivedAt).toBeUndefined());
         await draw();
@@ -1543,7 +1563,7 @@ describe('the archive', () => {
 
     it('keeps the row of an open menu as if hovered here too', async () => {
         await archive('c-4', true);
-        await press(buttonNamed('Chat archive'));
+        await openGlobalArchive();
 
         expect(archiveRow('New chat').hasAttribute('data-open')).toBe(false);
 
@@ -1554,7 +1574,7 @@ describe('the archive', () => {
 
     it('has a menu in each row, with Unarchive and Delete', async () => {
         await archive('c-4', true);
-        await press(buttonNamed('Chat archive'));
+        await openGlobalArchive();
         await press(archiveRow('New chat').querySelector<HTMLElement>('button[aria-label^="Actions of"]')!);
 
         expect([...document.body.querySelectorAll('[role="menuitem"]')].map(row => row.textContent)).toEqual([
@@ -1566,7 +1586,7 @@ describe('the archive', () => {
     it('puts a chat back in the list from its menu, without opening it', async () => {
         await draw(() => ui().openChat('c-1'));
         await archive('c-4', true);
-        await press(buttonNamed('Chat archive'));
+        await openGlobalArchive();
         await press(archiveRow('New chat').querySelector<HTMLElement>('button[aria-label^="Actions of"]')!);
         await press(menuItem('Unarchive'));
         await vi.waitFor(() => expect(project().chats.get('c-4')?.archivedAt).toBeUndefined());
@@ -1579,7 +1599,7 @@ describe('the archive', () => {
 
     it('deletes an archived chat from its menu', async () => {
         await archive('c-4', true);
-        await press(buttonNamed('Chat archive'));
+        await openGlobalArchive();
         await press(archiveRow('New chat').querySelector<HTMLElement>('button[aria-label^="Actions of"]')!);
         await press(menuItem('Delete'));
         // The chat never ran, so nothing asks first.
@@ -1639,13 +1659,17 @@ describe('the archive', () => {
         expect(rowKeys()).not.toContain('c-2');
     });
 
-    it('uses the archive icon in the row, menu and archive button', async () => {
+    it('uses the archive icon in the row and both menus', async () => {
         const rowIcon = rowOf('c-4').querySelector('button[aria-label="Archive"] svg')!;
 
         await press(rowOf('c-4').querySelector<HTMLElement>('button[aria-label="Chat actions"]')!);
 
         expect(menuItem('Archive').querySelector('svg')?.outerHTML).toBe(rowIcon.outerHTML);
-        expect(buttonNamed('Chat archive').querySelector('svg')?.outerHTML).toBe(rowIcon.outerHTML);
+        await act(async () => {
+            menuItem('Archive').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        });
+        await press(buttonNamed('Space menu'));
+        expect(menuItem('Chat archive').querySelector('svg')?.outerHTML).toBe(rowIcon.outerHTML);
         expect(rowIcon.getAttribute('viewBox')).toBe('0 0 14 14');
     });
 });
@@ -1941,16 +1965,20 @@ describe('threads', () => {
         await store.command({ type: 'chat.setArchived', chatId: 'c-6b', archived: true });
         await vi.waitFor(() => expect(project().chats.get('c-6b')?.archivedAt).toBeDefined());
         await draw();
-        await press(buttonNamed('Chat archive'));
+        await openGlobalArchive();
 
         expect(archiveTitles()).toEqual([expect.stringMatching(/^Write the refund tests/)]);
 
-        await press(buttonNamed('Chat archive'));
+        await act(async () => {
+            document
+                .querySelector<HTMLInputElement>('input[aria-label="Search archived chats"]')!
+                .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        });
         await stopThreads();
         await store.command({ type: 'chat.setArchived', chatId: 'c-6', archived: true });
         await vi.waitFor(() => expect(project().chats.get('c-6')?.archivedAt).toBeDefined());
         await draw();
-        await press(buttonNamed('Chat archive'));
+        await openGlobalArchive();
 
         expect(archiveTitles()).toEqual([expect.stringMatching(/^Ship the checkout/)]);
         expect(rowKeys().some(key => key?.startsWith('c-6'))).toBe(false);
@@ -2399,7 +2427,10 @@ describe('worktree cards', () => {
             expect([...row.querySelectorAll('button')].map(button => button.getAttribute('aria-label'))).toContain(
                 `Collapse ${label}`
             );
-            expect(row.querySelector(`[title="${label}"]`)?.textContent).toContain(branch);
+            const actions = row.querySelector<HTMLButtonElement>('button[aria-label^="Worktree actions:"]')!;
+            expect(actions.textContent).toContain(branch);
+            expect(actions.hasAttribute('title')).toBe(false);
+            expect(actions.querySelector('[title]')).toBeNull();
             expect([...row.querySelectorAll('button')].map(button => button.getAttribute('aria-label'))).toContain(
                 `Worktree actions: ${label}`
             );
@@ -2946,7 +2977,7 @@ describe('worktree cards', () => {
         expect(document.querySelector('[aria-label="Archived chats"] [data-key="c-4"]')).toBeNull();
         await draw(() => ui().setChatListLayout('simple'));
         expect(rowKeys()).not.toContain('@archive:@simple');
-        await press(buttonNamed('Chat archive'));
+        await openGlobalArchive();
         expect(document.querySelector('[aria-label="Archived chats"] [data-key="c-4"]')).not.toBeNull();
     });
 
@@ -3268,9 +3299,14 @@ describe('worktree cards', () => {
             ui().setGroupByWorktree(true);
         });
         await draw();
-        expect(rowOf(workspaceKey()).querySelector('[title]')?.getAttribute('title')).toBe(
-            'car-rental, Worktree — Worktree not prepared yet'
+        const actions = rowOf(workspaceKey()).querySelector<HTMLButtonElement>(
+            'button[aria-label^="Worktree actions:"]'
+        )!;
+        expect(actions.getAttribute('aria-label')).toBe(
+            'Worktree actions: car-rental, Worktree — Worktree not prepared yet'
         );
+        expect(actions.hasAttribute('title')).toBe(false);
+        expect(actions.querySelector('[title]')).toBeNull();
         await press(rowOf(workspaceKey()).querySelector<HTMLElement>('button[aria-label^="Worktree actions:"]')!);
         const menu = document.querySelector<HTMLElement>('[role="menu"][aria-label="Worktree actions"]')!;
         expect(menu.textContent).toContain('Worktree not prepared yet');
