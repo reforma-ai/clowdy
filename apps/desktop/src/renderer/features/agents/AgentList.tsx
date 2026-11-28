@@ -48,7 +48,7 @@ import { deleteChat } from '../chats/deleteChat';
 import { isDraftSending } from '../chats/draftSending';
 import { workspaceHead } from '../openWith/workspaceHead';
 import styles from './AgentList.module.css';
-import { ArchiveButton, WorktreeArchiveButton } from './ArchiveButton';
+import { WorktreeArchiveButton } from './ArchiveButton';
 import { AGENTS_SCOPE, agentCommands } from './agentCommands';
 import {
     type AgentGroup,
@@ -72,7 +72,6 @@ import {
 import { BranchPullRequestBadge } from './BranchPullRequestBadge';
 import { ChatIcon, ChatStatus } from './ChatIcon';
 import { chatListPreferences } from './chatListPreferences';
-import { ManageWorktreesButton } from './ManageWorktreesButton';
 import { openNewChat } from './openNewChat';
 import { ProjectMenu } from './ProjectMenu';
 import { RowFold } from './RowFold';
@@ -137,9 +136,9 @@ interface ChatActions {
 /**
  * The project's agents: the row that starts a chat, then the chats in use in the person's order, each with what works for it below: the native sub-agents it
  * started and the threads its agents started in one list, oldest first, folded until the person opens them, except what works (with Expand working threads on)
- * or waits for the person. Archived chats are not here, they are in the archive's list (the button
- * in the heading, beside the project menu), and take their threads with them. `missing` are the folders gone from the disk (`Screen` reads them once for the list and the new-chat page): their group is marked and its button is off. With the menu's folder layout (the default), the
- * chats stand in a group for the folder they work in, under a heading that folds the group. Its title folds the group, and its actions offer a new chat in that folder.
+ * or waits for the person. Archived chats are in the Space menu's archive and take their threads with them. `missing` are the folders gone from the disk
+ * (`Screen` reads them once for the list and the new-chat page): their group is marked and its new-chat button is off. In the folder layout, chats stand
+ * under a heading whose icon folds the group and whose name opens its actions.
  */
 export function AgentList({
     selection,
@@ -174,7 +173,6 @@ export function AgentList({
     // The chat whose `⋯` menu is open: its row keeps the hover plate while the pointer is in the menu.
     const [menuOpenId, setMenuOpenId] = useState<ChatId | null>(null);
     const list = useRef<HTMLDivElement>(null);
-    const heading = useRef<HTMLDivElement>(null);
     const contextMenu = useContextMenu();
     const histories = branchPullRequestsOf(root.transport);
     useEffect(() => {
@@ -934,9 +932,7 @@ export function AgentList({
 
     return (
         <Panel side="left" className={isCovered ? styles.covered : undefined}>
-            <SidebarHeading ref={heading} title={<ProjectSelect />} className={styles.heading}>
-                <ManageWorktreesButton />
-                <ArchiveButton anchor={heading} />
+            <SidebarHeading title={<ProjectSelect />} className={styles.heading}>
                 <ProjectMenu />
             </SidebarHeading>
 

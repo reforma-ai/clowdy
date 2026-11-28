@@ -16,51 +16,20 @@ import { Popover, PopoverScroll, PopoverTrigger } from '@clowdy/components/Popov
 import { Separator } from '@clowdy/components/Separator';
 import { Text } from '@clowdy/components/Text';
 import { Archive, More, Search, Trash } from '@clowdy/icons/14';
-import { type RefObject, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 
 import { formatElapsed } from '../../shared';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { bringBack, openChat, unarchiveChat } from '../chats/archiveChat';
 import { deleteChat } from '../chats/deleteChat';
 import styles from './ArchiveButton.module.css';
-import { archivedChats, archiveGroups, orchestratorOf } from './agentTree';
+import { archiveGroups, orchestratorOf } from './agentTree';
 import { ChatIcon } from './ChatIcon';
 
 import type { Chat, ChatId } from '@clowdy/protocol';
 
 /** The width of the list: the project menu's, wider than the column, where titles were cut short. */
 const LIST_WIDTH = 280;
-
-/**
- * The archive, in the heading beside the filters: a button (the history mark) that drops down the chats that were put away, the last one first, each with how long
- * ago and a `⋯` with Unarchive and Delete. Picking a row brings the chat back into the list and opens it, so a chat is either in the list or here,
- * never both. Threads put away with their parent are part of its entry and have none of their own (`archivedChats`); a thread put away alone has one.
- * The chats are in groups by the day they were put away (`archiveGroups`): today, yesterday, the last 7 days, older. The list opens under the `anchor`, the heading, as close
- * to the button as the filters' menu is, and is wider than the column: a title and a time in a row need more room than the column gives.
- */
-export function ArchiveButton({ anchor }: { anchor: RefObject<HTMLElement | null> }) {
-    const project = useProjectState();
-    const [isOpen, setIsOpen] = useState(false);
-    const archived = archivedChats(project.chatList);
-
-    return (
-        <PopoverTrigger isOpen={isOpen} onOpenChange={setIsOpen}>
-            <Button
-                variant="filling"
-                color="secondary"
-                size="sm"
-                iconOnly
-                aria-label="Chat archive"
-                tooltip="Chat archive"
-            >
-                <Archive />
-            </Button>
-            <Popover triggerRef={anchor} placement="bottom start" spacing="xs" width={LIST_WIDTH}>
-                <ArchiveList chats={archived} onClose={() => setIsOpen(false)} />
-            </Popover>
-        </PopoverTrigger>
-    );
-}
 
 /** The worktree archive includes every archived thread, even when its parent is archived elsewhere. */
 export function WorktreeArchiveButton({
@@ -100,10 +69,12 @@ export function ArchiveList({
     chats,
     onClose,
     showContext = false,
+    autoFocus = false,
 }: {
     chats: (Chat & { archivedAt: number })[];
     onClose: () => void;
     showContext?: boolean;
+    autoFocus?: boolean;
 }) {
     const root = useRootStore();
     const project = useProjectState();
@@ -128,6 +99,7 @@ export function ArchiveList({
                 size="sm"
                 variant="inline"
                 className={styles.search}
+                autoFocus={autoFocus}
                 aria-label="Search archived chats"
                 placeholder="Search chats"
                 value={query}
