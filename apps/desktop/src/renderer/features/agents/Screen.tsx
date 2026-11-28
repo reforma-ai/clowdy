@@ -1,7 +1,7 @@
 import { isBusyRunStatus } from '@clowdy/protocol';
 import { useEffect, useRef } from 'react';
 
-import { SidebarLayout, useFadeIn } from '../../shared';
+import { SidebarLayout } from '../../shared';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { ChatView } from '../chats/ChatView';
 import { refreshFolderGit } from '../openWith/useFolderGit';
@@ -65,10 +65,6 @@ export function Screen() {
                 : []
         )
     );
-    // Another space's chat fades in, as does the first one shown.
-    const main = useRef<HTMLElement>(null);
-    useFadeIn(main, project.id, { initial: true });
-
     const previous = useRef({ projectId: project.id, busy });
     useEffect(() => {
         const before = previous.current;
@@ -97,7 +93,6 @@ export function Screen() {
             }
         >
             <section
-                ref={main}
                 className={styles.main}
                 aria-label={run ? 'Sub-agent' : 'Chat'}
                 data-covered={expanded || undefined}

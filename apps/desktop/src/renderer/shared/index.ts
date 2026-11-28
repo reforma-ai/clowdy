@@ -1,5 +1,4 @@
 export { AgentChip, type AgentChipProps } from './AgentChip';
-export { fadeIn, useFadeIn } from './fadeIn';
 export { RunStatusPill, type RunStatusPillProps } from './RunStatusPill';
 export { runLabel } from './runLabel';
 export { RUN_STATUS_VIEW, type RunStatusView, type StatusTone } from './runStatus';

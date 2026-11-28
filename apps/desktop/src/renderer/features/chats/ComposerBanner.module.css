@@ -15,7 +15,7 @@
 }
 
 :global(.dark) .root {
-    background-color: var(--color-light-700);
+    background-color: var(--color-secondary-800);
 }
 
 /* Adjacent banners share the surface. The previous banner's bottom inset leaves 4px between headers. */

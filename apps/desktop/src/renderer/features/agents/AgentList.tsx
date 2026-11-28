@@ -8,10 +8,9 @@ import {
     RowControls,
     useCellEditMode,
 } from '@clowdy/components/List';
-import { Panel, PanelContent } from '@clowdy/components/Panel';
+import { PanelContent } from '@clowdy/components/Panel';
 import { Popover, PopoverTrigger, useContextMenu } from '@clowdy/components/Popover';
 import { Show } from '@clowdy/components/Show';
-import { Tooltip } from '@clowdy/components/Tooltip';
 import { Archive, Check, Close, Message, More, NewChat, Plus, Robot2, Summary } from '@clowdy/icons/14';
 import { cn } from '@clowdy/lib';
 import { mainFolder } from '@clowdy/protocol';
@@ -29,7 +28,6 @@ import {
 
 import { hotkeys, useCommands, useHotkeyScope } from '../../hotkeys';
 import { SidebarHeading, useRunLabel } from '../../shared';
-import { ProjectIcon } from '../../shared/ProjectIcon';
 import { useFileDragHover } from '../../shared/useFileDragHover';
 import { ProjectSelect } from '../../shell/ProjectSelect';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
@@ -48,7 +46,7 @@ import { deleteChat } from '../chats/deleteChat';
 import { isDraftSending } from '../chats/draftSending';
 import { workspaceHead } from '../openWith/workspaceHead';
 import styles from './AgentList.module.css';
-import { ArchiveButton, WorktreeArchiveButton } from './ArchiveButton';
+import { WorktreeArchiveButton } from './ArchiveButton';
 import { AGENTS_SCOPE, agentCommands } from './agentCommands';
 import {
     type AgentGroup,
@@ -72,7 +70,6 @@ import {
 import { BranchPullRequestBadge } from './BranchPullRequestBadge';
 import { ChatIcon, ChatStatus } from './ChatIcon';
 import { chatListPreferences } from './chatListPreferences';
-import { ManageWorktreesButton } from './ManageWorktreesButton';
 import { openNewChat } from './openNewChat';
 import { ProjectMenu } from './ProjectMenu';
 import { RowFold } from './RowFold';
@@ -137,9 +134,9 @@ interface ChatActions {
 /**
  * The project's agents: the row that starts a chat, then the chats in use in the person's order, each with what works for it below: the native sub-agents it
  * started and the threads its agents started in one list, oldest first, folded until the person opens them, except what works (with Expand working threads on)
- * or waits for the person. Archived chats are not here, they are in the archive's list (the button
- * in the heading, beside the project menu), and take their threads with them. `missing` are the folders gone from the disk (`Screen` reads them once for the list and the new-chat page): their group is marked and its button is off. With the menu's folder layout (the default), the
- * chats stand in a group for the folder they work in, under a heading that folds the group. Its title folds the group, and its actions offer a new chat in that folder.
+ * or waits for the person. Archived chats are in the Space menu's archive and take their threads with them. `missing` are the folders gone from the disk
+ * (`Screen` reads them once for the list and the new-chat page): their group is marked and its new-chat button is off. In the folder layout, chats stand
+ * under a heading whose icon folds the group and whose name opens its actions.
  */
 export function AgentList({
     selection,
@@ -174,7 +171,6 @@ export function AgentList({
     // The chat whose `⋯` menu is open: its row keeps the hover plate while the pointer is in the menu.
     const [menuOpenId, setMenuOpenId] = useState<ChatId | null>(null);
     const list = useRef<HTMLDivElement>(null);
-    const heading = useRef<HTMLDivElement>(null);
     const contextMenu = useContextMenu();
     const histories = branchPullRequestsOf(root.transport);
     useEffect(() => {
@@ -571,6 +567,21 @@ export function AgentList({
         else if (row?.kind === 'chat') ui.openChat(id);
     };
 
+    // Decoration follows the visible groups in their displayed order, including reordered cards.
+    const folderBoundaries = new Set<string>();
+    let previousFolderId: string | undefined;
+    for (const entry of entries) {
+        const folderId =
+            entry.kind === 'group'
+                ? entry.group.folder.id
+                : entry.kind === 'worktree'
+                  ? entry.card.folder.id
+                  : undefined;
+        if (folderId === undefined) continue;
+        if (previousFolderId !== undefined && previousFolderId !== folderId) folderBoundaries.add(entryKey(entry));
+        previousFolderId = folderId;
+    }
+
     const renderGroup = (group: AgentGroup, isCollapsed: boolean) => {
         const isMissing = missing.has(group.folder.id);
         const startChat = () => openNewChat(project, ui, group.folder.id);
@@ -579,6 +590,7 @@ export function AgentList({
             <WorktreeCardHeader
                 key={groupKey(group.folder.id)}
                 id={groupKey(group.folder.id)}
+                folderBoundary={folderBoundaries.has(groupKey(group.folder.id))}
                 card={{
                     key: groupKey(group.folder.id),
                     main: true,
@@ -714,6 +726,7 @@ export function AgentList({
                     >
                         <WorktreeCardHeader
                             card={entry.card}
+                            folderBoundary={folderBoundaries.has(entry.card.key)}
                             archivedChats={archived}
                             pullRequestStatus={
                                 <BranchPullRequestBadge
@@ -916,10 +929,8 @@ export function AgentList({
     };
 
     return (
-        <Panel side="left" className={isCovered ? styles.covered : undefined}>
-            <SidebarHeading ref={heading} title={<ProjectSelect />} className={styles.heading}>
-                <ManageWorktreesButton />
-                <ArchiveButton anchor={heading} />
+        <div className={styles.list}>
+            <SidebarHeading title={<ProjectSelect />} className={styles.heading}>
                 <ProjectMenu />
             </SidebarHeading>
 
@@ -960,35 +971,6 @@ export function AgentList({
 
             <StarCard />
 
-            <nav className={styles.projectDots} aria-label="Switch space">
-                {[
-                    ...root.projects.filter(candidate => candidate.personal),
-                    ...root.projects.filter(candidate => !candidate.personal),
-                ].map(candidate => (
-                    <Tooltip
-                        key={candidate.id}
-                        placement="top"
-                        warmUp
-                        content={
-                            <span className={styles.projectTooltip}>
-                                <ProjectIcon project={candidate} />
-                                {candidate.name}
-                            </span>
-                        }
-                    >
-                        <button
-                            type="button"
-                            className={styles.projectDot}
-                            aria-label={candidate.name}
-                            aria-current={candidate.id === project.id ? 'true' : undefined}
-                            onClick={() => root.selectProject(candidate.id)}
-                        >
-                            <span />
-                        </button>
-                    </Tooltip>
-                ))}
-            </nav>
-
             <Show when={contextMenu.isOpen ? menuChat : null}>
                 {chat => (
                     <Popover {...contextMenu.popoverProps} placement="bottom start" spacing="xs">
@@ -1009,7 +991,7 @@ export function AgentList({
                     </Popover>
                 )}
             </Show>
-        </Panel>
+        </div>
     );
 }
 

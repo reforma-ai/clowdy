@@ -8,6 +8,11 @@
     anchor-name: --agents-chat;
 }
 
+/* Its content fades out and in on a switch of space (`base.css`). */
+:global(html[data-space-switch]) .main {
+    view-transition-name: space-chat;
+}
+
 /* Under the expanded side panel: still laid out, so the chat keeps its width and its scroll, and not seen or reached. */
 .main[data-covered] {
     visibility: hidden;

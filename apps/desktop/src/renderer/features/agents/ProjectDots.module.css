@@ -1,0 +1,44 @@
+.dots {
+    display: flex;
+    justify-content: safe center;
+    flex-shrink: 0;
+    overflow-x: auto;
+    padding: var(--spacing-4);
+}
+
+.dot {
+    display: grid;
+    place-items: center;
+    flex: 0 0 12px;
+    width: 12px;
+    height: 24px;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: var(--color-secondary-muted-text);
+    cursor: pointer;
+}
+
+.dot span {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: 0.4;
+}
+
+.dot[aria-current] span {
+    opacity: 1;
+}
+
+.dot:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: -2px;
+    border-radius: 4px;
+}
+
+.tooltip {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-6);
+}

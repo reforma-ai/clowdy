@@ -2,11 +2,15 @@ import { Button } from '@clowdy/components/Button';
 import { Menu, MenuItem, MenuSection, MenuSeparator, MenuTrigger, SubmenuTrigger } from '@clowdy/components/List';
 import { Popover } from '@clowdy/components/Popover';
 import { Switch } from '@clowdy/components/Switch';
-import { Check, ChevronRight, More } from '@clowdy/icons/14';
+import { Archive, Check, ChevronRight, More, WorktreeFolder } from '@clowdy/icons/14';
+import { useRef, useState } from 'react';
 
 import { openAddFolderDialog } from '../../shell/AddFolderDialog';
 import { useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { addFolders } from '../settings/projects/projectActions';
+import { openManageWorktrees } from '../worktrees';
+import { ArchiveList } from './ArchiveButton';
+import { archivedChats } from './agentTree';
 import { chatListPreferences } from './chatListPreferences';
 import styles from './ProjectMenu.module.css';
 
@@ -19,7 +23,11 @@ const layouts = [
 /** Project actions and the display options for its chat list. */
 export function ProjectMenu() {
     const root = useRootStore();
-    const project = useProjectState().project;
+    const projectState = useProjectState();
+    const project = projectState.project;
+    const [archiveOpen, setArchiveOpen] = useState(false);
+    const menuButton = useRef<HTMLButtonElement>(null);
+    const restoreArchiveFocus = useRef(false);
     const ui = useProjectUi();
     const { showFinishedThreads, expandRunningAgents, showUnusedWorktrees } = chatListPreferences;
     const layout = ui.groupByWorktree ? 'worktree' : ui.groupByFolder ? 'folder' : 'simple';
@@ -35,139 +43,189 @@ export function ProjectMenu() {
     };
 
     return (
-        <MenuTrigger>
-            <Button variant="filling" size="sm" iconOnly aria-label="Space menu" tooltip="Space menu">
-                <More />
-            </Button>
-            <Popover placement="bottom end" spacing="xs" width={290}>
-                <Menu aria-label="Space menu" size="sm">
-                    {!project.personal && <MenuItem id="add-folder" text="Add…" onAction={addFolder} />}
-                    <MenuItem
-                        id="settings"
-                        text="Space settings…"
-                        onAction={() => root.ui.openProjectSettings(project.id)}
-                    />
-                    <MenuSeparator />
-                    <SubmenuTrigger>
+        <>
+            <MenuTrigger>
+                <Button
+                    ref={menuButton}
+                    variant="filling"
+                    size="sm"
+                    iconOnly
+                    aria-label="Space menu"
+                    tooltip="Space menu"
+                >
+                    <More />
+                </Button>
+                <Popover placement="bottom end" spacing="xs" width={290}>
+                    <Menu aria-label="Space menu" size="sm">
+                        {!project.personal && <MenuItem id="add-folder" text="Add…" onAction={addFolder} />}
                         <MenuItem
-                            id="layout"
-                            text="Layout"
-                            endAffix={
-                                <span className={styles.summary}>
-                                    {layoutLabel} <ChevronRight />
-                                </span>
-                            }
+                            id="settings"
+                            text="Space settings…"
+                            onAction={() => root.ui.openProjectSettings(project.id)}
                         />
-                        <Popover spacing="xs" width={240}>
-                            <Menu
-                                aria-label="Layout"
-                                size="sm"
-                                selectionMode="single"
-                                disallowEmptySelection
-                                selectedKeys={[layout]}
-                                onSelectionChange={keys => {
-                                    const selected = keys === 'all' ? undefined : [...keys][0];
-                                    if (selected === 'simple' || selected === 'folder' || selected === 'worktree')
-                                        ui.setChatListLayout(selected);
-                                }}
-                            >
-                                {layouts.map(option => (
-                                    <MenuItem
-                                        key={option.id}
-                                        id={option.id}
-                                        text={option.label}
-                                        endAffix={layout === option.id ? <Check /> : undefined}
-                                    />
-                                ))}
-                            </Menu>
-                        </Popover>
-                    </SubmenuTrigger>
-                    <SubmenuTrigger>
-                        <MenuItem id="display" text="Display" endAffix={<ChevronRight />} />
-                        <Popover spacing="xs" width={260}>
-                            <Menu aria-label="Display" size="sm">
-                                <MenuSection
-                                    selectionMode="multiple"
-                                    selectedKeys={filters}
+                        <MenuItem
+                            id="archive"
+                            text="Chat archive"
+                            icon={<Archive />}
+                            onAction={() => setArchiveOpen(true)}
+                        />
+                        {!!project.folders.length && (
+                            <MenuItem
+                                id="manage-worktrees"
+                                text="Manage worktrees"
+                                icon={<WorktreeFolder />}
+                                onAction={() => openManageWorktrees({ root, projectId: project.id })}
+                            />
+                        )}
+                        <MenuSeparator />
+                        <SubmenuTrigger>
+                            <MenuItem
+                                id="layout"
+                                text="Layout"
+                                endAffix={
+                                    <span className={styles.summary}>
+                                        {layoutLabel} <ChevronRight />
+                                    </span>
+                                }
+                            />
+                            <Popover spacing="xs" width={240}>
+                                <Menu
+                                    aria-label="Layout"
+                                    size="sm"
+                                    selectionMode="single"
+                                    disallowEmptySelection
+                                    selectedKeys={[layout]}
                                     onSelectionChange={keys => {
-                                        const on = (key: string) => keys === 'all' || keys.has(key);
-                                        chatListPreferences.setShowFinishedThreads(on('completed'));
-                                        chatListPreferences.setExpandRunningAgents(on('active'));
-                                        chatListPreferences.setShowUnusedWorktrees(on('unused'));
+                                        const selected = keys === 'all' ? undefined : [...keys][0];
+                                        if (selected === 'simple' || selected === 'folder' || selected === 'worktree')
+                                            ui.setChatListLayout(selected);
                                     }}
                                 >
-                                    <MenuItem
-                                        className={styles.displayItem}
-                                        id="completed"
-                                        text="Show completed threads"
-                                        stacked
-                                        description={
-                                            <span className={styles.description}>
-                                                Keeps finished delegated work in the chat list
-                                            </span>
-                                        }
-                                        shouldCloseOnSelect={false}
-                                        endAffix={
-                                            <span inert aria-hidden className={styles.switch}>
-                                                <Switch
-                                                    size="sm"
-                                                    aria-label="Show completed threads"
-                                                    isReadOnly
-                                                    isSelected={showFinishedThreads}
-                                                />
-                                            </span>
-                                        }
-                                    />
-                                    <MenuItem
-                                        className={styles.displayItem}
-                                        id="active"
-                                        text="Expand working threads"
-                                        stacked
-                                        description={
-                                            <span className={styles.description}>
-                                                Shows ongoing delegated work under collapsed chats
-                                            </span>
-                                        }
-                                        shouldCloseOnSelect={false}
-                                        endAffix={
-                                            <span inert aria-hidden className={styles.switch}>
-                                                <Switch
-                                                    size="sm"
-                                                    aria-label="Expand working threads"
-                                                    isReadOnly
-                                                    isSelected={expandRunningAgents}
-                                                />
-                                            </span>
-                                        }
-                                    />
-                                    <MenuItem
-                                        className={styles.displayItem}
-                                        id="unused"
-                                        text="Show unused worktrees"
-                                        stacked
-                                        description={
-                                            <span className={styles.description}>
-                                                Shows worktrees without chats in the list
-                                            </span>
-                                        }
-                                        shouldCloseOnSelect={false}
-                                        endAffix={
-                                            <span inert aria-hidden className={styles.switch}>
-                                                <Switch
-                                                    size="sm"
-                                                    aria-label="Show unused worktrees"
-                                                    isReadOnly
-                                                    isSelected={showUnusedWorktrees}
-                                                />
-                                            </span>
-                                        }
-                                    />
-                                </MenuSection>
-                            </Menu>
-                        </Popover>
-                    </SubmenuTrigger>
-                </Menu>
+                                    {layouts.map(option => (
+                                        <MenuItem
+                                            key={option.id}
+                                            id={option.id}
+                                            text={option.label}
+                                            endAffix={layout === option.id ? <Check /> : undefined}
+                                        />
+                                    ))}
+                                </Menu>
+                            </Popover>
+                        </SubmenuTrigger>
+                        <SubmenuTrigger>
+                            <MenuItem id="display" text="Display" endAffix={<ChevronRight />} />
+                            <Popover spacing="xs" width={260}>
+                                <Menu aria-label="Display" size="sm">
+                                    <MenuSection
+                                        selectionMode="multiple"
+                                        selectedKeys={filters}
+                                        onSelectionChange={keys => {
+                                            const on = (key: string) => keys === 'all' || keys.has(key);
+                                            chatListPreferences.setShowFinishedThreads(on('completed'));
+                                            chatListPreferences.setExpandRunningAgents(on('active'));
+                                            chatListPreferences.setShowUnusedWorktrees(on('unused'));
+                                        }}
+                                    >
+                                        <MenuItem
+                                            className={styles.displayItem}
+                                            id="completed"
+                                            text="Show completed threads"
+                                            stacked
+                                            description={
+                                                <span className={styles.description}>
+                                                    Keeps finished delegated work in the chat list
+                                                </span>
+                                            }
+                                            shouldCloseOnSelect={false}
+                                            endAffix={
+                                                <span inert aria-hidden className={styles.switch}>
+                                                    <Switch
+                                                        size="sm"
+                                                        aria-label="Show completed threads"
+                                                        isReadOnly
+                                                        isSelected={showFinishedThreads}
+                                                    />
+                                                </span>
+                                            }
+                                        />
+                                        <MenuItem
+                                            className={styles.displayItem}
+                                            id="active"
+                                            text="Expand working threads"
+                                            stacked
+                                            description={
+                                                <span className={styles.description}>
+                                                    Shows ongoing delegated work under collapsed chats
+                                                </span>
+                                            }
+                                            shouldCloseOnSelect={false}
+                                            endAffix={
+                                                <span inert aria-hidden className={styles.switch}>
+                                                    <Switch
+                                                        size="sm"
+                                                        aria-label="Expand working threads"
+                                                        isReadOnly
+                                                        isSelected={expandRunningAgents}
+                                                    />
+                                                </span>
+                                            }
+                                        />
+                                        <MenuItem
+                                            className={styles.displayItem}
+                                            id="unused"
+                                            text="Show unused worktrees"
+                                            stacked
+                                            description={
+                                                <span className={styles.description}>
+                                                    Shows worktrees without chats in the list
+                                                </span>
+                                            }
+                                            shouldCloseOnSelect={false}
+                                            endAffix={
+                                                <span inert aria-hidden className={styles.switch}>
+                                                    <Switch
+                                                        size="sm"
+                                                        aria-label="Show unused worktrees"
+                                                        isReadOnly
+                                                        isSelected={showUnusedWorktrees}
+                                                    />
+                                                </span>
+                                            }
+                                        />
+                                    </MenuSection>
+                                </Menu>
+                            </Popover>
+                        </SubmenuTrigger>
+                    </Menu>
+                </Popover>
+            </MenuTrigger>
+            <Popover
+                triggerRef={menuButton}
+                isOpen={archiveOpen}
+                onOpenChange={open => {
+                    setArchiveOpen(open);
+                    if (!open && restoreArchiveFocus.current) {
+                        restoreArchiveFocus.current = false;
+                        requestAnimationFrame(() => menuButton.current?.focus());
+                    }
+                }}
+                placement="bottom end"
+                spacing="xs"
+                width={280}
+            >
+                <div
+                    onKeyDownCapture={event => {
+                        if (event.key === 'Escape' && event.currentTarget.contains(event.target as Node))
+                            restoreArchiveFocus.current = true;
+                    }}
+                >
+                    <ArchiveList
+                        chats={archivedChats(projectState.chatList)}
+                        onClose={() => setArchiveOpen(false)}
+                        autoFocus
+                    />
+                </div>
             </Popover>
-        </MenuTrigger>
+        </>
     );
 }

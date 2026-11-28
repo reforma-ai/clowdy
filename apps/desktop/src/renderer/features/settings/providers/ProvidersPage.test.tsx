@@ -56,16 +56,13 @@ const button = (within: ParentNode, label: string) =>
 const press = (element: HTMLElement | undefined) => act(async () => element!.click());
 const switchOf = (within: ParentNode, label: string) => named<HTMLInputElement>(within, 'input', label)!;
 
-/** The permission radios of a card, in the order drawn, with what each says. */
-const presetsOf = (within: ParentNode) =>
-    [...within.querySelectorAll<HTMLInputElement>('input[type="radio"]')].map(input => ({
-        value: input.value,
-        checked: input.checked,
-        disabled: input.disabled,
-        text: input.closest('label')?.textContent ?? '',
-    }));
-const radio = (within: ParentNode, value: string) =>
-    within.querySelector<HTMLInputElement>(`input[type="radio"][value="${value}"]`)!;
+const permissionSelect = (within: ParentNode) => within.querySelector<HTMLSelectElement>('select')!;
+const choosePermission = (within: ParentNode, value: string) =>
+    act(async () => {
+        const select = permissionSelect(within);
+        select.value = value;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
 
 /** The agents of the fixture with `change` applied to the one called `id`. */
 function withAgent(id: string, change: (agent: AgentInfo) => void) {
@@ -209,169 +206,94 @@ describe('the switch of a provider', () => {
 });
 
 describe('the permission presets', () => {
-    it('lists the presets the agent offers, each with its own words, and names the default', async () => {
+    it('shows provider defaults and available choices', async () => {
         await start();
-
-        expect(presetsOf(card('Claude Code')).map(({ value, text }) => [value, text])).toEqual([
-            ['ask', 'Ask for approvalAsks before every edit and command'],
-            ['accept-edits', 'Accept editsApplies file edits, asks before commands and anything else'],
-            ['auto', 'Approve for meDefaultApproves what its own check finds safe, asks about the rest'],
-            ['full', 'Full accessNever asks, edits any file and runs any command'],
+        expect(permissionSelect(card('Claude Code')).value).toBe('auto');
+        expect([...permissionSelect(card('Codex')).options].map(option => option.value).filter(Boolean)).toEqual([
+            'ask',
+            'accept-edits',
+            'auto',
+            'full',
         ]);
-        expect(presetsOf(card('Codex')).map(preset => preset.value)).toEqual(['ask', 'accept-edits', 'auto', 'full']);
-        expect(card('Claude Code').textContent).toContain('What the agent may do without asking');
-    });
-
-    it('lists the pair of an agent that has none of its own, with Full access as its default', async () => {
-        await start();
-
-        expect(presetsOf(card('Cursor')).map(({ value, checked, text }) => [value, checked, text])).toEqual([
-            ['ask', false, 'Ask for approvalClowdy asks you before the agent does anything it asks permission for'],
-            ['full', true, 'Full accessDefaultClowdy allows everything the agent asks permission for'],
+        expect(permissionSelect(card('Cursor')).value).toBe('full');
+        expect([...permissionSelect(card('Cursor')).options].map(option => option.value).filter(Boolean)).toEqual([
+            'ask',
+            'full',
         ]);
     });
 
-    it('selects the default until the person chooses, and then the choice, which never moves the Default tag', async () => {
+    it('saves a choice for one provider and keeps the other unchanged', async () => {
         await start();
-
-        expect(
-            presetsOf(card('Claude Code'))
-                .filter(preset => preset.checked)
-                .map(preset => preset.value)
-        ).toEqual(['auto']);
-
-        await start(
-            withAgent('claude', agent => {
-                agent.permissions!.value = 'accept-edits';
-            })
-        );
-
-        const claude = card('Claude Code');
-
-        expect(
-            presetsOf(claude)
-                .filter(preset => preset.checked)
-                .map(preset => preset.value)
-        ).toEqual(['accept-edits']);
-        expect(
-            presetsOf(claude)
-                .filter(preset => preset.text.includes('Default'))
-                .map(preset => preset.value)
-        ).toEqual(['auto']);
-    });
-
-    it('sends the chosen preset by its id and shows it once the agents are fetched again', async () => {
-        await start();
-
         const command = vi.spyOn(store, 'command');
-
-        await press(radio(card('Codex'), 'accept-edits'));
+        await choosePermission(card('Codex'), 'accept-edits');
         await vi.waitFor(() =>
             expect(store.agents.find(agent => agent.id === 'codex')?.permissions?.value).toBe('accept-edits')
         );
         await draw();
-
         expect(command).toHaveBeenCalledWith({ type: 'agent.update', id: 'codex', permission: 'accept-edits' });
-        expect(
-            presetsOf(card('Codex'))
-                .filter(preset => preset.checked)
-                .map(preset => preset.value)
-        ).toEqual(['accept-edits']);
-        expect(
-            presetsOf(card('Claude Code'))
-                .filter(preset => preset.checked)
-                .map(preset => preset.value)
-        ).toEqual(['auto']);
+        expect(permissionSelect(card('Codex')).value).toBe('accept-edits');
+        expect(permissionSelect(card('Claude Code')).value).toBe('auto');
+        await act(async () => reactRoot.render(null));
+        await store.refreshAgents();
+        await draw();
+        expect(permissionSelect(card('Codex')).value).toBe('accept-edits');
     });
 
-    it('holds the group read only while the choice is saved, keeping the radios enabled so the keyboard stays on one, and the old choice selected', async () => {
-        let release = () => undefined as void;
+    it('retains an unfamiliar saved value', async () => {
+        await start(
+            withAgent('claude', agent => {
+                agent.permissions!.value = 'custom-mode' as never;
+            })
+        );
+        expect(permissionSelect(card('Claude Code')).value).toBe('custom-mode');
+    });
+
+    it('holds the saved value and ignores further changes while saving', async () => {
+        let release = () => {};
         const held = new Promise<void>(resolve => {
             release = resolve;
         });
         const sent = vi.fn();
-
         await start(
             overrideTransport(transport, {
                 command: async input => {
                     sent(input);
                     await held;
-
                     return transport.command(input);
                 },
             })
         );
-        await press(radio(card('Claude Code'), 'full'));
+        await choosePermission(card('Claude Code'), 'full');
         await draw();
-
-        const claude = card('Claude Code');
-
-        expect(claude.querySelector('[role="radiogroup"]')?.getAttribute('aria-readonly')).toBe('true');
-        expect(claude.querySelector('[aria-busy="true"]')).not.toBeNull();
-        expect(presetsOf(claude).some(preset => preset.disabled)).toBe(false);
-        expect(
-            presetsOf(claude)
-                .filter(preset => preset.checked)
-                .map(preset => preset.value)
-        ).toEqual(['auto']);
-
-        // Another press while the first is on its way changes nothing and sends nothing.
-        await press(radio(claude, 'ask'));
-        await draw();
-
+        expect(card('Claude Code').querySelector('[aria-busy="true"]')).not.toBeNull();
+        expect(permissionSelect(card('Claude Code')).value).toBe('auto');
+        await choosePermission(card('Claude Code'), 'ask');
         expect(sent).toHaveBeenCalledTimes(1);
-        expect(
-            presetsOf(card('Claude Code'))
-                .filter(preset => preset.checked)
-                .map(preset => preset.value)
-        ).toEqual(['auto']);
-
         release();
         await vi.waitFor(() =>
             expect(store.agents.find(agent => agent.id === 'claude')?.permissions?.value).toBe('full')
         );
         await draw();
-
-        expect(card('Claude Code').querySelector('[aria-busy="true"]')).toBeNull();
-        expect(card('Claude Code').querySelector('[role="radiogroup"]')?.getAttribute('aria-readonly')).toBeNull();
-        expect(
-            presetsOf(card('Claude Code'))
-                .filter(preset => preset.checked)
-                .map(preset => preset.value)
-        ).toEqual(['full']);
+        expect(permissionSelect(card('Claude Code')).value).toBe('full');
     });
 
-    it('tells the person when the daemon refuses, and the choice stays as it was', async () => {
-        const refused = {
-            ok: false,
-            requestId: 'r',
-            error: { code: 'invalid', message: 'Claude Code has no preset called "full"' },
-        } as const;
-
+    it('retains the previous value and reports a refusal', async () => {
+        const refused = { ok: false, requestId: 'r', error: { code: 'invalid', message: 'Refused' } } as const;
         await start(overrideTransport(transport, { command: async () => refused }));
-        await press(radio(card('Claude Code'), 'full'));
-        await vi.waitFor(() =>
-            expect(toasts.error).toHaveBeenCalledWith({ message: 'Claude Code has no preset called "full"' })
-        );
+        await choosePermission(card('Claude Code'), 'full');
+        await vi.waitFor(() => expect(toasts.error).toHaveBeenCalledWith({ message: 'Refused' }));
         await draw();
-
-        expect(
-            presetsOf(card('Claude Code'))
-                .filter(preset => preset.checked)
-                .map(preset => preset.value)
-        ).toEqual(['auto']);
-        expect(presetsOf(card('Claude Code')).some(preset => preset.disabled)).toBe(false);
+        expect(permissionSelect(card('Claude Code')).value).toBe('auto');
     });
 
-    it('shows no list for an agent the daemon sends no presets for', async () => {
+    it('omits the control when the provider has no presets', async () => {
         await start(
             withAgent('cursor', agent => {
                 delete agent.permissions;
             })
         );
-
-        expect(card('Cursor').querySelector('[role="radiogroup"]')).toBeNull();
-        expect(card('Claude Code').querySelector('[role="radiogroup"]')).not.toBeNull();
+        expect(card('Cursor').querySelector('select')).toBeNull();
+        expect(permissionSelect(card('Claude Code'))).not.toBeNull();
     });
 });
 

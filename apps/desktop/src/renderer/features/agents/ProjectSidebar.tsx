@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Panel } from '@clowdy/components/Panel';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { attachHorizontalSwipe } from '../../gestures/horizontalSwipe';
 import { swipeDecision } from '../../gestures/swipeTracker';
-import { fadeIn } from '../../shared';
 import { Unreachable } from '../../shell/Unreachable';
 import { ProjectProvider, useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { AgentList } from './AgentList';
 import { resolveSelection, visibleChats } from './agentTree';
+import { ProjectDots } from './ProjectDots';
 import styles from './ProjectSidebar.module.css';
 import { useSidebarWorktrees } from './useSidebarWorktrees';
 
@@ -67,7 +68,10 @@ function Preview({
     );
 }
 
-/** The selected panel and its immediate neighbors share a viewport, while the main screen keeps its selection. */
+/**
+ * The selected panel and its immediate neighbors share a viewport, while the main screen keeps its selection. The plate, its edge and the dots
+ * under the lists are drawn once, outside the track, so they stay put while the lists slide.
+ */
 export function ProjectSidebar({
     children,
     info,
@@ -122,16 +126,6 @@ export function ProjectSidebar({
         setPreviewSide(0);
     }, [place]);
 
-    // A space chosen elsewhere (the title band's select, a shortcut) fades in; one swiped in is already on screen. This
-    // runs before the effect below forgets which project was this component's own.
-    const center = useRef<HTMLDivElement>(null);
-    const faded = useRef<string | undefined>(undefined);
-    useLayoutEffect(() => {
-        if (faded.current === currentId) return;
-        faded.current = currentId;
-        if (own.current !== currentId) fadeIn(center.current);
-    }, [currentId]);
-
     useEffect(() => {
         const mine = own.current === currentId;
         own.current = undefined;
@@ -173,7 +167,7 @@ export function ProjectSidebar({
             const from = root.selectedProjectId;
             commitTimer.current = setTimeout(
                 () => {
-                    settle.current = undefined;
+                    const pending = settle.current;
                     if (
                         direction &&
                         id &&
@@ -181,7 +175,11 @@ export function ProjectSidebar({
                         root.projects.some(project => project.id === id)
                     ) {
                         own.current = id;
-                        root.selectProject(id);
+                        // The list is already in place: it comes to rest with the switch, which the window may apply a
+                        // frame later, while the chat fades over. Until then the switch is still pending, and a gesture
+                        // that begins meanwhile finishes it itself; then this one must not move the list again.
+                        root.selectProject(id, { after: () => settle.current === pending && rest() });
+                        return;
                     }
                     rest();
                 },
@@ -200,7 +198,8 @@ export function ProjectSidebar({
                 if (direction && id && root.projects.some(project => project.id === id)) {
                     own.current = id;
                     shown.current = undefined;
-                    root.selectProject(id);
+                    // The fingers are already moving the new project's list: no frame may pass before it is drawn.
+                    root.selectProject(id, { instant: true });
                     return at - direction * width();
                 }
                 return at;
@@ -267,29 +266,30 @@ export function ProjectSidebar({
         );
     };
     return (
-        <div className={styles.viewport} ref={viewport} data-project-sidebar>
-            {[previous, next].map(id => {
-                const project = id ? root.projectState(id) : undefined;
-                return project ? (
-                    <ProjectProvider key={id} value={project}>
-                        <PrepareWorktrees onRead={rememberWorktrees} />
-                    </ProjectProvider>
-                ) : null;
-            })}
-            <div
-                ref={track}
-                className={styles.track}
-                style={{
-                    transform: `translateX(${offset}px)`,
-                    transition: settling ? 'transform 200ms ease-out' : 'none',
-                }}
-            >
-                {panel(previous, -1)}
-                <div ref={center} className={styles.panel}>
-                    {children}
+        <Panel side="left" className={covered ? styles.covered : undefined}>
+            <div className={styles.viewport} ref={viewport} data-project-sidebar>
+                {[previous, next].map(id => {
+                    const project = id ? root.projectState(id) : undefined;
+                    return project ? (
+                        <ProjectProvider key={id} value={project}>
+                            <PrepareWorktrees onRead={rememberWorktrees} />
+                        </ProjectProvider>
+                    ) : null;
+                })}
+                <div
+                    ref={track}
+                    className={styles.track}
+                    style={{
+                        transform: `translateX(${offset}px)`,
+                        transition: settling ? 'transform 200ms ease-out' : 'none',
+                    }}
+                >
+                    {panel(previous, -1)}
+                    <div className={styles.panel}>{children}</div>
+                    {panel(next, 1)}
                 </div>
-                {panel(next, 1)}
             </div>
-        </div>
+            <ProjectDots />
+        </Panel>
     );
 }

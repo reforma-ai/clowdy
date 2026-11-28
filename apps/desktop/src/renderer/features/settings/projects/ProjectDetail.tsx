@@ -67,9 +67,6 @@ function WorktreesSection({ project }: { project: Project }) {
                     <Button onPress={() => openManageWorktrees({ root, projectId: project.id })}>
                         Manage worktrees
                     </Button>
-                    <Button onPress={() => openManageWorktrees({ root, projectId: project.id, initialTidy: true })}>
-                        Tidy up worktrees
-                    </Button>
                 </SettingsLayout.Row>
             </SettingsLayout.Card>
         </SettingsLayout.Section>

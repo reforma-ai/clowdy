@@ -399,6 +399,24 @@ describe('RootStore projects', () => {
         root.dispose();
     });
 
+    it('hands a switch between projects to the space switch, and applies an instant one at once', async () => {
+        const root = new RootStore(new FixtureTransport(), { storage: memoryStorage() });
+        const switches: Array<() => void> = [];
+        const after = vi.fn();
+
+        await root.load();
+        root.setSpaceSwitch(apply => switches.push(apply));
+        root.selectProject(FIXTURE_EMPTY_PROJECT_ID, { after });
+        expect([root.selectedProjectId, after.mock.calls.length]).toEqual([FIXTURE_PROJECT_ID, 0]);
+        switches[0]();
+        expect([root.selectedProjectId, after.mock.calls.length]).toEqual([FIXTURE_EMPTY_PROJECT_ID, 1]);
+
+        root.selectProject(FIXTURE_PERSONAL_PROJECT_ID, { instant: true });
+        root.selectProject(FIXTURE_PERSONAL_PROJECT_ID);
+        expect([root.selectedProjectId, switches.length]).toEqual([FIXTURE_PERSONAL_PROJECT_ID, 1]);
+        root.dispose();
+    });
+
     it('leaves the selection alone when another project is removed', async () => {
         const root = new RootStore(new FixtureTransport(), { storage: memoryStorage() });
 

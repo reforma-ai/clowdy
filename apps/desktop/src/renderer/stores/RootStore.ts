@@ -85,6 +85,7 @@ export class RootStore {
     #agentsScheduled = false;
     #bannerTimer: ReturnType<typeof setTimeout> | undefined;
     #resyncTimer: ReturnType<typeof setTimeout> | undefined;
+    #spaceSwitch: ((apply: () => void) => void) | undefined;
 
     constructor(
         readonly transport: Transport,
@@ -184,11 +185,33 @@ export class RootStore {
         return this.#states.get(projectId);
     }
 
-    selectProject(projectId: ProjectId): void {
+    /**
+     * Shows another project. A switch from one project to another goes through the window's space switch when one is set
+     * (`setSpaceSwitch`), which may apply it a frame later, after it has captured what the window shows; `after` runs with
+     * it. `instant` applies it at once, for a gesture that already moved the content to the new project.
+     */
+    selectProject(
+        projectId: ProjectId,
+        { instant = false, after }: { instant?: boolean; after?: () => void } = {}
+    ): void {
         if (!this.prepareProject(projectId)) return;
 
-        this.selectedProjectId = projectId;
-        writeStored(this.#storage, SELECTED_PROJECT_KEY, projectId);
+        const apply = () => {
+            runInAction(() => {
+                this.selectedProjectId = projectId;
+            });
+            writeStored(this.#storage, SELECTED_PROJECT_KEY, projectId);
+            after?.();
+        };
+        const from = this.selectedProjectId;
+
+        if (instant || !this.#spaceSwitch || from === null || from === projectId) apply();
+        else this.#spaceSwitch(apply);
+    }
+
+    /** How the window shows a switch of project (a fade of the content); without one, a switch applies at once. */
+    setSpaceSwitch(spaceSwitch: ((apply: () => void) => void) | undefined): void {
+        this.#spaceSwitch = spaceSwitch;
     }
 
     /**

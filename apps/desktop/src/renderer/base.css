@@ -89,3 +89,51 @@ body:has([data-modal-overlay].on) [data-overlay-container],
 body:has([data-modal-overlay].shadow) [data-overlay-container] {
     z-index: var(--z-popover-elevated);
 }
+
+/*
+ * A switch of space (`shell/spaceSwitch.ts`): the page itself, with its plates and the list of chats, changes at once, while what
+ * is on the chat's and the side panel's plates (`space-chat`, `space-panel`) fades out to nothing and the new space's fades in
+ * from nothing. Nothing moves or resizes in between, and the page stays live and takes the pointer meanwhile.
+ */
+html[data-space-switch]::view-transition {
+    pointer-events: none;
+}
+
+html[data-space-switch]::view-transition-old(root) {
+    display: none;
+}
+
+html[data-space-switch]::view-transition-new(root) {
+    animation: none;
+}
+
+html[data-space-switch]::view-transition-group(*) {
+    animation-duration: 0s;
+}
+
+html[data-space-switch]::view-transition-old(space-chat),
+html[data-space-switch]::view-transition-old(space-panel) {
+    animation: space-switch-out 140ms ease-in both;
+}
+
+html[data-space-switch]::view-transition-new(space-chat),
+html[data-space-switch]::view-transition-new(space-panel) {
+    animation: space-switch-in 240ms ease-out 140ms both;
+}
+
+/* The new space has the panel shut: its plate went with the page, so its content goes with it. */
+html[data-space-switch]::view-transition-old(space-panel):only-child {
+    display: none;
+}
+
+@keyframes space-switch-out {
+    to {
+        opacity: 0;
+    }
+}
+
+@keyframes space-switch-in {
+    from {
+        opacity: 0;
+    }
+}
