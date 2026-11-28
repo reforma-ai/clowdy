@@ -1,7 +1,7 @@
 import { RowActionButton, RowControls } from '@clowdy/components/List';
 import { Popover, PopoverTrigger, useContextMenu } from '@clowdy/components/Popover';
 import { toast } from '@clowdy/components/Toast';
-import { More, NewChat, Version, WorktreeFolder } from '@clowdy/icons/14';
+import { Archive, More, NewChat, Version, WorktreeFolder } from '@clowdy/icons/14';
 import { mainFolder } from '@clowdy/protocol';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -14,10 +14,11 @@ import { OpenWithMenu, useFolderGit, useFolderRepair } from '../openWith';
 import { openInTerminal } from '../terminal/openInTerminal';
 import { worktreeMenuExtras } from '../worktrees/worktreeMenuExtras';
 import styles from './AgentList.module.css';
+import { ArchiveList } from './ArchiveButton';
 import { GroupHeader } from './GroupHeader';
 import { samePath, worktreeLabel } from './workspaceChoice';
 
-import type { ChatWorkspace } from '@clowdy/protocol';
+import type { Chat, ChatWorkspace } from '@clowdy/protocol';
 import type { DragEvent, MouseEvent, ReactNode } from 'react';
 import type { ThreadsActivity } from './agentTree';
 import type { WorktreeCard } from './worktreeCards';
@@ -34,6 +35,7 @@ export function WorktreeCardHeader({
     onDragStart,
     id,
     onNewChat,
+    archivedChats,
 }: {
     card: WorktreeCard;
     pullRequestStatus?: ReactNode;
@@ -43,10 +45,18 @@ export function WorktreeCardHeader({
     onDragStart?: (event: DragEvent<HTMLElement>) => void;
     id?: string;
     onNewChat?: () => void;
+    archivedChats: (Chat & { archivedAt: number })[];
 }) {
     const project = useProjectState();
     const ui = useProjectUi();
     const [menuOpen, setMenuOpen] = useState(false);
+    const [archiveOpen, setArchiveOpen] = useState(false);
+    const actionsRef = useRef<HTMLButtonElement>(null);
+    const openArchive = () => {
+        contextMenu.close();
+        setMenuOpen(false);
+        setArchiveOpen(true);
+    };
     const contextMenu = useContextMenu();
     useEffect(() => contextMenu.close, [contextMenu.close]);
     const [switchWorkspace, setSwitchWorkspace] = useState<ChatWorkspace | null>();
@@ -145,7 +155,7 @@ export function WorktreeCardHeader({
             className={styles.worktreeHeader}
             data-missing={card.missing || undefined}
             data-pending={card.pending || undefined}
-            data-open={menuOpen || contextMenu.isOpen || undefined}
+            data-open={menuOpen || contextMenu.isOpen || archiveOpen || undefined}
             onContextMenu={openContextMenu}
             endAffix={
                 <RowControls className={styles.worktreeActions} onContextMenu={openContextMenu}>
@@ -155,6 +165,7 @@ export function WorktreeCardHeader({
                                 card={card}
                                 onClose={contextMenu.close}
                                 onNewChat={newChat}
+                                onArchive={openArchive}
                                 onSwitch={() => {
                                     setMenuOpen(true);
                                     void switchBranch(true);
@@ -174,7 +185,12 @@ export function WorktreeCardHeader({
                                 } else closePicker();
                             }}
                         >
-                            <RowActionButton icon={<More />} label={`Worktree actions: ${title}`} tooltip={null} />
+                            <RowActionButton
+                                ref={actionsRef}
+                                icon={<More />}
+                                label={`Worktree actions: ${title}`}
+                                tooltip={null}
+                            />
                             <Popover
                                 placement="bottom end"
                                 spacing="xs"
@@ -194,11 +210,22 @@ export function WorktreeCardHeader({
                                     <WorktreeCardMenu
                                         card={card}
                                         onNewChat={newChat}
+                                        onArchive={openArchive}
                                         onSwitch={() => void switchBranch()}
                                     />
                                 )}
                             </Popover>
                         </PopoverTrigger>
+                        <Popover
+                            triggerRef={actionsRef}
+                            isOpen={archiveOpen}
+                            onOpenChange={setArchiveOpen}
+                            placement="bottom end"
+                            spacing="xs"
+                            width={280}
+                        >
+                            <ArchiveList chats={archivedChats} onClose={() => setArchiveOpen(false)} showContext />
+                        </Popover>
                         <RowActionButton
                             icon={<NewChat />}
                             label={`New chat in ${title}`}
@@ -231,10 +258,12 @@ function WorktreeCardMenu({
     onNewChat,
     onSwitch,
     onClose,
+    onArchive,
 }: {
     card: WorktreeCard;
     onNewChat: () => void;
     onSwitch: () => void;
+    onArchive: () => void;
     onClose?: () => void;
 }) {
     const root = useRootStore();
@@ -312,6 +341,7 @@ function WorktreeCardMenu({
             onOpenPlace={tab => void openPlace(tab)}
             onClose={onClose}
             extra={[
+                { id: 'archive', label: 'Chat archive', icon: <Archive aria-hidden="true" />, run: onArchive },
                 ...(!card.missing &&
                 !card.pending &&
                 card.workspace?.ready !== false &&

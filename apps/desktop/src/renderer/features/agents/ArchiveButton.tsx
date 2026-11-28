@@ -96,7 +96,7 @@ export function WorktreeArchiveButton({
     );
 }
 
-function ArchiveList({
+export function ArchiveList({
     chats,
     onClose,
     showContext = false,
