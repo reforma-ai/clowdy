@@ -52,12 +52,19 @@ export function nativeWheel(target: HTMLElement, end: (release: boolean) => void
         onOutsideWheel(listener: (event: WheelEvent) => void) {
             outsideWheel = listener;
         },
-        wheel(event: WheelEvent): 'phased' | 'fallback' | 'ignore' {
+        wheel(event: WheelEvent): 'phased' | 'fallback' | 'momentum' | 'ignore' {
             if (!bridge?.available || !bridge.snapshot) return 'fallback';
             const snapshot = bridge.snapshot();
             if (!snapshot) return 'fallback';
             const last = snapshot.last;
             if (gesture) {
+                if (
+                    !snapshot.active &&
+                    snapshot.gesture === gesture &&
+                    last?.kind === 'scroll' &&
+                    last.momentumPhase !== 0
+                )
+                    return 'momentum';
                 if (!snapshot.active || snapshot.gesture !== gesture) {
                     finish(false);
                     return 'ignore';

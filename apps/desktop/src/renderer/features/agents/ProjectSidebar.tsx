@@ -130,7 +130,7 @@ export function ProjectSidebar({
         const finish = () => {
             const target = neighbor(state.x);
             const accept =
-                Math.abs(state.x) >= Math.min(80, width() * 0.25) &&
+                Math.abs(state.x) >= width() * 0.35 &&
                 target &&
                 shown.current === target &&
                 ['ready', 'failed'].includes(root.projectState(target)?.status ?? '');
@@ -188,6 +188,10 @@ export function ProjectSidebar({
                 }
             }
             const mode = lifecycle.wheel(event);
+            if (mode === 'momentum') {
+                if (state.mode === 'wheel' && Math.abs(event.deltaX) > Math.abs(event.deltaY)) event.preventDefault();
+                return;
+            }
             if (mode === 'ignore') return;
             const scale =
                 event.deltaMode === WheelEvent.DOM_DELTA_LINE

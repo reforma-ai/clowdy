@@ -16,7 +16,6 @@ import { Popover, PopoverScroll, PopoverTrigger } from '@clowdy/components/Popov
 import { Separator } from '@clowdy/components/Separator';
 import { Text } from '@clowdy/components/Text';
 import { Archive, More, Search, Trash } from '@clowdy/icons/14';
-import { History } from '@clowdy/icons/16';
 import { type RefObject, useRef, useState } from 'react';
 
 import { formatElapsed } from '../../shared';
@@ -46,8 +45,15 @@ export function ArchiveButton({ anchor }: { anchor: RefObject<HTMLElement | null
 
     return (
         <PopoverTrigger isOpen={isOpen} onOpenChange={setIsOpen}>
-            <Button variant="filling" color="secondary" size="sm" iconOnly aria-label="History" tooltip="History">
-                <History />
+            <Button
+                variant="filling"
+                color="secondary"
+                size="sm"
+                iconOnly
+                aria-label="Chat archive"
+                tooltip="Chat archive"
+            >
+                <Archive />
             </Button>
             <Popover triggerRef={anchor} placement="bottom start" spacing="xs" width={LIST_WIDTH}>
                 <ArchiveList chats={archived} onClose={() => setIsOpen(false)} />
