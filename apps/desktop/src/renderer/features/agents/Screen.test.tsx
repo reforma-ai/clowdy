@@ -3675,6 +3675,8 @@ describe('worktree cards', () => {
         const horizontal = () => new WheelEvent('wheel', { deltaX: -120, bubbles: true, cancelable: true });
         await act(async () => {
             sidebar.dispatchEvent(vertical);
+            // A wheel that went quiet is over; the next one picks its own axis.
+            await new Promise(resolve => setTimeout(resolve, 200));
             sidebar.dispatchEvent(horizontal());
         });
         expect(vertical.defaultPrevented).toBe(false);
@@ -3704,119 +3706,253 @@ describe('worktree cards', () => {
         expect(store.selectedProjectId).toBe(FIXTURE_PERSONAL_PROJECT_ID);
     });
 
-    it.each([
-        [FIXTURE_PROJECT_ID, FIXTURE_PERSONAL_PROJECT_ID, 100],
-        [FIXTURE_PERSONAL_PROJECT_ID, FIXTURE_PROJECT_ID, -100],
-        [FIXTURE_PROJECT_ID, FIXTURE_PROJECT_ID, 20],
-        [FIXTURE_PERSONAL_PROJECT_ID, FIXTURE_PERSONAL_PROJECT_ID, -20],
-        [FIXTURE_PROJECT_ID, FIXTURE_PROJECT_ID, 94],
-        [FIXTURE_PERSONAL_PROJECT_ID, FIXTURE_PERSONAL_PROJECT_ID, -94],
-        [FIXTURE_PROJECT_ID, FIXTURE_PERSONAL_PROJECT_ID, 95],
-        [FIXTURE_PERSONAL_PROJECT_ID, FIXTURE_PROJECT_ID, -95],
-    ])('settles a released native swipe with momentum from %s to %s', async (start, destination, delta) => {
-        await store.prepareProject(FIXTURE_PERSONAL_PROJECT_ID)!.load();
-        await draw(() => store.selectProject(start));
-        let active = true;
-        let sequence = 1;
-        const listeners = new Set<(event: import('../../../shared/bridge').NativeScrollRecord) => void>();
-        let record = {
-            kind: 'scroll' as const,
-            sequence,
-            phase: 1,
-            momentumPhase: 0,
-            x: 0,
-            y: 0,
-            deltaX: -delta,
-            deltaY: 0,
-            timestamp: 1,
-            precise: true,
-        };
-        vi.stubGlobal('desktop', {
-            nativeScroll: {
-                available: true,
-                snapshot: () => ({ active, sequence, gesture: 1, origin: null, last: record }),
-                subscribe: (listener: (event: import('../../../shared/bridge').NativeScrollRecord) => void) => {
-                    listeners.add(listener);
-                    return () => listeners.delete(listener);
-                },
-            },
-        });
-        try {
-            act(() => reactRoot.unmount());
-            reactRoot = createRoot(container);
-            await draw();
-            const sidebar = container.querySelector<HTMLElement>('[data-project-sidebar]')!;
-            const momentum = new WheelEvent('wheel', {
-                deltaX: -Math.sign(delta) * 5,
-                bubbles: true,
-                cancelable: true,
-            });
-            await act(async () => {
-                sidebar.dispatchEvent(new WheelEvent('wheel', { deltaX: -delta, bubbles: true, cancelable: true }));
-                active = false;
-                record = { ...record, sequence: ++sequence, phase: 8 };
-                for (const listener of listeners) listener(record);
-                record = { ...record, sequence: ++sequence, phase: 0, momentumPhase: 1 };
-                for (const listener of listeners) listener(record);
-                sidebar.dispatchEvent(momentum);
-                await new Promise(resolve => setTimeout(resolve, 300));
-            });
-            expect([store.selectedProjectId, momentum.defaultPrevented]).toEqual([destination, true]);
-        } finally {
-            vi.unstubAllGlobals();
-        }
-    });
+    describe('a native swipe', () => {
+        type NativeRecord = import('../../../shared/bridge').NativeScrollRecord;
+        let listeners: Set<(record: NativeRecord) => void>;
+        let sequence: number;
+        let time: number;
+        let inside: boolean;
 
-    it('follows a claimed native space swipe when the pointer moves outside the sidebar', async () => {
-        await store.prepareProject(FIXTURE_PERSONAL_PROJECT_ID)!.load();
-        let active = true;
-        let sequence = 1;
-        const listeners = new Set<(event: import('../../../shared/bridge').NativeScrollRecord) => void>();
-        const record = {
-            kind: 'scroll' as const,
-            sequence: 1,
-            phase: 1,
-            momentumPhase: 0,
-            x: 0,
-            y: 0,
-            deltaX: -20,
-            deltaY: 0,
-            timestamp: 1,
-            precise: true,
+        const emit = (fields: Partial<Extract<NativeRecord, { kind: 'scroll' }>>) => {
+            const record = {
+                kind: 'scroll' as const,
+                sequence: ++sequence,
+                phase: 0,
+                momentumPhase: 0,
+                deltaX: 0,
+                deltaY: 0,
+                x: 10,
+                y: 10,
+                timestamp: time,
+                precise: true,
+                ...fields,
+            };
+            for (const listener of listeners) listener(record);
         };
-        vi.stubGlobal('desktop', {
-            nativeScroll: {
-                available: true,
-                snapshot: () => ({ active, sequence, gesture: 1, origin: null, last: record }),
-                subscribe: (listener: (event: import('../../../shared/bridge').NativeScrollRecord) => void) => {
-                    listeners.add(listener);
-                    return () => listeners.delete(listener);
+        /** Fingers move the content by `pulls` (px, positive to the right), one record each `every` ms. */
+        const gesture = (pulls: number[], every = 16, { lift = true } = {}) => {
+            pulls.forEach((pull, index) => {
+                time += every;
+                emit({ phase: index ? 4 : 1, deltaX: -pull });
+            });
+            if (lift) {
+                time += 8;
+                emit({ phase: 8 });
+            }
+        };
+        const momentum = (pull: number) => {
+            time += 16;
+            emit({ momentumPhase: 1, deltaX: -pull });
+            time += 16;
+            emit({ momentumPhase: 8 });
+        };
+        const settle = (ms = 300) => act(async () => await new Promise(resolve => setTimeout(resolve, ms)));
+        const sidebar = () => container.querySelector<HTMLElement>('[data-project-sidebar]')!;
+
+        beforeEach(async () => {
+            listeners = new Set();
+            sequence = 0;
+            time = 1000;
+            inside = true;
+            vi.stubGlobal('desktop', {
+                nativeScroll: {
+                    available: true,
+                    subscribe: (listener: (record: NativeRecord) => void) => {
+                        listeners.add(listener);
+                        return () => listeners.delete(listener);
+                    },
                 },
-            },
-        });
-        const outside = document.createElement('div');
-        document.body.append(outside);
-        try {
+            });
+            // The setup file asks for reduced motion, which commits a switch at once. These tests need the animation.
+            vi.spyOn(window, 'matchMedia').mockImplementation(
+                query =>
+                    ({
+                        matches: false,
+                        media: query,
+                        addEventListener() {},
+                        removeEventListener() {},
+                    }) as unknown as MediaQueryList
+            );
+            vi.spyOn(document, 'elementFromPoint').mockImplementation(() =>
+                inside ? sidebar().querySelector('*') : document.body
+            );
+            await store.prepareProject(FIXTURE_PERSONAL_PROJECT_ID)!.load();
             act(() => reactRoot.unmount());
             reactRoot = createRoot(container);
             await draw();
-            const sidebar = container.querySelector<HTMLElement>('[data-project-sidebar]')!;
-            await act(async () => {
-                for (let i = 0; i < 5; i++)
-                    sidebar.dispatchEvent(new WheelEvent('wheel', { deltaX: -20, bubbles: true, cancelable: true }));
-                const reversal = new WheelEvent('wheel', { deltaX: 80, bubbles: true, cancelable: true });
-                outside.dispatchEvent(reversal);
-                expect(reversal.defaultPrevented).toBe(true);
-                active = false;
-                sequence++;
-                for (const listener of listeners) listener({ ...record, sequence, phase: 8 });
-                await new Promise(resolve => setTimeout(resolve, 300));
-            });
-            expect(store.selectedProjectId).toBe(FIXTURE_PROJECT_ID);
-        } finally {
-            outside.remove();
+        });
+        afterEach(() => {
             vi.unstubAllGlobals();
-        }
+            vi.restoreAllMocks();
+        });
+
+        it.each([
+            [
+                'a slow pull past a quarter of the width',
+                FIXTURE_PROJECT_ID,
+                FIXTURE_PERSONAL_PROJECT_ID,
+                Array(7).fill(10),
+                100,
+            ],
+            ['the same pull the other way', FIXTURE_PERSONAL_PROJECT_ID, FIXTURE_PROJECT_ID, Array(7).fill(-10), 100],
+            ['a slow pull short of a quarter', FIXTURE_PROJECT_ID, FIXTURE_PROJECT_ID, Array(6).fill(10), 100],
+            ['a short quick flick', FIXTURE_PROJECT_ID, FIXTURE_PERSONAL_PROJECT_ID, [10, 12, 14], 12],
+            ['a short quick flick the other way', FIXTURE_PERSONAL_PROJECT_ID, FIXTURE_PROJECT_ID, [-10, -12, -14], 12],
+            ['a twitch', FIXTURE_PROJECT_ID, FIXTURE_PROJECT_ID, [4, 4], 8],
+            [
+                'a pull toward no neighbor',
+                FIXTURE_PERSONAL_PROJECT_ID,
+                FIXTURE_PERSONAL_PROJECT_ID,
+                Array(10).fill(15),
+                16,
+            ],
+        ])('settles %s when the fingers lift, before the momentum', async (_, start, destination, pulls, every) => {
+            await draw(() => store.selectProject(start));
+            const tail = new WheelEvent('wheel', { deltaX: 5, bubbles: true, cancelable: true });
+            await act(async () => {
+                gesture(pulls, every);
+                time += 16;
+                emit({ momentumPhase: 1, deltaX: pulls[0] > 0 ? -20 : 20 });
+                sidebar().dispatchEvent(tail);
+                time += 16;
+                emit({ momentumPhase: 8 });
+            });
+            await settle();
+            expect([store.selectedProjectId, tail.defaultPrevented]).toEqual([destination, true]);
+        });
+
+        it('holds while the fingers rest and switches once they lift', async () => {
+            await act(async () => gesture(Array(10).fill(10), 16, { lift: false }));
+            await settle(400);
+            expect(store.selectedProjectId).toBe(FIXTURE_PROJECT_ID);
+            await act(async () => {
+                time += 400;
+                emit({ phase: 8 });
+            });
+            await settle();
+            expect(store.selectedProjectId).toBe(FIXTURE_PERSONAL_PROJECT_ID);
+        });
+
+        it('follows only the sideways movement once the swipe went sideways', async () => {
+            // The pull drifts down at its end, as fingers on a trackpad do.
+            await act(async () => {
+                gesture(Array(6).fill(10), 30, { lift: false });
+                for (const pull of [5, 3, 2, 0]) {
+                    time += 30;
+                    emit({ phase: 4, deltaX: -pull, deltaY: 8 });
+                }
+                time += 8;
+                emit({ phase: 8 });
+            });
+            await settle();
+            expect(store.selectedProjectId).toBe(FIXTURE_PERSONAL_PROJECT_ID);
+        });
+
+        it('leaves a scroll that started up or down alone, however it drifts later', async () => {
+            const scroll = new WheelEvent('wheel', { deltaY: 30, bubbles: true, cancelable: true });
+            await act(async () => {
+                time += 16;
+                emit({ phase: 1, deltaY: 10 });
+                for (let i = 0; i < 10; i++) {
+                    time += 16;
+                    emit({ phase: 4, deltaX: -20 });
+                }
+                sidebar().dispatchEvent(scroll);
+                time += 8;
+                emit({ phase: 8 });
+            });
+            await settle();
+            expect([store.selectedProjectId, scroll.defaultPrevented]).toEqual([FIXTURE_PROJECT_ID, false]);
+            expect(container.querySelector('[inert]')).toBeNull();
+        });
+
+        it('takes back a pull flicked toward where it started', async () => {
+            // Far enough to switch on distance alone (200 - 100 = 100 of 270), so only the flick back can cancel it.
+            await act(async () => gesture([...Array(20).fill(10), ...Array(5).fill(-20)], 16));
+            await settle();
+            expect(store.selectedProjectId).toBe(FIXTURE_PROJECT_ID);
+        });
+
+        it('keeps a swipe that began just before the previous switch committed', async () => {
+            await act(async () => gesture(Array(8).fill(10), 100));
+            await settle(60);
+            // Under the slop, so the new swipe has not picked its axis when the commit lands.
+            await act(async () => {
+                time += 16;
+                emit({ phase: 1, deltaX: -2 });
+            });
+            await settle(250);
+            expect(store.selectedProjectId).toBe(FIXTURE_PERSONAL_PROJECT_ID);
+            await act(async () => {
+                for (let i = 0; i < 8; i++) {
+                    time += 100;
+                    emit({ phase: 4, deltaX: 10 });
+                }
+                time += 8;
+                emit({ phase: 8 });
+            });
+            await settle();
+            expect(store.selectedProjectId).toBe(FIXTURE_PROJECT_ID);
+        });
+
+        it('follows a new swipe right after one that went back', async () => {
+            await act(async () => {
+                gesture([10, 10], 100);
+                momentum(5);
+            });
+            await act(async () => gesture(Array(8).fill(10), 100));
+            await settle();
+            expect(store.selectedProjectId).toBe(FIXTURE_PERSONAL_PROJECT_ID);
+        });
+
+        it('finishes a switch at once when a new swipe starts during its animation', async () => {
+            await act(async () => gesture(Array(8).fill(10), 100));
+            await act(async () => gesture([3, 3], 16, { lift: false }));
+            expect(store.selectedProjectId).toBe(FIXTURE_PERSONAL_PROJECT_ID);
+            await act(async () => {
+                time += 8;
+                emit({ phase: 8 });
+            });
+            await settle();
+            expect(store.selectedProjectId).toBe(FIXTURE_PERSONAL_PROJECT_ID);
+        });
+
+        it('cancels wheels outside the sidebar while it holds the swipe', async () => {
+            const outside = document.createElement('div');
+            document.body.append(outside);
+            try {
+                const wheel = new WheelEvent('wheel', { deltaX: 80, bubbles: true, cancelable: true });
+                await act(async () => {
+                    gesture(Array(5).fill(10), 16, { lift: false });
+                    outside.dispatchEvent(wheel);
+                });
+                expect(wheel.defaultPrevented).toBe(true);
+            } finally {
+                outside.remove();
+            }
+        });
+
+        it('ignores a swipe that started outside the sidebar', async () => {
+            inside = false;
+            const wheel = new WheelEvent('wheel', { deltaX: -20, bubbles: true, cancelable: true });
+            await act(async () => {
+                gesture(Array(10).fill(10), 16, { lift: false });
+                sidebar().dispatchEvent(wheel);
+                time += 8;
+                emit({ phase: 8 });
+            });
+            await settle();
+            expect([store.selectedProjectId, wheel.defaultPrevented]).toEqual([FIXTURE_PROJECT_ID, false]);
+        });
+
+        it('goes back when the window loses focus mid-swipe', async () => {
+            await act(async () => {
+                gesture(Array(10).fill(10), 16, { lift: false });
+                for (const listener of listeners) listener({ kind: 'cancel', sequence: ++sequence });
+            });
+            await settle();
+            expect(store.selectedProjectId).toBe(FIXTURE_PROJECT_ID);
+        });
     });
 
     it('lets a swipe reach a project whose snapshot failed', async () => {
