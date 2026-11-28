@@ -41,31 +41,12 @@
     gap: var(--spacing-sm);
 }
 
-.presets {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-lg);
+.permissionMenu {
+    min-width: 22rem;
+    max-width: min(28rem, calc(100vw - 2rem));
 }
 
-/* The presets read as off while a choice is saved. */
-.permissions[aria-busy] .presets {
-    opacity: var(--opacity-inactive);
-}
-
-/* The radio at the top line of its text. */
-.preset {
-    align-items: flex-start;
-}
-
-.presetText {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-2);
-    min-width: 0;
-}
-
-.presetName {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-md);
+.permissionMenu .permissionDescription {
+    white-space: normal;
+    overflow-wrap: anywhere;
 }

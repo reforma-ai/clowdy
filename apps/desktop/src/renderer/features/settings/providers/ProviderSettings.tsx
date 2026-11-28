@@ -2,7 +2,8 @@ import { Button } from '@clowdy/components/Button';
 import { Chip } from '@clowdy/components/Chip';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger, useCollapsible } from '@clowdy/components/Collapsible';
 import { Input } from '@clowdy/components/Input';
-import { Radio, RadioGroup } from '@clowdy/components/Radio';
+import { ListBoxItem } from '@clowdy/components/List';
+import { Select } from '@clowdy/components/Select';
 import { SettingsLayout } from '@clowdy/components/SettingsLayout';
 import { Show } from '@clowdy/components/Show';
 import { Switch } from '@clowdy/components/Switch';
@@ -192,12 +193,7 @@ export function ProviderSettings({
     );
 }
 
-/**
- * The permission presets the agent's provider offers, as radios: each preset's name and the provider's own words for what it does, the chosen one
- * selected (the person's choice, else the provider's default, which carries a quiet tag). The page knows nothing of any agent: the list is whatever
- * `AgentInfo.permissions` says. The group is read only while a choice is saved (not disabled, which would take the keyboard focus off the
- * radio), and the choice shows when the agents have been fetched again.
- */
+/** The provider's choices, saved by preset id and shown again after the agent is read. */
 export function PermissionPresets({ agent, commands }: SettingsProps) {
     const { permissions } = agent;
 
@@ -205,42 +201,50 @@ export function PermissionPresets({ agent, commands }: SettingsProps) {
 
     const selected = permissions.value ?? permissions.default;
     const isPending = commands.pending.has('permission');
+    // Retain an unfamiliar saved value until the person chooses an offered preset.
+    const presets = permissions.presets.some(preset => preset.id === selected)
+        ? permissions.presets
+        : [{ id: selected, name: selected, description: '' }, ...permissions.presets];
 
     return (
         <SettingsLayout.Row
-            stacked
             inset={false}
             title="Permissions"
             description="What the agent may do without asking"
             aria-busy={isPending || undefined}
-            className={styles.permissions}
         >
-            <RadioGroup
-                value={selected}
-                isReadOnly={isPending}
-                className={styles.presets}
-                onChange={value => void commands.setPermission(value as PermissionPresetId)}
+            <Select
+                size="sm"
+                items={presets}
+                selectedKey={selected}
+                valueDisplay="text"
+                popoverClassName={styles.permissionMenu}
+                onSelectionChange={(key: unknown) => {
+                    if (!isPending && permissions.presets.some(preset => preset.id === key)) {
+                        void commands.setPermission(key as PermissionPresetId);
+                    }
+                }}
             >
-                {permissions.presets.map(preset => (
-                    <Radio key={preset.id} value={preset.id} className={styles.preset}>
-                        <span className={styles.presetText}>
-                            <span className={styles.presetName}>
-                                <Text variant="sm" weight="medium" color={preset.id === 'full' ? 'warning' : undefined}>
-                                    {preset.name}
-                                </Text>
-                                {preset.id === permissions.default && (
-                                    <Chip tone="neutral" shape="pill">
-                                        Default
-                                    </Chip>
-                                )}
-                            </span>
-                            <Text variant="sm" color="secondary">
-                                {preset.description}
-                            </Text>
-                        </span>
-                    </Radio>
-                ))}
-            </RadioGroup>
+                {preset => (
+                    <ListBoxItem
+                        id={preset.id}
+                        text={preset.name}
+                        endAffix={
+                            preset.id === permissions.default ? (
+                                <Chip tone="neutral" shape="pill">
+                                    Default
+                                </Chip>
+                            ) : undefined
+                        }
+                        stacked
+                    >
+                        <Text slot="label">{preset.name}</Text>
+                        <Text slot="description" className={styles.permissionDescription}>
+                            {preset.description}
+                        </Text>
+                    </ListBoxItem>
+                )}
+            </Select>
         </SettingsLayout.Row>
     );
 }
