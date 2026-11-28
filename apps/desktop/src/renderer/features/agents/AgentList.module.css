@@ -8,15 +8,12 @@
     margin: var(--spacing-lg);
 }
 
-/*
- * Expanded, the side panel is where the chat was and the page's plate is clear but for this list, which is a plate of its own: bordered and rounded at every corner, as the
- * panel's plate is. Beside the chat it is the left part of the page's plate, and has only its right border (`Panel`), the edge between it and the chat.
- */
-.covered {
-    border: 1px solid var(--color-surface-border);
-    border-radius: var(--plate-radius);
-    corner-shape: superellipse(var(--squircle-value));
-    overflow: hidden;
+/* The plate around it is the sidebar's (`ProjectSidebar`), which holds the sliding lists and the dots under them. */
+.list {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
 }
 
 .content {
@@ -301,49 +298,4 @@
 
 .worktreeHeader[data-pending] {
     color: var(--color-secondary-muted-text);
-}
-
-.projectDots {
-    display: flex;
-    justify-content: safe center;
-    flex-shrink: 0;
-    overflow-x: auto;
-    padding: var(--spacing-4);
-}
-
-.projectDot {
-    display: grid;
-    place-items: center;
-    flex: 0 0 12px;
-    width: 12px;
-    height: 24px;
-    border: 0;
-    padding: 0;
-    background: transparent;
-    color: var(--color-secondary-muted-text);
-    cursor: pointer;
-}
-
-.projectDot span {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: currentColor;
-    opacity: 0.4;
-}
-
-.projectDot[aria-current] span {
-    opacity: 1;
-}
-
-.projectDot:focus-visible {
-    outline: 2px solid currentColor;
-    outline-offset: -2px;
-    border-radius: 4px;
-}
-
-.projectTooltip {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-6);
 }

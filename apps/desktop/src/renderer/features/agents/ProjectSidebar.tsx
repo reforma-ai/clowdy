@@ -1,3 +1,4 @@
+import { Panel } from '@clowdy/components/Panel';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { attachHorizontalSwipe } from '../../gestures/horizontalSwipe';
@@ -6,6 +7,7 @@ import { Unreachable } from '../../shell/Unreachable';
 import { ProjectProvider, useProjectState, useProjectUi, useRootStore } from '../../stores';
 import { AgentList } from './AgentList';
 import { resolveSelection, visibleChats } from './agentTree';
+import { ProjectDots } from './ProjectDots';
 import styles from './ProjectSidebar.module.css';
 import { useSidebarWorktrees } from './useSidebarWorktrees';
 
@@ -66,7 +68,10 @@ function Preview({
     );
 }
 
-/** The selected panel and its immediate neighbors share a viewport, while the main screen keeps its selection. */
+/**
+ * The selected panel and its immediate neighbors share a viewport, while the main screen keeps its selection. The plate, its edge and the dots
+ * under the lists are drawn once, outside the track, so they stay put while the lists slide.
+ */
 export function ProjectSidebar({
     children,
     info,
@@ -261,27 +266,30 @@ export function ProjectSidebar({
         );
     };
     return (
-        <div className={styles.viewport} ref={viewport} data-project-sidebar>
-            {[previous, next].map(id => {
-                const project = id ? root.projectState(id) : undefined;
-                return project ? (
-                    <ProjectProvider key={id} value={project}>
-                        <PrepareWorktrees onRead={rememberWorktrees} />
-                    </ProjectProvider>
-                ) : null;
-            })}
-            <div
-                ref={track}
-                className={styles.track}
-                style={{
-                    transform: `translateX(${offset}px)`,
-                    transition: settling ? 'transform 200ms ease-out' : 'none',
-                }}
-            >
-                {panel(previous, -1)}
-                <div className={styles.panel}>{children}</div>
-                {panel(next, 1)}
+        <Panel side="left" className={covered ? styles.covered : undefined}>
+            <div className={styles.viewport} ref={viewport} data-project-sidebar>
+                {[previous, next].map(id => {
+                    const project = id ? root.projectState(id) : undefined;
+                    return project ? (
+                        <ProjectProvider key={id} value={project}>
+                            <PrepareWorktrees onRead={rememberWorktrees} />
+                        </ProjectProvider>
+                    ) : null;
+                })}
+                <div
+                    ref={track}
+                    className={styles.track}
+                    style={{
+                        transform: `translateX(${offset}px)`,
+                        transition: settling ? 'transform 200ms ease-out' : 'none',
+                    }}
+                >
+                    {panel(previous, -1)}
+                    <div className={styles.panel}>{children}</div>
+                    {panel(next, 1)}
+                </div>
             </div>
-        </div>
+            <ProjectDots />
+        </Panel>
     );
 }

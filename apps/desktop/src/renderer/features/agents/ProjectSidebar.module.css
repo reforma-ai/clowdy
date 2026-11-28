@@ -1,3 +1,14 @@
+/*
+ * Expanded, the side panel is where the chat was and the page's plate is clear but for the list of chats, which is a plate of its own: bordered and rounded at every corner, as the
+ * panel's plate is. Beside the chat it is the left part of the page's plate, and has only its right border (`Panel`), the edge between it and the chat.
+ */
+.covered {
+    border: 1px solid var(--color-surface-border);
+    border-radius: var(--plate-radius);
+    corner-shape: superellipse(var(--squircle-value));
+    overflow: hidden;
+}
+
 .viewport {
     flex: 1;
     min-width: 0;

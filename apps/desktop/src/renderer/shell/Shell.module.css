@@ -49,7 +49,7 @@
 }
 
 /*
- * Expanded, the page's plate is the list of chats alone, an island of its own (`AgentList.module.css` draws it), and the panel's plate is the other, with the gap between.
+ * Expanded, the page's plate is the list of chats alone, an island of its own (`ProjectSidebar.module.css` draws it), and the panel's plate is the other, with the gap between.
  * What is left of the page's plate is clear, so the window shows through the gap.
  */
 .covered {

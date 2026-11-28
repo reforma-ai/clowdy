@@ -3622,6 +3622,8 @@ describe('worktree cards', () => {
     it('switches projects through the sidebar dots in menu order', async () => {
         const navigation = container.querySelector<HTMLElement>('nav[aria-label="Switch space"]')!;
         const buttons = [...navigation.querySelectorAll('button')];
+        // Outside the sliding lists, so they stay put under a swipe.
+        expect(navigation.closest('[data-project-sidebar]')).toBeNull();
         const ordered = [
             ...store.projects.filter(candidate => candidate.personal),
             ...store.projects.filter(candidate => !candidate.personal),
