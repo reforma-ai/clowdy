@@ -3803,25 +3803,20 @@ describe('worktree cards', () => {
             expect(store.selectedProjectId).toBe(FIXTURE_PERSONAL_PROJECT_ID);
         });
 
-        it('fades in the chat after a swipe, and the list too only when the space was chosen elsewhere', async () => {
-            const faded: Element[] = [];
-            vi.spyOn(Element.prototype, 'animate').mockImplementation(function (this: Element) {
-                faded.push(this);
-                return {} as Animation;
+        it('hands a swiped switch to the window, and keeps the list where it slid until the switch applies', async () => {
+            let pending: (() => void) | undefined;
+            store.setSpaceSwitch(apply => {
+                pending = apply;
             });
-            const chat = () => container.querySelector('section[aria-label="Chat"]');
-            const list = () => sidebar().querySelector(':scope > div > div:not([inert])');
+            const offset = () =>
+                container.querySelector<HTMLElement>('[data-project-sidebar] > div:last-child')!.style.transform;
 
             await act(async () => gesture(Array(7).fill(10), 100));
             await settle();
-            // The harness renders without an observer above the screen: draw it as the shell would.
-            await draw();
-            expect(store.selectedProjectId).toBe(FIXTURE_PERSONAL_PROJECT_ID);
-            expect([faded.includes(chat()!), faded.includes(list()!)]).toEqual([true, false]);
+            expect([store.selectedProjectId, offset()]).toEqual([FIXTURE_PROJECT_ID, 'translateX(270px)']);
 
-            faded.length = 0;
-            await draw(() => store.selectProject(FIXTURE_PROJECT_ID));
-            expect([faded.includes(chat()!), faded.includes(list()!)]).toEqual([true, true]);
+            await draw(() => pending?.());
+            expect([store.selectedProjectId, offset()]).toEqual([FIXTURE_PERSONAL_PROJECT_ID, 'translateX(0px)']);
         });
 
         it('follows only the sideways movement once the swipe went sideways', async () => {

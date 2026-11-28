@@ -1,8 +1,7 @@
 import { PanelLoadingState } from '@clowdy/components/Panel';
-import { lazy, Suspense, useRef } from 'react';
+import { lazy, Suspense } from 'react';
 
-import { useFadeIn } from '../../shared';
-import { useProjectState, useProjectUi } from '../../stores';
+import { useProjectUi } from '../../stores';
 import { SIDE_PANEL_TAB_LABELS } from './commands';
 import styles from './SidePanel.module.css';
 
@@ -24,9 +23,6 @@ const ChangesTab = lazy(() => import('../changes/ChangesTab'));
  */
 export function SidePanel() {
     const { sidePanelTab: chosen, sidePanelCoversChat } = useProjectUi();
-    // Another space's tab fades in with its chat; opening the panel does not.
-    const plate = useRef<HTMLElement>(null);
-    useFadeIn(plate, useProjectState().id);
 
     return (
         <aside
@@ -35,27 +31,29 @@ export function SidePanel() {
             data-side-panel=""
             data-expanded={sidePanelCoversChat || undefined}
         >
-            <section ref={plate} className={styles.plate} data-tab={chosen} aria-label={SIDE_PANEL_TAB_LABELS[chosen]}>
-                {(chosen === 'files' || chosen === 'docs') && (
-                    <Suspense fallback={<PanelLoadingState />}>
-                        <FilesTab variant={chosen} />
-                    </Suspense>
-                )}
-                {chosen === 'terminal' && (
-                    <Suspense fallback={<PanelLoadingState />}>
-                        <TerminalTab />
-                    </Suspense>
-                )}
-                {chosen === 'tasks' && (
-                    <Suspense fallback={<PanelLoadingState />}>
-                        <TasksTab />
-                    </Suspense>
-                )}
-                {chosen === 'changes' && (
-                    <Suspense fallback={<PanelLoadingState />}>
-                        <ChangesTab />
-                    </Suspense>
-                )}
+            <section className={styles.plate} data-tab={chosen} aria-label={SIDE_PANEL_TAB_LABELS[chosen]}>
+                <div className={styles.content}>
+                    {(chosen === 'files' || chosen === 'docs') && (
+                        <Suspense fallback={<PanelLoadingState />}>
+                            <FilesTab variant={chosen} />
+                        </Suspense>
+                    )}
+                    {chosen === 'terminal' && (
+                        <Suspense fallback={<PanelLoadingState />}>
+                            <TerminalTab />
+                        </Suspense>
+                    )}
+                    {chosen === 'tasks' && (
+                        <Suspense fallback={<PanelLoadingState />}>
+                            <TasksTab />
+                        </Suspense>
+                    )}
+                    {chosen === 'changes' && (
+                        <Suspense fallback={<PanelLoadingState />}>
+                            <ChangesTab />
+                        </Suspense>
+                    )}
+                </div>
             </section>
         </aside>
     );

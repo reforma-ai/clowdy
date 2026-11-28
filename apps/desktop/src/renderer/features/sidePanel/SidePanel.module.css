@@ -31,6 +31,19 @@
     overflow: auto;
 }
 
+/* What the tab shows, filling the plate, so its content fades out and in on a switch of space without the plate (`base.css`). */
+.content {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
+:global(html[data-space-switch]) .content {
+    view-transition-name: space-panel;
+}
+
 /* Expanded, the list of chats is the island beside it (the page's plate is clear but for the list: `Shell.module.css`), so the whole gap is on this plate, from the list's edge. */
 .panel[data-expanded] .plate {
     margin-left: var(--plate-gap);

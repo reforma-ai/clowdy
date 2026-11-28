@@ -14,6 +14,7 @@ import { NoProject } from './NoProject';
 import styles from './Shell.module.css';
 import { SyncBanner } from './SyncBanner';
 import { shellCommands } from './shellCommands';
+import { spaceSwitch } from './spaceSwitch';
 import { TitleBand } from './TitleBand';
 import { Unreachable } from './Unreachable';
 
@@ -28,6 +29,10 @@ export function Shell() {
 
     useWindowFitsHalf();
     useEffect(() => installDispatcher(hotkeys), []);
+    useEffect(() => {
+        root.setSpaceSwitch(spaceSwitch);
+        return () => root.setSpaceSwitch(undefined);
+    }, [root]);
     useCommands('app', shellCommands(root));
     useCommands(
         'app',
